@@ -6,6 +6,7 @@
 - Keep runtime dependency-free. Do not add package manager files or third-party runtime packages unless explicitly requested.
 - Use Bun for source checks and compilation.
 - Keep browser assets embedded in `local-code-review.mjs`; release must remain one standalone executable.
+- `skills/apply-lcr/` is distributable optional skill. `.agents/skills/apply-lcr/` is project-local copy. Keep their files byte-identical.
 
 ## Behavior to preserve
 
@@ -35,6 +36,12 @@ bun build ./local-code-review.mjs --compile --minify --outfile /tmp/lcr
 ```
 
 For behavior changes, smoke-test in temporary Git repository with modified, staged, added, deleted, and untracked files. Verify explicit ranges when diff argument handling changes. Do not commit generated executables or review files.
+
+After skill changes, verify copies match:
+
+```sh
+cmp -s skills/apply-lcr/SKILL.md .agents/skills/apply-lcr/SKILL.md
+```
 
 ## Releases
 

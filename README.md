@@ -91,6 +91,28 @@ Use `dl`/`dt`/`dd` without wrapper `div`; group role is redundant.
 
 Ask agent to address newest review file while treating code snippet as authoritative anchor. Agent should apply valid notes, explain rejected notes, then run project checks. Review file should remain unchanged.
 
+## Optional agent skill
+
+Repository includes optional [`apply-lcr`](skills/apply-lcr/SKILL.md) skill. It locates newest review, anchors notes by captured code, applies valid feedback, rejects unsafe or incorrect requests, runs project checks, and reports result per note.
+
+```text
+skills/apply-lcr/SKILL.md          # distributable example
+.agents/skills/apply-lcr/SKILL.md  # project-local copy
+```
+
+This follows `skills/<kebab-case-name>/SKILL.md` convention for shared skills and `.agents/skills/<name>/SKILL.md` for project-local discovery. Copies are intentionally identical.
+
+Invoke naturally:
+
+```text
+Address newest lcr review.
+Apply notes from .review/review-2026-08-01T12-00-00.md.
+```
+
+Or invoke `/apply-lcr` when agent supports skill commands. Clients using another discovery directory can copy `skills/apply-lcr/` into their configured skills directory.
+
+Skill remains optional; `lcr` itself has no agent integration or runtime dependency.
+
 ## Behavior
 
 - Default mode includes modified, staged, and untracked files. Untracked files become visible through `git add -N` intent-to-add entries.
