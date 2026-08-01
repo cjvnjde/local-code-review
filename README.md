@@ -95,6 +95,8 @@ Ask agent to address newest review file while treating code snippet as authorita
 
 Repository includes optional [`apply-lcr`](skills/apply-lcr/SKILL.md) skill. It locates newest review, anchors notes by captured code, applies valid feedback, rejects unsafe or incorrect requests, runs project checks, and reports result per note.
 
+Open **Settings → Create skill** to install it. lcr shows destination and full skill contents before asking for confirmation. It uses existing project skill directories for Agent Skills-compatible tools, including `.agents`, `.agent`, `.augment`, `.claude`, `.cline`, `.clinerules`, `.codex`, `.cursor`, `.factory`, `.gemini`, `.github`, `.goose`, `.junie`, `.kilo`, `.kiro`, `.opencode`, `.qwen`, `.roo`, and `.windsurf` roots. If none has a `skills` directory in folder where lcr started, it creates `.agents/skills`. Installation never runs automatically.
+
 ```text
 skills/apply-lcr/SKILL.md          # distributable example
 .agents/skills/apply-lcr/SKILL.md  # project-local copy

@@ -26,8 +26,31 @@
     <label><input type="checkbox" id="cfgToast"> Show a notification when it happens</label>
     <p class="note">A file counts as scrolled past when its last line leaves the top of the pane.
       Collapsed files are skipped, and marks you set by hand are never undone automatically.</p>
+    <div class="settings-section">
+      <h4>Agent skill</h4>
+      <p class="note">Install optional <code>apply-lcr</code> skill into an existing agent skills folder.</p>
+      <button id="createSkill" type="button">Create skill</button>
+    </div>
   </div>
 </header>
+<dialog id="skillDialog" aria-labelledby="skillDialogTitle">
+  <div class="dialog-head">
+    <h3 id="skillDialogTitle">Create agent skill</h3>
+    <button id="closeSkill" class="icon-button" type="button" aria-label="Close">&times;</button>
+  </div>
+  <p id="skillIntro">Review destination and full skill before installing.</p>
+  <label class="dialog-field">Destination
+    <select id="skillTarget"></select>
+  </label>
+  <code class="skill-path" id="skillPath"></code>
+  <p class="skill-status" id="skillStatus"></p>
+  <h4>Skill preview</h4>
+  <pre id="skillPreview"></pre>
+  <div class="dialog-actions">
+    <button id="cancelSkill" type="button">Cancel</button>
+    <button class="primary" id="confirmSkill" type="button">Install skill</button>
+  </div>
+</dialog>
 <main>
   <nav>
     <div class="navtop">

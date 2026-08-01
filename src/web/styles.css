@@ -37,7 +37,30 @@
   #settings select{background:var(--crust);color:var(--ink);border:1px solid var(--edge-hi);border-radius:4px;
     padding:3px 6px;font:12px var(--sans);margin-left:auto}
   #settings .note{margin:0;color:var(--ink-faint);font-size:11px;line-height:1.45}
+  #settings .note code{color:var(--mark);font-family:var(--mono)}
   #settings .sub label{color:var(--ink-dim);padding-left:22px}
+  #settings .settings-section{border-top:1px solid var(--edge);padding-top:10px;display:flex;flex-direction:column;gap:8px}
+  #settings .settings-section button{align-self:flex-start}
+
+  #skillDialog{width:min(760px,calc(100vw - 28px));max-height:calc(100vh - 40px);margin:auto;padding:0;
+    color:var(--ink);background:var(--panel2);border:1px solid var(--edge-hi);border-radius:9px;
+    box-shadow:0 20px 60px rgba(0,0,0,.65);font:12px/1.5 var(--sans)}
+  #skillDialog[open]{display:flex;flex-direction:column}
+  #skillDialog::backdrop{background:rgba(10,10,18,.72)}
+  #skillDialog .dialog-head{display:flex;align-items:center;padding:12px 14px;border-bottom:1px solid var(--edge)}
+  #skillDialog h3{margin:0;font:600 14px var(--sans);flex:1}
+  #skillDialog h4{margin:0 14px;font:600 10px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint)}
+  #skillDialog>p{margin:10px 14px 0;color:var(--ink-dim)}
+  #skillDialog .dialog-field{display:flex;align-items:center;gap:10px;margin:12px 14px 6px;color:var(--ink)}
+  #skillDialog select{background:var(--crust);color:var(--ink);border:1px solid var(--edge-hi);border-radius:4px;
+    padding:4px 7px;font:12px var(--mono)}
+  #skillDialog .skill-path{margin:0 14px;padding:7px 9px;background:var(--crust);border:1px solid var(--edge);
+    border-radius:5px;color:var(--mark);overflow-wrap:anywhere}
+  #skillDialog .skill-status.warning{color:var(--peach)}
+  #skillDialog pre{margin:8px 14px 12px;padding:10px;min-height:160px;overflow:auto;white-space:pre-wrap;
+    background:var(--crust);border:1px solid var(--edge);border-radius:5px;color:var(--ink-dim);font:11px/1.5 var(--mono)}
+  #skillDialog .dialog-actions{display:flex;justify-content:flex-end;gap:8px;padding:10px 14px;border-top:1px solid var(--edge)}
+  #skillDialog .icon-button{border:none;padding:2px 7px;font:20px/1 var(--sans)}
 
   #toasts{position:fixed;right:14px;bottom:60px;z-index:20;display:flex;flex-direction:column;gap:6px;align-items:flex-end}
   .toast{display:flex;align-items:center;gap:9px;background:var(--panel2);border:1px solid var(--edge-hi);
@@ -169,6 +192,7 @@
   button:hover{color:var(--ink);border-color:var(--ink-faint)}
   button.primary{background:var(--accent);border-color:var(--accent);color:var(--crust);font-weight:600}
   button.primary:hover{background:var(--lav);color:var(--crust)}
+  button:disabled{cursor:not-allowed;opacity:.55}
   button.danger:hover{color:var(--del);border-color:var(--del)}
   button:focus-visible,td.g:focus-visible{outline:2px solid var(--mark);outline-offset:2px}
 

@@ -202,13 +202,16 @@ function removeCard(fi){
   unobserveIn(node); node.remove();
   if(!el('diff').querySelector('.file')) renderDiff();
 }
-/** Marking a file viewed collapses it, the way a finished file gets out of the way. */
+/** Manual viewed marks collapse files; automatic marks preserve their height while scrolling. */
 export function setViewed(paths: string[],on: boolean,auto?: boolean){
   const list=[].concat(paths).filter(p=>idxOf(p)>=0&&on!==state.viewed.has(p));
   if(!list.length) return [];
   list.forEach(p=>{
     const fi=idxOf(p);
-    if(on){ state.viewed.set(p,{h:state.files[fi].hash,auto:!!auto}); state.folded.add(p); }
+    if(on){
+      state.viewed.set(p,{h:state.files[fi].hash,auto:!!auto});
+      if(!auto) state.folded.add(p);
+    }
     else { state.viewed.delete(p); state.folded.delete(p); }
     if(!auto) state.autoNow.delete(p); // a hand-set mark is no longer the scroll tracker's to undo
     if(state.stale) state.stale.delete(p);
@@ -226,6 +229,7 @@ export function setViewed(paths: string[],on: boolean,auto?: boolean){
  */
 function paintCard(fi,on){
   const node=el('f'+fi); if(!node) return;
+  const folded=state.folded.has(state.files[fi].path);
   const sec=el('diff');
   const paneTop=sec.getBoundingClientRect().top;
   const r0=node.getBoundingClientRect();
@@ -234,9 +238,9 @@ function paintCard(fi,on){
   const st0=sec.scrollTop;
   const h0=node.offsetHeight;
   node.classList.toggle('seen',on);
-  node.classList.toggle('fold',on);
+  node.classList.toggle('fold',folded);
   const chev=node.querySelector('[data-fold]');
-  if(chev){ chev.innerHTML=on?SVG.chevR:SVG.chevD; chev.title=on?'Expand file':'Collapse file'; }
+  if(chev){ chev.innerHTML=folded?SVG.chevR:SVG.chevD; chev.title=folded?'Expand file':'Collapse file'; }
   const btn=node.querySelector('[data-vw]');
   if(btn){
     btn.classList.toggle('on',on);

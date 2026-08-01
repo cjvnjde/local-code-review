@@ -4,8 +4,10 @@ import { diffRangeLabel, getDiff } from "./diff.ts";
 import { findRepoRoot } from "./git.ts";
 import { excludeRelativeOutput, saveReview } from "./output.ts";
 import { startServer } from "./server.ts";
+import { installSkill, previewSkill } from "./skill.ts";
 
 const options = parseArgs(process.argv.slice(2));
+const invocationRoot = process.cwd();
 const repoRoot = await findRepoRoot();
 process.chdir(repoRoot);
 
@@ -23,4 +25,7 @@ startServer({
     diffArgs: options.diffArgs,
   }),
   saveReview: (submission) => saveReview(repoRoot, options.outDir, range, submission),
+  previewSkill: () => previewSkill(invocationRoot),
+  installSkill: (directory, expectedState, expectedRevision) =>
+    installSkill(invocationRoot, directory, expectedState, expectedRevision),
 });
