@@ -2,10 +2,10 @@
 
 ## Project shape
 
-- `local-code-review.mjs` is complete application: CLI, Git integration, HTTP server, HTML, CSS, and browser JavaScript.
+- `src/index.ts` is composition root. Keep CLI, Git, diff parsing, review output, server, and browser concerns in focused modules under `src/`.
 - Keep runtime dependency-free. Do not add package manager files or third-party runtime packages unless explicitly requested.
-- Use Bun for source checks and compilation.
-- Keep browser assets embedded in `local-code-review.mjs`; release must remain one standalone executable.
+- Use Bun for source checks, browser bundling, and standalone compilation.
+- Keep browser assets imported through `src/web/shell.html`; compiled release must remain one standalone executable.
 - `skills/apply-lcr/` is distributable optional skill. `.agents/skills/apply-lcr/` is project-local copy. Keep their files byte-identical.
 
 ## Behavior to preserve
@@ -19,7 +19,7 @@
 
 ## Change guidance
 
-- Prefer focused edits over restructuring single-file application.
+- Prefer focused edits within existing module boundaries over unrelated restructuring.
 - Preserve no-install usage.
 - Avoid shell interpolation for Git commands; use argument arrays.
 - Escape user-controlled values rendered into HTML.
@@ -31,8 +31,9 @@
 Run relevant checks after changes:
 
 ```sh
-bun build ./local-code-review.mjs --target=bun --outfile /tmp/lcr-check.mjs
-bun build ./local-code-review.mjs --compile --minify --outfile /tmp/lcr
+bun test ./src
+bun build ./src/index.ts --target=bun --outdir /tmp/lcr-check
+bun build ./src/index.ts --compile --minify --outfile /tmp/lcr
 ```
 
 For behavior changes, smoke-test in temporary Git repository with modified, staged, added, deleted, and untracked files. Verify explicit ranges when diff argument handling changes. Do not commit generated executables or review files.

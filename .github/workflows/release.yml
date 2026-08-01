@@ -9,8 +9,27 @@ permissions:
   contents: write
 
 jobs:
+  check:
+    name: Test source
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out tag
+        uses: actions/checkout@v5
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Test and bundle
+        run: |
+          bun test ./src
+          bun build ./src/index.ts --target=bun --outdir /tmp/lcr-check
+
   build:
     name: Build ${{ matrix.platform }}
+    needs: check
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -52,7 +71,7 @@ jobs:
           EXECUTABLE: ${{ matrix.executable }}
         run: |
           mkdir -p build
-          bun build ./local-code-review.mjs \
+          bun build ./src/index.ts \
             --compile \
             --minify \
             --target="$TARGET" \

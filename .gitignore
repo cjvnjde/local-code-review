@@ -3,6 +3,7 @@
 
 # Local Pi agent state
 .pi/
+.pi-subagents/
 
 # Compiled executable
 /lcr

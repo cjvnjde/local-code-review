@@ -133,10 +133,18 @@ git push origin v0.1.0
 
 GitHub Actions cross-compiles standalone executables with Bun, packages each supported system, creates release when needed, and uploads all packages. Executable inside every package is named `lcr` (`lcr.exe` on Windows).
 
+## Develop
+
+Source lives in `src/` and uses TypeScript. Browser HTML, CSS, and client modules are bundled into the executable; no runtime asset files or packages are needed.
+
+```sh
+bun ./src/index.ts [git diff args...]
+```
+
 ## Build locally
 
 ```sh
-bun build ./local-code-review.mjs --compile --minify --outfile lcr
+bun build ./src/index.ts --compile --minify --outfile lcr
 ```
 
 Compiled executable needs only Git at runtime.

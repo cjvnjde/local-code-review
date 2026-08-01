@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Review</title>
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+<header>
+  <b>git review</b>
+  <span class="range" id="range"></span>
+  <span class="spacer"></span>
+  <span class="hint">click a line to comment &middot; drag or shift-click for a range &middot; cmd/ctrl+enter saves</span>
+  <button id="gear" title="Settings"></button>
+  <div id="settings" hidden>
+    <h4>Automatic viewed</h4>
+    <label><input type="checkbox" id="cfgAuto"> Mark a file viewed once I scroll past it</label>
+    <div class="sub"><label><input type="checkbox" id="cfgBack"> Unmark it when I scroll back up to it</label></div>
+    <label>Ignore scrolling faster than <select id="cfgLimit">
+      <option value="500">very slow</option>
+      <option value="900">slow</option>
+      <option value="1800">medium</option>
+      <option value="0">any speed</option>
+    </select></label>
+    <label><input type="checkbox" id="cfgToast"> Show a notification when it happens</label>
+    <p class="note">A file counts as scrolled past when its last line leaves the top of the pane.
+      Collapsed files are skipped, and marks you set by hand are never undone automatically.</p>
+  </div>
+</header>
+<main>
+  <nav>
+    <div class="navtop">
+      <input id="filter" placeholder="Filter files" spellcheck="false">
+      <div class="navbtns">
+        <button data-all="expand" title="Expand every folder">Expand</button>
+        <button data-all="collapse" title="Collapse every folder">Collapse</button>
+        <button data-all="show" title="Show every file in the diff">Show all</button>
+        <button data-all="hide" title="Hide every file from the diff">Hide all</button>
+      </div>
+    </div>
+    <div class="tree" id="tree"></div>
+  </nav>
+  <section id="diff"></section>
+</main>
+<div id="toasts"></div>
+<footer>
+  <span class="count" id="count">0 notes</span>
+  <textarea id="general" placeholder="Overall note (optional)"></textarea>
+  <span class="spacer"></span>
+  <button id="reload">Reload diff</button>
+  <button class="primary" id="submit">Save review</button>
+</footer>
+<script type="module" src="./client/index.ts"></script>
+</body>
+</html>
