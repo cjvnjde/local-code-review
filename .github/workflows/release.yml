@@ -9,9 +9,33 @@ permissions:
   contents: write
 
 jobs:
-  build-and-release:
-    name: Build and attach executable
+  build:
+    name: Build ${{ matrix.platform }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: Linux x64
+            target: bun-linux-x64
+            executable: lcr
+            package: lcr-linux-x64.tar.gz
+          - platform: Linux ARM64
+            target: bun-linux-arm64
+            executable: lcr
+            package: lcr-linux-arm64.tar.gz
+          - platform: macOS x64
+            target: bun-darwin-x64
+            executable: lcr
+            package: lcr-macos-x64.tar.gz
+          - platform: macOS ARM64
+            target: bun-darwin-arm64
+            executable: lcr
+            package: lcr-macos-arm64.tar.gz
+          - platform: Windows x64
+            target: bun-windows-x64
+            executable: lcr.exe
+            package: lcr-windows-x64.zip
 
     steps:
       - name: Check out tag
@@ -23,20 +47,53 @@ jobs:
           bun-version: latest
 
       - name: Build standalone executable
+        env:
+          TARGET: ${{ matrix.target }}
+          EXECUTABLE: ${{ matrix.executable }}
         run: |
+          mkdir -p build
           bun build ./local-code-review.mjs \
             --compile \
             --minify \
-            --target=bun-linux-x64 \
-            --outfile lcr
-          chmod +x lcr
+            --target="$TARGET" \
+            --outfile "build/$EXECUTABLE"
+          test -s "build/$EXECUTABLE"
+          file "build/$EXECUTABLE"
 
-      - name: Smoke-test executable
+      - name: Package executable
+        env:
+          EXECUTABLE: ${{ matrix.executable }}
+          PACKAGE: ${{ matrix.package }}
         run: |
-          file lcr
-          test -x lcr
+          mkdir -p dist
+          if [[ "$PACKAGE" == *.zip ]]; then
+            (cd build && zip "../dist/$PACKAGE" "$EXECUTABLE")
+          else
+            chmod +x "build/$EXECUTABLE"
+            tar -C build -czf "dist/$PACKAGE" "$EXECUTABLE"
+          fi
 
-      - name: Create GitHub Release and attach executable
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.package }}
+          path: dist/${{ matrix.package }}
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    name: Create release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create GitHub Release and attach packages
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -45,6 +102,4 @@ jobs:
               --title "$GITHUB_REF_NAME" \
               --generate-notes
           fi
-          gh release upload "$GITHUB_REF_NAME" \
-            lcr \
-            --clobber
+          gh release upload "$GITHUB_REF_NAME" dist/* --clobber

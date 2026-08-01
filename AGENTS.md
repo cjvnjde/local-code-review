@@ -39,5 +39,6 @@ For behavior changes, smoke-test in temporary Git repository with modified, stag
 ## Releases
 
 - Version tags use `v*` form, such as `v0.1.0`.
-- `.github/workflows/release.yml` builds Linux x64 standalone `lcr` executable and uploads it to matching GitHub Release.
+- `.github/workflows/release.yml` builds Linux x64/ARM64, macOS x64/ARM64, and Windows x64 packages and uploads them to matching GitHub Release.
+- Keep executable inside each package named `lcr` (`lcr.exe` on Windows); use platform-specific archive names.
 - Keep `contents: write` permission scoped to release workflow.

@@ -7,17 +7,30 @@ Download one executable from GitHub Releases. No install, runtime, or dependenci
 ## Requirements
 
 - Git
-- Linux x64
+- Linux, macOS, or Windows
 
 ## Install
 
-Download `lcr` from [latest GitHub Release](https://github.com/cjvnjde/local-code-review/releases/latest):
+Download matching package from [latest GitHub Release](https://github.com/cjvnjde/local-code-review/releases/latest):
+
+| System | Package |
+| --- | --- |
+| Linux x64 | `lcr-linux-x64.tar.gz` |
+| Linux ARM64 | `lcr-linux-arm64.tar.gz` |
+| macOS x64 | `lcr-macos-x64.tar.gz` |
+| macOS ARM64 | `lcr-macos-arm64.tar.gz` |
+| Windows x64 | `lcr-windows-x64.zip` |
+
+Linux/macOS archives contain executable named `lcr`:
 
 ```sh
+tar -xzf lcr-<system>-<architecture>.tar.gz
 chmod +x lcr
 mkdir -p ~/.local/bin
 mv lcr ~/.local/bin/lcr
 ```
+
+Windows archive contains `lcr.exe`. Extract it and place it in directory on `PATH`.
 
 ## Run
 
@@ -96,7 +109,7 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-GitHub Actions compiles source with Bun, creates release when needed, and uploads executable.
+GitHub Actions cross-compiles standalone executables with Bun, packages each supported system, creates release when needed, and uploads all packages. Executable inside every package is named `lcr` (`lcr.exe` on Windows).
 
 ## Build locally
 
