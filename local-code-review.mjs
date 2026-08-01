@@ -1,14 +1,14 @@
-#!/usr/bin/env node
-// git-review — local review UI for agent-authored diffs.
-// Usage:  node git-review.mjs [git diff args...]
-//   node git-review.mjs                 # unstaged + staged vs HEAD
-//   node git-review.mjs HEAD~3          # last 3 commits
-//   node git-review.mjs main...HEAD      # branch vs main
-//   node git-review.mjs --staged
+#!/usr/bin/env bun
+// local-code-review — local review UI for agent-authored diffs.
+// Development:  bun local-code-review.mjs [git diff args...]
+//   bun local-code-review.mjs                 # unstaged + staged vs HEAD
+//   bun local-code-review.mjs HEAD~3          # last 3 commits
+//   bun local-code-review.mjs main...HEAD      # branch vs main
+//   bun local-code-review.mjs --staged
 // Flags:  --port 7777  --out .review  --context 5
 //
-// Standalone binary (needs only git at runtime, no node/bun):
-//   bun build ./git-review.mjs --compile --minify --outfile git-review
+// Standalone binary (needs only git at runtime):
+//   bun build ./local-code-review.mjs --compile --minify --outfile lcr
 //   cross-compile with e.g. --target=bun-linux-x64 | bun-darwin-arm64 | bun-windows-x64
 
 import { createServer } from 'node:http';

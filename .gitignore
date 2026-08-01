@@ -1,0 +1,13 @@
+# Generated review notes
+.review/
+
+# Local Pi agent state
+.pi/
+
+# Compiled executable
+/lcr
+
+# Logs and OS metadata
+*.log
+.DS_Store
+Thumbs.db
