@@ -58,12 +58,33 @@ describe("parseStatuses", () => {
       "### b.ts:1 <!-- lcr:b.ts|n1|n1 -->", "", "Status: Done", "",
       "### c.ts:1 <!-- lcr:c.ts|n1|n1 -->", "", "Status: rejected", "",
       "### d.ts:1 <!-- lcr:d.ts|n1|n1 -->", "", "Status: half way there", "",
+      "### e.ts:1 <!-- lcr:e.ts|n1|n1 -->", "", "Status: by design", "",
     ));
     expect(parsed.map((entry) => [entry.key, entry.status, entry.detail])).toEqual([
       ["b.ts:1", "applied", ""],
       ["c.ts:1", "skipped", ""],
       ["d.ts:1", "unknown", "half way there"],
+      ["e.ts:1", "answered", ""],
     ]);
+  });
+
+  test("reads an answer to a question-only note", () => {
+    const parsed = parseStatuses(review(
+      "### src/db.ts:12 <!-- lcr:src/db.ts|n12|n12 -->",
+      "",
+      "Why is this retry here?",
+      "",
+      "Status: answered — the driver throws on cold start, covered by db.test.ts",
+      "",
+    ), "review-1.md");
+
+    expect(parsed).toEqual([{
+      id: "src/db.ts|n12|n12",
+      key: "src/db.ts:12",
+      status: "answered",
+      detail: "the driver throws on cold start, covered by db.test.ts",
+      source: "review-1.md",
+    }]);
   });
 
   test("takes the last status line so an appended verdict wins", () => {

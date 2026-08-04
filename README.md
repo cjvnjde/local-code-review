@@ -127,14 +127,18 @@ Agent reports each note back inside review file by replacing its `Status: pendin
 
 ```md
 Status: applied — renamed to profile
+Status: answered — retry wrapper exists because upstream throws on cold start
 Status: skipped — default of 3 is documented upstream
 Status: needs-input — which type should it export?
 ```
+
+`answered` covers note that only asked question, such as why code exists or what it does. Agent either fixes code when question exposes real problem, or leaves it alone and answers on status line.
 
 Nothing else in file may change, and `<!-- lcr:... -->` heading markers must stay. Next `lcr` run reads every `review-*.md` in output directory, newest verdict per note winning, and shows result on note:
 
 - Note carries status badge and reported reason.
 - Applied notes dim, and footer offers **Remove N applied** to drop them from local state after confirmation.
+- Answered notes stay full strength and are not swept by that button, so answer stays readable until note is deleted.
 - Individual notes stay removable with **Delete**.
 
 Files without status lines predate this format and are read as unprocessed.

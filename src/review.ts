@@ -52,8 +52,13 @@ export function renderMarkdown({ general, comments }: ReviewSubmission, range: s
     "Work through every note above. Fix what you agree with. If a note is wrong or " +
       "would break something, say so instead of implementing it. Report what you changed per note.",
     "",
+    "A note that only asks a question about the code has two outcomes: fix the code when the " +
+      "question exposes a real problem, or leave the code alone and answer the question when it " +
+      "is already correct.",
+    "",
     "Then record the outcome in this file: replace each note's `Status: pending` line with " +
-      "`Status: applied — <what changed>`, `Status: skipped — <technical reason>`, or " +
+      "`Status: applied — <what changed>`, `Status: answered — <short answer>`, " +
+      "`Status: skipped — <technical reason>`, or " +
       "`Status: needs-input — <question>`. Change nothing else here, and keep the " +
       "`<!-- lcr:... -->` marker on every heading. lcr reads these lines on its next run so " +
       "handled notes can be cleared from the review UI.",

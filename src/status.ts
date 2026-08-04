@@ -46,6 +46,10 @@ function readStatus(raw: string): { status: NoteStatusKind; detail: string } {
   const word = (split?.[1] ?? text).trim().toLowerCase().replace(/[.\s]+$/, "").replace(/\s+/g, "-");
   const detail = (split?.[2] ?? "").trim();
   if (/^(applied|done|fixed|resolved|implemented)$/.test(word)) return { status: "applied", detail };
+  // A note that only asked a question is handled by answering it, with no edit to show for it.
+  if (/^(answered|answer|explained|as-designed|by-design|intentional)$/.test(word)) {
+    return { status: "answered", detail };
+  }
   if (/^(skipped|skip|rejected|declined|wontfix|won't-fix)$/.test(word)) return { status: "skipped", detail };
   if (/^(needs-input|needs-info|needs-clarification|question|blocked|unclear)$/.test(word)) {
     return { status: "needs-input", detail };

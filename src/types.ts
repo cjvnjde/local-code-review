@@ -18,7 +18,7 @@ export interface DiffFile {
   hash: string;
 }
 
-export type NoteStatusKind = "applied" | "skipped" | "needs-input" | "pending" | "unknown";
+export type NoteStatusKind = "applied" | "answered" | "skipped" | "needs-input" | "pending" | "unknown";
 
 /** One note's outcome, read back from the `Status:` lines an agent wrote into a review file. */
 export interface NoteStatus {
