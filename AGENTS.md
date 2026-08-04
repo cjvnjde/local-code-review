@@ -16,6 +16,7 @@
 - Review output remains Markdown under `.review/` by default.
 - Default `.review/` output remains ignored. Custom relative output directories remain locally excluded through `.git/info/exclude`.
 - Reload stays explicit. Do not add watchers or live updates that could discard review state without clear approval.
+- The page is served from `/` with `cache-control: no-store`; the HTML bundle route stays on `/index.html`. Bun gives that route one ETag for every build, so mounting the bundle on `/` again lets a browser revalidate into an older page whose asset chunks are gone.
 - Review notes anchor on captured code plus line metadata. A note may narrow to a character range inside one line; keep its columns, snippet, and `ca`/`cb` offsets together with the line anchor.
 - A note may instead cover a whole file. It uses `*` for both row anchors, carries `scope:"file"` and no captured code, and renders as `### <path> (whole file)`. One per file, mounted under the file header so binary and collapsed files keep it. `noteKey` must keep producing that same heading text.
 - File hide patterns are a display preference in settings. Manual eye toggles keep overriding them per file.

@@ -19,12 +19,29 @@ export interface ServerOptions {
   ) => Promise<SkillInstallResult>;
 }
 
+/**
+ * Bun's HTML route answers with one ETag for every build, so a browser that kept an older page
+ * revalidates straight back into it and then asks for asset chunks that build no longer has: no
+ * styles and no client script. The bundle therefore stays on `PAGE_PATH`, which keeps its hashed
+ * chunk URLs reachable, while `/` hands out the same markup with caching switched off.
+ */
+const PAGE_PATH = "/index.html";
+
 export function startServer(options: ServerOptions) {
   let skillConfirmationToken = "";
   const server = Bun.serve({
     port: options.port,
     hostname: "127.0.0.1",
-    routes: { "/": page },
+    routes: {
+      "/": async () => {
+        // The bundle is only reachable as a route, so the built markup comes back over loopback.
+        const bundled = await fetch(`http://127.0.0.1:${server.port}${PAGE_PATH}`);
+        return new Response(await bundled.bytes(), {
+          headers: { "content-type": "text/html;charset=utf-8", "cache-control": "no-store" },
+        });
+      },
+      [PAGE_PATH]: page,
+    },
     async fetch(request) {
       try {
         const url = new URL(request.url);
