@@ -30,28 +30,33 @@ jobs:
   build:
     name: Build ${{ matrix.platform }}
     needs: check
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - platform: Linux x64
+            runner: ubuntu-latest
             target: bun-linux-x64
             executable: lcr
             package: lcr-linux-x64.tar.gz
           - platform: Linux ARM64
+            runner: ubuntu-latest
             target: bun-linux-arm64
             executable: lcr
             package: lcr-linux-arm64.tar.gz
           - platform: macOS x64
+            runner: macos-15-intel
             target: bun-darwin-x64
             executable: lcr
             package: lcr-macos-x64.tar.gz
           - platform: macOS ARM64
+            runner: macos-15
             target: bun-darwin-arm64
             executable: lcr
             package: lcr-macos-arm64.tar.gz
           - platform: Windows x64
+            runner: ubuntu-latest
             target: bun-windows-x64
             executable: lcr.exe
             package: lcr-windows-x64.zip
@@ -92,11 +97,19 @@ jobs:
             tar -C build -czf "dist/$PACKAGE" "$EXECUTABLE"
           fi
 
+      - name: Write package checksum
+        env:
+          PACKAGE: ${{ matrix.package }}
+        run: |
+          (cd dist && shasum -a 256 "$PACKAGE" > "$PACKAGE.sha256")
+
       - name: Upload build artifact
         uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.package }}
-          path: dist/${{ matrix.package }}
+          path: |
+            dist/${{ matrix.package }}
+            dist/${{ matrix.package }}.sha256
           if-no-files-found: error
           retention-days: 1
 

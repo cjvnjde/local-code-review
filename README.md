@@ -21,14 +21,30 @@ Download matching package from [latest GitHub Release](https://github.com/cjvnjd
 | macOS ARM64 | `lcr-macos-arm64.tar.gz` |
 | Windows x64 | `lcr-windows-x64.zip` |
 
-Linux/macOS archives contain executable named `lcr`:
+New releases also include a matching `.sha256` file.
+
+Linux archives contain executable named `lcr`:
 
 ```sh
-tar -xzf lcr-<system>-<architecture>.tar.gz
-chmod +x lcr
+tar -xzf lcr-linux-<architecture>.tar.gz
 mkdir -p ~/.local/bin
-mv lcr ~/.local/bin/lcr
+install -m 755 lcr ~/.local/bin/lcr
 ```
+
+For macOS, Apple silicon (M1 and newer, including M4) uses `lcr-macos-arm64.tar.gz`; Intel Macs use `lcr-macos-x64.tar.gz`. Linux ARM64 cannot run on macOS even though both use an ARM64 CPU.
+
+macOS executables do not carry an Apple Developer ID signature or notarization. Gatekeeper therefore quarantines packages downloaded through a browser. Verify the checksum from the same GitHub Release, then remove quarantine from that archive before extracting it:
+
+```sh
+package=lcr-macos-arm64.tar.gz # Use lcr-macos-x64.tar.gz on an Intel Mac.
+shasum -a 256 -c "$package.sha256"
+xattr -d com.apple.quarantine "$package" 2>/dev/null || true
+tar -xzf "$package"
+mkdir -p ~/.local/bin
+install -m 755 lcr ~/.local/bin/lcr
+```
+
+Only remove quarantine after the checksum passes for a package downloaded from this repository. Run `lcr` from Terminal inside a Git repository; it is a command-line tool, not an app opened from Finder.
 
 Windows archive contains `lcr.exe`. Extract it and place it in directory on `PATH`.
 
@@ -212,7 +228,7 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-GitHub Actions cross-compiles standalone executables with Bun, packages each supported system, creates release when needed, and uploads all packages. Executable inside every package is named `lcr` (`lcr.exe` on Windows).
+GitHub Actions builds standalone executables with Bun and packages each supported system. macOS binaries are built on hosted runners matching their architecture; other targets are cross-compiled on Linux. The release includes one SHA-256 file per package, creates the GitHub Release when needed, and uploads all packages. Executable inside every package is named `lcr` (`lcr.exe` on Windows).
 
 ## Develop
 
