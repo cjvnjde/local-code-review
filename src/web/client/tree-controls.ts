@@ -1,7 +1,7 @@
 import { setHidden, setViewed } from './diff-view.ts';
-import { idxOf } from './load.ts';
+import { isHidden } from './filters.ts';
 import { save } from './persistence.ts';
-import { el, state } from './state.ts';
+import { el, idxOf, state } from './state.ts';
 import { dirTree, filesUnder, renderTree } from './tree.ts';
 
 /* ---------- tree interactions ---------- */
@@ -20,17 +20,17 @@ el('tree').addEventListener('click',e=>{
   if(hd){
     const node=findDir(dirTree(),hd.dataset.hd);
     const kids=node?filesUnder(node):[];
-    setHidden(kids,!(kids.length>0&&kids.every(p=>state.hidden.has(p))));
+    setHidden(kids,!(kids.length>0&&kids.every(p=>isHidden(p))));
     return;
   }
   const hf=e.target.closest('[data-hf]');
-  if(hf){ setHidden([hf.dataset.hf],!state.hidden.has(hf.dataset.hf)); return; }
+  if(hf){ setHidden([hf.dataset.hf],!isHidden(hf.dataset.hf)); return; }
   const dir=e.target.closest('[data-dir]');
   if(dir){ toggle(state.collapsed,dir.dataset.dir); save(); renderTree(); return; }
   const file=e.target.closest('[data-file]');
   if(file){
     const p=file.dataset.file;
-    if(state.hidden.has(p)) setHidden([p],false);
+    if(isHidden(p)) setHidden([p],false);
     const target=el('f'+file.dataset.idx);
     if(target){
       state.jumpUntil=performance.now()+500; // a jump is not "scrolling past" anything

@@ -7,6 +7,7 @@
 - Use Bun for source checks, browser bundling, and standalone compilation.
 - Keep browser assets imported through `src/web/shell.html`; compiled release must remain one standalone executable.
 - `skills/apply-lcr/` is distributable optional skill. `.agents/skills/apply-lcr/` is project-local copy. Keep their files byte-identical.
+- Skill stays vendor-neutral: no tool-specific frontmatter keys, no vendor names in its text. `SKILL_DIRECTORIES` lists per-tool install roots and may grow; `.agents/skills` remains the fallback.
 
 ## Behavior to preserve
 
@@ -15,7 +16,10 @@
 - Review output remains Markdown under `.review/` by default.
 - Default `.review/` output remains ignored. Custom relative output directories remain locally excluded through `.git/info/exclude`.
 - Reload stays explicit. Do not add watchers or live updates that could discard review state without clear approval.
-- Review notes anchor on captured code plus line metadata.
+- Review notes anchor on captured code plus line metadata. A note may narrow to a character range inside one line; keep its columns, snippet, and `ca`/`cb` offsets together with the line anchor.
+- A note may instead cover a whole file. It uses `*` for both row anchors, carries `scope:"file"` and no captured code, and renders as `### <path> (whole file)`. One per file, mounted under the file header so binary and collapsed files keep it. `noteKey` must keep producing that same heading text.
+- File hide patterns are a display preference in settings. Manual eye toggles keep overriding them per file.
+- Generated review files carry `<!-- lcr:<note-id> -->` on each note heading and a `Status:` line per note. `collectStatuses` reads them back on start so handled notes can be cleared. Keep both sides of that contract in step.
 
 ## Change guidance
 
@@ -24,7 +28,7 @@
 - Avoid shell interpolation for Git commands; use argument arrays.
 - Escape user-controlled values rendered into HTML.
 - Keep server API local-purpose and avoid adding remote access, telemetry, or network dependencies.
-- Do not edit or delete generated `.review/review-*.md` files when applying review feedback.
+- When applying review feedback, the only permitted edit to generated `.review/review-*.md` files is each note's `Status:` line. Never rewrite, rename, or delete them.
 
 ## Validation
 

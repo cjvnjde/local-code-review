@@ -67,9 +67,11 @@ Arguments not recognized as tool flags are passed to `git diff`.
 
 1. Select a file from the tree.
 2. Click or drag over diff lines to add a note. Shift-click extends selection.
-3. Press <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Enter</kbd> to save note, or <kbd>Esc</kbd> to cancel.
-4. Add optional overall feedback in footer.
-5. Select **Save review**.
+3. Select text inside a single line to comment on that fragment only. Note anchors to those columns, and selected text is highlighted until note is deleted.
+4. Select **comment** in file header to note file as a whole, for feedback that belongs to no single line. Note appears under header and holds one note per file. Binary and collapsed files accept whole-file notes too.
+5. Press <kbd>Shift</kbd>+<kbd>Enter</kbd> or <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Enter</kbd> to save note, or <kbd>Esc</kbd> to cancel. <kbd>Enter</kbd> adds a line. **Settings → Note editor** swaps the two, so <kbd>Enter</kbd> saves and <kbd>Shift</kbd>+<kbd>Enter</kbd> adds a line.
+6. Add optional overall feedback in footer.
+7. Select **Save review**.
 
 Review is written to `.review/review-<timestamp>.md` by default. `.review/` is ignored by Git, and custom relative output directories are added to `.git/info/exclude`.
 
@@ -78,7 +80,7 @@ Notes include code snippets because line numbers may move before agent addresses
 ````md
 ## src/components/StatCard.tsx
 
-### src/components/StatCard.tsx:42
+### src/components/StatCard.tsx:42 <!-- lcr:src/components/StatCard.tsx|n42|n42 -->
 
 ```diff
      <dl className="kpi">
@@ -87,13 +89,84 @@ Notes include code snippets because line numbers may move before agent addresses
 ```
 
 Use `dl`/`dt`/`dd` without wrapper `div`; group role is redundant.
+
+Status: pending
 ````
 
-Ask agent to address newest review file while treating code snippet as authoritative anchor. Agent should apply valid notes, explain rejected notes, then run project checks. Review file should remain unchanged.
+Fragment notes add columns to heading and name selected text, so agent changes only that part of line:
+
+````md
+### src/api/client.ts:88:11-19 <!-- lcr:src/api/client.ts|n88|n88|10-19 -->
+
+```diff
++  const tmpValue = await fetchProfile(userId);
+```
+
+Applies to this part of the line only: `tmpValue`
+
+Name it `profile`; it outlives the call.
+
+Status: pending
+````
+
+Whole-file notes lead their file section, name no line, and carry no snippet:
+
+````md
+### src/api/client.ts (whole file) <!-- lcr:src/api/client.ts|*|* -->
+
+Request building and response parsing belong in separate modules.
+
+Status: pending
+````
+
+Ask agent to address newest review file while treating code snippet as authoritative anchor. Agent should apply valid notes, explain rejected notes, then run project checks.
+
+## Note status round trip
+
+Agent reports each note back inside review file by replacing its `Status: pending` line:
+
+```md
+Status: applied — renamed to profile
+Status: skipped — default of 3 is documented upstream
+Status: needs-input — which type should it export?
+```
+
+Nothing else in file may change, and `<!-- lcr:... -->` heading markers must stay. Next `lcr` run reads every `review-*.md` in output directory, newest verdict per note winning, and shows result on note:
+
+- Note carries status badge and reported reason.
+- Applied notes dim, and footer offers **Remove N applied** to drop them from local state after confirmation.
+- Individual notes stay removable with **Delete**.
+
+Files without status lines predate this format and are read as unprocessed.
+
+## Hiding files
+
+Tree eye icons hide single files or whole folders. For repeating cases, open **Settings → Hide files**.
+
+**Hide files the diff deletes entirely** drops every file with status `deleted`, which is useful when a change removes large trees that have nothing left to read.
+
+The pattern box below it takes one glob per line:
+
+```text
+*.test.*
+dist/
+*.lock
+# comments and blank lines are ignored
+```
+
+`*` stops at `/`, `**` crosses it, `?` matches one character. Pattern without `/` matches file name at any depth, and trailing `/` hides everything below matching directory. Both settings persist across sessions; eye icon still reveals individual hidden file, and hiding it again returns it to the setting.
+
+Git-level exclusion also works through pathspecs, which keeps files out of diff entirely:
+
+```sh
+lcr -- . ':(exclude)*.test.*'
+```
 
 ## Optional agent skill
 
-Repository includes optional [`apply-lcr`](skills/apply-lcr/SKILL.md) skill. It locates newest review, anchors notes by captured code, applies valid feedback, rejects unsafe or incorrect requests, runs project checks, and reports result per note.
+Repository includes optional [`apply-lcr`](skills/apply-lcr/SKILL.md) skill. It locates newest review, anchors notes by captured code, applies valid feedback, rejects unsafe or incorrect requests, runs project checks, records status per note in review file, and reports result per note.
+
+Skill is vendor-neutral: it names no specific agent, uses only `name` and `description` frontmatter shared by Agent Skills implementations, and works with any tool that loads skills from listed roots.
 
 Open **Settings → Create skill** to install it. lcr shows destination and full skill contents before asking for confirmation. It uses existing project skill directories for Agent Skills-compatible tools, including `.agents`, `.agent`, `.augment`, `.claude`, `.cline`, `.clinerules`, `.codex`, `.cursor`, `.factory`, `.gemini`, `.github`, `.goose`, `.junie`, `.kilo`, `.kiro`, `.opencode`, `.qwen`, `.roo`, and `.windsurf` roots. If none has a `skills` directory in folder where lcr started, it creates `.agents/skills`. Installation never runs automatically.
 
@@ -118,10 +191,12 @@ Skill remains optional; `lcr` itself has no agent integration or runtime depende
 ## Behavior
 
 - Default mode includes modified, staged, and untracked files. Untracked files become visible through `git add -N` intent-to-add entries.
-- Reload button re-reads Git state. Server intentionally has no watcher or WebSocket.
-- Draft notes and view state persist in browser local storage.
+- Reload button re-reads Git state and note statuses. Server intentionally has no watcher or WebSocket.
+- Draft notes and view state persist in browser local storage. Hide patterns persist as browser setting.
 - Added and context lines are commentable. Deleted-only lines can be selected, but fixes should usually anchor to adjacent current code.
-- Binary file contents are not rendered.
+- Fragment notes anchor to line plus character range. Selecting whole line, or only whitespace, falls back to plain line note.
+- Whole-file notes anchor to path only, so they survive any line movement. Each file holds one, and it stays visible while file is collapsed.
+- Binary file contents are not rendered, but binary files still accept whole-file notes.
 - Git must remain available on `PATH`.
 
 ## Release executable

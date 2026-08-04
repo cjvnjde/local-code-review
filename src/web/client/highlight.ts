@@ -64,19 +64,26 @@ function tokens(text,lang){
   if(last<text.length) out.push({s:last,e:text.length,c:''});
   return out;
 }
-export function codeHtml(text: string,lang: string,wr?: [number, number]){
+/**
+ * `wr` is the word-diff range; `marks` are extra character ranges such as a note anchor.
+ * Segments are cut at every range edge so a segment either is or is not inside each range.
+ */
+export function codeHtml(text: string,lang: string,wr?: [number, number]|null,marks?: any[]|null){
   if(!text) return '';
+  const spans: any[]=[];
+  if(wr) spans.push({s:wr[0],e:wr[1],c:'w'});
+  if(marks) for(const m of marks) if(m.e>m.s) spans.push(m);
   let out='';
   for(const t of tokens(text,lang)){
     let s=t.s;
     while(s<t.e){
-      let e=t.e,inW=false;
-      if(wr){
-        if(s<wr[0]) e=Math.min(e,wr[0]);
-        else if(s<wr[1]){ inW=true; e=Math.min(e,wr[1]); }
+      let e=t.e;
+      for(const p of spans){
+        if(p.s>s&&p.s<e) e=p.s;
+        if(p.e>s&&p.e<e) e=p.e;
       }
+      const cls=[t.c||''].concat(spans.filter(p=>s>=p.s&&s<p.e).map(p=>p.c)).filter(Boolean).join(' ');
       const seg=esc(text.slice(s,e));
-      const cls=(t.c||'')+(inW?(t.c?' w':'w'):'');
       out+=cls?'<span class="'+cls+'">'+seg+'</span>':seg;
       s=e;
     }

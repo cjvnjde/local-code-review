@@ -1,23 +1,32 @@
 import { renderDiff } from './diff-view.ts';
+import { render } from './load.ts';
 import { saveCfg } from './persistence.ts';
 import { SVG, el, state } from './state.ts';
 
 /* ---------- settings ---------- */
 el('gear').innerHTML=SVG.sliders;
+const openSettings=(on: boolean)=>{
+  el('settings').hidden=!on;
+  el('gear').classList.toggle('on',on);
+};
 el('gear').onclick=e=>{
   e.stopPropagation();
-  const s=el('settings');
-  s.hidden=!s.hidden;
-  el('gear').classList.toggle('on',!s.hidden);
+  openSettings(el('settings').hidden);
 };
 el('settings').addEventListener('click',e=>e.stopPropagation());
-el('settings').addEventListener('change',saveCfg);
+el('settings').addEventListener('change',()=>{ if(saveCfg()) render(); });
+/** Patterns are typed, not toggled, so apply them as they settle instead of on blur. */
+let hideT=null;
+el('cfgHide').oninput=()=>{
+  clearTimeout(hideT);
+  hideT=setTimeout(()=>{ if(saveCfg()) render(); },300);
+};
+el('fstat').onclick=e=>{ e.stopPropagation(); openSettings(true); el('cfgHide').focus(); };
 document.addEventListener('click',()=>{
-  if(el('settings').hidden) return;
-  el('settings').hidden=true; el('gear').classList.remove('on');
+  if(!el('settings').hidden) openSettings(false);
 });
 document.addEventListener('keydown',e=>{
-  if(e.key==='Escape'&&!el('settings').hidden){ el('settings').hidden=true; el('gear').classList.remove('on'); }
+  if(e.key==='Escape'&&!el('settings').hidden) openSettings(false);
 });
 
 let skillData=null;

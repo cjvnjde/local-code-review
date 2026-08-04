@@ -14,7 +14,7 @@
     --add:var(--green); --del:var(--red); --mark:var(--yellow); --accent:var(--blue);
     --add-bg:rgba(166,227,161,.08); --add-gut:rgba(166,227,161,.16); --add-w:rgba(166,227,161,.28);
     --del-bg:rgba(243,139,168,.08); --del-gut:rgba(243,139,168,.16); --del-w:rgba(243,139,168,.28);
-    --sel:rgba(137,180,250,.14);
+    --sel:rgba(137,180,250,.14); --csel:rgba(137,180,250,.34); --cnote:rgba(249,226,175,.24);
     --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
     --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
   }
@@ -36,6 +36,9 @@
   #settings input[type=checkbox]{accent-color:var(--accent);width:14px;height:14px;margin:0;flex:none}
   #settings select{background:var(--crust);color:var(--ink);border:1px solid var(--edge-hi);border-radius:4px;
     padding:3px 6px;font:12px var(--sans);margin-left:auto}
+  #settings textarea{width:100%;background:var(--crust);color:var(--ink);border:1px solid var(--edge-hi);
+    border-radius:4px;padding:5px 7px;font:12px/1.5 var(--mono);resize:vertical}
+  #settings textarea:focus{outline:none;border-color:var(--accent)}
   #settings .note{margin:0;color:var(--ink-faint);font-size:11px;line-height:1.45}
   #settings .note code{color:var(--mark);font-family:var(--mono)}
   #settings .sub label{color:var(--ink-dim);padding-left:22px}
@@ -86,6 +89,10 @@
   .navtop input:focus{outline:none;border-color:var(--accent)}
   .navbtns{display:flex;gap:4px}
   .navbtns button{flex:1;padding:4px 2px;font-size:10px}
+  .fstat{text-align:left;text-transform:none;letter-spacing:0;border-style:dashed;border-color:var(--edge-hi);
+    color:var(--mark);padding:3px 7px;font-size:10px}
+  .fstat[hidden]{display:none}
+  .fstat:hover{color:var(--mark);border-color:var(--mark)}
   .tree{flex:1;overflow:auto;padding:6px 0 20px}
   .tw{display:flex;align-items:center;gap:5px;padding:2px 8px 2px 0;cursor:pointer;color:var(--ink-dim);
       white-space:nowrap;min-height:22px}
@@ -93,6 +100,7 @@
   .tw .nm{flex:1;overflow:hidden;text-overflow:ellipsis;font-size:12px}
   .tw.dir .nm{color:var(--ink)}
   .tw.hid .nm{color:var(--ink-faint);text-decoration:line-through}
+  .tw.flt .nm{text-decoration-style:dashed;font-style:italic}
   .tw.seen .nm{color:var(--ov1)}
   .tw .chev{display:flex;color:var(--ink-faint)}
   .tw .st{width:11px;text-align:center;font-size:10px;font-weight:700}
@@ -123,9 +131,9 @@
   .fh .plus{color:var(--add);font-size:11px}
   .fh .minus{color:var(--del);font-size:11px}
   .fh .spacer{flex:1}
-  .fh .eye,.fh .vw{border:none;background:none;color:var(--ink-faint);padding:3px 5px;display:flex;gap:5px;align-items:center;
+  .fh .eye,.fh .vw,.fh .cf{border:none;background:none;color:var(--ink-faint);padding:3px 5px;display:flex;gap:5px;align-items:center;
     font-size:10px;text-transform:uppercase;letter-spacing:.05em;border-radius:3px}
-  .fh .eye:hover,.fh .vw:hover{color:var(--ink);background:var(--s1)}
+  .fh .eye:hover,.fh .vw:hover,.fh .cf:hover{color:var(--ink);background:var(--s1)}
   .fh .vw.on{color:var(--green)}
   .fh .stale{color:var(--peach);font-size:10px;text-transform:uppercase;letter-spacing:.05em}
 
@@ -158,6 +166,10 @@
   /* delta-style word diff inside a changed line */
   td.c .w{background:var(--add-w);border-radius:2px}
   tr.del td.c .w{background:var(--del-w)}
+  /* Character range a note is attached to: .cs while selecting, .cn once saved. A range can span
+     several token spans, so mark it with edge-free backgrounds and underlines that read as one run. */
+  td.c .cs{background:var(--csel);box-shadow:inset 0 -1px 0 var(--accent)}
+  td.c .cn{background:var(--cnote);box-shadow:inset 0 -1px 0 var(--mark)}
   /* syntax tokens */
   td.c .k{color:var(--mauve)}
   td.c .s{color:var(--green)}
@@ -174,14 +186,30 @@
 
   tr.nrow td{padding:0;background:var(--base)}
   .nbox{margin:6px 8px 8px 24px;border:1px solid var(--edge-hi);border-radius:6px;background:var(--panel2);overflow:hidden}
+  /* the file's own note sits between header and table, full width and without the gutter indent */
+  .fnotes:empty{display:none}
+  .fnotes{background:var(--base);border-bottom:1px solid var(--edge)}
+  .fnotes .nbox{margin:8px;box-shadow:inset 3px 0 0 var(--mark)}
   .nhead{display:flex;align-items:center;gap:8px;padding:5px 9px;border-bottom:1px solid var(--edge);
     background:var(--s0);font-size:11px;color:var(--ink-dim)}
   .nhead .loc{color:var(--mark)}
+  .nhead .snip{background:var(--cnote);border-radius:3px;padding:0 5px;color:var(--ink);
+    max-width:46%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .nhead .all{font-size:10px;text-transform:uppercase;letter-spacing:.05em;padding:2px 6px;border-radius:9px;
+    background:var(--s1);color:var(--ink-dim)}
   .nhead .spacer{flex:1}
+  .nhead .stat{font-size:10px;text-transform:uppercase;letter-spacing:.05em;padding:2px 6px;border-radius:9px;
+    background:var(--s1);color:var(--ink-dim)}
+  .nhead .stat.applied{background:rgba(166,227,161,.18);color:var(--green)}
+  .nhead .stat.skipped{background:rgba(250,179,135,.18);color:var(--peach)}
+  .nhead .stat.needs-input{background:rgba(116,199,236,.18);color:var(--sapphire)}
+  .nbox.done{opacity:.7}
+  .nbox.done:hover{opacity:1}
   .nbody{padding:8px 10px;white-space:pre-wrap;font-family:var(--sans);font-size:13px;line-height:1.55}
+  .nstat{padding:0 10px 8px;color:var(--ink-faint);font-family:var(--sans);font-size:11px}
   .nedit{padding:8px}
   .nedit textarea{width:100%;background:var(--crust);color:var(--ink);border:1px solid var(--edge-hi);border-radius:5px;
-    padding:6px 8px;font:13px/1.55 var(--sans);resize:vertical;min-height:64px;display:block}
+    padding:6px 8px;font:13px/1.55 var(--sans);resize:none;min-height:64px;display:block;overflow-y:hidden}
   .nedit textarea:focus{outline:none;border-color:var(--accent)}
   .acts{display:flex;gap:6px;margin-top:6px;align-items:center}
   .acts .spacer{flex:1}
@@ -200,12 +228,12 @@
   footer .count{color:var(--mark);flex:none}
   footer .spacer{flex:1}
   #general{flex:1;max-width:560px;background:var(--crust);color:var(--ink);border:1px solid var(--edge-hi);border-radius:5px;
-    padding:6px 8px;font:12px/1.5 var(--sans);height:34px;resize:vertical}
+    padding:6px 8px;font:12px/1.5 var(--sans);min-height:34px;height:34px;resize:none;overflow-y:hidden}
   #general:focus{outline:none;border-color:var(--accent)}
   .empty{padding:34px 16px;color:var(--ink-faint);font-family:var(--sans)}
   .done{padding:40px 20px;font-family:var(--sans);font-size:14px;line-height:1.7}
   .done code{color:var(--mark);background:var(--mantle);padding:2px 6px;border-radius:4px;font-family:var(--mono)}
   @media (prefers-reduced-motion:no-preference){
-    tr.nrow .nbox{animation:in .12s ease-out}
+    .nrow .nbox{animation:in .12s ease-out}
     @keyframes in{from{opacity:0;transform:translateY(-2px)}}
   }

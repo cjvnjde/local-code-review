@@ -1,9 +1,9 @@
+import { autoHidden, isHidden } from './filters.ts';
 import { codeHtml, langOf } from './highlight.ts';
-import { idxOf } from './load.ts';
-import { applyNotesIn } from './notes.ts';
+import { applyFileNote, applyNotesIn, charMarks } from './notes.ts';
 import { save } from './persistence.ts';
 import { paintSel } from './selection.ts';
-import { SVG, el, esc, state } from './state.ts';
+import { SVG, el, esc, idxOf, state } from './state.ts';
 import { renderTree } from './tree.ts';
 import { updateCount } from './footer.ts';
 import { wordDiff } from './word-diff.ts';
@@ -22,12 +22,14 @@ export function renderDiff(){
   const sec=el('diff');
   obsMount.disconnect(); obsDrop.disconnect();
   if(!state.files.length){ sec.innerHTML='<div class="empty">No changes in this diff. Nothing to review.</div>'; return; }
-  const shown=state.files.map((f,i)=>i).filter(i=>!state.hidden.has(state.files[i].path));
+  const shown=state.files.map((f,i)=>i).filter(i=>!isHidden(state.files[i].path));
   if(!shown.length){
-    sec.innerHTML='<div class="empty">Every file is hidden. Use the eye icons in the tree to bring them back.</div>';
+    sec.innerHTML='<div class="empty">Every file is hidden. Use the eye icons in the tree, '+
+      'or clear the hide patterns in settings, to bring them back.</div>';
     return;
   }
   sec.innerHTML=shown.map(i=>fileHtml(state.files[i],i)).join('');
+  shown.forEach(i=>applyFileNote(state.files[i],i));
   sec.querySelectorAll('tbody.blk').forEach(observeBlock);
   sec.querySelectorAll('.file').forEach(n=>obsPass.observe(n));
 }
@@ -43,10 +45,14 @@ function fileHtml(f,fi){
     '<span class="plus">+'+f.added+'</span><span class="minus">-'+f.removed+'</span>'+
     (state.stale&&state.stale.has(f.path)?'<span class="stale">changed since viewed</span>':'')+
     '<span class="spacer"></span>'+
+    '<button class="cf" data-cf="'+esc(f.path)+'" title="Comment on this file as a whole">'+
+      SVG.plus+' comment</button>'+
     '<button class="vw'+(seen?' on':'')+'" data-vw="'+esc(f.path)+'" title="'+
       (seen?'Mark as not reviewed':'Mark reviewed — collapses until the file changes')+'">'+
       (seen?SVG.boxOn:SVG.box)+' viewed</button>'+
-    '<button class="eye" data-hf="'+esc(f.path)+'" title="Hide from diff">'+SVG.eye+' hide</button></div>';
+    '<button class="eye" data-hf="'+esc(f.path)+'" title="Hide from diff">'+SVG.eye+' hide</button></div>'+
+    // Whole-file notes hang off the header, so a binary or folded file can still carry one.
+    '<div class="fnotes" id="fn'+fi+'"></div>';
   if(f.binary) return '<div class="'+cls+'" id="f'+fi+'" data-path="'+esc(f.path)+'">'+head+
     '<div class="empty">Binary file — not shown.</div></div>';
   const blocks=[];
@@ -166,7 +172,7 @@ function mountBlock(tb){
   const above=anchored(tb);
   const before=tb.offsetHeight;
   const lang=langOf(f.path), wd=wordDiff(f), html=[];
-  for(let k=from;k<to;k++) html.push(rowHtml(f.rows[k],fi,k,lang,wd.get(k)));
+  for(let k=from;k<to;k++) html.push(rowHtml(f,fi,k,lang,wd.get(k)));
   tb.innerHTML=html.join('');
   tb.dataset.on='1';
   applyNotesIn(f,fi,from,to);
@@ -194,6 +200,7 @@ function insertCard(fi){
   let next=null;
   for(let k=fi+1;k<state.files.length&&!next;k++) next=el('f'+k);
   next?sec.insertBefore(node,next):sec.append(node);
+  applyFileNote(state.files[fi],fi);
   node.querySelectorAll('tbody.blk').forEach(observeBlock);
   obsPass.observe(node);
 }
@@ -253,22 +260,37 @@ function paintCard(fi,on){
   if(inside) sec.scrollTop=Math.max(0,st0+(r0.top-paneTop));
   else if(above) sec.scrollTop=Math.max(0,st0+(node.offsetHeight-h0));
 }
-/** Bulk toggles rebuild once; single files patch the DOM in place. */
+/**
+ * Bulk toggles rebuild once; single files patch the DOM in place.
+ * A file a pattern already covers is tracked as an exception to that pattern rather than
+ * as a hide of its own, so dropping the pattern brings it back with everything else.
+ */
 export function setHidden(paths: string[],hide: boolean){
-  const changed=paths.filter(p=>hide!==state.hidden.has(p));
+  const changed=paths.filter(p=>hide!==isHidden(p));
   if(!changed.length) return;
-  changed.forEach(p=>hide?state.hidden.add(p):state.hidden.delete(p));
+  changed.forEach(p=>{
+    if(hide){ state.shown.delete(p); if(!autoHidden(p)) state.hidden.add(p); }
+    else { state.hidden.delete(p); if(autoHidden(p)) state.shown.add(p); }
+  });
   if(changed.length>20) renderDiff();
   else changed.forEach(p=>{ const fi=idxOf(p); if(fi>=0) hide?removeCard(fi):insertCard(fi); });
   save(); renderTree(); updateCount();
 }
 
-function rowHtml(r,fi,idx,lang,wr){
-  const id='r'+fi+'-'+idx;
+function rowHtml(f,fi,idx,lang,wr){
+  const r=f.rows[idx], id='r'+fi+'-'+idx;
   if(r.t==='hunk') return '<tr id="'+id+'" class="hunk"><td class="act"></td><td colspan="3">'+esc(r.text)+'</td></tr>';
   return '<tr id="'+id+'" class="r '+r.t+'" data-fi="'+fi+'" data-i="'+idx+'">'+
     '<td class="act"><button class="add" title="Comment on this line">'+SVG.plus+'</button></td>'+
     '<td class="g go">'+(r.o!=null?r.o:'')+'</td>'+
     '<td class="g gn">'+(r.n!=null?r.n:'')+'</td>'+
-    '<td class="c">'+codeHtml(r.text,lang,wr)+'</td></tr>';
+    '<td class="c">'+codeHtml(r.text,lang,wr,charMarks(f,fi,idx))+'</td></tr>';
+}
+/** Character marks live inside the code cell, so a mark change re-renders only that cell. */
+export function repaintRow(fi: number,idx: number){
+  const tr=el('r'+fi+'-'+idx);
+  if(!tr||!tr.classList.contains('r')) return;
+  const f=state.files[fi]; if(!f||!f.rows[idx]) return;
+  const td=tr.querySelector('td.c'); if(!td) return;
+  td.innerHTML=codeHtml(f.rows[idx].text,langOf(f.path),wordDiff(f).get(idx),charMarks(f,fi,idx));
 }

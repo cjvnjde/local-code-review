@@ -11,14 +11,35 @@ export const SVG={
 };
 
 export const state: any={
-  files:[], range:'', notes:new Map(),
-  hidden:new Set(), collapsed:new Set(), folded:new Set(), viewed:new Map(),
-  filter:'', sel:null,
+  files:[], range:'', notes:new Map(), status:new Map(), statusByKey:new Map(),
+  hidden:new Set(), shown:new Set(), collapsed:new Set(), folded:new Set(), viewed:new Map(),
+  filter:'', hideRx:[], sel:null,
   byPath:new Map(), h:new Map(), draftRow:null,
-  cfg:{auto:true,back:true,limit:900,toast:true},
+  cfg:{auto:true,back:true,limit:900,toast:true,hide:'',hideDeleted:false,enterSaves:false},
   scrolled:false, jumpUntil:0, autoNow:new Set(), lastUndo:0,
 };
 export const el=(id: string): any=>document.getElementById(id);
 export const esc=(value: unknown)=>String(value).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+export const idxOf=(path: string)=>state.byPath.has(path)?state.byPath.get(path):-1;
 export const rowKey=(row: any)=>row.n!=null?'n'+row.n:'o'+row.o;
-export const noteId=(path: string,a: string,b: string)=>path+'|'+a+'|'+b;
+/** Anchor of a note on the file itself. Row keys are always `n<line>`/`o<line>`, so it cannot collide. */
+export const FILE_ANCHOR='*';
+export const isFileNote=(n: any)=>!!n&&n.a===FILE_ANCHOR;
+/** Character offsets belong in the id: a note on part of a line is not the note on the whole line. */
+export const noteId=(path: string,a: string,b: string,ca?: number|null,cb?: number|null)=>
+  path+'|'+a+'|'+b+(ca!=null?'|'+ca+'-'+cb:'');
+/** One file-level note per file, so its id is fixed by the path alone. */
+export const fileNoteId=(path: string)=>noteId(path,FILE_ANCHOR,FILE_ANCHOR);
+export const clip=(text: string,max=48)=>text.length>max?text.slice(0,max-1)+'…':text;
+/** The chord that saves a note under the current setting, phrased for the on-screen hints. */
+export const saveKeyHint=()=>state.cfg.enterSaves?'enter':'shift+enter';
+/** Heading text a review file uses for a note, and the fallback key when its id marker was lost. */
+export const noteKey=(n: any)=>isFileNote(n)
+  ?n.file+' (whole file)'
+  :n.file+':'+(n.label||(n.start===n.end?String(n.start):n.start+'-'+n.end));
+/** What an agent reported back about a note, or null while it is still unprocessed. */
+export const statusOf=(n: any)=>state.status.get(n.id)||state.statusByKey.get(noteKey(n))||null;
+export const appliedNotes=()=>[...state.notes.values()].filter((n: any)=>{
+  const s=statusOf(n);
+  return !!s&&s.status==='applied';
+});

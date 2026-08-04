@@ -5,6 +5,7 @@ import { findRepoRoot } from "./git.ts";
 import { excludeRelativeOutput, saveReview } from "./output.ts";
 import { startServer } from "./server.ts";
 import { installSkill, previewSkill } from "./skill.ts";
+import { collectStatuses } from "./status.ts";
 
 const options = parseArgs(process.argv.slice(2));
 const invocationRoot = process.cwd();
@@ -24,6 +25,7 @@ startServer({
     context: options.context,
     diffArgs: options.diffArgs,
   }),
+  getStatuses: () => collectStatuses(repoRoot, options.outDir),
   saveReview: (submission) => saveReview(repoRoot, options.outDir, range, submission),
   previewSkill: () => previewSkill(invocationRoot),
   installSkill: (directory, expectedState, expectedRevision) =>

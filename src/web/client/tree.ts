@@ -1,5 +1,5 @@
-import { idxOf } from './load.ts';
-import { SVG, el, esc, state } from './state.ts';
+import { filteredCount, filteredOut, isHidden, matchesHide } from './filters.ts';
+import { SVG, el, esc, idxOf, state } from './state.ts';
 
 /* ---------- file tree ---------- */
 export function dirTree(){
@@ -49,7 +49,7 @@ export function renderTree(){
         if(c.dir){
           const open=state.filter||!state.collapsed.has(c.path);
           const kids=filesUnder(c);
-          const allHidden=kids.length>0&&kids.every(p=>state.hidden.has(p));
+          const allHidden=kids.length>0&&kids.every(p=>isHidden(p));
           const notes=kids.reduce((s,p)=>s+noteCount(p),0);
           const seen=kids.filter(p=>state.viewed.has(p)).length;
           const allSeen=kids.length>0&&seen===kids.length;
@@ -65,19 +65,30 @@ export function renderTree(){
               (allHidden?SVG.eyeOff:SVG.eye)+'</button></div>');
           if(open) walk(c,depth+1);
         }else{
-          const f=c.file, hid=state.hidden.has(c.path), notes=noteCount(c.path), seen=state.viewed.has(c.path);
-          html.push('<div class="tw file'+(hid?' hid':'')+(seen?' seen':'')+'" data-file="'+esc(c.path)+'" data-idx="'+c.idx+'" '+
-            'title="'+esc(c.path)+' (+'+f.added+' -'+f.removed+')" style="padding-left:'+pad+'px">'+
+          const f=c.file, flt=filteredOut(c.path), hid=state.hidden.has(c.path)||flt;
+          const why=flt?(matchesHide(c.path)?' — hidden by a filter pattern':' — hidden as a deleted file'):'';
+          const notes=noteCount(c.path), seen=state.viewed.has(c.path);
+          html.push('<div class="tw file'+(hid?' hid':'')+(flt?' flt':'')+(seen?' seen':'')+'" data-file="'+esc(c.path)+'" data-idx="'+c.idx+'" '+
+            'title="'+esc(c.path)+' (+'+f.added+' -'+f.removed+')'+why+'" style="padding-left:'+pad+'px">'+
             '<span class="st '+f.status+'">'+f.status[0].toUpperCase()+'</span>'+
             '<span class="nm">'+esc(c.name)+'</span>'+
             (notes?'<span class="ct">'+notes+'</span>':'')+
             '<button class="vf'+(seen?' on':'')+'" data-vf="'+esc(c.path)+'" title="'+
               (seen?'Mark not viewed':'Mark viewed')+'">'+(seen?SVG.boxOn:SVG.box)+'</button>'+
             '<button class="eye'+(hid?' on':'')+'" data-hf="'+esc(c.path)+'" title="'+
-              (hid?'Show in diff':'Hide from diff')+'">'+(hid?SVG.eyeOff:SVG.eye)+'</button></div>');
+              (hid?(flt?'Show in diff despite the filter':'Show in diff'):'Hide from diff')+'">'+
+              (hid?SVG.eyeOff:SVG.eye)+'</button></div>');
         }
       });
   };
   walk(root,0);
   el('tree').innerHTML=html.join('')||'<div class="empty">No files match.</div>';
+  paintFilterStatus();
+}
+/** The pattern list lives in settings, so the tree carries the reminder that it is doing something. */
+function paintFilterStatus(){
+  const box=el('fstat'); if(!box) return;
+  const n=filteredCount();
+  box.hidden=!n;
+  box.textContent=n+(n===1?' file':' files')+' hidden by filter';
 }

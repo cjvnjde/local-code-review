@@ -1,7 +1,7 @@
 import page from "./web/shell.html";
 import { SkillPreviewChangedError } from "./skill.ts";
 import type { SkillInstallResult, SkillPreview, SkillTargetState } from "./skill.ts";
-import type { DiffFile, ReviewSubmission } from "./types.ts";
+import type { DiffFile, NoteStatus, ReviewSubmission } from "./types.ts";
 
 export interface ServerOptions {
   port: number;
@@ -9,6 +9,7 @@ export interface ServerOptions {
   outDir: string;
   range: string;
   getDiff: () => Promise<DiffFile[]>;
+  getStatuses: () => Promise<NoteStatus[]>;
   saveReview: (submission: ReviewSubmission) => Promise<string>;
   previewSkill: () => Promise<SkillPreview>;
   installSkill: (
@@ -28,8 +29,8 @@ export function startServer(options: ServerOptions) {
       try {
         const url = new URL(request.url);
         if (url.pathname === "/api/diff") {
-          const files = await options.getDiff();
-          return Response.json({ range: options.range, files });
+          const [files, statuses] = await Promise.all([options.getDiff(), options.getStatuses()]);
+          return Response.json({ range: options.range, files, statuses });
         }
         if (url.pathname === "/api/submit" && request.method === "POST") {
           if (!isJsonRequest(request)) return Response.json({ error: "JSON body required." }, { status: 415 });

@@ -2,7 +2,7 @@ import { renderDiff } from './diff-view.ts';
 import { pruneViewed, restore, save } from './persistence.ts';
 import { el, esc, state } from './state.ts';
 import { renderTree } from './tree.ts';
-import { updateCount } from './footer.ts';
+import { fitGeneral, updateCount } from './footer.ts';
 
 /* ---------- load ---------- */
 export async function load(){
@@ -15,13 +15,18 @@ export async function load(){
   }
   state.files=d.files; state.range=d.range;
   state.byPath=new Map(d.files.map((f,i)=>[f.path,i]));
+  // Oldest review file first, so a newer verdict on the same note replaces an older one.
+  state.status=new Map(); state.statusByKey=new Map();
+  (d.statuses||[]).forEach(s=>{
+    if(s.id) state.status.set(s.id,s);
+    if(s.key) state.statusByKey.set(s.key,s);
+  });
   state.h.clear(); state.tree=null;
   el('range').textContent=d.range;
-  if(!state.loaded){ restore(); state.loaded=true; }
+  if(!state.loaded){ restore(); fitGeneral(); state.loaded=true; }
   state.stale=new Set(pruneViewed());
   save();
   render();
 }
-export const idxOf=(path: string)=>state.byPath.has(path)?state.byPath.get(path):-1;
 
 export function render(){ renderTree(); renderDiff(); updateCount(); }

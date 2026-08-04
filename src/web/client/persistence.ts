@@ -1,5 +1,5 @@
-import { idxOf } from './load.ts';
-import { el, noteId, state } from './state.ts';
+import { compileHide } from './filters.ts';
+import { el, idxOf, noteId, saveKeyHint, state } from './state.ts';
 
 /* ---------- persistence ---------- */
 const CFG_KEY='gitreview:settings';
@@ -9,15 +9,29 @@ export function loadCfg(){
   el('cfgBack').checked=state.cfg.back;
   el('cfgToast').checked=state.cfg.toast;
   el('cfgLimit').value=String(state.cfg.limit);
+  el('cfgHide').value=state.cfg.hide||'';
+  el('cfgDeleted').checked=!!state.cfg.hideDeleted;
+  el('cfgEnter').checked=state.cfg.enterSaves;
   el('cfgBack').disabled=!state.cfg.auto;
+  el('saveKey').textContent=saveKeyHint();
+  state.hideRx=compileHide(state.cfg.hide);
 }
+/** Returns true when the hides changed, which is the only kind of setting that needs a re-render. */
 export function saveCfg(){
   state.cfg.auto=el('cfgAuto').checked;
   state.cfg.back=el('cfgBack').checked;
   state.cfg.toast=el('cfgToast').checked;
   state.cfg.limit=Number(el('cfgLimit').value);
+  state.cfg.enterSaves=el('cfgEnter').checked;
+  const hide=el('cfgHide').value, deleted=el('cfgDeleted').checked;
+  const changed=hide!==state.cfg.hide||deleted!==!!state.cfg.hideDeleted;
+  state.cfg.hideDeleted=deleted;
+  if(hide!==state.cfg.hide) state.hideRx=compileHide(hide);
+  state.cfg.hide=hide;
   el('cfgBack').disabled=!state.cfg.auto;
+  el('saveKey').textContent=saveKeyHint();
   try{ localStorage.setItem(CFG_KEY,JSON.stringify(state.cfg)); }catch(e){}
+  return changed;
 }
 const store=()=>'gitreview:'+state.range;
 export function save(){
@@ -25,7 +39,8 @@ export function save(){
     localStorage.setItem(store(),JSON.stringify({
       general:el('general').value,
       notes:[...state.notes.values()],
-      hidden:[...state.hidden], collapsed:[...state.collapsed], folded:[...state.folded],
+      hidden:[...state.hidden], shown:[...state.shown],
+      collapsed:[...state.collapsed], folded:[...state.folded],
       viewed:[...state.viewed],
     }));
   }catch(e){}
@@ -35,12 +50,28 @@ export function restore(){
     const d=JSON.parse(localStorage.getItem(store())||'null');
     if(!d) return;
     el('general').value=d.general||'';
-    (d.notes||[]).forEach(n=>{ n.id=noteId(n.file,n.a,n.b); state.notes.set(n.id,n); });
+    (d.notes||[]).forEach(n=>{ n.id=noteId(n.file,n.a,n.b,n.ca,n.cb); state.notes.set(n.id,n); });
     state.hidden=new Set(d.hidden||[]);
+    state.shown=new Set(d.shown||[]);
     state.collapsed=new Set(d.collapsed||[]);
     state.folded=new Set(d.folded||[]);
     state.viewed=new Map((d.viewed||[]).map(e=>[e[0],typeof e[1]==='string'?{h:e[1],auto:false}:e[1]]));
   }catch(e){}
+}
+/** A file whose notes are gone was reviewed for feedback that no longer exists, so it needs another
+ *  pass; a file nobody commented on keeps its mark, which pruneViewed drops if the file changed. */
+export function unviewCommented(){
+  const commented=new Set([...state.notes.values()].map((n: any)=>n.file));
+  commented.forEach(p=>{ state.viewed.delete(p); state.folded.delete(p); });
+  return commented;
+}
+/** Wipes the notes stored for this range. Hidden and collapsed marks are not comments, so they stay. */
+export function clearNotes(){
+  const unviewed=unviewCommented();
+  state.notes.clear();
+  el('general').value='';
+  save();
+  return unviewed;
 }
 /** A viewed mark only holds while the file's diff is byte-identical to what was reviewed. */
 export function pruneViewed(){
