@@ -1,4 +1,4 @@
-import { renderDiff } from './diff-view.ts';
+import { renderDiff, setViewed } from './diff-view.ts';
 import { render } from './load.ts';
 import { saveCfg } from './persistence.ts';
 import { SVG, el, state } from './state.ts';
@@ -28,6 +28,15 @@ document.addEventListener('click',()=>{
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'&&!el('settings').hidden) openSettings(false);
 });
+
+/** Viewed marks are progress, not content: clearing them starts the read-through over. Routed through
+ *  setViewed, so folds, stale badges and the auto-mark tracker unwind with the marks themselves. */
+el('resetViewed').onclick=()=>{
+  const paths=[...state.viewed.keys()];
+  if(!paths.length) return;
+  if(!confirm('Mark '+paths.length+' viewed file'+(paths.length===1?'':'s')+' as not viewed?')) return;
+  setViewed(paths,false);
+};
 
 let skillData=null;
 function selectedSkillTarget(){

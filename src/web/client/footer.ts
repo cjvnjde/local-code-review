@@ -17,6 +17,11 @@ export function updateCount(){
   btn.hidden=!done;
   btn.textContent='Remove '+done+' applied';
   btn.title=done?'Remove notes an agent reported as applied in a saved review file':'';
+  /** Reset sits in settings, where nothing else counts the marks, so its label is written here. */
+  const rv=el('resetViewed');
+  rv.disabled=!seen;
+  rv.textContent=seen?'Reset '+seen+' viewed file'+(seen===1?'':'s'):'Reset viewed files';
+  rv.title=seen?'Mark every file in this diff as not viewed':'No file is marked viewed yet';
   /** Always on show, so starting over is findable; disabled is the honest state when nothing is stored. */
   const all=el('clearAll');
   const empty=!n&&!el('general').value.trim();

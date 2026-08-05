@@ -17,6 +17,10 @@ export function loadCfg(){
   el('saveKey').textContent=saveKeyHint();
   state.hideRx=compileHide(state.cfg.hide);
 }
+/** Writes `state.cfg` out as it stands, for the preferences that are not fields in the settings panel. */
+export function persistCfg(){
+  try{ localStorage.setItem(CFG_KEY,JSON.stringify(state.cfg)); }catch(e){}
+}
 /** Returns true for the settings the rendered diff depends on: which files it shows, and its expanders. */
 export function saveCfg(){
   state.cfg.auto=el('cfgAuto').checked;
@@ -33,7 +37,7 @@ export function saveCfg(){
   state.cfg.hide=hide;
   el('cfgBack').disabled=!state.cfg.auto;
   el('saveKey').textContent=saveKeyHint();
-  try{ localStorage.setItem(CFG_KEY,JSON.stringify(state.cfg)); }catch(e){}
+  persistCfg();
   return changed;
 }
 const store=()=>'gitreview:'+state.range;

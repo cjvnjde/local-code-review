@@ -170,6 +170,12 @@ Every hunk separator carries arrows for the unchanged lines the diff left out. T
 
 **Settings → Expand context** sets how many lines one click reveals. Revealed lines are ordinary context lines, so they can be commented on like any other. Expansions are not saved; **Reload diff** starts from the original hunks again.
 
+## File tree and viewed marks
+
+Toggle in header collapses file tree and gives diff full width. State persists as browser setting, so pane stays as it was left on next run.
+
+Box icon in tree row or file header marks file viewed, which collapses it until file changes. **Settings → Viewed files** resets every mark for current diff after confirmation, expanding files that collapsed with their mark. Notes, hidden files, and folder collapse are untouched.
+
 ## Hiding files
 
 Tree eye icons hide single files or whole folders. For repeating cases, open **Settings → Hide files**.

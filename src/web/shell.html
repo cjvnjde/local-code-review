@@ -8,6 +8,7 @@
 </head>
 <body>
 <header>
+  <button id="navToggle" type="button" title="Hide the file tree" aria-pressed="false"></button>
   <b>git review</b>
   <span class="range" id="range"></span>
   <span class="spacer"></span>
@@ -28,6 +29,12 @@
     <label><input type="checkbox" id="cfgToast"> Show a notification when it happens</label>
     <p class="note">A file counts as scrolled past when its last line leaves the top of the pane.
       Collapsed files are skipped, and marks you set by hand are never undone automatically.</p>
+    <div class="settings-section">
+      <h4>Viewed files</h4>
+      <button id="resetViewed" type="button">Reset viewed files</button>
+      <p class="note">Clears every viewed mark for this diff and expands the files that collapsed with
+        their mark. Notes, hidden files, and folder collapse stay as they are.</p>
+    </div>
     <div class="settings-section">
       <h4>Hide files</h4>
       <label><input type="checkbox" id="cfgDeleted"> Hide files the diff deletes entirely</label>
