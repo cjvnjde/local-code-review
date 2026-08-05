@@ -4,7 +4,7 @@ import { updateCount } from './footer.ts';
 import { editorAction } from './keys.ts';
 import { save } from './persistence.ts';
 import { clearSel } from './selection.ts';
-import { FILE_ANCHOR, clip, el, esc, fileNoteId, noteId, rowKey, saveKeyHint, state, statusOf } from './state.ts';
+import { FILE_ANCHOR, clip, el, esc, isFileNote, locKey, mintNoteId, rowKey, saveKeyHint, state, statusOf } from './state.ts';
 import { renderTree } from './tree.ts';
 
 /* ---------- notes ---------- */
@@ -43,48 +43,54 @@ export function charMarks(f: any,fi: number,idx: number){
 /** An untouched draft is disposable: a new click or shift-extend should move it, not stack a second box. */
 function dropEmptyDraft(){
   const row=state.draftRow;
-  state.draftRow=null;
+  state.draftRow=state.draftKey=null;
   if(!row||!row.isConnected) return;
   const ta=row.querySelector('textarea');
   if(ta&&!ta.value.trim()) row.remove();
 }
+/** The text box of the draft standing open on this exact range, if the last one opened is still there. */
+function draftFor(key: string){
+  const row=state.draftRow;
+  if(!row||!row.isConnected||state.draftKey!==key) return null;
+  return row.querySelector('textarea');
+}
+/** Opens a new note on the selected range. A range that already carries notes gets another one:
+ *  a line can hold as many remarks as it earns, and each is edited from its own box. */
 export function openEditor(){
   const b=bounds(); if(!b) return;
   const {f,fi,i,j,ch}=b;
   const anchor=el('r'+fi+'-'+j); if(!anchor) return;
-  const id=noteId(f.path,rowKey(f.rows[i]),rowKey(f.rows[j]),ch&&ch.ca,ch&&ch.cb);
-  const mounted=rowFor(anchor,id);
-  if(mounted!==state.draftRow) dropEmptyDraft();
-  if(mounted&&mounted.isConnected){
-    const ta=mounted.querySelector('textarea');
-    if(ta) ta.focus();
-    else editUI(mounted.querySelector('.nbox'),{f,fi,i,j,ch,id,body:state.notes.get(id).body});
-    return;
-  }
-  const existing=state.notes.get(id);
+  const a=rowKey(f.rows[i]), z=rowKey(f.rows[j]);
+  const key=locKey(f.path,a,z,ch&&ch.ca,ch&&ch.cb);
+  const open=draftFor(key);
+  if(open){ open.focus(); return; }
+  dropEmptyDraft();
+  const id=mintNoteId(f.path,a,z,ch&&ch.ca,ch&&ch.cb);
   const box=mountRow(anchor,id);
-  state.draftRow=rowOf(box);
-  editUI(box,{f,fi,i,j,ch,id,body:existing?existing.body:''});
+  state.draftRow=rowOf(box); state.draftKey=key;
+  editUI(box,{f,fi,i,j,ch,id,body:''});
 }
 /** A note on the file itself: no line anchor, one per file, mounted under the file header. */
 export function openFileEditor(fi: number){
   const f=state.files[fi]; if(!f) return;
   const host=el('fn'+fi); if(!host) return;
-  const id=fileNoteId(f.path);
+  const kept=fileNoteOf(f.path);
+  const id=kept?kept.id:mintNoteId(f.path,FILE_ANCHOR,FILE_ANCHOR);
   const ctx: any={f,fi,i:null,j:null,ch:null,scope:'file',id};
   const mounted=host.querySelector('.nrow');
   if(mounted!==state.draftRow) dropEmptyDraft();
   if(mounted&&mounted.isConnected){
     const ta=mounted.querySelector('textarea');
     if(ta){ ta.focus(); return; }
-    const kept=state.notes.get(id);
     editUI(mounted.querySelector('.nbox'),Object.assign({},ctx,{body:kept?kept.body:''}));
     return;
   }
   const box=mountFileBox(host,id);
-  state.draftRow=rowOf(box);
+  state.draftRow=rowOf(box); state.draftKey=locKey(f.path,FILE_ANCHOR,FILE_ANCHOR);
   editUI(box,ctx);
 }
+/** The file's own note, found by what it is anchored to rather than by a predictable id. */
+const fileNoteOf=(path: string)=>[...state.notes.values()].find((n: any)=>n.file===path&&isFileNote(n))||null;
 /** Several ranges can end on the same row, so each note row is tagged and matched by id. */
 function rowFor(anchor,id){
   let n=anchor.nextElementSibling;
@@ -154,7 +160,7 @@ function editUI(box,ctx){
     renderTree(); updateCount();
   };
   const drop=()=>{
-    if(state.notes.has(id)){ state.notes.delete(id); save(); mark(fi,i,j,false); renderTree(); updateCount(); }
+    if(state.notes.has(id)){ state.notes.delete(id); save(); remark(f,fi,i,j); renderTree(); updateCount(); }
     rowOf(box).remove(); clearSel();
     if(ch) repaintRow(fi,i);
   };
@@ -182,7 +188,7 @@ function viewUI(box,note,ctx){
   box.querySelector('.edit').onclick=()=>editUI(box,Object.assign({},ctx,{id:note.id,body:note.body}));
   box.querySelector('.del').onclick=()=>{
     state.notes.delete(note.id); save();
-    mark(ctx.fi,ctx.i,ctx.j,false);
+    remark(ctx.f,ctx.fi,ctx.i,ctx.j);
     rowOf(box).remove();
     if(note.ca!=null) repaintRow(ctx.fi,ctx.i);
     renderTree(); updateCount();
@@ -193,6 +199,20 @@ function mark(fi,i,j,on){
   for(let k=i;k<=j;k++){
     const tr=el('r'+fi+'-'+k);
     if(tr&&tr.classList.contains('r')) tr.classList.toggle('noted',on);
+  }
+}
+/** Repaints a span a note has just left: the lines under it may still be covered by other notes. */
+function remark(f,fi,i,j){
+  if(i==null) return; // a file note marks no lines
+  const ki=keyIndex(f), spans=[];
+  state.notes.forEach((n: any)=>{
+    if(n.file!==f.path||isFileNote(n)) return;
+    const a=ki.has(n.a)?ki.get(n.a):-1, b=ki.has(n.b)?ki.get(n.b):-1;
+    if(a>=0&&b>=a) spans.push([a,b]);
+  });
+  for(let k=i;k<=j;k++){
+    const tr=el('r'+fi+'-'+k);
+    if(tr&&tr.classList.contains('r')) tr.classList.toggle('noted',spans.some(s=>s[0]<=k&&k<=s[1]));
   }
 }
 function keyIndex(f){
@@ -206,7 +226,7 @@ function keyIndex(f){
 /** Mounts the file's own note, if it has one, under a freshly rendered file header. */
 export function applyFileNote(f: any,fi: number){
   const host=el('fn'+fi); if(!host) return;
-  const n=state.notes.get(fileNoteId(f.path));
+  const n=fileNoteOf(f.path);
   if(!n||host.querySelector('.nrow')) return;
   viewUI(mountFileBox(host,n.id),n,{f,fi,i:null,j:null,ch:null,scope:'file'});
 }
@@ -219,8 +239,7 @@ export function applyNotesIn(f: any,fi: number,from: number,to: number){
     mark(fi,Math.max(i,from),Math.min(j,to-1),true);
     if(j<from||j>=to) return; // the box belongs to the block holding the last row
     const anchor=el('r'+fi+'-'+j); if(!anchor) return;
-    const id=n.id||noteId(n.file,n.a,n.b,n.ca,n.cb);
     const ch=n.ca!=null?{ca:n.ca,cb:n.cb}:null;
-    if(!rowFor(anchor,id)) viewUI(mountRow(anchor,id),n,{f,fi,i,j,ch});
+    if(!rowFor(anchor,n.id)) viewUI(mountRow(anchor,n.id),n,{f,fi,i,j,ch});
   });
 }

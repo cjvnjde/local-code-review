@@ -85,7 +85,7 @@ Arguments not recognized as tool flags are passed to `git diff`.
 ## Review workflow
 
 1. Select a file from the tree.
-2. Click or drag over diff lines to add a note. Shift-click extends selection.
+2. Click or drag over diff lines to add a note. Shift-click extends selection. Same line or range takes as many notes as you want: each click opens a fresh note, and each keeps its own box with its own **Edit** and **Delete**.
 3. Select text inside a single line to comment on that fragment only. Note anchors to those columns, and selected text is highlighted until note is deleted. Drag that strays onto neighbouring lines and returns keeps the fragment from press point to pointer; return to press point and release to note whole line instead.
 4. Select **comment** in file header to note file as a whole, for feedback that belongs to no single line. Note appears under header and holds one note per file. Binary and collapsed files accept whole-file notes too.
 5. Press <kbd>Shift</kbd>+<kbd>Enter</kbd> or <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Enter</kbd> to save note, or <kbd>Esc</kbd> to cancel. <kbd>Enter</kbd> adds a line. **Settings → Note editor** swaps the two, so <kbd>Enter</kbd> saves and <kbd>Shift</kbd>+<kbd>Enter</kbd> adds a line.
@@ -99,7 +99,7 @@ Notes include code snippets because line numbers may move before agent addresses
 ````md
 ## src/components/StatCard.tsx
 
-### src/components/StatCard.tsx:42 <!-- lcr:src/components/StatCard.tsx|n42|n42 -->
+### src/components/StatCard.tsx:42 <!-- lcr:src/components/StatCard.tsx|n42|n42|#mf3k2p1 -->
 
 ```diff
      <dl className="kpi">
@@ -115,7 +115,7 @@ Status: pending
 Fragment notes add columns to heading and name selected text, so agent changes only that part of line:
 
 ````md
-### src/api/client.ts:88:11-19 <!-- lcr:src/api/client.ts|n88|n88|10-19 -->
+### src/api/client.ts:88:11-19 <!-- lcr:src/api/client.ts|n88|n88|10-19|#mf3k2p2 -->
 
 ```diff
 +  const tmpValue = await fetchProfile(userId);
@@ -131,7 +131,7 @@ Status: pending
 Whole-file notes lead their file section, name no line, and carry no snippet:
 
 ````md
-### src/api/client.ts (whole file) <!-- lcr:src/api/client.ts|*|* -->
+### src/api/client.ts (whole file) <!-- lcr:src/api/client.ts|*|*|#mf3k2p3 -->
 
 Request building and response parsing belong in separate modules.
 
@@ -161,6 +161,8 @@ Nothing else in file may change, and `<!-- lcr:... -->` heading markers must sta
 - Individual notes stay removable with **Delete**.
 
 Files without status lines predate this format and are read as unprocessed.
+
+Marker identifies note itself, not line it sits on. Note written where handled one used to be is new note and reads as pending, so clearing notes and commenting on same line again starts clean. Notes stored by versions before this one are read the same way, as fresh notes, which drops verdicts already reported for them.
 
 ## Expanding context
 

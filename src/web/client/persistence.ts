@@ -1,5 +1,5 @@
 import { compileHide } from './filters.ts';
-import { el, idxOf, noteId, saveKeyHint, state } from './state.ts';
+import { el, idxOf, isMinted, mintNoteId, reindexNotes, saveKeyHint, state } from './state.ts';
 
 /* ---------- persistence ---------- */
 const CFG_KEY='gitreview:settings';
@@ -38,6 +38,7 @@ export function saveCfg(){
 }
 const store=()=>'gitreview:'+state.range;
 export function save(){
+  reindexNotes();
   try{
     localStorage.setItem(store(),JSON.stringify({
       general:el('general').value,
@@ -53,7 +54,13 @@ export function restore(){
     const d=JSON.parse(localStorage.getItem(store())||'null');
     if(!d) return;
     el('general').value=d.general||'';
-    (d.notes||[]).forEach(n=>{ n.id=noteId(n.file,n.a,n.b,n.ca,n.cb); state.notes.set(n.id,n); });
+    (d.notes||[]).forEach(n=>{
+      // Ids used to be derived from the note's location, which made a note written where a handled one
+      // had been indistinguishable from it. Notes stored that way are re-minted as the fresh, unsent
+      // notes we cannot prove they are not; the cost is losing verdicts reported before this version.
+      if(!isMinted(n.id)){ n.id=mintNoteId(n.file,n.a,n.b,n.ca,n.cb); n.sentAt=0; }
+      state.notes.set(n.id,n);
+    });
     state.hidden=new Set(d.hidden||[]);
     state.shown=new Set(d.shown||[]);
     state.collapsed=new Set(d.collapsed||[]);

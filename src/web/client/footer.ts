@@ -2,7 +2,7 @@ import { GENERAL_MAX, autogrow } from './autogrow.ts';
 import { hiddenCount } from './filters.ts';
 import { load, render } from './load.ts';
 import { clearNotes, save } from './persistence.ts';
-import { appliedNotes, el, state } from './state.ts';
+import { appliedNotes, el, markSubmitted, state } from './state.ts';
 
 /* ---------- footer ---------- */
 /** Call after setting `#general` from code — only typing grows the box on its own. */
@@ -51,6 +51,7 @@ el('submit').onclick=async()=>{
     body:JSON.stringify({general,comments:[...state.notes.values()]})});
   const d=await r.json();
   if(!r.ok){ alert('Could not save: '+(d.error||r.status)); return; }
+  markSubmitted(d.file); save(); // these notes are in a review file now, so verdicts can come back
   document.body.innerHTML='<div class="done"><p>Saved <code>'+d.file+'</code> — '+d.count+' notes.</p>'+
     '<p>Hand it to the agent:</p><p><code>Address the notes in '+d.file+'</code></p>'+
     '<p style="color:var(--ink-faint)">Server still running. Reload this page to review again.</p></div>';

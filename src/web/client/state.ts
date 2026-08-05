@@ -14,10 +14,10 @@ export const SVG={
 };
 
 export const state: any={
-  files:[], range:'', notes:new Map(), status:new Map(), statusByKey:new Map(),
+  files:[], range:'', notes:new Map(), status:new Map(), statusByKey:new Map(), soloKeys:new Set(),
   hidden:new Set(), shown:new Set(), collapsed:new Set(), folded:new Set(), viewed:new Map(),
   filter:'', hideRx:[], sel:null,
-  byPath:new Map(), h:new Map(), draftRow:null,
+  byPath:new Map(), h:new Map(), draftRow:null, draftKey:null,
   cfg:{auto:true,back:true,limit:900,toast:true,hide:'',hideDeleted:false,enterSaves:false,expand:20},
   scrolled:false, jumpUntil:0, autoNow:new Set(), lastUndo:0,
 };
@@ -28,11 +28,18 @@ export const rowKey=(row: any)=>row.n!=null?'n'+row.n:'o'+row.o;
 /** Anchor of a note on the file itself. Row keys are always `n<line>`/`o<line>`, so it cannot collide. */
 export const FILE_ANCHOR='*';
 export const isFileNote=(n: any)=>!!n&&n.a===FILE_ANCHOR;
-/** Character offsets belong in the id: a note on part of a line is not the note on the whole line. */
-export const noteId=(path: string,a: string,b: string,ca?: number|null,cb?: number|null)=>
+/** Where a note sits. Character offsets belong in it: part of a line is not the whole line. */
+export const locKey=(path: string,a: string,b: string,ca?: number|null,cb?: number|null)=>
   path+'|'+a+'|'+b+(ca!=null?'|'+ca+'-'+cb:'');
-/** One file-level note per file, so its id is fixed by the path alone. */
-export const fileNoteId=(path: string)=>noteId(path,FILE_ANCHOR,FILE_ANCHOR);
+let minted=0;
+/**
+ * A note's id is minted once, when the note is written, and never derived from where it sits: a line
+ * can carry several notes, and a note written where a handled one used to be is a new note, not that
+ * one. Statuses are matched on this id, so it is what keeps an old verdict off a fresh note.
+ */
+export const mintNoteId=(path: string,a: string,b: string,ca?: number|null,cb?: number|null)=>
+  locKey(path,a,b,ca,cb)+'|#'+Date.now().toString(36)+(minted++).toString(36);
+export const isMinted=(id: unknown)=>typeof id==='string'&&/\|#[0-9a-z]+$/.test(id);
 export const clip=(text: string,max=48)=>text.length>max?text.slice(0,max-1)+'…':text;
 /** The chord that saves a note under the current setting, phrased for the on-screen hints. */
 export const saveKeyHint=()=>state.cfg.enterSaves?'enter':'shift+enter';
@@ -40,8 +47,47 @@ export const saveKeyHint=()=>state.cfg.enterSaves?'enter':'shift+enter';
 export const noteKey=(n: any)=>isFileNote(n)
   ?n.file+' (whole file)'
   :n.file+':'+(n.label||(n.start===n.end?String(n.start):n.start+'-'+n.end));
-/** What an agent reported back about a note, or null while it is still unprocessed. */
-export const statusOf=(n: any)=>state.status.get(n.id)||state.statusByKey.get(noteKey(n))||null;
+/** When a review file was written, read off its name; 0 for a name that does not carry a stamp. */
+export const reviewTime=(source: string)=>{
+  const m=/review-(\d{4}-\d\d-\d\d)T(\d\d)-(\d\d)-(\d\d)/.exec(source||'');
+  return m?Date.parse(m[1]+'T'+m[2]+':'+m[3]+':'+m[4]+'Z'):0;
+};
+/**
+ * What an agent reported back about a note, or null while it is still unprocessed. Only a note that
+ * was handed over can carry a verdict, so an unsubmitted one reads as pending whatever a review file
+ * says about its location. The heading-key fallback covers a review file whose `lcr:` marker was
+ * dropped; it needs a heading only one submitted note claims — with several notes on one line the
+ * heading no longer names which of them was judged — and a file no older than that handover, so a
+ * verdict on whatever used to stand there cannot land on the note that replaced it.
+ */
+export const statusOf=(n: any)=>{
+  const byId=state.status.get(n.id);
+  if(byId) return byId;
+  if(!n.sentAt) return null;
+  const key=noteKey(n);
+  if(!state.soloKeys.has(key)) return null;
+  const byKey=state.statusByKey.get(key);
+  return byKey&&reviewTime(byKey.source)>=n.sentAt?byKey:null;
+};
+/** Heading keys claimed by exactly one submitted note. Rebuilt whenever the notes are written out. */
+export function reindexNotes(){
+  const seen=new Map<string,number>();
+  state.notes.forEach((n: any)=>{
+    if(!n.sentAt) return;
+    const key=noteKey(n);
+    seen.set(key,(seen.get(key)||0)+1);
+  });
+  state.soloKeys=new Set([...seen].filter(([,count])=>count===1).map(([key])=>key));
+}
+/**
+ * Records that every current note now sits in `file`, so verdicts from that review on can reach them.
+ * The first handover is the one kept: a note carried into a later review was already reportable.
+ */
+export function markSubmitted(file: string){
+  const at=reviewTime(file)||Date.now();
+  state.notes.forEach((n: any)=>{ if(!n.sentAt) n.sentAt=at; });
+  reindexNotes(); // it is what the index counts
+}
 export const appliedNotes=()=>[...state.notes.values()].filter((n: any)=>{
   const s=statusOf(n);
   return !!s&&s.status==='applied';

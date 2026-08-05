@@ -4,7 +4,7 @@ import path from "node:path";
 import { describe, expect, test } from "bun:test";
 import { renderMarkdown } from "./review.ts";
 import { collectStatuses, parseStatuses } from "./status.ts";
-import { fileNoteId, noteKey } from "./web/client/state.ts";
+import { mintNoteId, noteKey } from "./web/client/state.ts";
 
 const review = (...sections: string[]) => ["# Review notes", "", ...sections].join("\n");
 
@@ -148,7 +148,7 @@ describe("parseStatuses", () => {
 
   test("round-trips a whole-file note by id and by heading key", () => {
     const note = {
-      id: fileNoteId("src/app.ts"),
+      id: mintNoteId("src/app.ts", "*", "*"),
       file: "src/app.ts",
       body: "Split this module.",
       a: "*",
@@ -161,12 +161,34 @@ describe("parseStatuses", () => {
       .replace("Status: pending", "Status: applied — split into two modules");
 
     expect(parseStatuses(markdown)).toEqual([{
-      id: "src/app.ts|*|*",
+      id: note.id,
       key: noteKey(note),
       status: "applied",
       detail: "split into two modules",
       source: "",
     }]);
+  });
+
+  test("two notes on one line round-trip as separate headings with distinct ids", () => {
+    const at = (body: string) => ({
+      id: mintNoteId("src/app.ts", "n7", "n7"),
+      file: "src/app.ts",
+      body,
+      a: "n7",
+      b: "n7",
+      start: 7,
+      end: 7,
+    });
+    const first = at("Rename it."), second = at("And handle the null case.");
+    const markdown = renderMarkdown({ general: "", comments: [first, second] }, "HEAD")
+      .replace("Status: pending", "Status: applied — renamed")
+      .replace("Status: pending", "Status: skipped — cannot be null here");
+
+    expect(first.id).not.toBe(second.id);
+    expect(parseStatuses(markdown)).toEqual([
+      { id: first.id, key: "src/app.ts:7", status: "applied", detail: "renamed", source: "" },
+      { id: second.id, key: "src/app.ts:7", status: "skipped", detail: "cannot be null here", source: "" },
+    ]);
   });
 });
 
