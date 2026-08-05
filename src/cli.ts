@@ -4,6 +4,7 @@ export function parseArgs(argv: string[]): CliOptions {
   let port = 7777;
   let outDir = ".review";
   let context = 5;
+  let open = true;
   const diffArgs: string[] = [];
 
   for (let i = 0; i < argv.length; i++) {
@@ -11,8 +12,10 @@ export function parseArgs(argv: string[]): CliOptions {
     if (arg === "--port") port = Number(argv[++i]);
     else if (arg === "--out") outDir = argv[++i] as string;
     else if (arg === "--context") context = Number(argv[++i]);
+    else if (arg === "--no-open") open = false;
+    else if (arg === "--open") open = true;
     else diffArgs.push(arg);
   }
 
-  return { port, outDir, context, diffArgs };
+  return { port, outDir, context, open, diffArgs };
 }

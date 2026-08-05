@@ -8,6 +8,9 @@ export const SVG={
   boxOn:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.2 2.2h11.6v11.6H2.2z" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M4.6 8.1l2.3 2.3 4.5-4.7" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>',
   check:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M6.1 12.4 2 8.3l1.3-1.3 2.8 2.8 6.6-6.6L14 4.5z"/></svg>',
   sliders:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3.6h4.4V5H2zM9.6 3.6H14V5H9.6zM2 11h4.4v1.4H2zM9.6 11H14v1.4H9.6z"/><path d="M6.6 1.8h1.5v5.1H6.6zM9.1 9.2h1.5v5.1H9.1z"/></svg>',
+  expUp:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 5 12.8 10.2H3.2z"/></svg>',
+  expDown:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 11 3.2 5.8h9.6z"/></svg>',
+  expAll:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.4 11.8 5.6H4.2zM8 14.6 4.2 10.4h7.6z"/></svg>',
 };
 
 export const state: any={
@@ -15,7 +18,7 @@ export const state: any={
   hidden:new Set(), shown:new Set(), collapsed:new Set(), folded:new Set(), viewed:new Map(),
   filter:'', hideRx:[], sel:null,
   byPath:new Map(), h:new Map(), draftRow:null,
-  cfg:{auto:true,back:true,limit:900,toast:true,hide:'',hideDeleted:false,enterSaves:false},
+  cfg:{auto:true,back:true,limit:900,toast:true,hide:'',hideDeleted:false,enterSaves:false,expand:20},
   scrolled:false, jumpUntil:0, autoNow:new Set(), lastUndo:0,
 };
 export const el=(id: string): any=>document.getElementById(id);

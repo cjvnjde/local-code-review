@@ -6,6 +6,8 @@ export interface DiffRow {
   text: string;
   n?: number;
   o?: number;
+  /** Section heading git appended to a hunk header, kept so the header can be rebuilt after expansion. */
+  head?: string;
 }
 
 export interface DiffFile {
@@ -59,5 +61,7 @@ export interface CliOptions {
   port: number;
   outDir: string;
   context: number;
+  /** Open the page in the default browser on start; `--no-open` turns it off. */
+  open: boolean;
   diffArgs: string[];
 }

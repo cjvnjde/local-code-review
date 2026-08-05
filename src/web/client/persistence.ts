@@ -9,6 +9,7 @@ export function loadCfg(){
   el('cfgBack').checked=state.cfg.back;
   el('cfgToast').checked=state.cfg.toast;
   el('cfgLimit').value=String(state.cfg.limit);
+  el('cfgExpand').value=String(state.cfg.expand);
   el('cfgHide').value=state.cfg.hide||'';
   el('cfgDeleted').checked=!!state.cfg.hideDeleted;
   el('cfgEnter').checked=state.cfg.enterSaves;
@@ -16,7 +17,7 @@ export function loadCfg(){
   el('saveKey').textContent=saveKeyHint();
   state.hideRx=compileHide(state.cfg.hide);
 }
-/** Returns true when the hides changed, which is the only kind of setting that needs a re-render. */
+/** Returns true for the settings the rendered diff depends on: which files it shows, and its expanders. */
 export function saveCfg(){
   state.cfg.auto=el('cfgAuto').checked;
   state.cfg.back=el('cfgBack').checked;
@@ -24,8 +25,10 @@ export function saveCfg(){
   state.cfg.limit=Number(el('cfgLimit').value);
   state.cfg.enterSaves=el('cfgEnter').checked;
   const hide=el('cfgHide').value, deleted=el('cfgDeleted').checked;
-  const changed=hide!==state.cfg.hide||deleted!==!!state.cfg.hideDeleted;
+  const expand=Number(el('cfgExpand').value);
+  const changed=hide!==state.cfg.hide||deleted!==!!state.cfg.hideDeleted||expand!==state.cfg.expand;
   state.cfg.hideDeleted=deleted;
+  state.cfg.expand=expand;
   if(hide!==state.cfg.hide) state.hideRx=compileHide(hide);
   state.cfg.hide=hide;
   el('cfgBack').disabled=!state.cfg.auto;

@@ -7,7 +7,14 @@ describe("parseArgs", () => {
       port: 9000,
       outDir: ".review",
       context: 8,
+      open: true,
       diffArgs: ["HEAD~2", "--staged", "--", "*.ts"],
     });
+  });
+
+  test("--no-open keeps the browser closed without reaching git diff", () => {
+    const options = parseArgs(["--no-open", "HEAD~1"]);
+    expect(options.open).toBe(false);
+    expect(options.diffArgs).toEqual(["HEAD~1"]);
   });
 });

@@ -38,6 +38,18 @@
         starts a comment. Files you reveal with the eye icon stay visible.</p>
     </div>
     <div class="settings-section">
+      <h4>Expand context</h4>
+      <label>Lines revealed per click <select id="cfgExpand">
+        <option value="10">10</option>
+        <option value="20">20</option>
+        <option value="50">50</option>
+        <option value="100">100</option>
+      </select></label>
+      <p class="note">Arrows on a hunk separator pull in the unchanged lines git left out of the diff:
+        down continues the hunk above, up continues the one below. A gap no larger than this opens in
+        one click, and the last separator keeps reaching towards the end of the file.</p>
+    </div>
+    <div class="settings-section">
       <h4>Note editor</h4>
       <label><input type="checkbox" id="cfgEnter"> Enter saves the note, shift+enter adds a line</label>
       <p class="note">Off by default: enter adds a line and shift+enter saves the note.

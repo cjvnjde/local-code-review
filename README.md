@@ -56,7 +56,7 @@ From any Git repository:
 lcr
 ```
 
-Open <http://localhost:7777>.
+The page opens in the default browser at <http://localhost:7777>. Pass `--no-open` to keep it closed and open the URL yourself.
 
 Examples:
 
@@ -75,6 +75,9 @@ lcr --staged
 
 # Custom server port, output directory, and diff context
 lcr --port 8080 --out .review --context 8
+
+# Serve without opening a browser
+lcr --no-open
 ```
 
 Arguments not recognized as tool flags are passed to `git diff`.
@@ -83,7 +86,7 @@ Arguments not recognized as tool flags are passed to `git diff`.
 
 1. Select a file from the tree.
 2. Click or drag over diff lines to add a note. Shift-click extends selection.
-3. Select text inside a single line to comment on that fragment only. Note anchors to those columns, and selected text is highlighted until note is deleted.
+3. Select text inside a single line to comment on that fragment only. Note anchors to those columns, and selected text is highlighted until note is deleted. Drag that strays onto neighbouring lines and returns keeps the fragment from press point to pointer; return to press point and release to note whole line instead.
 4. Select **comment** in file header to note file as a whole, for feedback that belongs to no single line. Note appears under header and holds one note per file. Binary and collapsed files accept whole-file notes too.
 5. Press <kbd>Shift</kbd>+<kbd>Enter</kbd> or <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Enter</kbd> to save note, or <kbd>Esc</kbd> to cancel. <kbd>Enter</kbd> adds a line. **Settings → Note editor** swaps the two, so <kbd>Enter</kbd> saves and <kbd>Shift</kbd>+<kbd>Enter</kbd> adds a line.
 6. Add optional overall feedback in footer.
@@ -159,6 +162,12 @@ Nothing else in file may change, and `<!-- lcr:... -->` heading markers must sta
 
 Files without status lines predate this format and are read as unprocessed.
 
+## Expanding context
+
+Every hunk separator carries arrows for the unchanged lines the diff left out. The down arrow continues the hunk above, the up arrow continues the one below, and a gap no larger than one step opens whole in a single click. The separator disappears once its gap is closed, merging the two hunks. A file that runs on past its last hunk keeps a separator at the bottom, which reaches towards the end of the file and then disappears.
+
+**Settings → Expand context** sets how many lines one click reveals. Revealed lines are ordinary context lines, so they can be commented on like any other. Expansions are not saved; **Reload diff** starts from the original hunks again.
+
 ## Hiding files
 
 Tree eye icons hide single files or whole folders. For repeating cases, open **Settings → Hide files**.
@@ -214,7 +223,9 @@ Skill remains optional; `lcr` itself has no agent integration or runtime depende
 - Reload button re-reads Git state and note statuses. Server intentionally has no watcher or WebSocket.
 - Draft notes and view state persist in browser local storage. Hide patterns persist as browser setting.
 - Added and context lines are commentable. Deleted-only lines can be selected, but fixes should usually anchor to adjacent current code.
+- Expanding a hunk separator re-reads that one file from Git with unlimited context, so it works for every diff argument the tool accepts, including staged-only and commit ranges.
 - Fragment notes anchor to line plus character range. Selecting whole line, or only whitespace, falls back to plain line note.
+- Drag decides its own scope: rows while pointer sits on another line, fragment while it sits on pressed line away from press point, whole line while it rests back on press point.
 - Whole-file notes anchor to path only, so they survive any line movement. Each file holds one, and it stays visible while file is collapsed.
 - Binary file contents are not rendered, but binary files still accept whole-file notes.
 - Git must remain available on `PATH`.

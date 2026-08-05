@@ -1,4 +1,6 @@
+import { expandStep } from './expand.ts';
 import { autoHidden, isHidden } from './filters.ts';
+import { gapOf, gapSize } from './gaps.ts';
 import { codeHtml, langOf } from './highlight.ts';
 import { applyFileNote, applyNotesIn, charMarks } from './notes.ts';
 import { save } from './persistence.ts';
@@ -55,13 +57,37 @@ function fileHtml(f,fi){
     '<div class="fnotes" id="fn'+fi+'"></div>';
   if(f.binary) return '<div class="'+cls+'" id="f'+fi+'" data-path="'+esc(f.path)+'">'+head+
     '<div class="empty">Binary file — not shown.</div></div>';
+  return '<div class="'+cls+'" id="f'+fi+'" data-path="'+esc(f.path)+'">'+head+
+    '<table>'+tableHtml(f,fi)+'</table></div>';
+}
+function tableHtml(f,fi){
   const blocks=[];
   for(let b=0;b<blockCount(f);b++){
     blocks.push('<tbody class="blk" id="b'+fi+'-'+b+'" data-fi="'+fi+'" data-b="'+b+'">'+phHtml(blockH(f,b))+'</tbody>');
   }
-  return '<div class="'+cls+'" id="f'+fi+'" data-path="'+esc(f.path)+'">'+head+
-    '<table><colgroup><col style="width:22px"><col style="width:46px"><col style="width:46px"><col></colgroup>'+
-    blocks.join('')+'</table></div>';
+  return '<colgroup><col style="width:22px"><col style="width:46px"><col style="width:46px"><col></colgroup>'+
+    blocks.join('');
+}
+/**
+ * Rebuilds one file's rows after lines were revealed into it. Every row id below the insertion point
+ * moved, so the table is rendered again; blocks above it kept their rows and therefore their cached
+ * heights, which is what stops the page from jumping while it happens.
+ */
+export function refreshRows(fi: number,from: number){
+  const f=state.files[fi], node=el('f'+fi);
+  if(!f||!node) return;
+  const table=node.querySelector('table'); if(!table) return;
+  if(state.sel&&state.sel.fi===fi) state.sel=null; // it pointed at rows that have moved
+  const first=Math.floor(from/BLOCK), prefix=f.path+'|';
+  [...state.h.keys()].forEach(k=>{
+    const cut=k.lastIndexOf('|');
+    if(k.slice(0,cut+1)===prefix&&Number(k.slice(cut+1))>=first) state.h.delete(k);
+  });
+  node.querySelectorAll('tbody.blk').forEach(tb=>{ obsMount.unobserve(tb); obsDrop.unobserve(tb); });
+  table.innerHTML=tableHtml(f,fi);
+  table.querySelectorAll('tbody.blk').forEach(observeBlock);
+  // Show the revealed lines now rather than a frame later, once the mount observer catches up.
+  for(let b=first;b<=first+1;b++){ const tb=el('b'+fi+'-'+b); if(tb) mountBlock(tb); }
 }
 
 /**
@@ -277,9 +303,26 @@ export function setHidden(paths: string[],hide: boolean){
   save(); renderTree(); updateCount();
 }
 
+/**
+ * Controls for the lines a boundary hides. A gap no larger than one step opens in a single click;
+ * a longer one is walked from either end, downwards from the hunk above or upwards from the one below.
+ */
+function expanders(f,fi,idx){
+  const g=gapOf(f,idx);
+  if(!g) return '';
+  const btn=(dir,icon,title)=>'<button class="xp" data-exp="'+dir+'" data-fi="'+fi+'" data-i="'+idx+
+    '" title="'+esc(title)+'" aria-label="'+esc(title)+'">'+icon+'</button>';
+  const step=expandStep(), size=gapSize(g);
+  if(size!=null&&size<=step) return btn('all',SVG.expAll,'Show the '+size+' hidden line'+(size===1?'':'s'));
+  const out=[];
+  if(g.to!=null) out.push(btn('up',SVG.expUp,'Show '+step+' lines further up'));
+  if(idx>0) out.push(btn('down',SVG.expDown,'Show '+step+' lines further down'));
+  return out.join('');
+}
 function rowHtml(f,fi,idx,lang,wr){
   const r=f.rows[idx], id='r'+fi+'-'+idx;
-  if(r.t==='hunk') return '<tr id="'+id+'" class="hunk"><td class="act"></td><td colspan="3">'+esc(r.text)+'</td></tr>';
+  if(r.t==='hunk') return '<tr id="'+id+'" class="hunk'+(r.tail?' tail':'')+'">'+
+    '<td class="exp" colspan="3">'+expanders(f,fi,idx)+'</td><td class="hx">'+esc(r.text)+'</td></tr>';
   return '<tr id="'+id+'" class="r '+r.t+'" data-fi="'+fi+'" data-i="'+idx+'">'+
     '<td class="act"><button class="add" title="Comment on this line">'+SVG.plus+'</button></td>'+
     '<td class="g go">'+(r.o!=null?r.o:'')+'</td>'+

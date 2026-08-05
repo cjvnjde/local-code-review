@@ -1,14 +1,17 @@
 import page from "./web/shell.html";
 import { SkillPreviewChangedError } from "./skill.ts";
 import type { SkillInstallResult, SkillPreview, SkillTargetState } from "./skill.ts";
-import type { DiffFile, NoteStatus, ReviewSubmission } from "./types.ts";
+import type { DiffFile, DiffRow, NoteStatus, ReviewSubmission } from "./types.ts";
 
 export interface ServerOptions {
   port: number;
   repoRoot: string;
   outDir: string;
   range: string;
+  /** `-U` value the diff was produced with; the page needs it to spot a trailing hidden region. */
+  context: number;
   getDiff: () => Promise<DiffFile[]>;
+  getContext: (path: string, start: number, end: number) => Promise<DiffRow[]>;
   getStatuses: () => Promise<NoteStatus[]>;
   saveReview: (submission: ReviewSubmission) => Promise<string>;
   previewSkill: () => Promise<SkillPreview>;
@@ -47,7 +50,16 @@ export function startServer(options: ServerOptions) {
         const url = new URL(request.url);
         if (url.pathname === "/api/diff") {
           const [files, statuses] = await Promise.all([options.getDiff(), options.getStatuses()]);
-          return Response.json({ range: options.range, files, statuses });
+          return Response.json({ range: options.range, context: options.context, files, statuses });
+        }
+        if (url.pathname === "/api/context") {
+          const path = url.searchParams.get("path") ?? "";
+          const start = Number(url.searchParams.get("start"));
+          const end = Number(url.searchParams.get("end"));
+          if (!path || !Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start) {
+            return Response.json({ error: "A path and an ascending line range are required." }, { status: 400 });
+          }
+          return Response.json({ rows: await options.getContext(path, start, end) });
         }
         if (url.pathname === "/api/submit" && request.method === "POST") {
           if (!isJsonRequest(request)) return Response.json({ error: "JSON body required." }, { status: 415 });

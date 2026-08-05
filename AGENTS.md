@@ -15,11 +15,15 @@
 - Explicit CLI arguments continue to pass through to `git diff`.
 - Review output remains Markdown under `.review/` by default.
 - Default `.review/` output remains ignored. Custom relative output directories remain locally excluded through `.git/info/exclude`.
+- Start opens the page in the default browser unless `--no-open` is passed. Launch stays best-effort: failure prints a hint and never blocks the server.
 - Reload stays explicit. Do not add watchers or live updates that could discard review state without clear approval.
 - The page is served from `/` with `cache-control: no-store`; the HTML bundle route stays on `/index.html`. Bun gives that route one ETag for every build, so mounting the bundle on `/` again lets a browser revalidate into an older page whose asset chunks are gone.
 - Review notes anchor on captured code plus line metadata. A note may narrow to a character range inside one line; keep its columns, snippet, and `ca`/`cb` offsets together with the line anchor.
 - A note may instead cover a whole file. It uses `*` for both row anchors, carries `scope:"file"` and no captured code, and renders as `### <path> (whole file)`. One per file, mounted under the file header so binary and collapsed files keep it. `noteKey` must keep producing that same heading text.
 - File hide patterns are a display preference in settings. Manual eye toggles keep overriding them per file.
+- Hunk separators expand the unchanged lines git left out. `/api/context` re-diffs one file with unlimited context and answers an inclusive new-side line range, which keeps every revision spec working without picking a side to read blobs from. The page splices those rows into the file, rebuilds the hunk header from the rows it now covers, and drops a separator once its gap closes. Expansions live only in the page; a reload starts over.
+- The trailing separator is inferred: git prints at most `-U` context lines after the last change, so a full run means the file continues. `/api/diff` must keep reporting `context` for that. A run that happened to end on the last line self-corrects, because the first expansion comes back empty and drops the separator.
+- Revealed lines are ordinary context rows, so notes anchor to them normally. Row indices below an insertion all move, which is why the file's table is rendered again and both row-indexed caches (`wd`, `ki`) are dropped. Cached block heights above the insertion stay valid and must be kept, or the page jumps.
 - Generated review files carry `<!-- lcr:<note-id> -->` on each note heading and a `Status:` line per note. `collectStatuses` reads them back on start so handled notes can be cleared. Keep both sides of that contract in step.
 - Status kinds are `applied`, `answered`, `skipped`, `needs-input`, `pending`, and `unknown`. `answered` is for a note that only asked a question and needed no edit; it keeps full opacity and stays out of **Remove N applied**. Adding a kind means touching `readStatus` synonyms, `NoteStatusKind`, the `renderMarkdown` footer, and the `.stat` badge styles together.
 

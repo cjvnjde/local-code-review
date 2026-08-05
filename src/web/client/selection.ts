@@ -1,5 +1,6 @@
 import { repaintRow, setHidden, setViewed } from './diff-view.ts';
-import { leftRow } from './drag.ts';
+import { atStart, charRange, leftRow } from './drag.ts';
+import { expandGap } from './expand.ts';
 import { isHidden } from './filters.ts';
 import { openEditor, openFileEditor } from './notes.ts';
 import { save } from './persistence.ts';
@@ -25,10 +26,17 @@ export function paintSel(){
   }
 }
 export function clearSel(){ state.sel=null; paintSel(); }
+const sameSel=(a: any,b: any)=>!!a&&!!b&&a.fi===b.fi&&a.a===b.a&&a.b===b.b&&
+  (a.ca==null?b.ca==null:a.ca===b.ca)&&(a.cb==null?b.cb==null:a.cb===b.cb);
 
 const textSelected=()=>{
   const s=window.getSelection&&window.getSelection();
   return !!(s&&!s.isCollapsed&&String(s).trim());
+};
+/** The browser highlight is only ever a step towards a painted range, so it is dropped once read. */
+const dropTextSel=()=>{
+  const s=window.getSelection&&window.getSelection();
+  if(s&&!s.isCollapsed) s.removeAllRanges();
 };
 const cellOf=(node: any)=>{
   const e=node&&(node.nodeType===1?node:node.parentElement);
@@ -59,14 +67,33 @@ function charSel(anchor?: any){
   const fi=Number(tr.dataset.fi), i=Number(tr.dataset.i);
   const f=state.files[fi]; if(!f||!f.rows[i]) return null;
   const text=f.rows[i].text;
-  let a=edgeOffset(td,r.startContainer,r.startOffset,text.length);
-  let b=edgeOffset(td,r.endContainer,r.endOffset,text.length);
+  const a=edgeOffset(td,r.startContainer,r.startOffset,text.length);
+  const b=edgeOffset(td,r.endContainer,r.endOffset,text.length);
   if(a==null||b==null) return null;
-  if(b<a){ const t=a; a=b; b=t; }
-  a=Math.max(0,Math.min(a,text.length)); b=Math.max(0,Math.min(b,text.length));
-  if(!text.slice(a,b).trim()) return null;  // whitespace only: nothing to talk about
-  if(a===0&&b===text.length) return null;   // the whole line is a plain line note
-  return {fi,a:i,b:i,ca:a,cb:b};
+  const ch=charRange(text,a,b);
+  return ch?{fi,a:i,b:i,ca:ch.a,cb:ch.b}:null;
+}
+/** Character offset the pointer rests on, measured in the row text the cell was rendered from. */
+function offsetAt(td: any,x: number,y: number,len: number){
+  const d: any=document;
+  const p=d.caretPositionFromPoint?d.caretPositionFromPoint(x,y):null;
+  if(p) return edgeOffset(td,p.offsetNode,p.offset,len);
+  const r=d.caretRangeFromPoint?d.caretRangeFromPoint(x,y):null;
+  if(r) return edgeOffset(td,r.startContainer,r.startOffset,len);
+  return null;
+}
+/**
+ * The fragment a wandering drag has collected on the row it started in: press point to pointer,
+ * or null once the pointer is back on the press point and the whole line is the obvious intent.
+ */
+function pointRange(d: any,x: number,y: number){
+  // Pressing the gutter, or extending an existing range with shift, only ever means whole rows.
+  if(!d.cell||d.off0==null||d.a!==d.i) return null;
+  const f=state.files[d.fi], row=f&&f.rows[d.i];
+  if(!row) return null;
+  if(atStart(x,y,d.x0,d.y0)) return null;
+  const off=offsetAt(d.cell,x,y,row.text.length);
+  return off==null?null:charRange(row.text,d.off0,off);
 }
 el('diff').addEventListener('mousedown',e=>{
   if(e.button!==0) return;
@@ -78,45 +105,69 @@ el('diff').addEventListener('mousedown',e=>{
   if(!cell){ e.preventDefault(); document.body.classList.add('dragging'); }
   if(e.shiftKey&&state.sel&&state.sel.fi===fi) state.sel={fi,a:state.sel.a,b:i};
   else state.sel={fi,a:i,b:i};
-  drag={fi,i,moved:false,cell};
+  const f=state.files[fi], row=f&&f.rows[i];
+  // Taken now rather than on the way back: a wheel scroll mid-drag moves the press point out from under x0,y0.
+  const off0=cell&&row?offsetAt(cell,e.clientX,e.clientY,row.text.length):null;
+  drag={fi,i,a:state.sel.a,cell,off0,x0:e.clientX,y0:e.clientY,rows:false,wandered:false,away:false};
   paintSel();
 });
 // Hit-test the pointer: while a text drag is in flight the browser keeps sending events to the press target.
 document.addEventListener('mousemove',e=>{
   if(!drag) return;
+  if(!atStart(e.clientX,e.clientY,drag.x0,drag.y0)) drag.away=true;
   const under=document.elementFromPoint(e.clientX,e.clientY);
   const tr=under&&under.closest?under.closest('tr.r'):null;
   if(!tr||Number(tr.dataset.fi)!==drag.fi) return;
   const i=Number(tr.dataset.i);
-  if(state.sel.b===i) return;
-  // Brushing the next row mid-sentence is a slip, not a range: a text drag must clear the pressed row first.
-  if(drag.cell&&!drag.moved){
-    const from=el('r'+drag.fi+'-'+drag.i);
-    if(from){
-      const {top,bottom}=from.getBoundingClientRect();
-      if(!leftRow(e.clientY,top,bottom)) return;
+  if(i!==drag.i){
+    // Brushing the next row mid-sentence is a slip, not a range: a text drag must clear the pressed row first.
+    if(drag.cell&&!drag.rows){
+      const from=el('r'+drag.fi+'-'+drag.i);
+      if(from){
+        const {top,bottom}=from.getBoundingClientRect();
+        if(!leftRow(e.clientY,top,bottom)) return;
+      }
     }
+    drag.rows=drag.wandered=true;
+    document.body.classList.add('dragging');
+    dropTextSel();
+    const range={fi:drag.fi,a:drag.a,b:i};
+    if(sameSel(state.sel,range)) return;
+    state.sel=range;
+    paintSel();
+    return;
   }
-  state.sel.b=i; state.sel.ca=null; drag.moved=true;
-  document.body.classList.add('dragging');
-  const s=window.getSelection&&window.getSelection();
-  if(s&&!s.isCollapsed) s.removeAllRanges();
-  paintSel();
+  // Back on the pressed row. Once the drag has been away the browser highlight is gone for good,
+  // so the fragment is measured from the pointer instead, and collapses to the line at the press point.
+  if(!drag.wandered) return;
+  drag.rows=false;
+  if(drag.cell) document.body.classList.remove('dragging'); // a gutter drag keeps its row cursor
+  dropTextSel();
+  const ch=pointRange(drag,e.clientX,e.clientY);
+  const next: any={fi:drag.fi,a:drag.a,b:drag.i};
+  if(ch){ next.ca=ch.a; next.cb=ch.b; }
+  if(sameSel(state.sel,next)) return;
+  state.sel=next; paintSel();
 });
-document.addEventListener('mouseup',()=>{
+document.addEventListener('mouseup',e=>{
   if(!drag) return;
-  const {moved,cell}=drag; drag=null;
+  const {wandered,away,cell,x0,y0}=drag; drag=null;
   document.body.classList.remove('dragging');
-  if(moved){ openEditor(); return; }
+  // A drag that left the pressed row already holds its own answer: rows, a measured fragment,
+  // or the plain line it came back to. The browser highlight plays no part in it.
+  if(wandered){ dropTextSel(); openEditor(); return; }
   if(!cell) return;
+  // Released where it began after travelling: the text it brushed on the way was not the point.
+  if(away&&atStart(e.clientX,e.clientY,x0,y0)){ dropTextSel(); openEditor(); return; }
   const cs=charSel(cell);
   if(!cs) return;
   // The painted range replaces the browser highlight, which the repaint below would drop anyway.
-  const sel=window.getSelection&&window.getSelection();
-  if(sel) sel.removeAllRanges();
+  dropTextSel();
   state.sel=cs; paintSel(); openEditor();
 });
 el('diff').addEventListener('click',e=>{
+  const xp=e.target.closest('[data-exp]');
+  if(xp){ void expandGap(Number(xp.dataset.fi),Number(xp.dataset.i),xp.dataset.exp); return; }
   const fold=e.target.closest('[data-fold]');
   if(fold){
     const p=fold.dataset.fold;

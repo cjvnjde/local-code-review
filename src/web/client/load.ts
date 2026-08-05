@@ -1,4 +1,5 @@
 import { renderDiff } from './diff-view.ts';
+import { markTails } from './gaps.ts';
 import { pruneViewed, restore, save } from './persistence.ts';
 import { el, esc, state } from './state.ts';
 import { renderTree } from './tree.ts';
@@ -14,6 +15,7 @@ export async function load(){
     return;
   }
   state.files=d.files; state.range=d.range;
+  markTails(d.files,Number(d.context));
   state.byPath=new Map(d.files.map((f,i)=>[f.path,i]));
   // Oldest review file first, so a newer verdict on the same note replaces an older one.
   state.status=new Map(); state.statusByKey=new Map();

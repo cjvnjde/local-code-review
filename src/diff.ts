@@ -34,6 +34,40 @@ export async function getDiff(source: DiffSource): Promise<DiffFile[]> {
   return parseDiff(raw);
 }
 
+/** Wide enough that git prints one file as a single hunk, so every unchanged line comes with it. */
+const FULL_CONTEXT = 1_000_000;
+/** Ceiling on one expansion, so a request for a whole huge file cannot flood the page. */
+const MAX_CONTEXT_ROWS = 20_000;
+
+/**
+ * Unchanged lines the diff left out between hunks, addressed by new-side line number.
+ * Re-diffing the file with unlimited context answers for every revision spec the tool accepts —
+ * working tree, index, or a range — without having to work out which side to read the blob from.
+ */
+export async function getFileContext(
+  source: DiffSource,
+  path: string,
+  start: number,
+  end: number,
+): Promise<DiffRow[]> {
+  if (!path || !Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start) return [];
+  const last = Math.min(end, start + MAX_CONTEXT_ROWS - 1);
+  const args = source.diffArgs.length === 0 ? ["HEAD"] : source.diffArgs;
+  const whole = ["diff", "--no-color", "--no-ext-diff", `-U${FULL_CONTEXT}`, ...args];
+  // Narrowing to one file keeps the re-diff cheap, but arguments already carrying a pathspec can
+  // reject a second one, so a rejected narrow run falls back to diffing everything.
+  const scoped = args.includes("--") ? [...whole, path] : [...whole, "--", path];
+  const raw = await runGit(scoped, source.repoRoot).catch(() => runGit(whole, source.repoRoot));
+  return contextRows(parseDiff(raw), path, start, last);
+}
+
+/** Context rows of one file inside an inclusive new-side line range. */
+export function contextRows(files: DiffFile[], path: string, start: number, end: number): DiffRow[] {
+  const file = files.find((entry) => entry.path === path);
+  if (!file) return [];
+  return file.rows.filter((row) => row.t === "ctx" && row.n != null && row.n >= start && row.n <= end);
+}
+
 /** Cheap content fingerprint. Viewed marks expire when file diff changes. */
 export function fingerprint(value: string): string {
   let hash = 5381;
@@ -89,7 +123,9 @@ export function parseDiff(raw: string): DiffFile[] {
       if (match) {
         oldNo = Number(match[1]);
         newNo = Number(match[2]);
-        file.rows.push({ t: "hunk", text: line });
+        const row: DiffRow = { t: "hunk", text: line };
+        if (match[3]) row.head = match[3];
+        file.rows.push(row);
       }
       continue;
     }
