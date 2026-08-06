@@ -1,6 +1,7 @@
 import { renderDiff } from './diff-view.ts';
 import { persistCfg } from './persistence.ts';
 import { SVG, el, state } from './state.ts';
+import { revealActive } from './tree.ts';
 
 /* ---------- file tree pane ---------- */
 /** Paints pane and toggle from the stored preference. Called once the settings are loaded. */
@@ -12,6 +13,8 @@ export function applyNav(){
   btn.innerHTML=hidden?SVG.panelOff:SVG.panel;
   btn.title=hidden?'Show the file tree':'Hide the file tree';
   btn.setAttribute('aria-pressed',String(hidden));
+  // A pane that was closed could not scroll itself, so the current file may be out of its view.
+  if(!hidden) revealActive();
 }
 el('navToggle').onclick=()=>{
   state.cfg.navHidden=!state.cfg.navHidden;

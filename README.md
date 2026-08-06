@@ -89,8 +89,9 @@ Arguments not recognized as tool flags are passed to `git diff`.
 3. Select text inside a single line to comment on that fragment only. Note anchors to those columns, and selected text is highlighted until note is deleted. Drag that strays onto neighbouring lines and returns keeps the fragment from press point to pointer; return to press point and release to note whole line instead.
 4. Select **comment** in file header to note file as a whole, for feedback that belongs to no single line. Note appears under header and holds one note per file. Binary and collapsed files accept whole-file notes too.
 5. Press <kbd>Shift</kbd>+<kbd>Enter</kbd> or <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Enter</kbd> to save note, or <kbd>Esc</kbd> to cancel. <kbd>Enter</kbd> adds a line. **Settings → Note editor** swaps the two, so <kbd>Enter</kbd> saves and <kbd>Shift</kbd>+<kbd>Enter</kbd> adds a line.
-6. Add optional overall feedback in footer.
-7. Select **Save review**.
+6. Bookmark a line with flag icon beside its comment button to come back to it later, and step between bookmarks from list under file tree.
+7. Add optional overall feedback in footer.
+8. Select **Save review**.
 
 Review is written to `.review/review-<timestamp>.md` by default. `.review/` is ignored by Git, and custom relative output directories are added to `.git/info/exclude`.
 
@@ -176,6 +177,14 @@ Toggle in header collapses file tree and gives diff full width. State persists a
 
 Box icon in tree row or file header marks file viewed, which collapses it until file changes. **Settings → Viewed files** resets every mark for current diff after confirmation, expanding files that collapsed with their mark. Notes, hidden files, and folder collapse are untouched.
 
+## Bookmarks
+
+Flag icon beside comment button on a diff line bookmarks that line, and bookmark list appears under file tree. Reading a strange call is the usual reason: bookmark it, go read what it calls, bookmark that too, and step between the two without hunting for either again.
+
+Select entry in list to jump to its line. Arrows in list header step to previous or next bookmark in the order diff shows them, wrapping at both ends, and <kbd>Alt</kbd>+<kbd>↑</kbd>/<kbd>Alt</kbd>+<kbd>↓</kbd> do the same without mouse. Jump brings back file hidden by eye icon or pattern, expands file collapsed by viewed mark, and marks landed line for a moment.
+
+Remove one bookmark with × on its entry, or with flag on line itself. **Clear** in list header removes all of them after confirmation. Bookmarks persist per diff in browser local storage alongside notes, and are navigation rather than feedback: they never reach saved review file.
+
 ## Hiding files
 
 Tree eye icons hide single files or whole folders. For repeating cases, open **Settings → Hide files**.
@@ -235,6 +244,7 @@ Skill remains optional; `lcr` itself has no agent integration or runtime depende
 - Fragment notes anchor to line plus character range. Selecting whole line, or only whitespace, falls back to plain line note.
 - Drag decides its own scope: rows while pointer sits on another line, fragment while it sits on pressed line away from press point, whole line while it rests back on press point.
 - Whole-file notes anchor to path only, so they survive any line movement. Each file holds one, and it stays visible while file is collapsed.
+- Bookmarks anchor to line like notes do, so revealed context moves them the same way. Bookmark whose line left diff after reload stays listed, struck through, and jumps to its file instead.
 - Binary file contents are not rendered, but binary files still accept whole-file notes.
 - Git must remain available on `PATH`.
 

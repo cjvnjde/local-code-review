@@ -4,7 +4,7 @@ import { updateCount } from './footer.ts';
 import { editorAction } from './keys.ts';
 import { save } from './persistence.ts';
 import { clearSel } from './selection.ts';
-import { FILE_ANCHOR, clip, el, esc, isFileNote, locKey, mintNoteId, rowKey, saveKeyHint, state, statusOf } from './state.ts';
+import { FILE_ANCHOR, clip, el, esc, isFileNote, keyIndex, locKey, mintNoteId, rowKey, saveKeyHint, state, statusOf } from './state.ts';
 import { renderTree } from './tree.ts';
 
 /* ---------- notes ---------- */
@@ -214,14 +214,6 @@ function remark(f,fi,i,j){
     const tr=el('r'+fi+'-'+k);
     if(tr&&tr.classList.contains('r')) tr.classList.toggle('noted',spans.some(s=>s[0]<=k&&k<=s[1]));
   }
-}
-function keyIndex(f){
-  if(!f.ki){
-    const m=new Map();
-    f.rows.forEach((r,i)=>{ if(r.t!=='hunk') m.set(rowKey(r),i); });
-    f.ki=m;
-  }
-  return f.ki;
 }
 /** Mounts the file's own note, if it has one, under a freshly rendered file header. */
 export function applyFileNote(f: any,fi: number){

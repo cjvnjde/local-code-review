@@ -1,4 +1,5 @@
 import { filteredCount, filteredOut, isHidden, matchesHide } from './filters.ts';
+import { cardAt, revealShift } from './follow.ts';
 import { SVG, el, esc, idxOf, state } from './state.ts';
 
 /* ---------- file tree ---------- */
@@ -84,7 +85,68 @@ export function renderTree(){
   walk(root,0);
   el('tree').innerHTML=html.join('')||'<div class="empty">No files match.</div>';
   paintFilterStatus();
+  followDiff(); // the rows were rebuilt, so the highlight has to be put back on the current file
 }
+
+/* ---------- the tree follows the diff: the file under the top of the pane stays highlighted ---------- */
+/** The row standing for a path: its own, or the deepest folder shown when the file is folded away. */
+function activeRow(){
+  const path=state.active;
+  if(!path) return null;
+  const rows=el('tree').children;
+  let dir=null, len=-1;
+  for(let i=0;i<rows.length;i++){
+    const row=rows[i], file=row.dataset.file;
+    if(file!=null){ if(file===path) return row; continue; }
+    const d=row.dataset.dir;
+    if(d!=null&&d.length>len&&path.startsWith(d+'/')){ dir=row; len=d.length; }
+  }
+  return dir;
+}
+function reveal(row: any){
+  const pane=el('tree');
+  const p=pane.getBoundingClientRect(), r=row.getBoundingClientRect();
+  pane.scrollTop+=revealShift(p.top,p.bottom,r.top,r.bottom);
+}
+/**
+ * Puts the highlight on `state.active`. Rendering the tree drops it, so every render calls this.
+ * The tree is only scrolled when the row it points at changes, or expanding a folder would drag the
+ * pane back to the file being read every time.
+ */
+let shown='';
+export function paintActive(){
+  const was=el('tree').querySelector('.tw.sel');
+  if(was&&was.dataset.file===state.active) return; // already on it, and the common case while scrolling
+  const row=activeRow();
+  if(was!==row){
+    if(was) was.classList.remove('sel');
+    if(row) row.classList.add('sel');
+  }
+  const at=row?row.dataset.file||row.dataset.dir:'';
+  if(row&&at!==shown) reveal(row);
+  shown=at;
+}
+/** Brings the highlighted row back into view without moving it, for a pane that was just reopened. */
+export function revealActive(){
+  const row=activeRow();
+  if(row) reveal(row);
+}
+/** Reads which file the diff pane is showing and marks it in the tree. */
+export function followDiff(){
+  const cards=el('diff').children;
+  const at=cardAt(cards.length,i=>cards[i].getBoundingClientRect().top,el('diff').getBoundingClientRect().top+1);
+  // A pane showing a placeholder instead of cards has no file to point at, so the last one stands.
+  if(at>=0&&cards[at].dataset.path) state.active=cards[at].dataset.path;
+  paintActive();
+}
+/** One reading per frame: scrolling fires far more often than the tree can usefully change. */
+let queued=false;
+el('diff').addEventListener('scroll',()=>{
+  if(queued) return;
+  queued=true;
+  requestAnimationFrame(()=>{ queued=false; followDiff(); });
+},{passive:true});
+
 /** The pattern list lives in settings, so the tree carries the reminder that it is doing something. */
 function paintFilterStatus(){
   const box=el('fstat'); if(!box) return;

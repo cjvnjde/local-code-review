@@ -14,7 +14,7 @@
   <span class="spacer"></span>
   <span class="hint">click a line to comment &middot; drag or shift-click for a range &middot;
     select text inside a line to comment on that part &middot; <em>comment</em> in a file header notes the whole file
-    &middot; <span id="saveKey">shift+enter</span> saves</span>
+    &middot; <span id="saveKey">shift+enter</span> saves &middot; the flag on a line bookmarks it</span>
   <button id="gear" title="Settings"></button>
   <div id="settings" hidden>
     <h4>Automatic viewed</h4>
@@ -100,6 +100,18 @@
       <button id="fstat" class="fstat" type="button" title="Edit the hide patterns" hidden></button>
     </div>
     <div class="tree" id="tree"></div>
+    <div class="bmpane" id="bmpane" hidden>
+      <div class="bmhead">
+        <span class="ttl">Bookmarks</span><span class="ct" id="bmct">0</span>
+        <span class="spacer"></span>
+        <button id="bmPrev" type="button" title="Go to the previous bookmark (alt+up)"
+          aria-label="Previous bookmark"></button>
+        <button id="bmNext" type="button" title="Go to the next bookmark (alt+down)"
+          aria-label="Next bookmark"></button>
+        <button id="bmClear" class="danger" type="button" title="Remove every bookmark">Clear</button>
+      </div>
+      <div class="bmlist" id="bmlist"></div>
+    </div>
   </nav>
   <section id="diff"></section>
 </main>

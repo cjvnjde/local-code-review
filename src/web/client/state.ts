@@ -13,12 +13,16 @@ export const SVG={
   expUp:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 5 12.8 10.2H3.2z"/></svg>',
   expDown:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 11 3.2 5.8h9.6z"/></svg>',
   expAll:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.4 11.8 5.6H4.2zM8 14.6 4.2 10.4h7.6z"/></svg>',
+  bm:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.4 2.2h7.2v11.4L8 10.8l-3.6 2.8z" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>',
+  bmOn:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 1.8h8v12.4L8 11.1l-4 3.1z"/></svg>',
+  x:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.2 3.1 8 6.9l3.8-3.8 1.1 1.1L9.1 8l3.8 3.8-1.1 1.1L8 9.1l-3.8 3.8-1.1-1.1L6.9 8 3.1 4.2z"/></svg>',
 };
 
 export const state: any={
   files:[], range:'', notes:new Map(), status:new Map(), statusByKey:new Map(), soloKeys:new Set(),
   hidden:new Set(), shown:new Set(), collapsed:new Set(), folded:new Set(), viewed:new Map(),
-  filter:'', hideRx:[], sel:null,
+  bookmarks:new Map(), bmCur:'',
+  filter:'', hideRx:[], sel:null, active:'',
   byPath:new Map(), h:new Map(), draftRow:null, draftKey:null,
   cfg:{auto:true,back:true,limit:900,toast:true,hide:'',hideDeleted:false,enterSaves:false,expand:20,
     navHidden:false},
@@ -28,6 +32,18 @@ export const el=(id: string): any=>document.getElementById(id);
 export const esc=(value: unknown)=>String(value).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 export const idxOf=(path: string)=>state.byPath.has(path)?state.byPath.get(path):-1;
 export const rowKey=(row: any)=>row.n!=null?'n'+row.n:'o'+row.o;
+/**
+ * Row index of every anchorable row in a file, by row key: what turns a stored anchor back into a
+ * place on screen. Cached on the file and dropped whenever revealed lines shift the indices.
+ */
+export function keyIndex(f: any){
+  if(!f.ki){
+    const m=new Map();
+    f.rows.forEach((r: any,i: number)=>{ if(r.t!=='hunk') m.set(rowKey(r),i); });
+    f.ki=m;
+  }
+  return f.ki;
+}
 /** Anchor of a note on the file itself. Row keys are always `n<line>`/`o<line>`, so it cannot collide. */
 export const FILE_ANCHOR='*';
 export const isFileNote=(n: any)=>!!n&&n.a===FILE_ANCHOR;

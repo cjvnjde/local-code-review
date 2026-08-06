@@ -1,13 +1,12 @@
-import { repaintRow, setHidden, setViewed } from './diff-view.ts';
+import { toggleBookmark } from './bookmark-pane.ts';
+import { repaintRow, setFolded, setHidden, setViewed } from './diff-view.ts';
 import { atStart, charRange, leftRow } from './drag.ts';
 import { expandGap } from './expand.ts';
 import { isHidden } from './filters.ts';
 import { openEditor, openFileEditor } from './notes.ts';
-import { save } from './persistence.ts';
-import { SVG, el, idxOf, state } from './state.ts';
+import { el, idxOf, state } from './state.ts';
 
 /* ---------- selection ---------- */
-const toggle=(set: Set<string>,key: string)=>set.has(key)?set.delete(key):set.add(key);
 let drag: any=null;
 /** Row whose code cell currently carries the character highlight, so it can be cleaned up. */
 let charRow: any=null;
@@ -98,7 +97,8 @@ function pointRange(d: any,x: number,y: number){
 el('diff').addEventListener('mousedown',e=>{
   if(e.button!==0) return;
   const tr=e.target.closest('tr.r');
-  if(!tr||e.target.closest('.nbox')) return;
+  // The bookmark flag is not a way into a note, so it takes no selection with it.
+  if(!tr||e.target.closest('.nbox')||e.target.closest('[data-bm]')) return;
   const fi=Number(tr.dataset.fi), i=Number(tr.dataset.i);
   // Pressing the gutter can only mean row selection; pressing code may still mean "select this text".
   const cell=e.target.closest('td.c');
@@ -169,13 +169,11 @@ el('diff').addEventListener('click',e=>{
   const xp=e.target.closest('[data-exp]');
   if(xp){ void expandGap(Number(xp.dataset.fi),Number(xp.dataset.i),xp.dataset.exp); return; }
   const fold=e.target.closest('[data-fold]');
-  if(fold){
-    const p=fold.dataset.fold;
-    toggle(state.folded,p); save();
-    const folded=state.folded.has(p), node=el('f'+idxOf(p));
-    if(node) node.classList.toggle('fold',folded);
-    fold.innerHTML=folded?SVG.chevR:SVG.chevD;
-    fold.title=folded?'Expand file':'Collapse file';
+  if(fold){ setFolded(fold.dataset.fold,!state.folded.has(fold.dataset.fold)); return; }
+  const bm=e.target.closest('[data-bm]');
+  if(bm){
+    const tr=bm.closest('tr.r');
+    if(tr){ clearSel(); toggleBookmark(Number(tr.dataset.fi),Number(tr.dataset.i)); }
     return;
   }
   const vw=e.target.closest('[data-vw]');

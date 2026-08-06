@@ -113,7 +113,31 @@
   .tw .eye.on{color:var(--mark)}
   .tw .vd.on,.tw .vf.on{color:var(--green)}
   .tw .vd.part{color:var(--ov1)}
+  /* the file the diff pane is showing: the tree follows the scroll and keeps this row in view */
   .tw.sel{background:var(--s0);box-shadow:inset 2px 0 0 var(--lav)}
+  .tw.sel .nm{color:var(--ink)}
+
+  /* bookmarks: a list under the tree of the places this read is jumping between */
+  .bmpane{flex:none;display:flex;flex-direction:column;max-height:42%;border-top:1px solid var(--edge-hi)}
+  .bmpane[hidden]{display:none}
+  .bmhead{flex:none;display:flex;align-items:center;gap:6px;padding:6px 8px;border-bottom:1px solid var(--edge)}
+  .bmhead .ttl{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-faint)}
+  .bmhead .ct{font-size:10px;color:var(--crust);background:var(--mauve);border-radius:8px;padding:0 5px;font-weight:700}
+  .bmhead .spacer{flex:1}
+  .bmhead button{padding:3px 5px;font-size:10px;display:flex;align-items:center}
+  .bmlist{flex:1;overflow:auto;padding:4px 0 10px}
+  .bw{display:flex;align-items:center;gap:6px;padding:3px 8px 3px 6px;cursor:pointer;color:var(--ink-dim)}
+  .bw:hover{background:var(--s0)}
+  .bw.cur{background:var(--s0);box-shadow:inset 2px 0 0 var(--mauve)}
+  .bw .bi{flex:1;min-width:0;display:flex;flex-direction:column}
+  .bw .loc{color:var(--mauve);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .bw .tx{color:var(--ink-faint);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .bw:hover .tx{color:var(--ink-dim)}
+  .bw.gone .loc{color:var(--ink-faint);text-decoration:line-through}
+  .bw .rm{opacity:0;border:none;background:none;padding:2px;color:var(--ink-faint);display:flex;border-radius:3px}
+  .bw:hover .rm{opacity:1}
+  .bw .rm:hover{color:var(--del);background:var(--s1)}
+  .bw .rm:focus-visible{opacity:1}
 
   /* we compensate scrollTop by hand when content above the fold resizes; the browser's own
      scroll anchoring would apply the same correction a second time */
@@ -147,6 +171,10 @@
     margin:1px 0 0;display:inline-flex;cursor:pointer}
   tr.r:hover td.act button{opacity:1}
   td.act button:focus-visible{opacity:1;outline:2px solid var(--mark);outline-offset:1px}
+  /* the bookmark flag stays lit once set, so a marked line reads as marked without a hover */
+  td.act .bm{background:none;color:var(--ink-faint)}
+  td.act .bm:hover{color:var(--mauve);background:var(--s1)}
+  td.act .bm.on{opacity:1;color:var(--mauve)}
   td.g{text-align:right;padding:0 7px 0 4px;color:var(--ink-faint);user-select:none;font-size:11px;cursor:pointer}
   td.gn{border-right:1px solid var(--edge)}
   tr.r:hover td.g{color:var(--ink-dim)}
@@ -170,6 +198,8 @@
   tr.r:hover td.c{filter:brightness(1.22)}
   tr.sel td.c,tr.sel td.g{background:var(--sel)}
   tr.noted td.act{box-shadow:inset 3px 0 0 var(--mark)}
+  /* the row a bookmark jump just landed on, dropped again a moment later */
+  tr.bmhit td.c,tr.bmhit td.g{background:var(--csel)}
 
   /* delta-style word diff inside a changed line */
   td.c .w{background:var(--add-w);border-radius:2px}

@@ -1,3 +1,4 @@
+import { renderBookmarks } from './bookmark-pane.ts';
 import { renderDiff } from './diff-view.ts';
 import { markTails } from './gaps.ts';
 import { pruneViewed, restore, save } from './persistence.ts';
@@ -31,4 +32,4 @@ export async function load(){
   render();
 }
 
-export function render(){ renderTree(); renderDiff(); updateCount(); }
+export function render(){ renderTree(); renderDiff(); renderBookmarks(); updateCount(); }

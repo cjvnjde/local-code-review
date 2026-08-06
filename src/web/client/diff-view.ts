@@ -1,3 +1,4 @@
+import { bmKey } from './bookmarks.ts';
 import { expandStep } from './expand.ts';
 import { autoHidden, isHidden } from './filters.ts';
 import { gapOf, gapSize } from './gaps.ts';
@@ -5,8 +6,8 @@ import { codeHtml, langOf } from './highlight.ts';
 import { applyFileNote, applyNotesIn, charMarks } from './notes.ts';
 import { save } from './persistence.ts';
 import { paintSel } from './selection.ts';
-import { SVG, el, esc, idxOf, state } from './state.ts';
-import { renderTree } from './tree.ts';
+import { SVG, el, esc, idxOf, rowKey, state } from './state.ts';
+import { followDiff, renderTree } from './tree.ts';
 import { updateCount } from './footer.ts';
 import { wordDiff } from './word-diff.ts';
 
@@ -34,6 +35,7 @@ export function renderDiff(){
   shown.forEach(i=>applyFileNote(state.files[i],i));
   sec.querySelectorAll('tbody.blk').forEach(observeBlock);
   sec.querySelectorAll('.file').forEach(n=>obsPass.observe(n));
+  followDiff(); // the cards moved, so which of them the pane is showing may have changed
 }
 
 function fileHtml(f,fi){
@@ -65,7 +67,8 @@ function tableHtml(f,fi){
   for(let b=0;b<blockCount(f);b++){
     blocks.push('<tbody class="blk" id="b'+fi+'-'+b+'" data-fi="'+fi+'" data-b="'+b+'">'+phHtml(blockH(f,b))+'</tbody>');
   }
-  return '<colgroup><col style="width:22px"><col style="width:46px"><col style="width:46px"><col></colgroup>'+
+  // The action column holds two hover controls, the comment button and the bookmark flag.
+  return '<colgroup><col style="width:40px"><col style="width:46px"><col style="width:46px"><col></colgroup>'+
     blocks.join('');
 }
 /**
@@ -207,6 +210,16 @@ function mountBlock(tb){
   if(above&&after!==before) el('diff').scrollTop+=after-before;
   if(state.sel&&state.sel.fi===fi) paintSel();
 }
+/**
+ * Mounts the block one row lives in and hands the row back, so a jump can land on a line the pane
+ * has never scrolled to. Blocks around it stay placeholders of their estimated height, which is
+ * enough to put the row on screen; they correct themselves as they mount.
+ */
+export function mountRowAt(fi: number,idx: number){
+  const tb=el('b'+fi+'-'+Math.floor(idx/BLOCK));
+  if(tb) mountBlock(tb);
+  return el('r'+fi+'-'+idx);
+}
 function unmountBlock(tb){
   if(!tb.dataset.on||!tb.offsetParent) return; // hidden inside a collapsed file: measuring it would cache 0
   if(tb.querySelector('textarea')) return; // an open editor would lose its text
@@ -286,6 +299,16 @@ function paintCard(fi,on){
   if(inside) sec.scrollTop=Math.max(0,st0+(r0.top-paneTop));
   else if(above) sec.scrollTop=Math.max(0,st0+(node.offsetHeight-h0));
 }
+/** Collapse state of one file card, repainted where it stands. A jump into a collapsed file opens it,
+ *  exactly as the chevron does; the viewed mark that folded it is progress and stays. */
+export function setFolded(path: string,on: boolean){
+  on?state.folded.add(path):state.folded.delete(path);
+  save();
+  const node=el('f'+idxOf(path)); if(!node) return;
+  node.classList.toggle('fold',on);
+  const chev=node.querySelector('[data-fold]');
+  if(chev){ chev.innerHTML=on?SVG.chevR:SVG.chevD; chev.title=on?'Expand file':'Collapse file'; }
+}
 /**
  * Bulk toggles rebuild once; single files patch the DOM in place.
  * A file a pattern already covers is tracked as an exception to that pattern rather than
@@ -323,8 +346,11 @@ function rowHtml(f,fi,idx,lang,wr){
   const r=f.rows[idx], id='r'+fi+'-'+idx;
   if(r.t==='hunk') return '<tr id="'+id+'" class="hunk'+(r.tail?' tail':'')+'">'+
     '<td class="exp" colspan="3">'+expanders(f,fi,idx)+'</td><td class="hx">'+esc(r.text)+'</td></tr>';
+  const bm=state.bookmarks.has(bmKey(f.path,rowKey(r)));
   return '<tr id="'+id+'" class="r '+r.t+'" data-fi="'+fi+'" data-i="'+idx+'">'+
-    '<td class="act"><button class="add" title="Comment on this line">'+SVG.plus+'</button></td>'+
+    '<td class="act"><button class="add" title="Comment on this line">'+SVG.plus+'</button>'+
+      '<button class="bm'+(bm?' on':'')+'" data-bm="1" title="'+
+        (bm?'Remove this bookmark':'Bookmark this line')+'">'+(bm?SVG.bmOn:SVG.bm)+'</button></td>'+
     '<td class="g go">'+(r.o!=null?r.o:'')+'</td>'+
     '<td class="g gn">'+(r.n!=null?r.n:'')+'</td>'+
     '<td class="c">'+codeHtml(r.text,lang,wr,charMarks(f,fi,idx))+'</td></tr>';

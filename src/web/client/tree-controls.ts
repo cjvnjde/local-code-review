@@ -2,7 +2,7 @@ import { setHidden, setViewed } from './diff-view.ts';
 import { isHidden } from './filters.ts';
 import { save } from './persistence.ts';
 import { el, idxOf, state } from './state.ts';
-import { dirTree, filesUnder, renderTree } from './tree.ts';
+import { dirTree, filesUnder, paintActive, renderTree } from './tree.ts';
 
 /* ---------- tree interactions ---------- */
 function toggle(set,key){ set.has(key)?set.delete(key):set.add(key); }
@@ -36,8 +36,8 @@ el('tree').addEventListener('click',e=>{
       state.jumpUntil=performance.now()+500; // a jump is not "scrolling past" anything
       target.scrollIntoView({block:'start'});
     }
-    el('tree').querySelectorAll('.tw.sel').forEach(x=>x.classList.remove('sel'));
-    file.classList.add('sel');
+    // A jump that lands where the pane already was fires no scroll, so claim the row here.
+    state.active=p; paintActive();
   }
 });
 function findDir(node,p){

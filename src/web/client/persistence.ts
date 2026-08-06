@@ -49,7 +49,7 @@ export function save(){
       notes:[...state.notes.values()],
       hidden:[...state.hidden], shown:[...state.shown],
       collapsed:[...state.collapsed], folded:[...state.folded],
-      viewed:[...state.viewed],
+      viewed:[...state.viewed], bookmarks:[...state.bookmarks.values()],
     }));
   }catch(e){}
 }
@@ -70,6 +70,7 @@ export function restore(){
     state.collapsed=new Set(d.collapsed||[]);
     state.folded=new Set(d.folded||[]);
     state.viewed=new Map((d.viewed||[]).map(e=>[e[0],typeof e[1]==='string'?{h:e[1],auto:false}:e[1]]));
+    state.bookmarks=new Map((d.bookmarks||[]).filter(b=>b&&b.key).map(b=>[b.key,b]));
   }catch(e){}
 }
 /** A file whose notes are gone was reviewed for feedback that no longer exists, so it needs another
