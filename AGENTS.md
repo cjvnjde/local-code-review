@@ -14,6 +14,14 @@
 - Default diff includes working-tree, staged, and untracked changes versus `HEAD`.
 - Explicit CLI arguments continue to pass through to `git diff`.
 - Review output remains Markdown under `.review/` by default.
+- `listReviews` is the one definition of what lcr generated: `review-*.md` in the output directory. Deletion, the
+  status sweep, and the save-time prune all read it, so nothing the user put in that directory is ever removed.
+- Saved reviews stay timestamped even when the page keeps only one of them. `sentAt`, `reviewTime`, and the
+  `noteKey` fallback all read the stamp out of the file name; a fixed name would silently disable them.
+- Notes survive a save by default, which is what lets a verdict reach them and what makes the next save hand
+  them over again. `clearSaved` is the opt-out: it drops the notes and the overall note only. Viewed marks stay,
+  because the feedback was handed over rather than discarded, and bookmarks stay because they are navigation.
+  A page that clears cannot receive verdicts, so `markSubmitted` is skipped for it.
 - Default `.review/` output remains ignored. Custom relative output directories remain locally excluded through `.git/info/exclude`.
 - Start opens the page in the default browser unless `--no-open` is passed. Launch stays best-effort: failure prints a hint and never blocks the server.
 - Reload stays explicit. Do not add watchers or live updates that could discard review state without clear approval.
@@ -47,7 +55,7 @@
   `client/diff-view.ts`, which estimates unmounted blocks, and with `ROW_SLIP` in `client/drag.ts`, which must stay above
   half a row so a wobble cannot turn a text drag into a row selection.
 - Keep server API local-purpose and avoid adding remote access, telemetry, or network dependencies.
-- When applying review feedback, the only permitted edit to generated `.review/review-*.md` files is each note's `Status:` line. Never rewrite, rename, or delete them.
+- When applying review feedback, the only permitted edit to generated `.review/review-*.md` files is each note's `Status:` line. Never rewrite, rename, or delete them. Deleting them is the user's call, from **Settings → Review files**.
 
 ## Validation
 

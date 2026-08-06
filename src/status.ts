@@ -1,5 +1,6 @@
-import { readFile, readdir } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { listReviews } from "./output.ts";
 import type { NoteStatus, NoteStatusKind } from "./types.ts";
 
 const HEADING = /^###\s+(.+?)\s*$/;
@@ -64,13 +65,7 @@ function readStatus(raw: string): { status: NoteStatusKind; detail: string } {
  */
 export async function collectStatuses(repoRoot: string, outDir: string, limit = 20): Promise<NoteStatus[]> {
   const directory = path.resolve(repoRoot, outDir);
-  let names: string[];
-  try {
-    names = await readdir(directory);
-  } catch {
-    return [];
-  }
-  const files = names.filter((name) => /^review-.*\.md$/.test(name)).sort().slice(-limit);
+  const files = (await listReviews(repoRoot, outDir)).slice(-limit);
   const out: NoteStatus[] = [];
   for (const name of files) {
     const text = await readFile(path.join(directory, name), "utf8").catch(() => "");

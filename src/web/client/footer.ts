@@ -1,7 +1,7 @@
 import { GENERAL_MAX, autogrow } from './autogrow.ts';
 import { hiddenCount } from './filters.ts';
 import { load, render } from './load.ts';
-import { clearNotes, save } from './persistence.ts';
+import { clearNotes, clearSaved, save } from './persistence.ts';
 import { appliedNotes, el, markSubmitted, state } from './state.ts';
 
 /* ---------- footer ---------- */
@@ -53,11 +53,16 @@ el('submit').onclick=async()=>{
   const general=el('general').value;
   if(!state.notes.size&&!general.trim()){ alert('Add at least one note before saving.'); return; }
   const r=await fetch('/api/submit',{method:'POST',headers:{'content-type':'application/json'},
-    body:JSON.stringify({general,comments:[...state.notes.values()]})});
+    body:JSON.stringify({general,comments:[...state.notes.values()],replace:!!state.cfg.single})});
   const d=await r.json();
   if(!r.ok){ alert('Could not save: '+(d.error||r.status)); return; }
-  markSubmitted(d.file); save(); // these notes are in a review file now, so verdicts can come back
-  document.body.innerHTML='<div class="done"><p>Saved <code>'+d.file+'</code> — '+d.count+' notes.</p>'+
+  /** Kept notes are stamped so verdicts can come back to them; cleared ones have nothing to come back to. */
+  const cleared=!!state.cfg.clearSaved;
+  if(cleared) clearSaved(); else { markSubmitted(d.file); save(); }
+  const gone=(d.removed||[]).length;
+  document.body.innerHTML='<div class="done"><p>Saved <code>'+d.file+'</code> — '+d.count+' notes.'+
+    (gone?' Replaced '+gone+' earlier review file'+(gone===1?'':'s')+'.':'')+
+    (cleared?' Notes cleared from this page.':'')+'</p>'+
     '<p>Hand it to the agent:</p><p><code>Address the notes in '+d.file+'</code></p>'+
     '<p style="color:var(--ink-faint)">Server still running. Reload this page to review again.</p></div>';
 };

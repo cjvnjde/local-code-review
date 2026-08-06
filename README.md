@@ -95,6 +95,16 @@ Arguments not recognized as tool flags are passed to `git diff`.
 
 Review is written to `.review/review-<timestamp>.md` by default. `.review/` is ignored by Git, and custom relative output directories are added to `.git/info/exclude`.
 
+Reviews pile up one file per save. **Settings → Review files** manages them:
+
+- **Keep only the newest review file** deletes the earlier reviews each time you save, so output directory holds exactly one. Name stays timestamped, because status round trip reads handover time out of it.
+- **Clear my notes once they are saved** empties page after each save, so next review file holds only notes written for it.
+- **Delete N review files** removes every `review-*.md` in output directory after confirmation. Anything else in that directory is left alone, and notes on page stay where they are.
+
+Deleting review files drops statuses recorded in them, so notes reported as applied read as unprocessed again.
+
+By default notes stay on page after save. That is what lets agent verdicts find them, and it also means next save hands them over again inside new review file. Clearing them makes each file self-contained batch, and gives up status round trip below for those notes: nothing is left on page for badge or **Remove N applied** to act on. Viewed marks and bookmarks survive either way.
+
 Notes include code snippets because line numbers may move before agent addresses feedback:
 
 ````md

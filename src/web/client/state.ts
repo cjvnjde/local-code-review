@@ -25,7 +25,7 @@ export const state: any={
   filter:'', hideRx:[], sel:null, active:'',
   byPath:new Map(), h:new Map(), draftRow:null, draftKey:null,
   cfg:{auto:true,back:true,limit:900,toast:true,hide:'',hideDeleted:false,enterSaves:false,expand:20,
-    navHidden:false},
+    navHidden:false,single:false,clearSaved:false},
   scrolled:false, jumpUntil:0, autoNow:new Set(), lastUndo:0,
 };
 export const el=(id: string): any=>document.getElementById(id);

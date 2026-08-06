@@ -1,4 +1,5 @@
 import page from "./web/shell.html";
+import type { SaveResult } from "./output.ts";
 import { SkillPreviewChangedError } from "./skill.ts";
 import type { SkillInstallResult, SkillPreview, SkillTargetState } from "./skill.ts";
 import type { DiffFile, DiffRow, NoteStatus, ReviewSubmission } from "./types.ts";
@@ -13,7 +14,9 @@ export interface ServerOptions {
   getDiff: () => Promise<DiffFile[]>;
   getContext: (path: string, start: number, end: number) => Promise<DiffRow[]>;
   getStatuses: () => Promise<NoteStatus[]>;
-  saveReview: (submission: ReviewSubmission) => Promise<string>;
+  listReviews: () => Promise<string[]>;
+  deleteReviews: () => Promise<string[]>;
+  saveReview: (submission: ReviewSubmission, replace: boolean) => Promise<SaveResult>;
   previewSkill: () => Promise<SkillPreview>;
   installSkill: (
     directory: string,
@@ -68,10 +71,25 @@ export function startServer(options: ServerOptions) {
             general: payload.general ?? "",
             comments: payload.comments ?? [],
           };
-          const file = await options.saveReview(submission);
+          const { file, removed } = await options.saveReview(
+            submission,
+            (payload as { replace?: unknown }).replace === true,
+          );
           console.log(`\n  saved ${file}  (${submission.comments.length} notes)`);
+          if (removed.length) console.log(`  replaced ${plural(removed.length, "earlier review file")}`);
           console.log(`  next: ask the agent to "address the notes in ${file}"\n`);
-          return Response.json({ file, count: submission.comments.length });
+          return Response.json({ file, count: submission.comments.length, removed });
+        }
+        if (url.pathname === "/api/reviews") {
+          if (request.method === "GET") {
+            return Response.json({ dir: options.outDir, files: await options.listReviews() });
+          }
+          if (request.method === "DELETE") {
+            const removed = await options.deleteReviews();
+            console.log(`\n  deleted ${plural(removed.length, "review file")} from ${options.outDir}/\n`);
+            return Response.json({ removed });
+          }
+          return new Response("method not allowed", { status: 405, headers: { allow: "GET, DELETE" } });
         }
         if (url.pathname === "/api/skill") {
           if (request.method === "GET") {
@@ -122,6 +140,10 @@ export function startServer(options: ServerOptions) {
   console.log(`  repo: ${options.repoRoot}`);
   console.log(`  out:  ${options.outDir}/\n`);
   return server;
+}
+
+function plural(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? "" : "s"}`;
 }
 
 function isJsonRequest(request: Request): boolean {

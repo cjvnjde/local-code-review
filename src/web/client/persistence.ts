@@ -13,6 +13,8 @@ export function loadCfg(){
   el('cfgHide').value=state.cfg.hide||'';
   el('cfgDeleted').checked=!!state.cfg.hideDeleted;
   el('cfgEnter').checked=state.cfg.enterSaves;
+  el('cfgSingle').checked=!!state.cfg.single;
+  el('cfgClear').checked=!!state.cfg.clearSaved;
   el('cfgBack').disabled=!state.cfg.auto;
   el('saveKey').textContent=saveKeyHint();
   state.hideRx=compileHide(state.cfg.hide);
@@ -28,6 +30,8 @@ export function saveCfg(){
   state.cfg.toast=el('cfgToast').checked;
   state.cfg.limit=Number(el('cfgLimit').value);
   state.cfg.enterSaves=el('cfgEnter').checked;
+  state.cfg.single=el('cfgSingle').checked;
+  state.cfg.clearSaved=el('cfgClear').checked;
   const hide=el('cfgHide').value, deleted=el('cfgDeleted').checked;
   const expand=Number(el('cfgExpand').value);
   const changed=hide!==state.cfg.hide||deleted!==!!state.cfg.hideDeleted||expand!==state.cfg.expand;
@@ -79,6 +83,16 @@ export function unviewCommented(){
   const commented=new Set([...state.notes.values()].map((n: any)=>n.file));
   commented.forEach(p=>{ state.viewed.delete(p); state.folded.delete(p); });
   return commented;
+}
+/**
+ * Drops the notes that were just handed to a review file. Unlike `clearNotes` this keeps viewed marks:
+ * the files were read and their feedback still exists, in the review file, so they need no second pass.
+ * A file the agent then edits loses its mark anyway, because `pruneViewed` sees the diff change.
+ */
+export function clearSaved(){
+  state.notes.clear();
+  el('general').value='';
+  save();
 }
 /** Wipes the notes stored for this range. Hidden and collapsed marks are not comments, so they stay. */
 export function clearNotes(){

@@ -3,7 +3,7 @@ import { openInBrowser } from "./browser.ts";
 import { parseArgs } from "./cli.ts";
 import { diffRangeLabel, getDiff, getFileContext } from "./diff.ts";
 import { findRepoRoot } from "./git.ts";
-import { excludeRelativeOutput, saveReview } from "./output.ts";
+import { deleteReviews, excludeRelativeOutput, listReviews, saveReview } from "./output.ts";
 import { startServer } from "./server.ts";
 import { installSkill, previewSkill } from "./skill.ts";
 import { collectStatuses } from "./status.ts";
@@ -30,7 +30,9 @@ const server = startServer({
   getDiff: () => getDiff(diffSource),
   getContext: (path, start, end) => getFileContext(diffSource, path, start, end),
   getStatuses: () => collectStatuses(repoRoot, options.outDir),
-  saveReview: (submission) => saveReview(repoRoot, options.outDir, range, submission),
+  listReviews: () => listReviews(repoRoot, options.outDir),
+  deleteReviews: () => deleteReviews(repoRoot, options.outDir),
+  saveReview: (submission, replace) => saveReview(repoRoot, options.outDir, range, submission, replace),
   previewSkill: () => previewSkill(invocationRoot),
   installSkill: (directory, expectedState, expectedRevision) =>
     installSkill(invocationRoot, directory, expectedState, expectedRevision),

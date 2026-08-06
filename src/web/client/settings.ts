@@ -1,5 +1,5 @@
 import { renderDiff, setViewed } from './diff-view.ts';
-import { render } from './load.ts';
+import { load, render } from './load.ts';
 import { saveCfg } from './persistence.ts';
 import { SVG, el, state } from './state.ts';
 
@@ -8,6 +8,8 @@ el('gear').innerHTML=SVG.sliders;
 const openSettings=(on: boolean)=>{
   el('settings').hidden=!on;
   el('gear').classList.toggle('on',on);
+  // The directory is written to from outside the page, so the count is only true while it is on show.
+  if(on) refreshReviews();
 };
 el('gear').onclick=e=>{
   e.stopPropagation();
@@ -36,6 +38,46 @@ el('resetViewed').onclick=()=>{
   if(!paths.length) return;
   if(!confirm('Mark '+paths.length+' viewed file'+(paths.length===1?'':'s')+' as not viewed?')) return;
   setViewed(paths,false);
+};
+
+/** Saved review files, as the server last reported them; the delete button is labelled from this. */
+let reviews=[], reviewDir='the output directory';
+function renderReviews(){
+  const n=reviews.length, button=el('deleteReviews');
+  button.disabled=!n;
+  button.textContent=n?'Delete '+n+' review file'+(n===1?'':'s'):'Delete review files';
+  button.title=n?'Delete every review file in '+reviewDir+'/':'No review file has been saved yet';
+}
+async function refreshReviews(){
+  try{
+    const response=await fetch('/api/reviews');
+    const data=await response.json();
+    if(!response.ok) throw new Error(data.error||response.status);
+    reviews=data.files||[]; reviewDir=data.dir||reviewDir;
+  }catch(error){
+    reviews=[];
+  }
+  renderReviews();
+}
+/** Review files are the handover to the agent, and deleting them drops the verdicts read back from
+ *  them, so ask first and then reload the diff to let those statuses go. */
+el('deleteReviews').onclick=async()=>{
+  const n=reviews.length;
+  if(!n) return;
+  if(!confirm('Delete '+n+' review file'+(n===1?'':'s')+' from '+reviewDir+'/?\n\n'+
+    'Your notes stay on this page. Statuses agents recorded in those files are lost.')) return;
+  const button=el('deleteReviews');
+  button.disabled=true; button.textContent='Deleting…';
+  try{
+    const response=await fetch('/api/reviews',{method:'DELETE'});
+    const data=await response.json();
+    if(!response.ok) throw new Error(data.error||response.status);
+    await refreshReviews();
+    await load();
+  }catch(error){
+    alert('Could not delete review files: '+(error instanceof Error?error.message:String(error)));
+    await refreshReviews();
+  }
 };
 
 let skillData=null;
