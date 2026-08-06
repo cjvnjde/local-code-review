@@ -17,98 +17,110 @@
     --sel:rgba(137,180,250,.14); --csel:rgba(137,180,250,.34); --cnote:rgba(249,226,175,.24);
     --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
     --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+
+    /* One size scale for the whole page. --fs-xs is the floor: nothing reads smaller than this.
+       --tap and --tap-lg are minimum square hit areas, so an icon button is never just its icon:
+       --tap for controls that sit inside a row, --tap-lg for standalone ones. --row is the code
+       row height and must stay in step with ROW_H in client/diff-view.ts, which estimates the
+       height of a block that has not been mounted yet. */
+    --fs-code:14px; --fs-ui:13px; --fs-sm:12px; --fs-xs:11px;
+    --icon:14px; --tap:26px; --tap-lg:30px; --row:24px;
   }
   *{box-sizing:border-box}
   html,body{height:100%}
-  body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.5 var(--mono);display:flex;flex-direction:column}
+  body{margin:0;background:var(--bg);color:var(--ink);font:var(--fs-code)/1.5 var(--mono);display:flex;flex-direction:column}
   body.dragging{user-select:none;cursor:row-resize}
-  .i{width:12px;height:12px;fill:currentColor;flex:none;display:block}
-  header{position:relative;display:flex;align-items:center;gap:14px;padding:9px 14px;border-bottom:1px solid var(--edge);
+  .i{width:var(--icon);height:var(--icon);fill:currentColor;flex:none;display:block}
+  header{position:relative;display:flex;align-items:center;gap:16px;padding:10px 16px;border-bottom:1px solid var(--edge);
     background:var(--panel2);flex:none}
-  #gear,#navToggle{border:none;background:none;padding:4px 6px;color:var(--ink-faint);display:flex;border-radius:4px}
+  #gear,#navToggle{border:none;background:none;padding:0;color:var(--ink-faint);display:flex;align-items:center;
+    justify-content:center;width:var(--tap-lg);height:var(--tap-lg);flex:none;border-radius:5px}
   #gear:hover,#gear.on,#navToggle:hover,#navToggle.on{color:var(--ink);background:var(--s0)}
-  #settings{position:absolute;right:10px;top:38px;z-index:10;width:340px;background:var(--panel2);
-    border:1px solid var(--edge-hi);border-radius:8px;padding:11px 13px;box-shadow:0 14px 34px rgba(0,0,0,.5);
-    font-family:var(--sans);font-size:12px;display:flex;flex-direction:column;gap:9px}
+  /* anchored to the header rather than a fixed offset, so it keeps sitting just below it */
+  #settings{position:absolute;right:12px;top:calc(100% + 6px);z-index:10;width:380px;background:var(--panel2);
+    border:1px solid var(--edge-hi);border-radius:8px;padding:13px 15px;box-shadow:0 14px 34px rgba(0,0,0,.5);
+    font-family:var(--sans);font-size:var(--fs-ui);display:flex;flex-direction:column;gap:11px}
   #settings[hidden]{display:none}
-  #settings h4{margin:0;font:600 10px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint)}
-  #settings label{display:flex;gap:8px;align-items:center;color:var(--ink);cursor:pointer}
-  #settings input[type=checkbox]{accent-color:var(--accent);width:14px;height:14px;margin:0;flex:none}
+  #settings h4{margin:0;font:600 var(--fs-xs)/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint)}
+  #settings label{display:flex;gap:9px;align-items:center;min-height:24px;color:var(--ink);cursor:pointer}
+  #settings input[type=checkbox]{accent-color:var(--accent);width:16px;height:16px;margin:0;flex:none;cursor:pointer}
   #settings select{background:var(--crust);color:var(--ink);border:1px solid var(--edge-hi);border-radius:4px;
-    padding:3px 6px;font:12px var(--sans);margin-left:auto}
+    padding:5px 8px;font:var(--fs-ui) var(--sans);margin-left:auto;cursor:pointer}
   #settings textarea{width:100%;background:var(--crust);color:var(--ink);border:1px solid var(--edge-hi);
-    border-radius:4px;padding:5px 7px;font:12px/1.5 var(--mono);resize:vertical}
+    border-radius:4px;padding:7px 9px;font:var(--fs-ui)/1.5 var(--mono);resize:vertical}
   #settings textarea:focus{outline:none;border-color:var(--accent)}
-  #settings .note{margin:0;color:var(--ink-faint);font-size:11px;line-height:1.45}
+  #settings .note{margin:0;color:var(--ink-faint);font-size:var(--fs-sm);line-height:1.5}
   #settings .note code{color:var(--mark);font-family:var(--mono)}
-  #settings .sub label{color:var(--ink-dim);padding-left:22px}
-  #settings .settings-section{border-top:1px solid var(--edge);padding-top:10px;display:flex;flex-direction:column;gap:8px}
+  #settings .sub label{color:var(--ink-dim);padding-left:25px}
+  #settings .settings-section{border-top:1px solid var(--edge);padding-top:11px;display:flex;flex-direction:column;gap:9px}
   #settings .settings-section button{align-self:flex-start}
 
   #skillDialog{width:min(760px,calc(100vw - 28px));max-height:calc(100vh - 40px);margin:auto;padding:0;
     color:var(--ink);background:var(--panel2);border:1px solid var(--edge-hi);border-radius:9px;
-    box-shadow:0 20px 60px rgba(0,0,0,.65);font:12px/1.5 var(--sans)}
+    box-shadow:0 20px 60px rgba(0,0,0,.65);font:var(--fs-ui)/1.55 var(--sans)}
   #skillDialog[open]{display:flex;flex-direction:column}
   #skillDialog::backdrop{background:rgba(10,10,18,.72)}
-  #skillDialog .dialog-head{display:flex;align-items:center;padding:12px 14px;border-bottom:1px solid var(--edge)}
-  #skillDialog h3{margin:0;font:600 14px var(--sans);flex:1}
-  #skillDialog h4{margin:0 14px;font:600 10px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint)}
-  #skillDialog>p{margin:10px 14px 0;color:var(--ink-dim)}
-  #skillDialog .dialog-field{display:flex;align-items:center;gap:10px;margin:12px 14px 6px;color:var(--ink)}
+  #skillDialog .dialog-head{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--edge)}
+  #skillDialog h3{margin:0;font:600 15px var(--sans);flex:1}
+  #skillDialog h4{margin:0 16px;font:600 var(--fs-xs)/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint)}
+  #skillDialog>p{margin:11px 16px 0;color:var(--ink-dim)}
+  #skillDialog .dialog-field{display:flex;align-items:center;gap:10px;margin:13px 16px 6px;color:var(--ink)}
   #skillDialog select{background:var(--crust);color:var(--ink);border:1px solid var(--edge-hi);border-radius:4px;
-    padding:4px 7px;font:12px var(--mono)}
-  #skillDialog .skill-path{margin:0 14px;padding:7px 9px;background:var(--crust);border:1px solid var(--edge);
+    padding:6px 9px;font:var(--fs-ui) var(--mono);cursor:pointer}
+  #skillDialog .skill-path{margin:0 16px;padding:8px 10px;background:var(--crust);border:1px solid var(--edge);
     border-radius:5px;color:var(--mark);overflow-wrap:anywhere}
   #skillDialog .skill-status.warning{color:var(--peach)}
-  #skillDialog pre{margin:8px 14px 12px;padding:10px;min-height:160px;overflow:auto;white-space:pre-wrap;
-    background:var(--crust);border:1px solid var(--edge);border-radius:5px;color:var(--ink-dim);font:11px/1.5 var(--mono)}
-  #skillDialog .dialog-actions{display:flex;justify-content:flex-end;gap:8px;padding:10px 14px;border-top:1px solid var(--edge)}
-  #skillDialog .icon-button{border:none;padding:2px 7px;font:20px/1 var(--sans)}
+  #skillDialog pre{margin:9px 16px 12px;padding:11px;min-height:160px;overflow:auto;white-space:pre-wrap;
+    background:var(--crust);border:1px solid var(--edge);border-radius:5px;color:var(--ink-dim);font:var(--fs-sm)/1.55 var(--mono)}
+  #skillDialog .dialog-actions{display:flex;justify-content:flex-end;gap:9px;padding:12px 16px;border-top:1px solid var(--edge)}
+  #skillDialog .icon-button{padding:0;width:var(--tap-lg);height:var(--tap-lg);flex:none;border:none;font:22px/1 var(--sans)}
 
-  #toasts{position:fixed;right:14px;bottom:60px;z-index:20;display:flex;flex-direction:column;gap:6px;align-items:flex-end}
-  .toast{display:flex;align-items:center;gap:9px;background:var(--panel2);border:1px solid var(--edge-hi);
-    border-left:3px solid var(--green);border-radius:6px;padding:6px 10px;font-family:var(--sans);font-size:12px;
-    color:var(--ink);box-shadow:0 10px 26px rgba(0,0,0,.45);max-width:440px}
+  #toasts{position:fixed;right:16px;bottom:70px;z-index:20;display:flex;flex-direction:column;gap:7px;align-items:flex-end}
+  .toast{display:flex;align-items:center;gap:10px;background:var(--panel2);border:1px solid var(--edge-hi);
+    border-left:3px solid var(--green);border-radius:6px;padding:8px 12px;font-family:var(--sans);font-size:var(--fs-ui);
+    color:var(--ink);box-shadow:0 10px 26px rgba(0,0,0,.45);max-width:460px}
   .toast.off{border-left-color:var(--peach)}
   .toast .ic{display:flex;color:var(--green)}
   .toast.off .ic{color:var(--peach)}
   .toast .tx{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono)}
-  .toast .lbl{color:var(--ink-faint);text-transform:uppercase;font-size:10px;letter-spacing:.05em}
-  .toast button{padding:3px 7px;font-size:10px}
+  .toast .lbl{color:var(--ink-faint);text-transform:uppercase;font-size:var(--fs-xs);letter-spacing:.05em}
+  .toast button{padding:5px 9px;font-size:var(--fs-xs);min-height:var(--tap)}
   .toast.out{opacity:0;transform:translateY(4px);transition:opacity .18s,transform .18s}
-  header b{font-weight:600;letter-spacing:.06em;text-transform:uppercase;font-size:11px}
+  header b{font-weight:600;letter-spacing:.06em;text-transform:uppercase;font-size:var(--fs-sm)}
   header .range{color:var(--mark)}
   header .spacer{flex:1}
-  header .hint{color:var(--ink-faint);font-size:11px;font-family:var(--sans)}
+  header .hint{color:var(--ink-faint);font-size:var(--fs-sm);font-family:var(--sans)}
   main{flex:1;display:flex;min-height:0}
 
-  nav{width:300px;flex:none;display:flex;flex-direction:column;border-right:1px solid var(--edge);background:var(--panel2)}
+  nav{width:330px;flex:none;display:flex;flex-direction:column;border-right:1px solid var(--edge);background:var(--panel2)}
   body.notree nav{display:none}
-  .navtop{flex:none;padding:8px;border-bottom:1px solid var(--edge);display:flex;flex-direction:column;gap:6px}
+  .navtop{flex:none;padding:10px;border-bottom:1px solid var(--edge);display:flex;flex-direction:column;gap:8px}
   .navtop input{width:100%;background:var(--crust);color:var(--ink);border:1px solid var(--edge-hi);border-radius:5px;
-    padding:5px 8px;font:12px/1.4 var(--sans)}
+    padding:7px 10px;font:var(--fs-ui)/1.4 var(--sans)}
   .navtop input:focus{outline:none;border-color:var(--accent)}
-  .navbtns{display:flex;gap:4px}
-  .navbtns button{flex:1;padding:4px 2px;font-size:10px}
+  .navbtns{display:flex;gap:5px}
+  .navbtns button{flex:1;padding:6px 4px;font-size:var(--fs-xs);min-height:28px}
   .fstat{text-align:left;text-transform:none;letter-spacing:0;border-style:dashed;border-color:var(--edge-hi);
-    color:var(--mark);padding:3px 7px;font-size:10px}
+    color:var(--mark);padding:5px 8px;font-size:var(--fs-xs);min-height:28px;justify-content:flex-start}
   .fstat[hidden]{display:none}
   .fstat:hover{color:var(--mark);border-color:var(--mark)}
   .tree{flex:1;overflow:auto;padding:6px 0 20px}
-  .tw{display:flex;align-items:center;gap:5px;padding:2px 8px 2px 0;cursor:pointer;color:var(--ink-dim);
-      white-space:nowrap;min-height:22px}
+  .tw{display:flex;align-items:center;gap:7px;padding:2px 8px 2px 0;cursor:pointer;color:var(--ink-dim);
+      white-space:nowrap;min-height:30px}
   .tw:hover{background:var(--s0);color:var(--ink)}
-  .tw .nm{flex:1;overflow:hidden;text-overflow:ellipsis;font-size:12px}
+  .tw .nm{flex:1;overflow:hidden;text-overflow:ellipsis;font-size:var(--fs-ui)}
   .tw.dir .nm{color:var(--ink)}
   .tw.hid .nm{color:var(--ink-faint);text-decoration:line-through}
   .tw.flt .nm{text-decoration-style:dashed;font-style:italic}
   .tw.seen .nm{color:var(--ov1)}
   .tw .chev{display:flex;color:var(--ink-faint)}
-  .tw .st{width:11px;text-align:center;font-size:10px;font-weight:700}
+  .tw .st{width:13px;text-align:center;font-size:var(--fs-xs);font-weight:700}
   .st.added{color:var(--add)} .st.deleted{color:var(--del)} .st.modified{color:var(--mark)} .st.renamed{color:var(--accent)}
-  .tw .ct{font-size:10px;color:var(--crust);background:var(--mark);border-radius:8px;padding:0 5px;font-weight:700}
-  .tw .eye,.tw .vd,.tw .vf{opacity:0;border:none;background:none;padding:2px;color:var(--ink-faint);display:flex;border-radius:3px}
+  .tw .ct{font-size:var(--fs-xs);color:var(--crust);background:var(--mark);border-radius:9px;padding:1px 6px;font-weight:700}
+  .tw .eye,.tw .vd,.tw .vf{opacity:0;border:none;background:none;padding:0;color:var(--ink-faint);display:flex;
+    align-items:center;justify-content:center;width:var(--tap);height:var(--tap);min-height:0;flex:none;border-radius:4px}
   .tw:hover .eye,.tw .eye.on,.tw:hover .vd,.tw:hover .vf,.tw .vd.on,.tw .vd.part,.tw .vf.on{opacity:1}
+  .tw .eye:focus-visible,.tw .vd:focus-visible,.tw .vf:focus-visible{opacity:1}
   .tw .eye:hover,.tw .vd:hover,.tw .vf:hover{color:var(--ink);background:var(--s1)}
   .tw .eye.on{color:var(--mark)}
   .tw .vd.on,.tw .vf.on{color:var(--green)}
@@ -120,21 +132,22 @@
   /* bookmarks: a list under the tree of the places this read is jumping between */
   .bmpane{flex:none;display:flex;flex-direction:column;max-height:42%;border-top:1px solid var(--edge-hi)}
   .bmpane[hidden]{display:none}
-  .bmhead{flex:none;display:flex;align-items:center;gap:6px;padding:6px 8px;border-bottom:1px solid var(--edge)}
-  .bmhead .ttl{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-faint)}
-  .bmhead .ct{font-size:10px;color:var(--crust);background:var(--mauve);border-radius:8px;padding:0 5px;font-weight:700}
+  .bmhead{flex:none;display:flex;align-items:center;gap:7px;padding:7px 10px;border-bottom:1px solid var(--edge)}
+  .bmhead .ttl{font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.08em;color:var(--ink-faint)}
+  .bmhead .ct{font-size:var(--fs-xs);color:var(--crust);background:var(--mauve);border-radius:9px;padding:1px 6px;font-weight:700}
   .bmhead .spacer{flex:1}
-  .bmhead button{padding:3px 5px;font-size:10px;display:flex;align-items:center}
+  .bmhead button{padding:4px 7px;font-size:var(--fs-xs);min-height:var(--tap);display:flex;align-items:center}
   .bmlist{flex:1;overflow:auto;padding:4px 0 10px}
-  .bw{display:flex;align-items:center;gap:6px;padding:3px 8px 3px 6px;cursor:pointer;color:var(--ink-dim)}
+  .bw{display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer;color:var(--ink-dim)}
   .bw:hover{background:var(--s0)}
   .bw.cur{background:var(--s0);box-shadow:inset 2px 0 0 var(--mauve)}
   .bw .bi{flex:1;min-width:0;display:flex;flex-direction:column}
-  .bw .loc{color:var(--mauve);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .bw .tx{color:var(--ink-faint);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .bw .loc{color:var(--mauve);font-size:var(--fs-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .bw .tx{color:var(--ink-faint);font-size:var(--fs-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .bw:hover .tx{color:var(--ink-dim)}
   .bw.gone .loc{color:var(--ink-faint);text-decoration:line-through}
-  .bw .rm{opacity:0;border:none;background:none;padding:2px;color:var(--ink-faint);display:flex;border-radius:3px}
+  .bw .rm{opacity:0;border:none;background:none;padding:0;color:var(--ink-faint);display:flex;align-items:center;
+    justify-content:center;width:var(--tap);height:var(--tap);min-height:0;flex:none;border-radius:4px}
   .bw:hover .rm{opacity:1}
   .bw .rm:hover{color:var(--del);background:var(--s1)}
   .bw .rm:focus-visible{opacity:1}
@@ -143,54 +156,58 @@
      scroll anchoring would apply the same correction a second time */
   section{flex:1;overflow:auto;overflow-anchor:none;padding:0 0 40vh;scroll-behavior:auto}
   /* clip, not hidden: overflow hidden would make each card its own scrollport and kill the sticky header */
-  #diff .file{border:1px solid var(--edge);border-radius:6px;margin:10px 12px;overflow:clip;background:var(--panel)}
+  #diff .file{border:1px solid var(--edge);border-radius:6px;margin:12px 14px;overflow:clip;background:var(--panel)}
   #diff .file.seen{opacity:.72}
   #diff .file.seen:hover{opacity:1}
-  .fh{position:sticky;top:0;z-index:2;background:var(--panel2);padding:6px 10px;border-bottom:1px solid var(--edge);
-      display:flex;gap:8px;align-items:center;box-shadow:0 1px 0 var(--crust)}
+  .fh{position:sticky;top:0;z-index:2;background:var(--panel2);padding:7px 12px;border-bottom:1px solid var(--edge);
+      display:flex;gap:10px;align-items:center;box-shadow:0 1px 0 var(--crust)}
   #diff .file.fold .fh{border-bottom:none}
-  .fh .fchev{border:none;background:none;color:var(--ink-dim);padding:2px;display:flex;border-radius:3px}
+  .fh .fchev{border:none;background:none;color:var(--ink-dim);padding:0;display:flex;align-items:center;
+    justify-content:center;width:var(--tap);height:var(--tap);min-height:0;flex:none;border-radius:4px}
   .fh .fchev:hover{background:var(--s1);color:var(--ink)}
   .fh .p{color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .fh .s{font-size:10px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.05em}
-  .fh .plus{color:var(--add);font-size:11px}
-  .fh .minus{color:var(--del);font-size:11px}
+  .fh .s{font-size:var(--fs-xs);color:var(--ink-faint);text-transform:uppercase;letter-spacing:.05em}
+  .fh .plus{color:var(--add);font-size:var(--fs-sm)}
+  .fh .minus{color:var(--del);font-size:var(--fs-sm)}
   .fh .spacer{flex:1}
-  .fh .eye,.fh .vw,.fh .cf{border:none;background:none;color:var(--ink-faint);padding:3px 5px;display:flex;gap:5px;align-items:center;
-    font-size:10px;text-transform:uppercase;letter-spacing:.05em;border-radius:3px}
+  .fh .eye,.fh .vw,.fh .cf{border:none;background:none;color:var(--ink-faint);padding:5px 8px;display:flex;gap:6px;
+    align-items:center;min-height:var(--tap);flex:none;font-size:var(--fs-xs);text-transform:uppercase;
+    letter-spacing:.05em;border-radius:4px}
   .fh .eye:hover,.fh .vw:hover,.fh .cf:hover{color:var(--ink);background:var(--s1)}
   .fh .vw.on{color:var(--green)}
-  .fh .stale{color:var(--peach);font-size:10px;text-transform:uppercase;letter-spacing:.05em}
+  .fh .stale{color:var(--peach);font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.05em}
 
   table{width:100%;border-collapse:collapse;table-layout:fixed}
   #diff .file.fold table{display:none}
-  tr.r{height:20px}
+  tr.r{height:var(--row)}
   td{padding:0;vertical-align:top;white-space:pre-wrap;word-break:break-word;tab-size:2}
   td.act{padding:0;text-align:center;border-right:1px solid var(--edge)}
-  td.act button{opacity:0;border:none;border-radius:3px;background:var(--accent);color:var(--crust);padding:1px;
-    margin:1px 0 0;display:inline-flex;cursor:pointer}
+  /* sized to the row rather than to --tap: a taller button would stretch every line of the diff */
+  td.act button{opacity:0;border:none;border-radius:4px;background:var(--accent);color:var(--crust);padding:0;
+    width:20px;height:20px;min-height:0;margin:2px 1px 0;display:inline-flex;align-items:center;
+    justify-content:center;cursor:pointer;vertical-align:top}
   tr.r:hover td.act button{opacity:1}
   td.act button:focus-visible{opacity:1;outline:2px solid var(--mark);outline-offset:1px}
   /* the bookmark flag stays lit once set, so a marked line reads as marked without a hover */
   td.act .bm{background:none;color:var(--ink-faint)}
   td.act .bm:hover{color:var(--mauve);background:var(--s1)}
   td.act .bm.on{opacity:1;color:var(--mauve)}
-  td.g{text-align:right;padding:0 7px 0 4px;color:var(--ink-faint);user-select:none;font-size:11px;cursor:pointer}
+  td.g{text-align:right;padding:0 8px 0 5px;color:var(--ink-faint);user-select:none;font-size:var(--fs-sm);cursor:pointer}
   td.gn{border-right:1px solid var(--edge)}
   tr.r:hover td.g{color:var(--ink-dim)}
-  td.c{padding:0 10px}
+  td.c{padding:0 12px}
   tr.add td.g{background:var(--add-gut)} tr.add td.c{background:var(--add-bg)}
   tr.add td.c::before{content:"+";color:var(--add);margin-right:6px}
   tr.del td.g{background:var(--del-gut)} tr.del td.c{background:var(--del-bg)}
   tr.del td.c::before{content:"-";color:var(--del);margin-right:6px}
   tr.ctx td.c::before{content:" ";margin-right:6px}
-  tr.hunk td{color:var(--sapphire);background:var(--mantle);padding:2px 10px;font-size:11px;
+  tr.hunk td{color:var(--sapphire);background:var(--mantle);padding:4px 12px;font-size:var(--fs-sm);
     border-top:1px solid var(--edge);border-bottom:1px solid var(--edge)}
   /* hidden-region expanders sit where the gutters would be, so hunk text still lines up with code */
   tr.hunk td.exp{padding:0;text-align:right;white-space:nowrap;user-select:none;border-right:1px solid var(--edge)}
   tr.hunk.busy td.exp{opacity:.4;pointer-events:none}
-  td.exp .xp{border:none;background:none;color:var(--ink-faint);padding:2px 4px;margin:0;border-radius:3px;
-    display:inline-flex;cursor:pointer}
+  td.exp .xp{border:none;background:none;color:var(--ink-faint);padding:0;width:26px;height:24px;min-height:0;
+    margin:0;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
   td.exp .xp:hover{color:var(--accent);background:var(--s1)}
   td.exp .xp:focus-visible{outline:2px solid var(--mark);outline-offset:-1px}
   tr.ph td{padding:0;background:none;border:none}
@@ -223,39 +240,44 @@
   td.c .v{color:var(--teal)}
 
   tr.nrow td{padding:0;background:var(--base)}
-  .nbox{margin:6px 8px 8px 24px;border:1px solid var(--edge-hi);border-radius:6px;background:var(--panel2);overflow:hidden}
+  .nbox{margin:8px 10px 10px 28px;border:1px solid var(--edge-hi);border-radius:6px;background:var(--panel2);overflow:hidden}
   /* the file's own note sits between header and table, full width and without the gutter indent */
   .fnotes:empty{display:none}
   .fnotes{background:var(--base);border-bottom:1px solid var(--edge)}
-  .fnotes .nbox{margin:8px;box-shadow:inset 3px 0 0 var(--mark)}
-  .nhead{display:flex;align-items:center;gap:8px;padding:5px 9px;border-bottom:1px solid var(--edge);
-    background:var(--s0);font-size:11px;color:var(--ink-dim)}
+  .fnotes .nbox{margin:9px;box-shadow:inset 3px 0 0 var(--mark)}
+  .nhead{display:flex;align-items:center;gap:10px;padding:6px 11px;border-bottom:1px solid var(--edge);
+    background:var(--s0);font-size:var(--fs-sm);color:var(--ink-dim)}
   .nhead .loc{color:var(--mark)}
-  .nhead .snip{background:var(--cnote);border-radius:3px;padding:0 5px;color:var(--ink);
+  .nhead .snip{background:var(--cnote);border-radius:3px;padding:0 6px;color:var(--ink);
     max-width:46%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .nhead .all{font-size:10px;text-transform:uppercase;letter-spacing:.05em;padding:2px 6px;border-radius:9px;
+  .nhead .all{font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.05em;padding:2px 7px;border-radius:9px;
     background:var(--s1);color:var(--ink-dim)}
   .nhead .spacer{flex:1}
-  .nhead .stat{font-size:10px;text-transform:uppercase;letter-spacing:.05em;padding:2px 6px;border-radius:9px;
+  .nhead .stat{font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.05em;padding:2px 7px;border-radius:9px;
     background:var(--s1);color:var(--ink-dim)}
   .nhead .stat.applied{background:rgba(166,227,161,.18);color:var(--green)}
   .nhead .stat.answered{background:rgba(148,226,213,.18);color:var(--teal)}
   .nhead .stat.skipped{background:rgba(250,179,135,.18);color:var(--peach)}
   .nhead .stat.needs-input{background:rgba(116,199,236,.18);color:var(--sapphire)}
+  /* edit/delete live in the header strip, so they sit one step below the standalone button size */
+  .nhead button{padding:5px 9px;min-height:var(--tap);font-size:var(--fs-xs)}
   .nbox.done{opacity:.7}
   .nbox.done:hover{opacity:1}
-  .nbody{padding:8px 10px;white-space:pre-wrap;font-family:var(--sans);font-size:13px;line-height:1.55}
-  .nstat{padding:0 10px 8px;color:var(--ink-faint);font-family:var(--sans);font-size:11px}
-  .nedit{padding:8px}
+  .nbody{padding:10px 12px;white-space:pre-wrap;font-family:var(--sans);font-size:var(--fs-code);line-height:1.55}
+  .nstat{padding:0 12px 9px;color:var(--ink-faint);font-family:var(--sans);font-size:var(--fs-sm)}
+  .nedit{padding:10px}
   .nedit textarea{width:100%;background:var(--crust);color:var(--ink);border:1px solid var(--edge-hi);border-radius:5px;
-    padding:6px 8px;font:13px/1.55 var(--sans);resize:none;min-height:64px;display:block;overflow-y:hidden}
+    padding:8px 10px;font:var(--fs-code)/1.55 var(--sans);resize:none;min-height:76px;display:block;overflow-y:hidden}
   .nedit textarea:focus{outline:none;border-color:var(--accent)}
-  .acts{display:flex;gap:6px;margin-top:6px;align-items:center}
+  .acts{display:flex;gap:8px;margin-top:8px;align-items:center}
   .acts .spacer{flex:1}
-  .acts .tip{color:var(--ink-faint);font-size:10px;font-family:var(--sans)}
+  .acts .tip{color:var(--ink-faint);font-size:var(--fs-xs);font-family:var(--sans)}
 
-  button{font:11px/1 var(--mono);letter-spacing:.05em;text-transform:uppercase;background:transparent;color:var(--ink-dim);
-    border:1px solid var(--edge-hi);padding:5px 9px;border-radius:5px;cursor:pointer}
+  button{font:var(--fs-sm)/1 var(--mono);letter-spacing:.05em;text-transform:uppercase;background:transparent;color:var(--ink-dim);
+    border:1px solid var(--edge-hi);padding:7px 12px;border-radius:5px;cursor:pointer;min-height:var(--tap-lg);
+    display:inline-flex;align-items:center;justify-content:center;gap:6px}
+  /* an author `display` on `button` outranks the UA sheet's `[hidden]`, so restore it here */
+  button[hidden]{display:none}
   button:hover{color:var(--ink);border-color:var(--ink-faint)}
   button.primary{background:var(--accent);border-color:var(--accent);color:var(--crust);font-weight:600}
   button.primary:hover{background:var(--lav);color:var(--crust)}
@@ -263,14 +285,14 @@
   button.danger:hover{color:var(--del);border-color:var(--del)}
   button:focus-visible,td.g:focus-visible{outline:2px solid var(--mark);outline-offset:2px}
 
-  footer{flex:none;border-top:1px solid var(--edge);background:var(--panel2);padding:9px 14px;display:flex;gap:12px;align-items:center}
+  footer{flex:none;border-top:1px solid var(--edge);background:var(--panel2);padding:10px 16px;display:flex;gap:14px;align-items:center}
   footer .count{color:var(--mark);flex:none}
   footer .spacer{flex:1}
-  #general{flex:1;max-width:560px;background:var(--crust);color:var(--ink);border:1px solid var(--edge-hi);border-radius:5px;
-    padding:6px 8px;font:12px/1.5 var(--sans);min-height:34px;height:34px;resize:none;overflow-y:hidden}
+  #general{flex:1;max-width:620px;background:var(--crust);color:var(--ink);border:1px solid var(--edge-hi);border-radius:5px;
+    padding:8px 10px;font:var(--fs-ui)/1.5 var(--sans);min-height:38px;height:38px;resize:none;overflow-y:hidden}
   #general:focus{outline:none;border-color:var(--accent)}
-  .empty{padding:34px 16px;color:var(--ink-faint);font-family:var(--sans)}
-  .done{padding:40px 20px;font-family:var(--sans);font-size:14px;line-height:1.7}
+  .empty{padding:34px 18px;color:var(--ink-faint);font-family:var(--sans);font-size:var(--fs-ui)}
+  .done{padding:40px 22px;font-family:var(--sans);font-size:15px;line-height:1.7}
   .done code{color:var(--mark);background:var(--mantle);padding:2px 6px;border-radius:4px;font-family:var(--mono)}
   @media (prefers-reduced-motion:no-preference){
     .nrow .nbox{animation:in .12s ease-out}

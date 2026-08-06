@@ -1,6 +1,7 @@
 /* ---------- drag intent ---------- */
-/** Vertical slack a text drag may wander outside the pressed row before it counts as leaving it. */
-export const ROW_SLIP=12;
+/** Vertical slack a text drag may wander outside the pressed row before it counts as leaving it.
+ *  Stays above half a code row (--row in styles.css), so a wobble cannot cross it. */
+export const ROW_SLIP=14;
 /** True once the pointer sits far enough past the pressed row that selecting rows is the obvious intent. */
 export const leftRow=(y: number,top: number,bottom: number,slip=ROW_SLIP)=>y>bottom+slip||y<top-slip;
 /** Slack around the press point that still reads as the pointer being back where the drag began. */

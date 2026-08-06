@@ -46,7 +46,7 @@ export function renderTree(){
     [...node.children.values()]
       .sort((a,b)=>a.dir===b.dir?a.name.localeCompare(b.name):a.dir?-1:1)
       .forEach(c=>{
-        const pad=8+depth*13;
+        const pad=10+depth*15;
         if(c.dir){
           const open=state.filter||!state.collapsed.has(c.path);
           const kids=filesUnder(c);

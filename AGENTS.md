@@ -42,6 +42,10 @@
 - Preserve no-install usage.
 - Avoid shell interpolation for Git commands; use argument arrays.
 - Escape user-controlled values rendered into HTML.
+- Page sizing comes from the `--fs-*`, `--icon`, `--tap`, and `--row` tokens in `src/web/styles.css`; size new UI from them
+  rather than from fresh literals, and keep every control at least `--tap` square. `--row` travels with `ROW_H` in
+  `client/diff-view.ts`, which estimates unmounted blocks, and with `ROW_SLIP` in `client/drag.ts`, which must stay above
+  half a row so a wobble cannot turn a text drag into a row selection.
 - Keep server API local-purpose and avoid adding remote access, telemetry, or network dependencies.
 - When applying review feedback, the only permitted edit to generated `.review/review-*.md` files is each note's `Status:` line. Never rewrite, rename, or delete them.
 

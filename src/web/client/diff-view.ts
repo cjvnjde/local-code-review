@@ -12,7 +12,8 @@ import { updateCount } from './footer.ts';
 import { wordDiff } from './word-diff.ts';
 
 /* ---------- diff: rows live in lazily mounted blocks so huge diffs stay cheap ---------- */
-const BLOCK=150, ROW_H=20;
+// ROW_H is the height an unmounted row is assumed to have; keep it equal to --row in styles.css.
+const BLOCK=150, ROW_H=24;
 const blockCount=f=>Math.max(1,Math.ceil(f.rows.length/BLOCK));
 const blockEnd=(f,b)=>Math.min(f.rows.length,b*BLOCK+BLOCK);
 function blockH(f,b){
@@ -68,7 +69,7 @@ function tableHtml(f,fi){
     blocks.push('<tbody class="blk" id="b'+fi+'-'+b+'" data-fi="'+fi+'" data-b="'+b+'">'+phHtml(blockH(f,b))+'</tbody>');
   }
   // The action column holds two hover controls, the comment button and the bookmark flag.
-  return '<colgroup><col style="width:40px"><col style="width:46px"><col style="width:46px"><col></colgroup>'+
+  return '<colgroup><col style="width:48px"><col style="width:50px"><col style="width:50px"><col></colgroup>'+
     blocks.join('');
 }
 /**

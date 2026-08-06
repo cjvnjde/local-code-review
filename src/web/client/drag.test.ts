@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { ROW_SLIP, START_SLIP, atStart, charRange, leftRow } from "./drag.ts";
 
-// A code row is 20px tall; the pressed row here spans y 100..120.
-const top = 100, bottom = 120;
+// A code row is 24px tall; the pressed row here spans y 100..124.
+const top = 100, bottom = 124;
 
 describe("leftRow", () => {
   test("the pressed row itself never counts as left", () => {
@@ -26,8 +26,8 @@ describe("leftRow", () => {
   });
 });
 
-// The drag started at x 200 on the row spanning y 100..120.
-const x0 = 200, y0 = 110;
+// The drag started at x 200 on the row spanning y 100..124.
+const x0 = 200, y0 = 112;
 
 describe("atStart", () => {
   test("the press point itself counts as back at the start", () => {
