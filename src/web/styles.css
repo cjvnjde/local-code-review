@@ -36,10 +36,15 @@
   #gear,#navToggle{border:none;background:none;padding:0;color:var(--ink-faint);display:flex;align-items:center;
     justify-content:center;width:var(--tap-lg);height:var(--tap-lg);flex:none;border-radius:5px}
   #gear:hover,#gear.on,#navToggle:hover,#navToggle.on{color:var(--ink);background:var(--s0)}
-  /* anchored to the header rather than a fixed offset, so it keeps sitting just below it */
+  /* anchored to the header rather than a fixed offset, so it keeps sitting just below it. The panel is
+     taller than most viewports, so it scrolls itself: 100% is the header height it hangs below, and the
+     rest of the subtraction is the 6px gap above plus a 12px margin off the bottom of the screen. */
   #settings{position:absolute;right:12px;top:calc(100% + 6px);z-index:10;width:380px;background:var(--panel2);
     border:1px solid var(--edge-hi);border-radius:8px;padding:13px 15px;box-shadow:0 14px 34px rgba(0,0,0,.5);
-    font-family:var(--sans);font-size:var(--fs-ui);display:flex;flex-direction:column;gap:11px}
+    font-family:var(--sans);font-size:var(--fs-ui);display:flex;flex-direction:column;gap:11px;
+    max-height:calc(100dvh - 100% - 18px);overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
+  /* the sections keep their own height instead of being squeezed to fit the capped panel */
+  #settings>*{flex:none}
   #settings[hidden]{display:none}
   #settings h4{margin:0;font:600 var(--fs-xs)/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint)}
   #settings label{display:flex;gap:9px;align-items:center;min-height:24px;color:var(--ink);cursor:pointer}
@@ -225,19 +230,19 @@
      several token spans, so mark it with edge-free backgrounds and underlines that read as one run. */
   td.c .cs{background:var(--csel);box-shadow:inset 0 -1px 0 var(--accent)}
   td.c .cn{background:var(--cnote);box-shadow:inset 0 -1px 0 var(--mark)}
-  /* syntax tokens */
-  td.c .k{color:var(--mauve)}
-  td.c .s{color:var(--green)}
-  td.c .n{color:var(--peach)}
-  td.c .t{color:var(--yellow)}
-  td.c .f{color:var(--blue)}
-  td.c .y{color:var(--sapphire)}
-  td.c .p{color:var(--ov2)}
-  td.c .m{color:var(--ov0);font-style:italic}
-  td.c .h{color:var(--mauve);font-weight:600}
-  td.c .l{color:var(--blue)}
-  td.c .b{color:var(--sub1);font-weight:600}
-  td.c .v{color:var(--teal)}
+  /* syntax tokens, in every container class `c` marks as code: the diff cell and a note's suggestion */
+  .c .k{color:var(--mauve)}
+  .c .s{color:var(--green)}
+  .c .n{color:var(--peach)}
+  .c .t{color:var(--yellow)}
+  .c .f{color:var(--blue)}
+  .c .y{color:var(--sapphire)}
+  .c .p{color:var(--ov2)}
+  .c .m{color:var(--ov0);font-style:italic}
+  .c .h{color:var(--mauve);font-weight:600}
+  .c .l{color:var(--blue)}
+  .c .b{color:var(--sub1);font-weight:600}
+  .c .v{color:var(--teal)}
 
   tr.nrow td{padding:0;background:var(--base)}
   .nbox{margin:8px 10px 10px 28px;border:1px solid var(--edge-hi);border-radius:6px;background:var(--panel2);overflow:hidden}
@@ -261,9 +266,19 @@
   .nhead .stat.needs-input{background:rgba(116,199,236,.18);color:var(--sapphire)}
   /* edit/delete live in the header strip, so they sit one step below the standalone button size */
   .nhead button{padding:5px 9px;min-height:var(--tap);font-size:var(--fs-xs)}
+  .nhead .sug{color:var(--add)}
+  .nhead .sug:hover{color:var(--add);border-color:var(--add)}
   .nbox.done{opacity:.7}
   .nbox.done:hover{opacity:1}
   .nbody{padding:10px 12px;white-space:pre-wrap;font-family:var(--sans);font-size:var(--fs-code);line-height:1.55}
+  /* the replacement a note proposes, set apart from the prose around it and read as code */
+  .nbody .sugb{margin:8px 0;border:1px solid var(--edge-hi);border-radius:5px;background:var(--crust);overflow:hidden}
+  .nbody .sugb:first-child{margin-top:0}
+  .nbody .sugb:last-child{margin-bottom:0}
+  .nbody .sugh{padding:3px 10px;background:var(--add-gut);color:var(--add);font:var(--fs-xs)/1.6 var(--mono);
+    text-transform:uppercase;letter-spacing:.05em}
+  .nbody .sugb pre{margin:0;padding:8px 10px;overflow-x:auto;white-space:pre;
+    font:var(--fs-code)/1.55 var(--mono);color:var(--ink)}
   .nstat{padding:0 12px 9px;color:var(--ink-faint);font-family:var(--sans);font-size:var(--fs-sm)}
   .nedit{padding:10px}
   .nedit textarea{width:100%;background:var(--crust);color:var(--ink);border:1px solid var(--edge-hi);border-radius:5px;
@@ -297,4 +312,7 @@
   @media (prefers-reduced-motion:no-preference){
     .nrow .nbox{animation:in .12s ease-out}
     @keyframes in{from{opacity:0;transform:translateY(-2px)}}
+    /* the one open editor, answering a click that would have opened a second one */
+    .nbox.bump{animation:bump .45s ease-out}
+    @keyframes bump{0%,100%{border-color:var(--edge-hi)}30%{border-color:var(--accent)}}
   }

@@ -1,10 +1,12 @@
 import { NOTE_MAX, autogrow } from './autogrow.ts';
 import { repaintRow } from './diff-view.ts';
 import { updateCount } from './footer.ts';
+import { codeHtml, langOf } from './highlight.ts';
 import { editorAction } from './keys.ts';
 import { save } from './persistence.ts';
 import { clearSel } from './selection.ts';
-import { FILE_ANCHOR, clip, el, esc, isFileNote, keyIndex, locKey, mintNoteId, rowKey, saveKeyHint, state, statusOf } from './state.ts';
+import { FILE_ANCHOR, SVG, clip, el, esc, isFileNote, keyIndex, locKey, mintNoteId, rowKey, saveKeyHint, state, statusOf } from './state.ts';
+import { bodyParts, insertBlock, suggestLines, suggestionBlock } from './suggest.ts';
 import { renderTree } from './tree.ts';
 
 /* ---------- notes ---------- */
@@ -54,6 +56,25 @@ function draftFor(key: string){
   if(!row||!row.isConnected||state.draftKey!==key) return null;
   return row.querySelector('textarea');
 }
+/**
+ * The page holds one editor open at a time. A second box would leave the first one behind, half
+ * written and out of view, so an untouched draft steps aside and anything else keeps the floor and
+ * is brought back into view instead.
+ */
+function busyEditor(){
+  dropEmptyDraft();
+  const ta: any=document.querySelector('.nbox textarea');
+  if(!ta||!ta.isConnected) return false;
+  const box=ta.closest('.nbox');
+  if(box){
+    box.scrollIntoView({block:'nearest'});
+    box.classList.remove('bump');
+    void box.offsetWidth; // restart the pulse when the same box is asked for twice
+    box.classList.add('bump');
+  }
+  ta.focus();
+  return true;
+}
 /** Opens a new note on the selected range. A range that already carries notes gets another one:
  *  a line can hold as many remarks as it earns, and each is edited from its own box. */
 export function openEditor(){
@@ -64,7 +85,7 @@ export function openEditor(){
   const key=locKey(f.path,a,z,ch&&ch.ca,ch&&ch.cb);
   const open=draftFor(key);
   if(open){ open.focus(); return; }
-  dropEmptyDraft();
+  if(busyEditor()){ clearSel(); return; }
   const id=mintNoteId(f.path,a,z,ch&&ch.ca,ch&&ch.cb);
   const box=mountRow(anchor,id);
   state.draftRow=rowOf(box); state.draftKey=key;
@@ -74,14 +95,14 @@ export function openEditor(){
 export function openFileEditor(fi: number){
   const f=state.files[fi]; if(!f) return;
   const host=el('fn'+fi); if(!host) return;
+  const mounted=host.querySelector('.nrow');
+  const standing=mounted&&mounted.isConnected?mounted.querySelector('textarea'):null;
+  if(standing){ standing.focus(); return; }
+  if(busyEditor()) return;
   const kept=fileNoteOf(f.path);
   const id=kept?kept.id:mintNoteId(f.path,FILE_ANCHOR,FILE_ANCHOR);
   const ctx: any={f,fi,i:null,j:null,ch:null,scope:'file',id};
-  const mounted=host.querySelector('.nrow');
-  if(mounted!==state.draftRow) dropEmptyDraft();
   if(mounted&&mounted.isConnected){
-    const ta=mounted.querySelector('textarea');
-    if(ta){ ta.focus(); return; }
     editUI(mounted.querySelector('.nbox'),Object.assign({},ctx,{body:kept?kept.body:''}));
     return;
   }
@@ -135,15 +156,26 @@ function editUI(box,ctx){
   const {f,fi,i,j,ch,id}=ctx;
   const whole=ctx.scope==='file';
   const sp=whole?null:span(f,i,j,ch);
-  box.innerHTML=headHtml(f,whole?null:sp.label,whole?null:sp.snippet)+
+  // A file note covers no lines, so it has nothing to suggest a replacement for.
+  const suggest=whole?'':'<button class="sug" title="Insert these lines as a suggested change">'+
+    SVG.plus+' suggest</button>';
+  box.innerHTML=headHtml(f,whole?null:sp.label,whole?null:sp.snippet,suggest)+
     '<div class="nedit"><textarea placeholder="'+(whole?'What should change in this file?':
       ch?'What should change in this part of the line?':'What should change here?')+'"></textarea>'+
     '<div class="acts"><button class="primary">Save note</button><button class="cancel">Cancel</button>'+
     '<span class="spacer"></span><span class="tip">'+saveKeyHint()+' save &middot; esc cancel</span></div></div>';
   const ta=box.querySelector('textarea');
   ta.value=ctx.body||'';
-  autogrow(ta,NOTE_MAX); // after the value, so reopening a long note opens it at full height
+  const fit=autogrow(ta,NOTE_MAX); // after the value, so reopening a long note opens it at full height
   ta.focus();
+  const sug=box.querySelector('.sug');
+  // The suggestion is seeded with whole lines even for a note on part of one: it replaces lines.
+  if(sug) sug.onclick=()=>{
+    const {value,to}=insertBlock(ta.value,ta.selectionStart,
+      suggestionBlock(suggestLines(f.rows.slice(i,j+1))));
+    ta.value=value; fit();
+    ta.focus(); ta.setSelectionRange(to,to);
+  };
   const commit=()=>{
     const body=ta.value.trim();
     if(!body){ drop(); return; }
@@ -177,15 +209,33 @@ function editUI(box,ctx){
     if(action==='cancel'){ e.preventDefault(); box.querySelector('.cancel').click(); }
   };
 }
+/** A saved note reads as it was typed, except that a suggestion block is shown as the code it is
+ *  rather than as the backticks around it. Prose goes in as text: a note is never markup. */
+function renderBody(host: any,body: string,path: string){
+  host.textContent='';
+  const lang=langOf(path);
+  bodyParts(body||'').forEach(part=>{
+    if(part.t==='text'){ host.append(document.createTextNode(part.v)); return; }
+    const wrap=document.createElement('div'); wrap.className='sugb';
+    const head=document.createElement('div'); head.className='sugh'; head.textContent='suggested change';
+    // Coloured by the diff's own tokeniser, line by line as the diff does it; it escapes as it goes.
+    const code=document.createElement('pre'); code.className='c';
+    code.innerHTML=part.v.split('\n').map(line=>codeHtml(line,lang)).join('\n');
+    wrap.append(head,code); host.append(wrap);
+  });
+}
 function viewUI(box,note,ctx){
   const st=statusOf(note);
   box.classList.toggle('done',!!st&&st.status==='applied');
   box.innerHTML=headHtml(ctx.f,note.label,note.snippet,
       statusChip(st)+'<button class="edit">Edit</button><button class="danger del">Delete</button>')+
     '<div class="nbody"></div>'+(st&&st.detail?'<div class="nstat"></div>':'');
-  box.querySelector('.nbody').textContent=note.body;
+  renderBody(box.querySelector('.nbody'),note.body,note.file);
   if(st&&st.detail) box.querySelector('.nstat').textContent=st.status.replace('-',' ')+' — '+st.detail;
-  box.querySelector('.edit').onclick=()=>editUI(box,Object.assign({},ctx,{id:note.id,body:note.body}));
+  box.querySelector('.edit').onclick=()=>{
+    if(busyEditor()) return;
+    editUI(box,Object.assign({},ctx,{id:note.id,body:note.body}));
+  };
   box.querySelector('.del').onclick=()=>{
     state.notes.delete(note.id); save();
     remark(ctx.f,ctx.fi,ctx.i,ctx.j);

@@ -28,6 +28,14 @@
 - The page is served from `/` with `cache-control: no-store`; the HTML bundle route stays on `/index.html`. Bun gives that route one ETag for every build, so mounting the bundle on `/` again lets a browser revalidate into an older page whose asset chunks are gone.
 - Review notes anchor on captured code plus line metadata. A note may narrow to a character range inside one line; keep its columns, snippet, and `ca`/`cb` offsets together with the line anchor.
 - One line or range holds any number of notes. Each gets its own box under the anchor row, matched by `data-nid`. Removing one repaints the span it covered rather than clearing it, because other notes may still cover those lines.
+- One note editor stands open at a time. An untouched draft still moves to wherever the next click lands; a box with
+  text in it keeps the floor, and anything that would open a second editor scrolls that one back into view and focuses
+  it instead.
+- The editor seeds a fenced `suggestion` block from the lines the note covers. A note narrowed to part of a line still
+  suggests whole lines, because a suggestion replaces lines; the fence outgrows any backticks in the code. The block is
+  ordinary note body text, so it reaches the review file verbatim, and `apply-lcr` reads it as the proposed replacement.
+  A saved note shows it as code, coloured line by line by the diff's own `codeHtml`: class `c` is what carries the
+  syntax token styles, so every container of highlighted code needs it.
 - A note's id is minted once by `mintNoteId`, as its location plus a `|#<unique>` suffix, and never re-derived. Statuses match on it, so a note written where a handled one stood is a new note. Stored notes whose id lacks that suffix are re-minted on restore as fresh, unsubmitted notes. Do not make ids derivable from location again.
 - A verdict only reaches a note that was handed over: `markSubmitted` stamps `sentAt` from the saved review file's name at first submission. The `noteKey` heading fallback, for a review file that lost its marker, additionally needs a heading claimed by exactly one submitted note and a file no older than that stamp.
 - A note may instead cover a whole file. It uses `*` for both row anchors, carries `scope:"file"` and no captured code, and renders as `### <path> (whole file)`. One per file, found by that anchor rather than by a predictable id, and mounted under the file header so binary and collapsed files keep it. `noteKey` must keep producing that same heading text.
