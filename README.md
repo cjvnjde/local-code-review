@@ -58,7 +58,11 @@ The review contains file paths, line anchors, captured code, and note text, so t
 
 This repository includes [`apply-lcr`](skills/apply-lcr/SKILL.md), a small skill that finds the newest review, applies valid notes, runs project checks, and records the result of each note.
 
-Install it from **Settings → Create skill**, then ask your agent:
+Install it with the [Skills CLI](https://github.com/vercel-labs/skills), then ask your agent:
+
+```sh
+npx skills add cjvnjde/local-code-review --skill apply-lcr
+```
 
 ```text
 Apply the newest lcr review.

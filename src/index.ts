@@ -5,11 +5,9 @@ import { diffRangeLabel, getDiff, getFileContext } from "./diff.ts";
 import { findRepoRoot } from "./git.ts";
 import { deleteReviews, excludeRelativeOutput, listReviews, saveReview } from "./output.ts";
 import { startServer } from "./server.ts";
-import { installSkill, previewSkill } from "./skill.ts";
 import { collectStatuses } from "./status.ts";
 
 const options = parseArgs(process.argv.slice(2));
-const invocationRoot = process.cwd();
 const repoRoot = await findRepoRoot();
 process.chdir(repoRoot);
 
@@ -33,9 +31,6 @@ const server = startServer({
   listReviews: () => listReviews(repoRoot, options.outDir),
   deleteReviews: () => deleteReviews(repoRoot, options.outDir),
   saveReview: (submission, replace) => saveReview(repoRoot, options.outDir, range, submission, replace),
-  previewSkill: () => previewSkill(invocationRoot),
-  installSkill: (directory, expectedState, expectedRevision) =>
-    installSkill(invocationRoot, directory, expectedState, expectedRevision),
 });
 
 if (options.open && !openInBrowser(`http://localhost:${server.port}`)) {

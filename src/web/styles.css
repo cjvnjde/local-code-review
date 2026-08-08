@@ -60,25 +60,11 @@
   #settings .settings-section{border-top:1px solid var(--edge);padding-top:11px;display:flex;flex-direction:column;gap:9px}
   #settings .settings-section button{align-self:flex-start}
 
-  #skillDialog{width:min(760px,calc(100vw - 28px));max-height:calc(100vh - 40px);margin:auto;padding:0;
-    color:var(--ink);background:var(--panel2);border:1px solid var(--edge-hi);border-radius:9px;
-    box-shadow:0 20px 60px rgba(0,0,0,.65);font:var(--fs-ui)/1.55 var(--sans)}
-  #skillDialog[open]{display:flex;flex-direction:column}
-  #skillDialog::backdrop{background:rgba(10,10,18,.72)}
-  #skillDialog .dialog-head{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--edge)}
-  #skillDialog h3{margin:0;font:600 15px var(--sans);flex:1}
-  #skillDialog h4{margin:0 16px;font:600 var(--fs-xs)/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint)}
-  #skillDialog>p{margin:11px 16px 0;color:var(--ink-dim)}
-  #skillDialog .dialog-field{display:flex;align-items:center;gap:10px;margin:13px 16px 6px;color:var(--ink)}
-  #skillDialog select{background:var(--crust);color:var(--ink);border:1px solid var(--edge-hi);border-radius:4px;
-    padding:6px 9px;font:var(--fs-ui) var(--mono);cursor:pointer}
-  #skillDialog .skill-path{margin:0 16px;padding:8px 10px;background:var(--crust);border:1px solid var(--edge);
-    border-radius:5px;color:var(--mark);overflow-wrap:anywhere}
-  #skillDialog .skill-status.warning{color:var(--peach)}
-  #skillDialog pre{margin:9px 16px 12px;padding:11px;min-height:160px;overflow:auto;white-space:pre-wrap;
-    background:var(--crust);border:1px solid var(--edge);border-radius:5px;color:var(--ink-dim);font:var(--fs-sm)/1.55 var(--mono)}
-  #skillDialog .dialog-actions{display:flex;justify-content:flex-end;gap:9px;padding:12px 16px;border-top:1px solid var(--edge)}
-  #skillDialog .icon-button{padding:0;width:var(--tap-lg);height:var(--tap-lg);flex:none;border:none;font:22px/1 var(--sans)}
+  #settings .skill-command{display:flex;gap:7px;width:100%}
+  #settings .skill-command input{flex:1;min-width:0;min-height:var(--tap-lg);background:var(--crust);color:var(--mark);
+    border:1px solid var(--edge-hi);border-radius:4px;padding:7px 9px;font:var(--fs-sm)/1.4 var(--mono);cursor:text}
+  #settings .skill-command input:focus{outline:none;border-color:var(--accent)}
+  #settings .skill-command button{align-self:stretch;flex:none}
 
   #toasts{position:fixed;right:16px;bottom:70px;z-index:20;display:flex;flex-direction:column;gap:7px;align-items:flex-end}
   .toast{display:flex;align-items:center;gap:10px;background:var(--panel2);border:1px solid var(--edge-hi);
