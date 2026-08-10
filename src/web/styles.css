@@ -293,8 +293,103 @@
     padding:8px 10px;font:var(--fs-ui)/1.5 var(--sans);min-height:38px;height:38px;resize:none;overflow-y:hidden}
   #general:focus{outline:none;border-color:var(--accent)}
   .empty{padding:34px 18px;color:var(--ink-faint);font-family:var(--sans);font-size:var(--fs-ui)}
-  .done{padding:40px 22px;font-family:var(--sans);font-size:15px;line-height:1.7}
-  .done code{color:var(--mark);background:var(--mantle);padding:2px 6px;border-radius:4px;font-family:var(--mono)}
+
+  /* ---- the conversation on a note ----
+     A reply carries as much as the note it answers, so it is set as a comment in its own right rather
+     than as a footnote under one: same body size as the note, a named speaker on every message, and a
+     badge on the agent's, because the one thing that must never be missed is who wrote what. */
+  .thread:empty{display:none}
+  .thread{border-top:1px solid var(--edge);background:var(--panel2);padding:11px 12px;
+    display:flex;flex-direction:column;gap:10px}
+  .msg{border:1px solid var(--edge-hi);border-radius:6px;background:var(--panel);overflow:hidden}
+  .msg.a{border-left:3px solid var(--sapphire)}
+  .msg.r{border-left:3px solid var(--mauve)}
+  .msg .who{display:flex;align-items:center;gap:8px;padding:6px 11px;border-bottom:1px solid var(--edge);
+    font-family:var(--sans);font-size:var(--fs-sm);color:var(--ink-dim)}
+  .msg.a .who{background:rgba(116,199,236,.13)}
+  .msg.r .who{background:rgba(203,166,247,.11)}
+  .msg .who b{font-weight:600;color:var(--ink)}
+  .msg .bot{font:700 var(--fs-xs)/1.5 var(--mono);letter-spacing:.08em;padding:2px 7px;border-radius:9px;
+    background:var(--sapphire);color:var(--crust);flex:none}
+  .msg .newtag{font:700 var(--fs-xs)/1.5 var(--mono);letter-spacing:.06em;padding:2px 7px;border-radius:9px;
+    background:var(--mark);color:var(--crust);flex:none}
+  .msg .when{margin-left:auto;color:var(--ink-faint);font-size:var(--fs-xs);flex:none}
+  .msg .mb{padding:10px 12px;white-space:pre-wrap;font-family:var(--sans);font-size:var(--fs-code);
+    line-height:1.55;color:var(--ink)}
+  .msg .mb .sugb{margin:8px 0;border:1px solid var(--edge-hi);border-radius:5px;background:var(--crust);overflow:hidden}
+  .msg .mb .sugb:first-child{margin-top:0}
+  .msg .mb .sugb:last-child{margin-bottom:0}
+  .msg .mb .sugh{padding:3px 10px;background:var(--add-gut);color:var(--add);font:var(--fs-xs)/1.6 var(--mono);
+    text-transform:uppercase;letter-spacing:.05em}
+  .msg .mb pre{margin:0;padding:8px 10px;overflow-x:auto;white-space:pre;font:var(--fs-code)/1.55 var(--mono);color:var(--ink)}
+  /* a message that arrived while the page was open, until the note is looked at */
+  .msg.fresh{border-color:var(--mark)}
+  .msg.fresh.a{border-left-color:var(--sapphire)}
+  .msg.fresh.r{border-left-color:var(--mauve)}
+  .replyhost{border-top:1px solid var(--edge);background:var(--panel2)}
+  .thread:not(:empty)+.replyhost{border-top:none;padding-top:0}
+  .reply{padding:9px 12px}
+  .reply.shut{padding:7px 12px}
+  .reply .rbtn{padding:5px 9px;font-size:var(--fs-xs);color:var(--ink-faint)}
+  .reply .rbtn:hover{color:var(--mauve);border-color:var(--mauve)}
+  .reply textarea{width:100%;background:var(--crust);color:var(--ink);border:1px solid var(--edge-hi);border-radius:5px;
+    padding:8px 10px;font:var(--fs-code)/1.55 var(--sans);resize:none;min-height:62px;display:block;overflow-y:hidden}
+  .reply textarea:focus{outline:none;border-color:var(--mauve)}
+  .rhint{padding:7px 12px;color:var(--ink-faint);font-family:var(--sans);font-size:var(--fs-sm)}
+  .nhead .unread{font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.05em;padding:2px 7px;border-radius:9px;
+    background:var(--mark);color:var(--crust);font-weight:700}
+  .nhead .unread[hidden]{display:none}
+  .nbox.unread-on{border-color:var(--mark)}
+
+  /* ---- notes the diff can no longer hold where they were written ---- */
+  .lost{display:flex;align-items:baseline;gap:9px;padding:6px 12px;background:rgba(250,179,135,.09);
+    border-bottom:1px solid var(--edge);font-family:var(--sans);font-size:var(--fs-sm);color:var(--ink-dim)}
+  .lost .tag{flex:none;font:700 var(--fs-xs)/1.6 var(--mono);text-transform:uppercase;letter-spacing:.06em;
+    color:var(--peach)}
+  .lost .why{min-width:0}
+  .nbox.adrift{border-color:var(--peach);border-style:dashed;background:var(--panel)}
+  .nbox.adrift .lost{background:rgba(243,139,168,.12)}
+  .nbox.adrift .lost .tag{color:var(--red)}
+  /* the lines a note was written on, framed like the suggestion block so a note reads as one thing */
+  .cap{margin:10px 12px 0;border:1px solid var(--edge-hi);border-radius:5px;background:var(--crust);overflow:hidden}
+  .cap .caph{padding:3px 10px;background:var(--s0);color:var(--ink-dim);font:var(--fs-xs)/1.6 var(--mono);
+    text-transform:uppercase;letter-spacing:.05em}
+  /* a long capture is still just context for the note, so it scrolls rather than pushing the text away */
+  .cap .capc{max-height:38vh;overflow:auto;padding:5px 0}
+  .cap .cl{display:flex;gap:6px;padding:0 10px;white-space:pre-wrap;word-break:break-word;
+    line-height:1.5;font-size:var(--fs-code)}
+  .cap .cl .cm{flex:none;width:8px;color:var(--ink-faint)}
+  .cap .cl .c{flex:1;min-width:0}
+  .cap .cl.add{background:var(--add-bg)} .cap .cl.add .cm{color:var(--add)}
+  .cap .cl.del{background:var(--del-bg)} .cap .cl.del .cm{color:var(--del)}
+  /* code that has since been rewritten: shown as a record, not as what is in the file now */
+  .cap.was .caph{background:rgba(250,179,135,.16);color:var(--peach)}
+  .cap.was .capc{opacity:.82}
+  .loose[hidden]{display:none}
+  .loose{border-top:1px solid var(--edge-hi);background:var(--base);padding:2px 0 8px}
+  .looseh{padding:7px 12px 2px;color:var(--peach);font:var(--fs-xs)/1.6 var(--mono);
+    text-transform:uppercase;letter-spacing:.06em}
+  .loose .nrow{display:block}
+  .loose .nbox{margin:8px 12px}
+  #diff .file.stray{border-color:var(--peach);border-style:dashed}
+  #diff .file.stray .fh .p{color:var(--peach)}
+  .strayw{padding:2px 0 6px}
+  .strayw .note{margin:9px 12px 0;color:var(--ink-faint);font-family:var(--sans);font-size:var(--fs-sm);line-height:1.5}
+
+  /* ---- following the agent ---- */
+  .live{width:8px;height:8px;border-radius:50%;flex:none;background:var(--s2)}
+  .live.on{background:var(--green);box-shadow:0 0 0 3px rgba(166,227,161,.16)}
+  .pending{flex:none;color:var(--peach);border-color:var(--peach);padding:4px 9px;min-height:var(--tap);
+    font-size:var(--fs-xs)}
+  .pending:hover{color:var(--crust);background:var(--peach);border-color:var(--peach)}
+  .unread-pill{flex:none;background:var(--mark);border-color:var(--mark);color:var(--crust);font-weight:700;
+    padding:4px 10px;min-height:var(--tap);font-size:var(--fs-xs)}
+  .unread-pill:hover{background:var(--peach);border-color:var(--peach);color:var(--crust)}
+  .toast.reply{border-left-color:var(--sapphire)}
+  .toast.reply .ic{color:var(--sapphire)}
+  .toast.saved .tx{white-space:normal}
+  .toast.saved .sub{color:var(--ink-faint);font-size:var(--fs-sm)}
+  .toast code{color:var(--mark);font-family:var(--mono)}
   @media (prefers-reduced-motion:no-preference){
     .nrow .nbox{animation:in .12s ease-out}
     @keyframes in{from{opacity:0;transform:translateY(-2px)}}

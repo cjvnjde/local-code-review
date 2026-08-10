@@ -14,7 +14,6 @@ export function loadCfg(){
   el('cfgDeleted').checked=!!state.cfg.hideDeleted;
   el('cfgEnter').checked=state.cfg.enterSaves;
   el('cfgSingle').checked=!!state.cfg.single;
-  el('cfgClear').checked=!!state.cfg.clearSaved;
   el('cfgBack').disabled=!state.cfg.auto;
   el('saveKey').textContent=saveKeyHint();
   state.hideRx=compileHide(state.cfg.hide);
@@ -31,7 +30,6 @@ export function saveCfg(){
   state.cfg.limit=Number(el('cfgLimit').value);
   state.cfg.enterSaves=el('cfgEnter').checked;
   state.cfg.single=el('cfgSingle').checked;
-  state.cfg.clearSaved=el('cfgClear').checked;
   const hide=el('cfgHide').value, deleted=el('cfgDeleted').checked;
   const expand=Number(el('cfgExpand').value);
   const changed=hide!==state.cfg.hide||deleted!==!!state.cfg.hideDeleted||expand!==state.cfg.expand;
@@ -54,6 +52,8 @@ export function save(){
       hidden:[...state.hidden], shown:[...state.shown],
       collapsed:[...state.collapsed], folded:[...state.folded],
       viewed:[...state.viewed], bookmarks:[...state.bookmarks.values()],
+      // The review file owns the threads; this copy is only so a reload has them before it answers.
+      msgs:[...state.msgs], seen:[...state.seen],
     }));
   }catch(e){}
 }
@@ -75,6 +75,8 @@ export function restore(){
     state.folded=new Set(d.folded||[]);
     state.viewed=new Map((d.viewed||[]).map(e=>[e[0],typeof e[1]==='string'?{h:e[1],auto:false}:e[1]]));
     state.bookmarks=new Map((d.bookmarks||[]).filter(b=>b&&b.key).map(b=>[b.key,b]));
+    state.msgs=new Map((d.msgs||[]).filter(e=>e&&e[0]&&Array.isArray(e[1])));
+    state.seen=new Map((d.seen||[]).filter(e=>e&&e[0]));
   }catch(e){}
 }
 /** A file whose notes are gone was reviewed for feedback that no longer exists, so it needs another
@@ -84,20 +86,14 @@ export function unviewCommented(){
   commented.forEach(p=>{ state.viewed.delete(p); state.folded.delete(p); });
   return commented;
 }
-/**
- * Drops the notes that were just handed to a review file. Unlike `clearNotes` this keeps viewed marks:
- * the files were read and their feedback still exists, in the review file, so they need no second pass.
- * A file the agent then edits loses its mark anyway, because `pruneViewed` sees the diff change.
- */
-export function clearSaved(){
-  state.notes.clear();
-  el('general').value='';
-  save();
-}
-/** Wipes the notes stored for this range. Hidden and collapsed marks are not comments, so they stay. */
+/** Wipes the notes stored for this range, threads and all. Hidden and collapsed marks are not
+ *  comments, so they stay. The review file itself is left on disk: it is the record of what was said. */
 export function clearNotes(){
   const unviewed=unviewCommented();
   state.notes.clear();
+  state.msgs.clear();
+  state.seen.clear();
+  state.place.clear();
   el('general').value='';
   save();
   return unviewed;

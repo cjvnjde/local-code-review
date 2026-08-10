@@ -1,18 +1,9 @@
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { runGit } from "./git.ts";
-import { renderMarkdown } from "./review.ts";
-import type { ReviewSubmission } from "./types.ts";
 
 /** The one definition of what lcr generated: nothing else in the output directory is ours to touch. */
 const REVIEW_FILE = /^review-.*\.md$/;
-
-export interface SaveResult {
-  /** Path of the file just written, relative to the repository unless the output directory is absolute. */
-  file: string;
-  /** Names of the earlier review files pruned by `replace`. */
-  removed: string[];
-}
 
 export async function excludeRelativeOutput(repoRoot: string, outDir: string): Promise<void> {
   if (path.isAbsolute(outDir)) return;
@@ -59,28 +50,4 @@ export async function deleteReviews(repoRoot: string, outDir: string, keep = "")
     }
   }
   return removed;
-}
-
-/**
- * Writes the review. `replace` keeps a single review file: the earlier ones are pruned once the new
- * one is on disk, which also drops the statuses agents recorded in them.
- */
-export async function saveReview(
-  repoRoot: string,
-  outDir: string,
-  range: string,
-  submission: ReviewSubmission,
-  replace = false,
-): Promise<SaveResult> {
-  const markdown = renderMarkdown(submission, range);
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-  const outputDir = path.resolve(repoRoot, outDir);
-  await mkdir(outputDir, { recursive: true });
-  const name = `review-${stamp}.md`;
-  const absoluteFile = path.join(outputDir, name);
-  await writeFile(absoluteFile, markdown, "utf8");
-  return {
-    file: path.isAbsolute(outDir) ? absoluteFile : path.relative(repoRoot, absoluteFile),
-    removed: replace ? await deleteReviews(repoRoot, outDir, name) : [],
-  };
 }

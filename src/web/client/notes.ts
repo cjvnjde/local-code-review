@@ -1,3 +1,4 @@
+import { placeOf } from './anchor.ts';
 import { NOTE_MAX, autogrow } from './autogrow.ts';
 import { repaintRow } from './diff-view.ts';
 import { updateCount } from './footer.ts';
@@ -5,8 +6,9 @@ import { codeHtml, langOf } from './highlight.ts';
 import { editorAction } from './keys.ts';
 import { save } from './persistence.ts';
 import { clearSel } from './selection.ts';
-import { FILE_ANCHOR, SVG, clip, el, esc, isFileNote, keyIndex, locKey, mintNoteId, rowKey, saveKeyHint, state, statusOf } from './state.ts';
-import { bodyParts, insertBlock, suggestLines, suggestionBlock } from './suggest.ts';
+import { FILE_ANCHOR, SVG, clip, el, esc, isFileNote, keyIndex, locKey, markRead, mintNoteId, rowKey, saveKeyHint, state, statusOf, unreadOf } from './state.ts';
+import { insertBlock, suggestLines, suggestionBlock } from './suggest.ts';
+import { dropEmptyReply, mountReply, renderBody, renderThread } from './thread.ts';
 import { renderTree } from './tree.ts';
 
 /* ---------- notes ---------- */
@@ -36,8 +38,13 @@ function bounds(){
 }
 /** Character ranges to paint inside one row: every saved sub-line note, plus the live selection. */
 export function charMarks(f: any,fi: number,idx: number){
-  const out: any[]=[], key=rowKey(f.rows[idx]);
-  state.notes.forEach(n=>{ if(n.ca!=null&&n.file===f.path&&n.a===key) out.push({s:n.ca,e:n.cb,c:'cn'}); });
+  const out: any[]=[];
+  state.notes.forEach(n=>{
+    if(n.ca==null||n.file!==f.path) return;
+    // Where the note is showing, which after an edit need not be the row it was written on.
+    const p=placeOf(n);
+    if(p&&p.i===idx&&p.how!=='near') out.push({s:n.ca,e:n.cb,c:'cn'});
+  });
   const s=state.sel;
   if(s&&s.ca!=null&&s.fi===fi&&s.a===idx) out.push({s:s.ca,e:s.cb,c:'cs'});
   return out.length?out:null;
@@ -57,12 +64,13 @@ function draftFor(key: string){
   return row.querySelector('textarea');
 }
 /**
- * The page holds one editor open at a time. A second box would leave the first one behind, half
- * written and out of view, so an untouched draft steps aside and anything else keeps the floor and
- * is brought back into view instead.
+ * The page holds one editor open at a time, replies included. A second box would leave the first one
+ * behind, half written and out of view, so an untouched draft steps aside and anything else keeps the
+ * floor and is brought back into view instead.
  */
-function busyEditor(){
+export function busyEditor(){
   dropEmptyDraft();
+  dropEmptyReply();
   const ta: any=document.querySelector('.nbox textarea');
   if(!ta||!ta.isConnected) return false;
   const box=ta.closest('.nbox');
@@ -179,12 +187,16 @@ function editUI(box,ctx){
   const commit=()=>{
     const body=ta.value.trim();
     if(!body){ drop(); return; }
+    const kept=state.notes.get(id);
     const note: any=whole
       ?{id,file:f.path,body,a:FILE_ANCHOR,b:FILE_ANCHOR,scope:'file',start:0,end:0}
       :{id,file:f.path,body,a:rowKey(f.rows[i]),b:rowKey(f.rows[j]),
         side:sp.side,start:sp.start,end:sp.end,label:sp.label,code:sp.code};
     if(ch){ note.ca=ch.ca; note.cb=ch.cb; note.snippet=sp.snippet; }
+    // Editing a note that is already in the review file leaves it in the same conversation.
+    if(kept&&kept.sentAt) note.sentAt=kept.sentAt;
     state.notes.set(id,note);
+    state.place.set(id,whole?{fi,i:-1,j:-1,how:'file'}:{fi,i,j,how:'exact'});
     save(); clearSel();
     viewUI(box,note,ctx);
     mark(fi,i,j,true);
@@ -209,43 +221,107 @@ function editUI(box,ctx){
     if(action==='cancel'){ e.preventDefault(); box.querySelector('.cancel').click(); }
   };
 }
-/** A saved note reads as it was typed, except that a suggestion block is shown as the code it is
- *  rather than as the backticks around it. Prose goes in as text: a note is never markup. */
-function renderBody(host: any,body: string,path: string){
-  host.textContent='';
-  const lang=langOf(path);
-  bodyParts(body||'').forEach(part=>{
-    if(part.t==='text'){ host.append(document.createTextNode(part.v)); return; }
-    const wrap=document.createElement('div'); wrap.className='sugb';
-    const head=document.createElement('div'); head.className='sugh'; head.textContent='suggested change';
-    // Coloured by the diff's own tokeniser, line by line as the diff does it; it escapes as it goes.
-    const code=document.createElement('pre'); code.className='c';
-    code.innerHTML=part.v.split('\n').map(line=>codeHtml(line,lang)).join('\n');
-    wrap.append(head,code); host.append(wrap);
-  });
+/**
+ * What a note's placement has to say for itself. Only the two cases with no anchor left say anything:
+ * a note that merely followed its code, or settled for the nearest line, already shows that in the
+ * heading over its captured code, and a sentence repeating it is noise on every note the agent touches.
+ */
+const PLACING={
+  loose:['no place in this file','Nothing in this file matches what the note was written on, and no line is near enough. It is kept here, under the file it belongs to.'],
+  stray:['file not in this diff','The file this note was written on has no changes left in the diff, so there is nowhere to attach it.'],
+};
+function placeHtml(how: string){
+  const entry=PLACING[how];
+  if(!entry) return '';
+  return '<div class="lost" title="'+esc(entry[1])+'"><span class="tag">'+esc(entry[0])+'</span>'+
+    '<span class="why">'+esc(entry[1])+'</span></div>';
 }
-function viewUI(box,note,ctx){
+/**
+ * The lines the note was written on, kept with the note itself. A note is read a long way from where
+ * it was made — under the file, at the end of the page, or after the agent has rewritten everything
+ * around it — so it carries its own subject rather than relying on the row above it.
+ *
+ * The heading is where a note says its code has gone. `exact` and `moved` are both sitting on the code
+ * they captured, wherever in the file that now is, so they read as the code in front of you; the rest
+ * are showing a record of code the diff no longer has.
+ */
+function capturedHtml(note: any,how: string){
+  if(!note.code||!note.code.trim()) return '';
+  const lang=langOf(note.file);
+  const rows=note.code.split('\n').map((line: string)=>{
+    const t=line[0]==='+'?'add':line[0]==='-'?'del':'ctx';
+    return '<div class="cl '+t+'"><span class="cm">'+esc(line[0]||' ')+'</span>'+
+      '<span class="c">'+codeHtml(line.slice(1),lang)+'</span></div>';
+  }).join('');
+  const here=how==='exact'||how==='moved'||how==='file';
+  return '<div class="cap'+(here?'':' was')+'"><div class="caph">'+
+    (here?'commented on':'commented on — this code is no longer in the diff')+'</div>'+
+    '<div class="capc">'+rows+'</div></div>';
+}
+export function viewUI(box,note,ctx){
   const st=statusOf(note);
+  const how=ctx.how||'exact';
+  const lost=how==='loose'||how==='stray';
+  const unread=unreadOf(note);
   box.classList.toggle('done',!!st&&st.status==='applied');
+  box.classList.toggle('adrift',lost);
+  box.classList.toggle('unread-on',!!unread);
   box.innerHTML=headHtml(ctx.f,note.label,note.snippet,
+      '<span class="unread"'+(unread?'':' hidden')+'>'+(unread?unread+' new':'')+'</span>'+
       statusChip(st)+'<button class="edit">Edit</button><button class="danger del">Delete</button>')+
-    '<div class="nbody"></div>'+(st&&st.detail?'<div class="nstat"></div>':'');
+    placeHtml(how==='exact'||how==='file'?'':how)+
+    capturedHtml(note,how)+
+    '<div class="nbody"></div>'+(st&&st.detail?'<div class="nstat"></div>':'')+
+    '<div class="thread"></div><div class="replyhost"></div>';
   renderBody(box.querySelector('.nbody'),note.body,note.file);
   if(st&&st.detail) box.querySelector('.nstat').textContent=st.status.replace('-',' ')+' — '+st.detail;
+  renderThread(box.querySelector('.thread'),note);
+  mountReply(box.querySelector('.replyhost'),note,()=>repaintNote(note.id));
+  // Looking at a note is what reads its thread; the count in the footer follows from that. The box
+  // outlives its contents, so the listener is attached once and finds the note again when it fires.
+  if(!box.__read){
+    box.__read=true;
+    box.addEventListener('click',()=>{
+      const id=rowOf(box)?.dataset.nid;
+      const seen=id&&state.notes.get(id);
+      if(!seen||!markRead(seen)) return;
+      save(); updateCount();
+      box.classList.remove('unread-on');
+      const chip=box.querySelector('.unread');
+      if(chip){ chip.hidden=true; chip.textContent=''; }
+      box.querySelectorAll('.msg.fresh').forEach((m: any)=>m.classList.remove('fresh'));
+    });
+  }
   box.querySelector('.edit').onclick=()=>{
     if(busyEditor()) return;
+    if(lost||how==='near'){
+      alert('This note has no lines to edit against any more. Reply to it instead, or delete it.');
+      return;
+    }
     editUI(box,Object.assign({},ctx,{id:note.id,body:note.body}));
   };
-  box.querySelector('.del').onclick=()=>{
-    state.notes.delete(note.id); save();
-    remark(ctx.f,ctx.fi,ctx.i,ctx.j);
-    rowOf(box).remove();
-    if(note.ca!=null) repaintRow(ctx.fi,ctx.i);
-    renderTree(); updateCount();
-  };
+  box.querySelector('.del').onclick=()=>removeNote(box,note,ctx);
+}
+/** Deleting a note that was handed over takes it out of the review file too, thread and all. */
+function removeNote(box,note,ctx){
+  if(note.sentAt&&!confirm('Delete this note?\n\nIt is in '+(state.sessionFile||'the review file')+
+    ', so its thread goes with it.')) return;
+  state.notes.delete(note.id);
+  state.msgs.delete(note.id);
+  state.seen.delete(note.id);
+  state.place.delete(note.id);
+  save();
+  if(ctx.f&&ctx.i!=null&&ctx.i>=0) remark(ctx.f,ctx.fi,ctx.i,ctx.j);
+  rowOf(box).remove();
+  if(note.ca!=null&&ctx.i!=null&&ctx.i>=0) repaintRow(ctx.fi,ctx.i);
+  renderTree(); updateCount();
+  if(note.sentAt){
+    fetch('/api/note?id='+encodeURIComponent(note.id),{method:'DELETE'})
+      .catch(()=>{}); // the page has already let it go; the file catches up on the next save
+  }
 }
 function mark(fi,i,j,on){
-  if(i==null) return; // a file note marks no lines
+  if(i==null||i<0) return; // a file note, or one with no rows left, marks no lines
   for(let k=i;k<=j;k++){
     const tr=el('r'+fi+'-'+k);
     if(tr&&tr.classList.contains('r')) tr.classList.toggle('noted',on);
@@ -253,12 +329,12 @@ function mark(fi,i,j,on){
 }
 /** Repaints a span a note has just left: the lines under it may still be covered by other notes. */
 function remark(f,fi,i,j){
-  if(i==null) return; // a file note marks no lines
-  const ki=keyIndex(f), spans=[];
+  if(i==null||i<0) return; // a file note marks no lines
+  const spans=[];
   state.notes.forEach((n: any)=>{
     if(n.file!==f.path||isFileNote(n)) return;
-    const a=ki.has(n.a)?ki.get(n.a):-1, b=ki.has(n.b)?ki.get(n.b):-1;
-    if(a>=0&&b>=a) spans.push([a,b]);
+    const p=placeOf(n);
+    if(p&&p.i>=0) spans.push([p.i,p.j]);
   });
   for(let k=i;k<=j;k++){
     const tr=el('r'+fi+'-'+k);
@@ -270,18 +346,43 @@ export function applyFileNote(f: any,fi: number){
   const host=el('fn'+fi); if(!host) return;
   const n=fileNoteOf(f.path);
   if(!n||host.querySelector('.nrow')) return;
-  viewUI(mountFileBox(host,n.id),n,{f,fi,i:null,j:null,ch:null,scope:'file'});
+  viewUI(mountFileBox(host,n.id),n,{f,fi,i:null,j:null,ch:null,scope:'file',how:'file'});
 }
 export function applyNotesIn(f: any,fi: number,from: number,to: number){
-  const ki=keyIndex(f);
+  keyIndex(f); // built once here, so every placement below reads the same index
   state.notes.forEach(n=>{
     if(n.file!==f.path) return;
-    const i=ki.has(n.a)?ki.get(n.a):-1, j=ki.has(n.b)?ki.get(n.b):-1;
-    if(i<0||j<0||j<i||j<from||i>=to) return;
+    const p=placeOf(n);
+    if(!p||p.i<0) return;
+    const i=p.i, j=p.j;
+    if(j<from||i>=to) return;
     mark(fi,Math.max(i,from),Math.min(j,to-1),true);
     if(j<from||j>=to) return; // the box belongs to the block holding the last row
     const anchor=el('r'+fi+'-'+j); if(!anchor) return;
-    const ch=n.ca!=null?{ca:n.ca,cb:n.cb}:null;
-    if(!rowFor(anchor,n.id)) viewUI(mountRow(anchor,n.id),n,{f,fi,i,j,ch});
+    const ch=n.ca!=null&&p.how!=='near'?{ca:n.ca,cb:n.cb}:null;
+    if(!rowFor(anchor,n.id)) viewUI(mountRow(anchor,n.id),n,{f,fi,i,j,ch,how:p.how});
+  });
+}
+/** Mounts a note that has no row of its own, inside whichever holding block it belongs to. */
+export function mountLoose(host: any,note: any,f: any,fi: number,how: string){
+  const box=mountFileBox(host,note.id);
+  viewUI(box,note,{f,fi,i:null,j:null,ch:null,how});
+}
+/**
+ * Redraws one note wherever it is mounted, for a reply or a verdict that arrived from the review
+ * file. A box being typed into is left alone: the news can wait until the note is finished.
+ */
+export function repaintNote(id: string){
+  const n=state.notes.get(id); if(!n) return;
+  const p=placeOf(n);
+  const f=p?state.files[p.fi]:{path:n.file,rows:[]};
+  const how=p?p.how:'stray';
+  const ch=n.ca!=null&&how!=='near'?{ca:n.ca,cb:n.cb}:null;
+  const ctx={f,fi:p?p.fi:-1,i:p?p.i:null,j:p?p.j:null,ch,how};
+  document.querySelectorAll('.nrow').forEach((row: any)=>{
+    if(row.dataset.nid!==id) return;
+    const box=row.querySelector('.nbox');
+    if(!box||box.querySelector('textarea')) return;
+    viewUI(box,n,ctx);
   });
 }

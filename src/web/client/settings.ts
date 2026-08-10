@@ -1,6 +1,7 @@
 import { renderDiff, setViewed } from './diff-view.ts';
+import { fitGeneral } from './footer.ts';
 import { load, render } from './load.ts';
-import { saveCfg } from './persistence.ts';
+import { clearNotes, saveCfg } from './persistence.ts';
 import { SVG, el, state } from './state.ts';
 
 /* ---------- settings ---------- */
@@ -47,6 +48,11 @@ function renderReviews(){
   button.disabled=!n;
   button.textContent=n?'Delete '+n+' review file'+(n===1?'':'s'):'Delete review files';
   button.title=n?'Delete every review file in '+reviewDir+'/':'No review file has been saved yet';
+  const info=el('sessionInfo');
+  info.textContent=state.sessionFile
+    ?'This conversation is in '+state.sessionFile+'.'
+    :'No review file yet — your first save opens one.';
+  el('newReview').disabled=!state.sessionFile;
 }
 async function refreshReviews(){
   try{
@@ -59,19 +65,48 @@ async function refreshReviews(){
   }
   renderReviews();
 }
+/**
+ * Starts a second conversation. The file that was running keeps everything said in it, so this only
+ * has to let go of it here: the notes on this page go with it, or the next save would write them
+ * straight back into the new file as though nothing had been answered.
+ */
+el('newReview').onclick=async()=>{
+  const current=state.sessionFile;
+  if(!current) return;
+  if(!confirm('Start a new review?\n\n'+current+' stays on disk with everything said in it. '+
+    'The notes and replies on this page are cleared, and your next save opens a fresh file.')) return;
+  try{
+    const response=await fetch('/api/review',{method:'DELETE'});
+    const data=await response.json();
+    if(!response.ok) throw new Error(data.error||response.status);
+  }catch(error){
+    alert('Could not start a new review: '+(error instanceof Error?error.message:String(error)));
+    return;
+  }
+  state.sessionFile='';
+  clearNotes();
+  fitGeneral();
+  await load();
+  await refreshReviews();
+};
 /** Review files are the handover to the agent, and deleting them drops the verdicts read back from
  *  them, so ask first and then reload the diff to let those statuses go. */
 el('deleteReviews').onclick=async()=>{
   const n=reviews.length;
   if(!n) return;
   if(!confirm('Delete '+n+' review file'+(n===1?'':'s')+' from '+reviewDir+'/?\n\n'+
-    'Your notes stay on this page. Statuses agents recorded in those files are lost.')) return;
+    'Your notes stay on this page. The conversations in those files, and the statuses agents '+
+    'recorded in them, are lost.')) return;
   const button=el('deleteReviews');
   button.disabled=true; button.textContent='Deleting…';
   try{
     const response=await fetch('/api/reviews',{method:'DELETE'});
     const data=await response.json();
     if(!response.ok) throw new Error(data.error||response.status);
+    // The conversations went with the files, so nothing on this page has a thread any more.
+    state.sessionFile='';
+    state.msgs.clear();
+    state.seen.clear();
     await refreshReviews();
     await load();
   }catch(error){

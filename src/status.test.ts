@@ -3,10 +3,14 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "bun:test";
 import { renderMarkdown } from "./review.ts";
+import { noteFromComment } from "./thread.ts";
 import { collectStatuses, parseStatuses } from "./status.ts";
+import type { ReviewComment } from "./types.ts";
 import { mintNoteId, noteKey } from "./web/client/state.ts";
 
 const review = (...sections: string[]) => ["# Review notes", "", ...sections].join("\n");
+const write = (comments: ReviewComment[]) =>
+  renderMarkdown({ range: "HEAD", general: "", notes: comments.map(noteFromComment) });
 
 describe("parseStatuses", () => {
   test("reads the id marker, verdict, and detail of each note", () => {
@@ -121,18 +125,15 @@ describe("parseStatuses", () => {
   });
 
   test("round-trips the ids that renderMarkdown writes", () => {
-    const markdown = renderMarkdown({
-      general: "",
-      comments: [{
-        id: "src/app.ts|n2|n2|8-16",
-        file: "src/app.ts",
-        body: "Rename it.",
-        start: 2,
-        end: 2,
-        label: "2:9-16",
-        snippet: "tmpValue",
-      }],
-    }, "HEAD");
+    const markdown = write([{
+      id: "src/app.ts|n2|n2|8-16",
+      file: "src/app.ts",
+      body: "Rename it.",
+      start: 2,
+      end: 2,
+      label: "2:9-16",
+      snippet: "tmpValue",
+    }]);
 
     expect(markdown).toContain("### src/app.ts:2:9-16 <!-- lcr:src/app.ts|n2|n2|8-16 -->");
     expect(markdown).toContain("Status: pending");
@@ -157,7 +158,7 @@ describe("parseStatuses", () => {
       start: 0,
       end: 0,
     };
-    const markdown = renderMarkdown({ general: "", comments: [note] }, "HEAD")
+    const markdown = write([note])
       .replace("Status: pending", "Status: applied — split into two modules");
 
     expect(parseStatuses(markdown)).toEqual([{
@@ -180,7 +181,7 @@ describe("parseStatuses", () => {
       end: 7,
     });
     const first = at("Rename it."), second = at("And handle the null case.");
-    const markdown = renderMarkdown({ general: "", comments: [first, second] }, "HEAD")
+    const markdown = write([first, second])
       .replace("Status: pending", "Status: applied — renamed")
       .replace("Status: pending", "Status: skipped — cannot be null here");
 

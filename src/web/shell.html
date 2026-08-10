@@ -15,6 +15,9 @@
   <span class="hint">click a line to comment &middot; drag or shift-click for a range &middot;
     select text inside a line to comment on that part &middot; <em>comment</em> in a file header notes the whole file
     &middot; <span id="saveKey">shift+enter</span> saves &middot; the flag on a line bookmarks it</span>
+  <button id="pending" class="pending" type="button" hidden
+    title="The working tree changed while you were writing. Refreshes as soon as this note is done.">diff changed</button>
+  <span id="live" class="live" title="Not connected"></span>
   <button id="gear" title="Settings"></button>
   <div id="settings" hidden>
     <h4>Automatic viewed</h4>
@@ -45,17 +48,18 @@
         starts a comment. Files you reveal with the eye icon stay visible.</p>
     </div>
     <div class="settings-section">
-      <h4>Review files</h4>
+      <h4>Review file</h4>
+      <p class="note" id="sessionInfo">No review file yet — your first save opens one.</p>
+      <button id="newReview" type="button">New review</button>
+      <p class="note">One review file holds the whole conversation: your notes, the agent's replies,
+        and your follow-ups. Saving again adds to it, and restarting <code>lcr</code> picks the newest
+        one back up. <b>New review</b> leaves the current file on disk as it is and opens a fresh one
+        on your next save.</p>
       <label><input type="checkbox" id="cfgSingle"> Keep only the newest review file</label>
-      <label><input type="checkbox" id="cfgClear"> Clear my notes once they are saved</label>
       <button id="deleteReviews" class="danger" type="button" disabled>Delete review files</button>
-      <p class="note">Every save writes one <code>review-&lt;timestamp&gt;.md</code> into the output
-        directory. Keeping only the newest deletes the earlier ones as each review is saved. Deleting
-        them takes the statuses agents wrote back with them; the notes on this page stay.</p>
-      <p class="note">Notes normally stay after a save, so the verdicts an agent writes back can reach
-        them and the next save hands them over again. Clearing them instead makes every review file the
-        batch you just wrote, at the cost of those verdicts: no status badges, and nothing for
-        <b>Remove N applied</b> to remove. Viewed marks and bookmarks are kept either way.</p>
+      <p class="note">Keeping only the newest deletes the earlier files as each review is saved.
+        Deleting them takes the conversations and the statuses agents wrote back with them; the notes
+        on this page stay.</p>
     </div>
     <div class="settings-section">
       <h4>Expand context</h4>
@@ -117,6 +121,7 @@
 <div id="toasts"></div>
 <footer>
   <span class="count" id="count">0 notes</span>
+  <button class="unread-pill" id="unread" type="button" hidden></button>
   <textarea id="general" placeholder="Overall note (optional)"></textarea>
   <span class="spacer"></span>
   <button id="clearDone" hidden></button>

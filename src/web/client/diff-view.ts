@@ -1,9 +1,10 @@
+import { looseNotes, replaceIn, strayNotes } from './anchor.ts';
 import { bmKey } from './bookmarks.ts';
 import { expandStep } from './expand.ts';
 import { autoHidden, isHidden } from './filters.ts';
 import { gapOf, gapSize } from './gaps.ts';
 import { codeHtml, langOf } from './highlight.ts';
-import { applyFileNote, applyNotesIn, charMarks } from './notes.ts';
+import { applyFileNote, applyNotesIn, charMarks, mountLoose } from './notes.ts';
 import { save } from './persistence.ts';
 import { paintSel } from './selection.ts';
 import { SVG, el, esc, idxOf, rowKey, state } from './state.ts';
@@ -25,18 +26,59 @@ const phHtml=h=>'<tr class="ph"><td colspan="4" style="height:'+h+'px"></td></tr
 export function renderDiff(){
   const sec=el('diff');
   obsMount.disconnect(); obsDrop.disconnect();
-  if(!state.files.length){ sec.innerHTML='<div class="empty">No changes in this diff. Nothing to review.</div>'; return; }
+  // An empty diff is where a finished review ends up, and its notes are exactly what is left to read.
+  if(!state.files.length){
+    sec.innerHTML='<div class="empty">No changes in this diff. Nothing to review.</div>'+strayHtml();
+    applyStray();
+    return;
+  }
   const shown=state.files.map((f,i)=>i).filter(i=>!isHidden(state.files[i].path));
   if(!shown.length){
     sec.innerHTML='<div class="empty">Every file is hidden. Use the eye icons in the tree, '+
-      'or clear the hide patterns in settings, to bring them back.</div>';
+      'or clear the hide patterns in settings, to bring them back.</div>'+strayHtml();
+    applyStray();
     return;
   }
-  sec.innerHTML=shown.map(i=>fileHtml(state.files[i],i)).join('');
-  shown.forEach(i=>applyFileNote(state.files[i],i));
+  sec.innerHTML=shown.map(i=>fileHtml(state.files[i],i)).join('')+strayHtml();
+  shown.forEach(i=>{ applyFileNote(state.files[i],i); applyLoose(i); });
+  applyStray();
   sec.querySelectorAll('tbody.blk').forEach(observeBlock);
   sec.querySelectorAll('.file').forEach(n=>obsPass.observe(n));
   followDiff(); // the cards moved, so which of them the pane is showing may have changed
+}
+
+/**
+ * Notes the diff has no room for any more. A note is only ever shown here once it cannot be put on a
+ * line, and it stays under its own file for as long as that file is still in the diff, so it is read
+ * next to the code it came from. The last resort is the block at the end of the page, for a note
+ * whose file left the diff entirely — the agent reverted it, or the change it asked for removed it.
+ */
+function applyLoose(fi: number){
+  const host=el('lo'+fi); if(!host) return;
+  const f=state.files[fi], notes=looseNotes(fi);
+  host.textContent='';
+  host.hidden=!notes.length;
+  if(!notes.length) return;
+  const head=document.createElement('div'); head.className='looseh';
+  head.textContent=notes.length===1
+    ?'1 note has no line left in this file'
+    :notes.length+' notes have no line left in this file';
+  host.append(head);
+  notes.forEach((n: any)=>mountLoose(host,n,f,fi,'loose'));
+}
+function strayHtml(){
+  if(!strayNotes().length) return '';
+  return '<div class="file stray" id="fstray"><div class="fh">'+
+    '<span class="p">Notes with nowhere to go</span>'+
+    '<span class="s">unattached</span><span class="spacer"></span></div>'+
+    '<div class="strayw"><p class="note">These notes were written on files the diff no longer shows. '+
+    'Each one keeps the code it was captured against, so you can still read it and reply.</p>'+
+    '<div class="loose" id="loStray"></div></div></div>';
+}
+function applyStray(){
+  const host=el('loStray'); if(!host) return;
+  host.textContent='';
+  strayNotes().forEach((n: any)=>mountLoose(host,n,{path:n.file,rows:[]},-1,'stray'));
 }
 
 function fileHtml(f,fi){
@@ -58,10 +100,12 @@ function fileHtml(f,fi){
     '<button class="eye" data-hf="'+esc(f.path)+'" title="Hide from diff">'+SVG.eye+' hide</button></div>'+
     // Whole-file notes hang off the header, so a binary or folded file can still carry one.
     '<div class="fnotes" id="fn'+fi+'"></div>';
+  // Notes the file can no longer hold on a line sit at the end of its card, still under their file.
+  const loose='<div class="loose" id="lo'+fi+'" hidden></div>';
   if(f.binary) return '<div class="'+cls+'" id="f'+fi+'" data-path="'+esc(f.path)+'">'+head+
-    '<div class="empty">Binary file — not shown.</div></div>';
+    '<div class="empty">Binary file — not shown.</div>'+loose+'</div>';
   return '<div class="'+cls+'" id="f'+fi+'" data-path="'+esc(f.path)+'">'+head+
-    '<table>'+tableHtml(f,fi)+'</table></div>';
+    '<table>'+tableHtml(f,fi)+'</table>'+loose+'</div>';
 }
 function tableHtml(f,fi){
   const blocks=[];
@@ -82,6 +126,7 @@ export function refreshRows(fi: number,from: number){
   if(!f||!node) return;
   const table=node.querySelector('table'); if(!table) return;
   if(state.sel&&state.sel.fi===fi) state.sel=null; // it pointed at rows that have moved
+  replaceIn(f.path); // every note below the insertion is on a different row index now
   const first=Math.floor(from/BLOCK), prefix=f.path+'|';
   [...state.h.keys()].forEach(k=>{
     const cut=k.lastIndexOf('|');
@@ -233,21 +278,24 @@ function unmountBlock(tb){
 
 function insertCard(fi){
   const sec=el('diff');
-  if(!sec.querySelector('.file')){ renderDiff(); return; }
+  if(!sec.querySelector('.file:not(.stray)')){ renderDiff(); return; }
   const tmp=document.createElement('div');
   tmp.innerHTML=fileHtml(state.files[fi],fi);
   const node=tmp.firstElementChild;
   let next=null;
   for(let k=fi+1;k<state.files.length&&!next;k++) next=el('f'+k);
+  // The unattached-notes card is always last, so a file card goes in front of it.
+  if(!next) next=el('fstray');
   next?sec.insertBefore(node,next):sec.append(node);
   applyFileNote(state.files[fi],fi);
+  applyLoose(fi);
   node.querySelectorAll('tbody.blk').forEach(observeBlock);
   obsPass.observe(node);
 }
 function removeCard(fi){
   const node=el('f'+fi); if(!node) return;
   unobserveIn(node); node.remove();
-  if(!el('diff').querySelector('.file')) renderDiff();
+  if(!el('diff').querySelector('.file:not(.stray)')) renderDiff();
 }
 /** Manual viewed marks collapse files; automatic marks preserve their height while scrolling. */
 export function setViewed(paths: string[],on: boolean,auto?: boolean){

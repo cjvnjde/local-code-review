@@ -1,5 +1,6 @@
 import page from "./web/shell.html";
-import type { SaveResult } from "./output.ts";
+import type { Hub } from "./events.ts";
+import type { ReviewSession } from "./session.ts";
 import type { DiffFile, DiffRow, NoteStatus, ReviewSubmission } from "./types.ts";
 
 export interface ServerOptions {
@@ -14,7 +15,10 @@ export interface ServerOptions {
   getStatuses: () => Promise<NoteStatus[]>;
   listReviews: () => Promise<string[]>;
   deleteReviews: () => Promise<string[]>;
-  saveReview: (submission: ReviewSubmission, replace: boolean) => Promise<SaveResult>;
+  /** The one review file this run is talking through. */
+  session: ReviewSession;
+  /** Open pages, told whenever the review file or the diff moved. */
+  hub: Hub;
 }
 
 /**
@@ -37,7 +41,10 @@ export function startServer(options: ServerOptions) {
   console.log(`\n  git review  ->  http://localhost:${server.port}`);
   console.log(`  diff: ${options.range}`);
   console.log(`  repo: ${options.repoRoot}`);
-  console.log(`  out:  ${options.outDir}/\n`);
+  console.log(`  out:  ${options.outDir}/`);
+  console.log(options.session.file
+    ? `  review: ${options.session.shownFile} (continuing)\n`
+    : "  review: starts on your first save\n");
   return server;
 }
 
@@ -79,6 +86,7 @@ function serve(options: ServerOptions, port: number) {
     async fetch(request) {
       try {
         const url = new URL(request.url);
+        if (url.pathname === "/api/events") return events(options, request);
         if (url.pathname === "/api/diff") {
           const [files, statuses] = await Promise.all([options.getDiff(), options.getStatuses()]);
           return Response.json({ range: options.range, context: options.context, files, statuses });
@@ -92,6 +100,51 @@ function serve(options: ServerOptions, port: number) {
           }
           return Response.json({ rows: await options.getContext(path, start, end) });
         }
+        if (url.pathname === "/api/review") {
+          if (request.method === "GET") {
+            // Statuses ride along: a reply and the verdict it explains are written in the same pass,
+            // so the page must not have to ask for the diff again to see one of them.
+            const [doc, statuses] = await Promise.all([options.session.read(), options.getStatuses()]);
+            return Response.json({
+              file: options.session.shownFile,
+              general: doc.general,
+              notes: doc.notes,
+              statuses,
+            });
+          }
+          // Starting fresh only forgets which file we were in; the old one stays on disk as history.
+          if (request.method === "DELETE") {
+            const previous = options.session.shownFile;
+            options.session.startFresh();
+            console.log(`\n  new review started${previous ? `; ${previous} left as it is` : ""}\n`);
+            options.hub.emit({ type: "review", file: "" });
+            return Response.json({ file: "", previous });
+          }
+          return new Response("method not allowed", { status: 405, headers: { allow: "GET, DELETE" } });
+        }
+        if (url.pathname === "/api/reply" && request.method === "POST") {
+          if (!isJsonRequest(request)) return Response.json({ error: "JSON body required." }, { status: 415 });
+          const payload = await request.json() as { id?: unknown; body?: unknown };
+          const id = typeof payload.id === "string" ? payload.id : "";
+          const body = typeof payload.body === "string" ? payload.body.trim() : "";
+          if (!id || !body) return Response.json({ error: "A note id and a message are required." }, { status: 400 });
+          const note = await options.session.reply(id, body);
+          if (!note) {
+            return Response.json({ error: "That note is not in the review file yet. Save the review first." }, {
+              status: 404,
+            });
+          }
+          console.log(`\n  replied on ${note.key} in ${options.session.shownFile}\n`);
+          options.hub.emit({ type: "review", file: options.session.file });
+          return Response.json({ file: options.session.shownFile, note });
+        }
+        if (url.pathname === "/api/note" && request.method === "DELETE") {
+          const id = url.searchParams.get("id") ?? "";
+          if (!id) return Response.json({ error: "A note id is required." }, { status: 400 });
+          const removed = await options.session.remove(id);
+          if (removed) options.hub.emit({ type: "review", file: options.session.file });
+          return Response.json({ removed });
+        }
         if (url.pathname === "/api/submit" && request.method === "POST") {
           if (!isJsonRequest(request)) return Response.json({ error: "JSON body required." }, { status: 415 });
           const payload = await request.json() as Partial<ReviewSubmission>;
@@ -99,22 +152,30 @@ function serve(options: ServerOptions, port: number) {
             general: payload.general ?? "",
             comments: payload.comments ?? [],
           };
-          const { file, removed } = await options.saveReview(
+          const { file, removed } = await options.session.save(
             submission,
             (payload as { replace?: unknown }).replace === true,
           );
           console.log(`\n  saved ${file}  (${submission.comments.length} notes)`);
           if (removed.length) console.log(`  replaced ${plural(removed.length, "earlier review file")}`);
           console.log(`  next: ask the agent to "address the notes in ${file}"\n`);
+          options.hub.emit({ type: "review", file: options.session.file });
           return Response.json({ file, count: submission.comments.length, removed });
         }
         if (url.pathname === "/api/reviews") {
           if (request.method === "GET") {
-            return Response.json({ dir: options.outDir, files: await options.listReviews() });
+            return Response.json({
+              dir: options.outDir,
+              files: await options.listReviews(),
+              session: options.session.file,
+            });
           }
           if (request.method === "DELETE") {
             const removed = await options.deleteReviews();
+            // The conversation went with them, so the next save opens a new one.
+            options.session.startFresh();
             console.log(`\n  deleted ${plural(removed.length, "review file")} from ${options.outDir}/\n`);
+            options.hub.emit({ type: "review", file: "" });
             return Response.json({ removed });
           }
           return new Response("method not allowed", { status: 405, headers: { allow: "GET, DELETE" } });
@@ -131,6 +192,42 @@ function serve(options: ServerOptions, port: number) {
   return server;
 }
 
+/**
+ * The page's live connection. Events say only that something moved; the page fetches the new state
+ * itself, so a dropped or repeated event costs a fetch rather than correctness.
+ */
+function events(options: ServerOptions, request: Request): Response {
+  const encoder = new TextEncoder();
+  let detach: (() => void) | null = null;
+  const stream = new ReadableStream({
+    start(controller) {
+      const send = (chunk: string) => controller.enqueue(encoder.encode(chunk));
+      send(`data: ${JSON.stringify({ type: "hello", file: options.session.shownFile })}\n\n`);
+      detach = options.hub.add(send);
+      request.signal.addEventListener("abort", () => {
+        detach?.();
+        detach = null;
+        try {
+          controller.close();
+        } catch {
+          // Already closed by the runtime when the page went away.
+        }
+      });
+    },
+    cancel() {
+      detach?.();
+      detach = null;
+    },
+  });
+  return new Response(stream, {
+    headers: {
+      "content-type": "text/event-stream",
+      "cache-control": "no-store",
+      connection: "keep-alive",
+    },
+  });
+}
+
 function plural(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? "" : "s"}`;
 }
@@ -138,4 +235,3 @@ function plural(count: number, noun: string): string {
 function isJsonRequest(request: Request): boolean {
   return request.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase() === "application/json";
 }
-

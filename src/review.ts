@@ -1,76 +1,74 @@
-import type { ReviewSubmission } from "./types.ts";
+import { type ReviewDoc, type ReviewNote, renderNote } from "./thread.ts";
 
-export function renderMarkdown({ general, comments }: ReviewSubmission, range: string): string {
-  const byFile = new Map<string, ReviewSubmission["comments"]>();
-  for (const comment of comments) {
-    if (!byFile.has(comment.file)) byFile.set(comment.file, []);
-    byFile.get(comment.file)!.push(comment);
+/**
+ * Writes the review file. It is one running conversation, not a report: the notes carry whatever the
+ * agent has already replied and recorded, and the footer tells it how to keep answering in place.
+ */
+export function renderMarkdown(doc: ReviewDoc): string {
+  const byFile = new Map<string, ReviewNote[]>();
+  for (const note of doc.notes) {
+    if (!byFile.has(note.file)) byFile.set(note.file, []);
+    byFile.get(note.file)!.push(note);
   }
 
   const output: string[] = [
     "# Review notes",
     "",
-    `Diff under review: \`${range}\``,
-    `Written: ${new Date().toISOString()}`,
+    `Diff under review: \`${doc.range}\``,
     "",
   ];
 
-  if (general.trim()) {
-    output.push("## Overall", "", general.trim(), "");
+  if (doc.general.trim()) {
+    output.push("## Overall", "", doc.general.trim(), "");
   }
 
-  for (const [file, commentsForFile] of byFile) {
+  for (const [file, notes] of byFile) {
     output.push(`## ${file}`, "");
     // A note on the file as a whole leads its section: it is the frame for every line note under it.
-    commentsForFile.sort((a, b) =>
+    notes.sort((a, b) =>
       Number(b.scope === "file") - Number(a.scope === "file") ||
       a.start - b.start || (a.ca ?? -1) - (b.ca ?? -1));
-    for (const comment of commentsForFile) {
-      const marker = comment.id ? ` <!-- lcr:${comment.id.replace(/[<>]/g, "")} -->` : "";
-      if (comment.scope === "file") {
-        output.push(`### ${file} (whole file)${marker}`, "", comment.body.trim(), "", "Status: pending", "");
-        continue;
-      }
-      const location = comment.label || (
-        comment.start === comment.end ? String(comment.start) : `${comment.start}-${comment.end}`
-      );
-      const side = comment.side === "old" ? " (line numbers before the change)" : "";
-      output.push(`### ${file}:${location}${side}${marker}`, "");
-      if (comment.code && comment.code.trim()) {
-        output.push("```diff", comment.code, "```", "");
-      }
-      if (comment.snippet) {
-        output.push(`Applies to this part of the line only: ${inlineCode(comment.snippet)}`, "");
-      }
-      output.push(comment.body.trim(), "", "Status: pending", "");
-    }
+    for (const note of notes) output.push(...renderNote(note));
   }
 
-  output.push(
-    "---",
-    "",
-    "Work through every note above. Fix what you agree with. If a note is wrong or " +
-      "would break something, say so instead of implementing it. Report what you changed per note.",
-    "",
-    "A note that only asks a question about the code has two outcomes: fix the code when the " +
-      "question exposes a real problem, or leave the code alone and answer the question when it " +
-      "is already correct.",
-    "",
-    "Then record the outcome in this file: replace each note's `Status: pending` line with " +
-      "`Status: applied — <what changed>`, `Status: answered — <short answer>`, " +
-      "`Status: skipped — <technical reason>`, or " +
-      "`Status: needs-input — <question>`. Change nothing else here, and keep the " +
-      "`<!-- lcr:... -->` marker on every heading. lcr reads these lines on its next run so " +
-      "handled notes can be cleared from the review UI.",
-    "",
-  );
+  output.push(...FOOTER, "");
   return output.join("\n");
 }
 
-/** Fences a selected fragment in enough backticks to survive the backticks inside it. */
-function inlineCode(text: string): string {
-  const runs = [...text.matchAll(/`+/g)].map((match) => match[0].length);
-  const fence = "`".repeat(Math.max(0, ...runs) + 1);
-  const pad = text.startsWith("`") || text.endsWith("`") ? " " : "";
-  return `${fence}${pad}${text}${pad}${fence}`;
-}
+/**
+ * The working agreement, kept at the end of every review file. It is written for an agent that works
+ * one note at a time and answers as it goes, because the reviewer is watching the file for replies.
+ */
+const FOOTER = [
+  "---",
+  "",
+  "## How to work through this file",
+  "",
+  "This file is a conversation. Take the notes one at a time, in file order, and finish each one " +
+    "before starting the next: make the change, then write your reply and your status into this " +
+    "file straight away. The reviewer is reading it while you work.",
+  "",
+  "For each note, the last message in its thread is what you are answering. Everything above it is " +
+    "history. A note with no thread yet is asking about the code under its `diff` block.",
+  "",
+  "Fix what you agree with. If a note is wrong or would break something, say so instead of " +
+    "implementing it. A note that only asks a question about the code has two outcomes: fix the " +
+    "code when the question exposes a real problem, or leave the code alone and answer the " +
+    "question when it is already correct.",
+  "",
+  "Record the outcome by replacing that note's `Status:` line with `Status: applied — <what " +
+    "changed>`, `Status: answered — <short answer>`, `Status: skipped — <technical reason>`, or " +
+    "`Status: needs-input — <question>`, and by appending your reply to the end of that note's " +
+    "section:",
+  "",
+  "```",
+  "**Agent** <!-- lcr:m -->",
+  "",
+  "What you did, or your answer to the question.",
+  "```",
+  "",
+  "Append; never insert, reorder, or edit an earlier message. Leave every heading, `<!-- lcr:... -->` " +
+    "marker, `diff` block, and reviewer message byte-identical. A `**Reviewer**` message that appears " +
+    "under a note you already handled is a follow-up: answer it the same way, and update the " +
+    "`Status:` line to the new outcome.",
+];

@@ -27,6 +27,10 @@ export const state: any={
   cfg:{auto:true,back:true,limit:900,toast:true,hide:'',hideDeleted:false,enterSaves:false,expand:20,
     navHidden:false,single:false,clearSaved:false},
   scrolled:false, jumpUntil:0, autoNow:new Set(), lastUndo:0,
+  /** Threads as the review file holds them, by note id. The file is their only writer. */
+  msgs:new Map(), seen:new Map(), sessionFile:'', live:false, pendingDiff:false,
+  /** Where each note is showing right now; recomputed from the diff, never stored. */
+  place:new Map(),
 };
 export const el=(id: string): any=>document.getElementById(id);
 export const esc=(value: unknown)=>String(value).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -107,6 +111,22 @@ export function markSubmitted(file: string){
   state.notes.forEach((n: any)=>{ if(!n.sentAt) n.sentAt=at; });
   reindexNotes(); // it is what the index counts
 }
+/** The conversation on one note, oldest first. Owned by the review file, so it is read-only here. */
+export const msgsOf=(n: any)=>state.msgs.get(n.id)||[];
+/** Messages that arrived since this note was last looked at. */
+export const unreadOf=(n: any)=>Math.max(0,msgsOf(n).length-(state.seen.get(n.id)||0));
+/** Marks a note's thread as read; returns true when that changed anything. */
+export function markRead(n: any){
+  const count=msgsOf(n).length;
+  if((state.seen.get(n.id)||0)===count) return false;
+  state.seen.set(n.id,count);
+  return true;
+}
+export const unreadTotal=()=>{
+  let total=0;
+  state.notes.forEach((n: any)=>{ total+=unreadOf(n); });
+  return total;
+};
 export const appliedNotes=()=>[...state.notes.values()].filter((n: any)=>{
   const s=statusOf(n);
   return !!s&&s.status==='applied';

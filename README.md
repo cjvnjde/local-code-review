@@ -54,9 +54,20 @@ Address the newest lcr review in .review/.
 
 The review contains file paths, line anchors, captured code, and note text, so the agent can still find the intended code after line numbers move.
 
+### Then keep talking
+
+The page stays on the diff after you save, and follows the agent while it works.
+
+- The agent answers each note in the review file as it finishes it, and its reply appears under that note on the page. So does the diff it just changed.
+- **Reply** under any note to answer back. Your message goes straight into the same file, where the agent picks it up.
+- Notes stay attached as the code moves. When the change a note asked for removes the code it pointed at, the note is shown at the closest line left, or — when the file drops out of the diff entirely — at the end of the page, marked as unattached and still carrying the diff it was written against. You can keep replying to it either way.
+- One file holds the whole conversation. Saving again adds to it, and restarting `lcr` picks the newest one back up. **Settings → New review** opens a fresh one.
+
+The page refreshes the diff whenever nothing is being typed. With a note editor open it waits, and shows a `diff changed` pill in the header until you are done.
+
 ### Optional agent skill
 
-This repository includes [`apply-lcr`](skills/apply-lcr/SKILL.md), a small skill that finds the newest review, applies valid notes, runs project checks, and records the result of each note.
+This repository includes [`apply-lcr`](skills/apply-lcr/SKILL.md), a small skill that finds the newest review, works the notes one at a time, replies to each in the review file as it goes, runs project checks, and picks up any follow-ups you wrote while it worked.
 
 Install it with the [Skills CLI](https://github.com/vercel-labs/skills), then ask your agent:
 
@@ -68,7 +79,7 @@ npx skills add cjvnjde/local-code-review --skill apply-lcr
 Apply the newest lcr review.
 ```
 
-Or use `/apply-lcr` when your agent supports skill commands. After the agent updates each note's `Status:` line, the next `lcr` run shows whether the note was applied, answered, skipped, or needs input.
+Or use `/apply-lcr` when your agent supports skill commands. Each note's `Status:` line — applied, answered, skipped, or needs input — shows on the note as soon as the agent writes it.
 
 Reviews remain ordinary Markdown files. You can use them without the skill and with any coding agent.
 
