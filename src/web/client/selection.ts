@@ -103,12 +103,13 @@ el('diff').addEventListener('mousedown',e=>{
   // Pressing the gutter can only mean row selection; pressing code may still mean "select this text".
   const cell=e.target.closest('td.c');
   if(!cell){ e.preventDefault(); document.body.classList.add('dragging'); }
-  if(e.shiftKey&&state.sel&&state.sel.fi===fi) state.sel={fi,a:state.sel.a,b:i};
+  const extended=!!(e.shiftKey&&state.sel&&state.sel.fi===fi);
+  if(extended) state.sel={fi,a:state.sel.a,b:i};
   else state.sel={fi,a:i,b:i};
   const f=state.files[fi], row=f&&f.rows[i];
   // Taken now rather than on the way back: a wheel scroll mid-drag moves the press point out from under x0,y0.
   const off0=cell&&row?offsetAt(cell,e.clientX,e.clientY,row.text.length):null;
-  drag={fi,i,a:state.sel.a,cell,off0,x0:e.clientX,y0:e.clientY,rows:false,wandered:false,away:false};
+  drag={fi,i,a:state.sel.a,cell,off0,extended,x0:e.clientX,y0:e.clientY,rows:false,wandered:false,away:false};
   paintSel();
 });
 // Hit-test the pointer: while a text drag is in flight the browser keeps sending events to the press target.
@@ -151,11 +152,14 @@ document.addEventListener('mousemove',e=>{
 });
 document.addEventListener('mouseup',e=>{
   if(!drag) return;
-  const {wandered,away,cell,x0,y0}=drag; drag=null;
+  const {wandered,away,cell,extended,x0,y0}=drag; drag=null;
   document.body.classList.remove('dragging');
   // A drag that left the pressed row already holds its own answer: rows, a measured fragment,
   // or the plain line it came back to. The browser highlight plays no part in it.
   if(wandered){ dropTextSel(); openEditor(); return; }
+  // A shift-click extends by whole rows even on a code cell: the highlight the browser stretched
+  // from the last click is a side effect of the shift, not a fragment picked on this row.
+  if(extended){ dropTextSel(); openEditor(); return; }
   if(!cell) return;
   // Released where it began after travelling: the text it brushed on the way was not the point.
   if(away&&atStart(e.clientX,e.clientY,x0,y0)){ dropTextSel(); openEditor(); return; }

@@ -79,6 +79,47 @@ describe("placeNote", () => {
     expect(moved).toEqual({ fi: 0, i: 2, j: 2, how: "moved" });
   });
 
+  test("follows a moved block even when it carries a blank line", () => {
+    diff({
+      path: "app.ts",
+      rows: [
+        hunk(),
+        ctx(1, 1, "before"),
+        add(2, "foo() {"),
+        add(3, ""),
+        add(4, "}"),
+      ],
+    });
+    const moved = placeNote(note({
+      a: "n8",
+      b: "n10",
+      start: 8,
+      end: 10,
+      code: "+foo() {\n+\n+}",
+    }));
+    expect(moved).toEqual({ fi: 0, i: 2, j: 4, how: "moved" });
+  });
+
+  test("a run cannot jump the hidden lines between two hunks", () => {
+    diff({
+      path: "app.ts",
+      rows: [
+        hunk("@@ -40,1 +40,1 @@"),
+        ctx(40, 40, "return null;"),
+        hunk("@@ -200,1 +200,1 @@"),
+        ctx(200, 200, "}"),
+      ],
+    });
+    const placed = placeNote(note({
+      a: "n80",
+      b: "n81",
+      start: 80,
+      end: 81,
+      code: " return null;\n }",
+    }));
+    expect(placed?.how).not.toBe("moved");
+  });
+
   test("settles for the nearest surviving line when the captured code is gone", () => {
     diff({
       path: "app.ts",

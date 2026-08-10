@@ -135,6 +135,8 @@ export function refreshRows(fi: number,from: number){
   node.querySelectorAll('tbody.blk').forEach(tb=>{ obsMount.unobserve(tb); obsDrop.unobserve(tb); });
   table.innerHTML=tableHtml(f,fi);
   table.querySelectorAll('tbody.blk').forEach(observeBlock);
+  // A revealed line can be the anchor a loose note was waiting for, so its old box must come down.
+  applyLoose(fi);
   // Show the revealed lines now rather than a frame later, once the mount observer catches up.
   for(let b=first;b<=first+1;b++){ const tb=el('b'+fi+'-'+b); if(tb) mountBlock(tb); }
 }

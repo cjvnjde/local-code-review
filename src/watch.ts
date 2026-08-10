@@ -1,4 +1,4 @@
-import { watch } from "node:fs";
+import { existsSync, watch } from "node:fs";
 
 export interface Watcher {
   close(): void;
@@ -65,33 +65,46 @@ export function watchDir(dir: string, onChange: (file: string) => void, delay = 
   const fire = (file: string) => {
     last = file;
     if (timer) clearTimeout(timer);
-    timer = setTimeout(() => onChange(last), delay);
+    timer = setTimeout(() => {
+      onChange(last);
+      // Deleting the directory kills the watcher, on most platforms without a word; the events
+      // its contents fired on the way out are the cue to start waiting for it to come back.
+      if (!existsSync(dir)) detach();
+    }, delay);
   };
 
-  const attach = () => {
-    if (closed || watcher) return true;
-    try {
-      watcher = watch(dir, (_event, file) => {
-        if (typeof file === "string") fire(file);
-      });
-      watcher.on("error", () => {
-        watcher?.close();
-        watcher = null;
-      });
-      return true;
-    } catch {
-      return false;
-    }
-  };
-
-  if (!attach()) {
+  const rearm = () => {
+    if (closed || retry) return;
     retry = setInterval(() => {
       if (attach() && retry) {
         clearInterval(retry);
         retry = null;
       }
     }, 1000);
-  }
+  };
+
+  /** A watcher that died is let go and re-attached when the directory allows it again. */
+  const detach = () => {
+    watcher?.close();
+    watcher = null;
+    rearm();
+  };
+
+  const attach = () => {
+    if (closed || watcher) return true;
+    if (!existsSync(dir)) return false;
+    try {
+      watcher = watch(dir, (_event, file) => {
+        if (typeof file === "string") fire(file);
+      });
+      watcher.on("error", detach);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  if (!attach()) rearm();
 
   return {
     close() {

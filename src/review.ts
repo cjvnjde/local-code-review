@@ -1,4 +1,4 @@
-import { type ReviewDoc, type ReviewNote, renderNote } from "./thread.ts";
+import { type ReviewDoc, type ReviewNote, escapeText, renderNote } from "./thread.ts";
 
 /**
  * Writes the review file. It is one running conversation, not a report: the notes carry whatever the
@@ -19,7 +19,7 @@ export function renderMarkdown(doc: ReviewDoc): string {
   ];
 
   if (doc.general.trim()) {
-    output.push("## Overall", "", doc.general.trim(), "");
+    output.push("## Overall", "", escapeText(doc.general.trim()), "");
   }
 
   for (const [file, notes] of byFile) {

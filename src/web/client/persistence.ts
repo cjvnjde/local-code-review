@@ -43,6 +43,20 @@ export function saveCfg(){
   return changed;
 }
 const store=()=>'gitreview:'+state.range;
+/** Said once per session: every save after a full store fails the same way, and one warning is news. */
+let warnedStore=false;
+function warnStore(){
+  if(warnedStore) return;
+  warnedStore=true;
+  const host=el('toasts'); if(!host) return;
+  const t=document.createElement('div');
+  t.className='toast off';
+  t.innerHTML='<span class="tx"></span><span class="lbl">not stored</span>';
+  t.querySelector('.tx').textContent=
+    'The browser refused to store this page’s notes — a reload may lose unsaved ones. Save the review to keep them.';
+  host.append(t);
+  setTimeout(()=>{ t.classList.add('out'); setTimeout(()=>t.remove(),200); },9000);
+}
 export function save(){
   reindexNotes();
   try{
@@ -55,7 +69,9 @@ export function save(){
       // The review file owns the threads; this copy is only so a reload has them before it answers.
       msgs:[...state.msgs], seen:[...state.seen],
     }));
-  }catch(e){}
+  }catch(e){
+    warnStore(); // usually the quota: the page still works, but a reload would forget
+  }
 }
 export function restore(){
   try{

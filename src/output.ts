@@ -9,8 +9,10 @@ export async function excludeRelativeOutput(repoRoot: string, outDir: string): P
   if (path.isAbsolute(outDir)) return;
 
   try {
-    const gitDir = (await runGit(["rev-parse", "--git-dir"], repoRoot)).trim();
-    const excludeFile = path.resolve(repoRoot, gitDir, "info", "exclude");
+    // Asked of git rather than assembled: in a linked worktree the exclude file lives in the
+    // main repository's common dir, not under the worktree's own git dir.
+    const excludePath = (await runGit(["rev-parse", "--git-path", "info/exclude"], repoRoot)).trim();
+    const excludeFile = path.resolve(repoRoot, excludePath);
     const current = await readFile(excludeFile, "utf8").catch(() => "");
     const entry = `/${outDir.replace(/^\.\//, "").replace(/\/$/, "")}/`;
     if (current.split("\n").includes(entry)) return;

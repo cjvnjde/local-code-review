@@ -106,6 +106,71 @@ class Fences {
   }
 }
 
+/** Line shapes the parser reads as structure when they stand outside a fence. */
+function dangerous(line: string): boolean {
+  return H1.test(line) || H2.test(line) || H3.test(line) || /^-{3,}\s*$/.test(line) ||
+    STATUS.test(line) || MESSAGE.test(line) || SNIPPET.test(line);
+}
+const escapable = (line: string): boolean => dangerous(line) || FENCE.test(line);
+
+/**
+ * Reviewer-written text is emitted verbatim, so a line of it that happens to speak the file's own
+ * structure — a heading, a rule, a `Status:` line, a speaker line — would be read back as structure
+ * and take the rest of the section with it. Rendering therefore escapes those lines with a leading
+ * backslash, which `unescapeLines` strips on the way back in; a line already carrying backslashes
+ * gains one more so the strip stays an exact inverse. Fences the text leaves unclosed would swallow
+ * the rest of the document, so an opener with no closer loses its meaning the same way; balanced
+ * fences keep their content untouched in both directions.
+ */
+export function escapeText(text: string): string {
+  const lines = text.split("\n");
+  // Escaping the last unmatched opener can expose later fence-like lines as openers of their own.
+  const unmatched = new Set<number>();
+  for (;;) {
+    let open = "";
+    let at = -1;
+    for (let i = 0; i < lines.length; i++) {
+      if (unmatched.has(i)) continue;
+      const match = FENCE.exec(lines[i] as string);
+      if (!match) continue;
+      const mark = match[2] as string;
+      if (!open) {
+        open = mark;
+        at = i;
+      } else if (mark[0] === open[0] && mark.length >= open.length && !(match[3] as string).trim()) {
+        open = "";
+      }
+    }
+    if (!open) break;
+    unmatched.add(at);
+  }
+
+  let open = "";
+  return lines.map((line, i) => {
+    const match = unmatched.has(i) ? null : FENCE.exec(line);
+    if (match) {
+      const mark = match[2] as string;
+      if (!open) open = mark;
+      else if (mark[0] === open[0] && mark.length >= open.length && !(match[3] as string).trim()) open = "";
+      return line;
+    }
+    if (open) return line;
+    if (unmatched.has(i)) return `\\${line}`;
+    const bare = line.replace(/^\\+/, "");
+    return (bare === line ? dangerous(line) : escapable(bare)) ? `\\${line}` : line;
+  }).join("\n");
+}
+
+/** Undoes `escapeText` line by line, leaving fenced content and honest backslashes alone. */
+function unescapeLines(lines: string[]): string[] {
+  const fences = new Fences();
+  return lines.map((line) => {
+    if (fences.step(line)) return line;
+    if (line.startsWith("\\") && escapable(line.replace(/^\\+/, ""))) return line.slice(1);
+    return line;
+  });
+}
+
 interface RawSection {
   heading: string;
   lines: string[];
@@ -161,7 +226,7 @@ export function parseReview(markdown: string): ReviewDoc {
   const { range, general, sections } = split(markdown);
   return {
     range,
-    general: trimBlock(general),
+    general: trimBlock(unescapeLines(general)),
     notes: sections.map(readSection).filter((note): note is ReviewNote => !!note),
   };
 }
@@ -237,7 +302,7 @@ function readSection(section: RawSection): ReviewNote | null {
 
   readOpening(note, before);
   note.messages = messages
-    .map((entry) => ({ role: entry.role, at: entry.at, body: trimBlock(entry.lines) }))
+    .map((entry) => ({ role: entry.role, at: entry.at, body: trimBlock(unescapeLines(entry.lines)) }))
     .filter((entry) => !!entry.body);
   return note;
 }
@@ -274,7 +339,9 @@ function readOpening(note: ReviewNote, lines: string[]): void {
     }
     if (match) {
       open = match[2] as string;
-      if (!taken && !body.some((entry) => entry.trim()) && (match[3] as string).trim() === "diff") {
+      // A whole-file note never captured code, so a leading `diff` block is its own prose.
+      if (!taken && note.scope !== "file" && !body.some((entry) => entry.trim()) &&
+        (match[3] as string).trim() === "diff") {
         code = [];
         taken = true;
         continue;
@@ -290,7 +357,7 @@ function readOpening(note: ReviewNote, lines: string[]): void {
     body.push(line);
   }
   if (code) note.code = code.join("\n");
-  note.body = trimBlock(body);
+  note.body = trimBlock(unescapeLines(body));
 }
 
 /** Path, label, and line range, taken from the id when it is there and from the heading when not. */
@@ -445,7 +512,7 @@ export function renderNote(note: ReviewNote): string[] {
   if (note.snippet) {
     out.push(`Applies to this part of the line only: ${inlineCode(note.snippet)}`, "");
   }
-  if (note.body.trim()) out.push(note.body.trim(), "");
+  if (note.body.trim()) out.push(escapeText(note.body.trim()), "");
   out.push(`Status: ${statusLine(note)}`, "");
   for (const message of note.messages) {
     out.push(...renderMessage(message));
@@ -456,7 +523,7 @@ export function renderNote(note: ReviewNote): string[] {
 export function renderMessage(message: ReviewMessage): string[] {
   const label = message.role === "agent" ? "Agent" : "Reviewer";
   const stamp = message.at ? ` ${message.at}` : "";
-  return [`**${label}** <!-- lcr:m${stamp} -->`, "", message.body.trim(), ""];
+  return [`**${label}** <!-- lcr:m${stamp} -->`, "", escapeText(message.body.trim()), ""];
 }
 
 function statusLine(note: ReviewNote): string {
@@ -478,6 +545,7 @@ function fenceFor(text: string): string {
 export function inlineCode(text: string): string {
   const runs = [...text.matchAll(/`+/g)].map((match) => match[0].length);
   const fence = "`".repeat(Math.max(0, ...runs) + 1);
-  const pad = text.startsWith("`") || text.endsWith("`") ? " " : "";
+  // A boundary space needs the pad too: the reader strips one space from each padded end.
+  const pad = /^[` ]|[` ]$/.test(text) ? " " : "";
   return `${fence}${pad}${text}${pad}${fence}`;
 }

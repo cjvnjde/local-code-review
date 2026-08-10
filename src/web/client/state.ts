@@ -28,7 +28,7 @@ export const state: any={
     navHidden:false,single:false,clearSaved:false},
   scrolled:false, jumpUntil:0, autoNow:new Set(), lastUndo:0,
   /** Threads as the review file holds them, by note id. The file is their only writer. */
-  msgs:new Map(), seen:new Map(), sessionFile:'', live:false, pendingDiff:false,
+  msgs:new Map(), seen:new Map(), sessionFile:'', live:false, pendingDiff:false, pendingNotes:false,
   /** Where each note is showing right now; recomputed from the diff, never stored. */
   place:new Map(),
 };

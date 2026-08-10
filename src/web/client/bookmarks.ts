@@ -22,8 +22,10 @@ const LAST=Number.MAX_SAFE_INTEGER;
 export function orderBookmarks(list: any[],at: (b: any)=>{fi: number,i: number}){
   return list
     .map(b=>{
-      const p=at(b), fi=p.fi<0?LAST:p.fi, i=p.i<0?LAST:p.i;
-      return {b,fi,i,gone:fi===LAST||i===LAST};
+      // Either coordinate missing makes it gone, and gone sinks whole: a live file index would
+      // otherwise leave it sorted among that file's live bookmarks instead of behind them all.
+      const p=at(b), gone=p.fi<0||p.i<0;
+      return {b,fi:gone?LAST:p.fi,i:gone?LAST:p.i,gone};
     })
     .sort((x,y)=>(x.fi-y.fi)||(x.i-y.i));
 }

@@ -154,6 +154,74 @@ describe("parseReview", () => {
     expect(doc.notes[0]!.messages).toEqual([]);
   });
 
+  test("a body speaking the file's own structure round-trips without breaking the section", () => {
+    const body = [
+      "Part one.",
+      "---",
+      "### not a new note",
+      "Status: not a verdict",
+      "**Agent**",
+      "Part two.",
+    ].join("\n");
+    const first = parseReview(write([{ ...comment, body }]).replace("Status: pending", "Status: applied — done"));
+    expect(first.notes).toHaveLength(1);
+    expect(first.notes[0]).toMatchObject({ body, status: "applied", detail: "done", messages: [] });
+    // The next save rewrites the file from the parsed doc; nothing may shift on the second pass.
+    const second = parseReview(renderMarkdown(first));
+    expect(second.notes[0]).toMatchObject({ body, status: "applied", detail: "done", messages: [] });
+  });
+
+  test("an unclosed fence in one note cannot swallow the next", () => {
+    const doc = parseReview(write([
+      { ...comment, body: "fence:\n```\nnever closed" },
+      { ...comment, id: "src/app.ts|n20|n20|#a9", start: 20, end: 20, label: "20", body: "second" },
+    ]));
+    expect(doc.notes).toHaveLength(2);
+    expect(doc.notes[0]!.body).toBe("fence:\n```\nnever closed");
+    expect(doc.notes[1]!.body).toBe("second");
+  });
+
+  test("a balanced fence in the body keeps its content unescaped on disk", () => {
+    const body = "look:\n```\n### fenced heading\n```";
+    const text = write([{ ...comment, body }]);
+    expect(text).toContain("### fenced heading");
+    expect(text).not.toContain("\\### fenced heading");
+    expect(parseReview(text).notes[0]!.body).toBe(body);
+  });
+
+  test("structure lines in the overall note stay in the overall note", () => {
+    const general = "Fine overall.\n### src/app.ts:1\n---\ndone";
+    const doc = parseReview(write([comment], general));
+    expect(doc.general).toBe(general);
+    expect(doc.notes).toHaveLength(1);
+  });
+
+  test("a snippet keeping its surrounding spaces survives the round trip", () => {
+    const doc = parseReview(write([{
+      ...comment,
+      id: "src/app.ts|n12|n12|4-9|#a5",
+      label: "12:5-9",
+      ca: 4,
+      cb: 9,
+      snippet: " foo ",
+    }]));
+    expect(doc.notes[0]!.snippet).toBe(" foo ");
+  });
+
+  test("a whole-file note whose body opens with a diff fence keeps it as prose", () => {
+    const body = "```diff\n+this is prose\n```";
+    const doc = parseReview(write([{
+      id: "src/app.ts|*|*|#a6",
+      file: "src/app.ts",
+      body,
+      scope: "file",
+      start: 0,
+      end: 0,
+    }]));
+    expect(doc.notes[0]!.body).toBe(body);
+    expect(doc.notes[0]!.code).toBeUndefined();
+  });
+
   test("reads a note a previous lcr version wrote", () => {
     const doc = parseReview([
       "# Review notes",

@@ -22,7 +22,14 @@ const editing=()=>!!document.querySelector('.nbox textarea');
 
 export function startLive(){
   const source=new EventSource('/api/events');
-  source.onopen=()=>setLive(true);
+  let connected=false;
+  source.onopen=()=>{
+    setLive(true);
+    // Whatever moved while the connection was down was announced to nobody, so a reconnect
+    // fetches instead of trusting the silence; the first open lands on a freshly loaded page.
+    if(connected){ refreshReview(); checkDiffStale(); }
+    connected=true;
+  };
   source.onerror=()=>setLive(false); // EventSource reconnects on its own
   source.onmessage=(e: any)=>{
     let event: any=null;
@@ -32,7 +39,11 @@ export function startLive(){
     if(event.type==='diff') queueDiff();
   };
   // An editor can close in ways nothing here sees, so the wait is checked rather than subscribed to.
-  setInterval(()=>{ if(state.pendingDiff&&!editing()) applyDiff(); },700);
+  setInterval(()=>{
+    if(editing()) return;
+    if(state.pendingDiff){ applyDiff(); return; }
+    if(state.pendingNotes){ state.pendingNotes=false; placeNotes(); render(); }
+  },700);
 }
 
 function setLive(on: boolean){
@@ -52,8 +63,23 @@ function queueDiff(){
 }
 async function applyDiff(){
   state.pendingDiff=false;
+  state.pendingNotes=false; // the reload rebuilds the pane with every note placed
   paintPending();
   await load(true);
+}
+
+/** Compares the diff on the server with the one on screen, and only rebuilds when they differ. */
+async function checkDiffStale(){
+  try{
+    const response=await fetch('/api/diff');
+    const d=await response.json();
+    if(!response.ok||d.error||!Array.isArray(d.files)) return;
+    const same=d.files.length===state.files.length&&
+      d.files.every((f: any,k: number)=>state.files[k].path===f.path&&state.files[k].hash===f.hash);
+    if(!same) queueDiff();
+  }catch{
+    // The next event, or the reader's own reload, will try again.
+  }
 }
 function paintPending(){
   const pill=el('pending'); if(!pill) return;
@@ -76,10 +102,15 @@ async function refreshReview(){
     });
     adopt(data);
     save();
-    // A note that arrived from the file has no box yet, so the pane is rebuilt for it.
+    // A note that arrived from the file has no box yet, so the pane is rebuilt for it — but a
+    // rebuild eats an open editor, so it waits for the last one to close, exactly as a diff does.
     const fresh=[...state.notes.keys()].filter((id: any)=>!before.has(id));
-    if(fresh.length){ placeNotes(); render(); }
-    else{ state.notes.forEach((n: any)=>repaintNote(n.id)); updateCount(); }
+    if(fresh.length&&!editing()){ placeNotes(); render(); }
+    else{
+      if(fresh.length) state.pendingNotes=true;
+      state.notes.forEach((n: any)=>repaintNote(n.id));
+      updateCount();
+    }
     announce(before);
   }finally{
     refreshing=false;

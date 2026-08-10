@@ -59,13 +59,14 @@ function sideRows(f: any,side: string){
   return out;
 }
 const lineAt=(f: any,k: number,side: string)=>side==='old'?f.rows[k].o:f.rows[k].n;
-/** Captured lines that still exist on this side of the diff, trimmed for comparison. */
+/** Captured lines that still exist on this side of the diff, trimmed for comparison. Blank lines
+ *  stay in place — the rows they must match are still there — but a run of nothing matches nothing. */
 function captured(n: any,side: string,contextOnly: boolean){
   if(!n.code) return [];
-  return n.code.split('\n')
+  const lines=n.code.split('\n')
     .filter(l=>contextOnly?l[0]===' ':(side==='old'?l[0]!=='+':l[0]!=='-'))
-    .map(l=>l.slice(1).trim())
-    .filter(l=>l.length>0);
+    .map(l=>l.slice(1).trim());
+  return lines.some(l=>l.length>0)?lines:[];
 }
 
 function relocate(f: any,fi: number,n: any): Placing{
@@ -86,12 +87,17 @@ function findRun(f: any,rows: number[],want: string[],from: number,side: string)
   if(!want.length) return null;
   let best=null, bestGap=Infinity;
   for(let p=0;p+want.length<=rows.length;p++){
-    let ok=true;
+    const start=lineAt(f,rows[p] as number,side);
+    let ok=start!=null;
     for(let q=0;q<want.length&&ok;q++){
-      if(f.rows[rows[p+q] as number].text.trim()!==want[q]) ok=false;
+      const k=rows[p+q] as number;
+      if(f.rows[k].text.trim()!==want[q]) ok=false;
+      // Adjacent in this list is not adjacent in the file across a hunk boundary: a run that jumps
+      // the hidden lines between hunks would claim everything the diff left out as its own.
+      else if(lineAt(f,k,side)!==(start as number)+q) ok=false;
     }
     if(!ok) continue;
-    const gap=Math.abs((lineAt(f,rows[p] as number,side)||0)-from);
+    const gap=Math.abs((start as number)-from);
     if(gap<bestGap){ bestGap=gap; best=[rows[p] as number,rows[p+want.length-1] as number]; }
   }
   return best;

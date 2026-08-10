@@ -35,7 +35,7 @@ export const PORT_ATTEMPTS = 10;
 export function startServer(options: ServerOptions) {
   const server = listen(options.port, (port) => serve(options, port));
 
-  if (server.port !== options.port) {
+  if (options.port !== 0 && server.port !== options.port) {
     console.log(`\n  port ${options.port} is in use, using ${server.port} instead`);
   }
   console.log(`\n  git review  ->  http://localhost:${server.port}`);
@@ -115,7 +115,8 @@ function serve(options: ServerOptions, port: number) {
           // Starting fresh only forgets which file we were in; the old one stays on disk as history.
           if (request.method === "DELETE") {
             const previous = options.session.shownFile;
-            options.session.startFresh();
+            // Queued behind any save in flight, so its tail cannot write into the file just left.
+            await options.session.run(async () => options.session.startFresh());
             console.log(`\n  new review started${previous ? `; ${previous} left as it is` : ""}\n`);
             options.hub.emit({ type: "review", file: "" });
             return Response.json({ file: "", previous });
@@ -124,7 +125,8 @@ function serve(options: ServerOptions, port: number) {
         }
         if (url.pathname === "/api/reply" && request.method === "POST") {
           if (!isJsonRequest(request)) return Response.json({ error: "JSON body required." }, { status: 415 });
-          const payload = await request.json() as { id?: unknown; body?: unknown };
+          const payload = await readJson(request) as { id?: unknown; body?: unknown } | null;
+          if (!payload) return Response.json({ error: "A JSON body is required." }, { status: 400 });
           const id = typeof payload.id === "string" ? payload.id : "";
           const body = typeof payload.body === "string" ? payload.body.trim() : "";
           if (!id || !body) return Response.json({ error: "A note id and a message are required." }, { status: 400 });
@@ -147,10 +149,11 @@ function serve(options: ServerOptions, port: number) {
         }
         if (url.pathname === "/api/submit" && request.method === "POST") {
           if (!isJsonRequest(request)) return Response.json({ error: "JSON body required." }, { status: 415 });
-          const payload = await request.json() as Partial<ReviewSubmission>;
+          const payload = await readJson(request) as Partial<ReviewSubmission> | null;
+          if (!payload) return Response.json({ error: "A JSON body is required." }, { status: 400 });
           const submission = {
-            general: payload.general ?? "",
-            comments: payload.comments ?? [],
+            general: typeof payload.general === "string" ? payload.general : "",
+            comments: Array.isArray(payload.comments) ? payload.comments : [],
           };
           const { file, removed } = await options.session.save(
             submission,
@@ -171,9 +174,14 @@ function serve(options: ServerOptions, port: number) {
             });
           }
           if (request.method === "DELETE") {
-            const removed = await options.deleteReviews();
-            // The conversation went with them, so the next save opens a new one.
-            options.session.startFresh();
+            // Queued behind any save in flight: deleting mid-save would let its write resurrect
+            // the file while the session had already forgotten it.
+            const removed = await options.session.run(async () => {
+              const names = await options.deleteReviews();
+              // The conversation went with them, so the next save opens a new one.
+              options.session.startFresh();
+              return names;
+            });
             console.log(`\n  deleted ${plural(removed.length, "review file")} from ${options.outDir}/\n`);
             options.hub.emit({ type: "review", file: "" });
             return Response.json({ removed });
@@ -234,4 +242,14 @@ function plural(count: number, noun: string): string {
 
 function isJsonRequest(request: Request): boolean {
   return request.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase() === "application/json";
+}
+
+/** The parsed object a request carries, or null for a body that is not a JSON object. */
+async function readJson(request: Request): Promise<unknown | null> {
+  try {
+    const parsed = await request.json();
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
 }

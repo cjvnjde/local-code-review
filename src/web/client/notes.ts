@@ -36,6 +36,17 @@ function bounds(){
   const ch=s.ca!=null&&i===j&&i===s.a?{ca:s.ca,cb:s.cb}:null;
   return {f,fi:s.fi,i,j,ch};
 }
+/**
+ * The stored offsets, re-read against the text they point into. A row that still holds the note's
+ * code can have shifted under it — a re-indent keeps it `exact` — so the snippet is what says where
+ * the range now sits; offsets whose snippet has left the line entirely point at nothing.
+ */
+function charSpan(n: any,text: string){
+  if(n.ca==null) return null;
+  if(!n.snippet||text.slice(n.ca,n.cb)===n.snippet) return {ca:n.ca,cb:n.cb};
+  const at=text.indexOf(n.snippet);
+  return at<0?null:{ca:at,cb:at+n.snippet.length};
+}
 /** Character ranges to paint inside one row: every saved sub-line note, plus the live selection. */
 export function charMarks(f: any,fi: number,idx: number){
   const out: any[]=[];
@@ -43,7 +54,9 @@ export function charMarks(f: any,fi: number,idx: number){
     if(n.ca==null||n.file!==f.path) return;
     // Where the note is showing, which after an edit need not be the row it was written on.
     const p=placeOf(n);
-    if(p&&p.i===idx&&p.how!=='near') out.push({s:n.ca,e:n.cb,c:'cn'});
+    if(!p||p.i!==idx||p.how==='near') return;
+    const span=charSpan(n,f.rows[idx].text);
+    if(span) out.push({s:span.ca,e:span.cb,c:'cn'});
   });
   const s=state.sel;
   if(s&&s.ca!=null&&s.fi===fi&&s.a===idx) out.push({s:s.ca,e:s.cb,c:'cs'});
@@ -204,7 +217,10 @@ function editUI(box,ctx){
     renderTree(); updateCount();
   };
   const drop=()=>{
-    if(state.notes.has(id)){ state.notes.delete(id); save(); remark(f,fi,i,j); renderTree(); updateCount(); }
+    // Emptying a saved note is deleting it, and deleting is what takes it out of the review file
+    // too; only a draft that never existed comes down with no more ceremony than cancel.
+    const kept=state.notes.get(id);
+    if(kept){ clearSel(); removeNote(box,kept,ctx); return; }
     rowOf(box).remove(); clearSel();
     if(ch) repaintRow(fi,i);
   };
@@ -359,7 +375,7 @@ export function applyNotesIn(f: any,fi: number,from: number,to: number){
     mark(fi,Math.max(i,from),Math.min(j,to-1),true);
     if(j<from||j>=to) return; // the box belongs to the block holding the last row
     const anchor=el('r'+fi+'-'+j); if(!anchor) return;
-    const ch=n.ca!=null&&p.how!=='near'?{ca:n.ca,cb:n.cb}:null;
+    const ch=n.ca!=null&&p.how!=='near'?charSpan(n,f.rows[i].text):null;
     if(!rowFor(anchor,n.id)) viewUI(mountRow(anchor,n.id),n,{f,fi,i,j,ch,how:p.how});
   });
 }
@@ -377,8 +393,10 @@ export function repaintNote(id: string){
   const p=placeOf(n);
   const f=p?state.files[p.fi]:{path:n.file,rows:[]};
   const how=p?p.how:'stray';
-  const ch=n.ca!=null&&how!=='near'?{ca:n.ca,cb:n.cb}:null;
-  const ctx={f,fi:p?p.fi:-1,i:p?p.i:null,j:p?p.j:null,ch,how};
+  const ch=n.ca!=null&&how!=='near'&&p&&p.i>=0&&f.rows[p.i]?charSpan(n,f.rows[p.i].text):null;
+  // Edit reads the note's shape off this ctx, so a whole-file note must say it is one here too.
+  const ctx: any={f,fi:p?p.fi:-1,i:p?p.i:null,j:p?p.j:null,ch,how};
+  if(isFileNote(n)) ctx.scope='file';
   document.querySelectorAll('.nrow').forEach((row: any)=>{
     if(row.dataset.nid!==id) return;
     const box=row.querySelector('.nbox');

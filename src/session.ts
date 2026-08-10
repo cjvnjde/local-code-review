@@ -83,6 +83,14 @@ export function createSession(repoRoot: string, outDir: string, range: string) {
     startFresh(): void {
       name = "";
     },
+    /**
+     * Runs work with none of this side's read-modify-writes in flight, for a caller that changes
+     * which file the conversation is in: forgetting or deleting it mid-save would let the tail of
+     * that save resurrect it.
+     */
+    run<T>(work: () => Promise<T>): Promise<T> {
+      return serialise(work);
+    },
     read: () => serialise(read),
 
     /**

@@ -31,6 +31,70 @@ describe("parseDiff", () => {
     expect(files[0].hash).toMatch(/^[a-z0-9]+$/);
   });
 
+  test("body lines starting +++/--- are content, not file headers", () => {
+    const files = parseDiff([
+      "diff --git a/notes.sql b/notes.sql",
+      "--- a/notes.sql",
+      "+++ b/notes.sql",
+      "@@ -1,3 +1,3 @@",
+      " select 1;",
+      "--- old comment",
+      "+++ new content",
+      " select 2;",
+      "",
+    ].join("\n"));
+
+    expect(files).toHaveLength(1);
+    expect(files[0].path).toBe("notes.sql");
+    expect(files[0].rows).toEqual([
+      { t: "hunk", text: "@@ -1,3 +1,3 @@" },
+      { t: "ctx", o: 1, n: 1, text: "select 1;" },
+      { t: "del", o: 2, text: "-- old comment" },
+      { t: "add", n: 2, text: "++ new content" },
+      { t: "ctx", o: 3, n: 3, text: "select 2;" },
+    ]);
+  });
+
+  test("binary changes, pure renames, and mode-only changes keep their file entry", () => {
+    const files = parseDiff([
+      "diff --git a/bin.dat b/bin.dat",
+      "index 1111111..2222222 100644",
+      "Binary files a/bin.dat and b/bin.dat differ",
+      "diff --git a/old name.txt b/new name.txt",
+      "similarity index 100%",
+      "rename from old name.txt",
+      "rename to new name.txt",
+      "diff --git a/run.sh b/run.sh",
+      "old mode 100644",
+      "new mode 100755",
+      "",
+    ].join("\n"));
+
+    expect(files.map((file) => file.path)).toEqual(["bin.dat", "new name.txt", "run.sh"]);
+    expect(files[0].binary).toBe(true);
+    expect(files[1].status).toBe("renamed");
+  });
+
+  test("undoes the tab and quoting git puts around unusual paths", () => {
+    const files = parseDiff([
+      "diff --git a/spaced name.txt b/spaced name.txt",
+      "--- a/spaced name.txt\t",
+      "+++ b/spaced name.txt\t",
+      "@@ -1,1 +1,1 @@",
+      "-a",
+      "+b",
+      'diff --git "a/na\\303\\257ve.txt" "b/na\\303\\257ve.txt"',
+      '--- "a/na\\303\\257ve.txt"',
+      '+++ "b/na\\303\\257ve.txt"',
+      "@@ -1,1 +1,1 @@",
+      "-x",
+      "+y",
+      "",
+    ].join("\n"));
+
+    expect(files.map((file) => file.path)).toEqual(["spaced name.txt", "naïve.txt"]);
+  });
+
   test("keeps the section heading of a hunk header, so it can be rebuilt after expansion", () => {
     const files = parseDiff([
       "diff --git a/src/example.ts b/src/example.ts",

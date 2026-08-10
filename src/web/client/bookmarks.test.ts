@@ -43,6 +43,13 @@ describe("orderBookmarks", () => {
     expect(out.map((e) => e.gone)).toEqual([false, true, true]);
   });
 
+  test("a gone row in a live file still sinks below every live bookmark", () => {
+    const rowless = (b: any) => (b.key === "a.ts|n999" ? { fi: 0, i: -1 } : place(b));
+    const out = orderBookmarks([bm("a.ts|n10"), bm("a.ts|n999"), bm("b.ts|n2")], rowless);
+    expect(keys(out)).toEqual(["a.ts|n10", "b.ts|n2", "a.ts|n999"]);
+    expect(out.map((e) => e.gone)).toEqual([false, false, true]);
+  });
+
   test("nothing bookmarked is an empty list, not a placeholder", () => {
     expect(orderBookmarks([], place)).toEqual([]);
   });

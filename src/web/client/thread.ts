@@ -109,13 +109,19 @@ function startReply(wrap: any,id: string,done: ()=>void){
   autogrow(ta,NOTE_MAX);
   ta.focus();
   const shut=()=>box.replaceWith(replyButton(id,done));
+  // The button disables itself, but enter still reaches the textarea mid-flight: one send at a time,
+  // or a quick double enter would append the same message to the review file twice.
+  let sending=false;
   const send=async()=>{
+    if(sending) return;
     const body=ta.value.trim();
     if(!body){ shut(); return; }
+    sending=true;
     const button: any=box.querySelector('.primary');
     button.disabled=true; button.textContent='Sending…';
     const ok=await postReply(id,body);
     if(!ok){
+      sending=false;
       button.disabled=false; button.textContent='Send reply';
       return;
     }

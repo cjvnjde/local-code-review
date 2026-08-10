@@ -8,7 +8,21 @@ import { el, esc, idxOf, isMinted, reviewTime, state } from './state.ts';
 import { renderTree } from './tree.ts';
 
 /* ---------- load ---------- */
+/**
+ * One reload at a time: two in flight would race, and whichever git run resolved last would win
+ * whether or not its snapshot was the newer one. A request that lands mid-load runs after it.
+ */
+let loading=false, queued=false;
 export async function load(keep=false){
+  if(loading){ queued=true; return; }
+  loading=true;
+  try{ await loadNow(keep); }
+  finally{
+    loading=false;
+    if(queued){ queued=false; await load(true); }
+  }
+}
+async function loadNow(keep: boolean){
   const mark=keep?scrollMark():null;
   const [diff,review]=await Promise.all([
     fetch('/api/diff').then(r=>r.json().then(d=>({ok:r.ok,d}))),
