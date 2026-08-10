@@ -24,6 +24,9 @@
   A page that clears cannot receive verdicts, so `markSubmitted` is skipped for it.
 - Default `.review/` output remains ignored. Custom relative output directories remain locally excluded through `.git/info/exclude`.
 - Start opens the page in the default browser unless `--no-open` is passed. Launch stays best-effort: failure prints a hint and never blocks the server.
+- A taken port is not a failure: start walks up from the requested port over a bounded range and reports the one it
+  landed on. Everything downstream, the printed URL and the browser launch included, reads `server.port` rather than the
+  requested one. Port 0 is left to the OS and never walked.
 - Reload stays explicit. Do not add watchers or live updates that could discard review state without clear approval.
 - The page is served from `/` with `cache-control: no-store`; the HTML bundle route stays on `/index.html`. Bun gives that route one ETag for every build, so mounting the bundle on `/` again lets a browser revalidate into an older page whose asset chunks are gone.
 - Review notes anchor on captured code plus line metadata. A note may narrow to a character range inside one line; keep its columns, snippet, and `ca`/`cb` offsets together with the line anchor.

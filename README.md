@@ -22,7 +22,7 @@ Run inside any Git repository:
 lcr
 ```
 
-The review page opens at <http://localhost:7777>. It includes working-tree, staged, and untracked changes against `HEAD`.
+The review page opens at <http://localhost:7777>. It includes working-tree, staged, and untracked changes against `HEAD`. If that port is taken, `lcr` moves to the next free one (7778, 7779, ...) and prints the address it landed on.
 
 Common commands:
 
@@ -31,7 +31,7 @@ lcr --no-open                 # Do not open the browser automatically
 lcr --staged                  # Staged changes only
 lcr HEAD~3                    # Last three commits
 lcr main...HEAD               # Compare current branch with main
-lcr --port 8080               # Use another port
+lcr --port 8080               # Start from another port
 lcr --out .feedback           # Store reviews elsewhere
 lcr --context 8               # Show more surrounding lines
 ```

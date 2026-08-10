@@ -25,9 +25,46 @@ export interface ServerOptions {
  */
 const PAGE_PATH = "/index.html";
 
+/** Ports tried, counting the requested one, before start gives up. */
+export const PORT_ATTEMPTS = 10;
+
 export function startServer(options: ServerOptions) {
+  const server = listen(options.port, (port) => serve(options, port));
+
+  if (server.port !== options.port) {
+    console.log(`\n  port ${options.port} is in use, using ${server.port} instead`);
+  }
+  console.log(`\n  git review  ->  http://localhost:${server.port}`);
+  console.log(`  diff: ${options.range}`);
+  console.log(`  repo: ${options.repoRoot}`);
+  console.log(`  out:  ${options.outDir}/\n`);
+  return server;
+}
+
+/**
+ * Walks up from the requested port until one is free, the way a dev server does, so a second
+ * review in another repository starts instead of failing. Port 0 means the OS picks, so it is
+ * never walked.
+ */
+export function listen<T>(port: number, open: (port: number) => T): T {
+  const last = port === 0 ? port : port + PORT_ATTEMPTS - 1;
+  for (let candidate = port; candidate <= last; candidate++) {
+    try {
+      return open(candidate);
+    } catch (error) {
+      if (!isPortTaken(error)) throw error;
+    }
+  }
+  throw new Error(`ports ${port}-${last} are all in use; pass --port to pick another`);
+}
+
+function isPortTaken(error: unknown): boolean {
+  return typeof error === "object" && error !== null && (error as { code?: unknown }).code === "EADDRINUSE";
+}
+
+function serve(options: ServerOptions, port: number) {
   const server = Bun.serve({
-    port: options.port,
+    port,
     hostname: "127.0.0.1",
     routes: {
       "/": async () => {
@@ -91,10 +128,6 @@ export function startServer(options: ServerOptions) {
     },
   });
 
-  console.log(`\n  git review  ->  http://localhost:${server.port}`);
-  console.log(`  diff: ${options.range}`);
-  console.log(`  repo: ${options.repoRoot}`);
-  console.log(`  out:  ${options.outDir}/\n`);
   return server;
 }
 
