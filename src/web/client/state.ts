@@ -27,8 +27,12 @@ export const state: any={
   ntCur:'', reader:false, rdrFilter:'all', rdrStale:false,
   filter:'', hideRx:[], sel:null, active:'',
   byPath:new Map(), h:new Map(), draftRow:null, draftKey:null,
-  cfg:{auto:true,back:true,limit:900,toast:true,hide:'',hideDeleted:false,enterSaves:false,expand:20,
-    navHidden:false,ntFold:false,bmFold:false,single:false,clearSaved:false},
+  cfg:{auto:true,back:true,limit:900,toast:true,hide:'',hideDeleted:false,foldDel:false,enterSaves:false,
+    expand:20,navHidden:false,ntFold:false,bmFold:false,single:false,clearSaved:false},
+  /** Runs of removed lines the reader has opened while `cfg.foldDel` folds the rest away. Keyed by
+   *  file and old-side line, so revealed context cannot shuffle them, and kept out of storage: which
+   *  of them stand open is this read of the diff rather than a preference about it. */
+  openDel:new Set(),
   scrolled:false, jumpUntil:0, autoNow:new Set(), lastUndo:0,
   /** Threads as the review file holds them, by note id. The file is their only writer. */
   msgs:new Map(), seen:new Map(), sessionFile:'', live:false, pendingDiff:false, pendingNotes:false,

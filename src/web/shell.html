@@ -45,6 +45,14 @@
         starts a comment. Files you reveal with the eye icon stay visible.</p>
     </div>
     <div class="settings-section">
+      <h4>Removed lines</h4>
+      <label><input type="checkbox" id="cfgFoldDel"> Fold removed lines into blocks I can open</label>
+      <p class="note">Reads the diff as the file it is about to be: every run of removed lines becomes
+        one line you click to open, and click again to fold away. Nothing is dropped — a run a note is
+        attached to stays open, and jumping to a bookmark or a note inside a fold opens it. Which runs
+        you opened lasts for this read of the diff, not beyond it.</p>
+    </div>
+    <div class="settings-section">
       <h4>Review file</h4>
       <p class="note" id="sessionInfo">No review file yet — your first save opens one.</p>
       <button id="newReview" type="button">New review</button>

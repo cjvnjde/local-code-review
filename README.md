@@ -48,6 +48,8 @@ Arguments not recognized by `lcr` are passed to `git diff`.
 4. `lcr` writes `.review/review-<timestamp>.md`. The default `.review/` directory is ignored by Git.
 5. Give that Markdown review to your coding agent.
 
+When a change rewrites more than it keeps, **Settings → Removed lines** folds every run of deleted lines into one line you can click open again, so the diff reads as the file the change leaves behind. A run a note is attached to stays open, and jumping to a note or bookmark inside a fold opens it.
+
 A simple agent prompt is enough:
 
 ```text

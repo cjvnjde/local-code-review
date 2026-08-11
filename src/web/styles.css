@@ -238,6 +238,20 @@
     margin:0;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
   td.exp .xp:hover{color:var(--accent);background:var(--s1)}
   td.exp .xp:focus-visible{outline:2px solid var(--mark);outline-offset:-1px}
+  /* a run of removed lines folded away, so the file reads as the one the change leaves behind. It is a
+     row of the table, which is what lets its lines come back exactly where they were taken from. */
+  tr.dfold td{padding:0;background:var(--del-bg);border-top:1px solid var(--edge);border-bottom:1px solid var(--edge)}
+  tr.dfold.open td{background:var(--mantle)}
+  .dfb{display:flex;align-items:center;justify-content:flex-start;gap:9px;width:100%;min-height:var(--tap);
+    padding:2px 12px;border:none;border-radius:0;background:none;color:var(--ink-faint);
+    font:var(--fs-sm)/1.4 var(--mono);letter-spacing:0;text-transform:none;text-align:left}
+  .dfb .ic{display:flex;align-items:center;color:var(--del)}
+  .dfb .n{color:var(--del)}
+  .dfb .ln,.dfb .why{font-size:var(--fs-xs);color:var(--ink-faint)}
+  .dfb .why{margin-left:auto;text-transform:uppercase;letter-spacing:.05em}
+  button.dfb:hover{background:var(--s1);color:var(--ink)}
+  button.dfb:focus-visible{outline:2px solid var(--mark);outline-offset:-2px}
+  .dfb.kept{cursor:default}
   tr.ph td{padding:0;background:none;border:none}
   tbody.blk{contain:layout paint}
   tr.r:hover td.c{filter:brightness(1.22)}

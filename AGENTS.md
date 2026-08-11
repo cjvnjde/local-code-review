@@ -96,6 +96,15 @@
 - Hunk separators expand the unchanged lines git left out. `/api/context` re-diffs one file with unlimited context and answers an inclusive new-side line range, which keeps every revision spec working without picking a side to read blobs from. The page splices those rows into the file, rebuilds the hunk header from the rows it now covers, and drops a separator once its gap closes. Expansions live only in the page; a reload starts over.
 - The trailing separator is inferred: git prints at most `-U` context lines after the last change, so a full run means the file continues. `/api/diff` must keep reporting `context` for that. A run that happened to end on the last line self-corrects, because the first expansion comes back empty and drops the separator.
 - Revealed lines are ordinary context rows, so notes anchor to them normally. Row indices below an insertion all move, which is why the file's table is rendered again and both row-indexed caches (`wd`, `ki`) are dropped. Cached block heights above the insertion stay valid and must be kept, or the page jumps.
+- Folding deleted lines is only ever about what is drawn. With the setting on, every run of removed rows
+  becomes one marker row that opens the run again; the rows stay in the file, so notes, anchors, word diff
+  and bookmarks all read the same diff either way. A run is keyed by the old-side line it starts on, and cut
+  at block boundaries, because a block is the unit that gets drawn and a row index moves when context is
+  revealed. Which runs stand open is this read rather than a preference: `state.openDel` holds them and
+  storage never sees them. A run holding a note is drawn open and says why — a note that quietly stopped
+  being drawn is one nobody knows to look for — and a jump opens the fold over the row it lands on.
+  `drawnRows` is what an unmounted block's placeholder height is estimated from, and flipping the setting
+  drops every measured height with it.
 - The browser store is keyed on repository and range together. Every run serves from `localhost` and a port one review frees the next one takes, so the origin cannot tell two projects apart; `/api/diff` reports `repo` as `repoId`, a hash of the repository root, and the page keys on `<repo>:<range>`. The path itself never reaches the page, because the store outlives the run.
 - Bookmarks are navigation, not feedback: they are never submitted, and `Clear all` in the footer leaves them alone. One per row, keyed by `bmKey` on the same row anchor a note uses, so revealed context carries them and `keyIndex` turns them back into a place on screen.
 - Bookmarks last one sitting, not one project. They live in `sessionStorage` under their own key, stamped with the read that made them: the tab that closes takes them, a reload keeps them, and a record whose stamp is another repository or range is dropped rather than restored. **New review** clears them too. Notes are the opposite and stay in the durable per-repository store.

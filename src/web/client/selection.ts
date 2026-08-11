@@ -1,9 +1,9 @@
 import { toggleBookmark } from './bookmark-pane.ts';
-import { repaintRow, setFolded, setHidden, setViewed } from './diff-view.ts';
+import { repaintRow, setFolded, setHidden, setViewed, toggleDeleted } from './diff-view.ts';
 import { atStart, charRange, leftRow, pressKind } from './drag.ts';
 import { expandGap } from './expand.ts';
 import { isHidden } from './filters.ts';
-import { openEditor, openFileEditor, openGlobalEditor } from './notes.ts';
+import { busyEditor, openEditor, openFileEditor, openGlobalEditor } from './notes.ts';
 import { el, idxOf, state } from './state.ts';
 
 /* ---------- selection ---------- */
@@ -185,6 +185,12 @@ document.addEventListener('mouseup',e=>{
 el('diff').addEventListener('click',e=>{
   const xp=e.target.closest('[data-exp]');
   if(xp){ void expandGap(Number(xp.dataset.fi),Number(xp.dataset.i),xp.dataset.exp); return; }
+  const df=e.target.closest('[data-df]');
+  // Folding redraws the block the marker sits in, which would eat an editor open inside it.
+  if(df){
+    if(!busyEditor()) toggleDeleted(Number(df.dataset.fi),Number(df.dataset.df));
+    return;
+  }
   const fold=e.target.closest('[data-fold]');
   if(fold){ setFolded(fold.dataset.fold,!state.folded.has(fold.dataset.fold)); return; }
   const bm=e.target.closest('[data-bm]');

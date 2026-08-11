@@ -1,5 +1,6 @@
 import { globalNotes, looseNotes, replaceIn, strayNotes } from './anchor.ts';
 import { bmKey } from './bookmarks.ts';
+import { delRunAt, delRuns, drawnRows, revealRow, toggleRun } from './deleted.ts';
 import { expandStep } from './expand.ts';
 import { autoHidden, isHidden } from './filters.ts';
 import { gapOf, gapSize } from './gaps.ts';
@@ -19,7 +20,8 @@ const blockCount=f=>Math.max(1,Math.ceil(f.rows.length/BLOCK));
 const blockEnd=(f,b)=>Math.min(f.rows.length,b*BLOCK+BLOCK);
 function blockH(f,b){
   const m=state.h.get(f.path+'|'+b);
-  return m!=null?m:(blockEnd(f,b)-b*BLOCK)*ROW_H;
+  // Folded deletions are rows the block will not draw, so the estimate counts what it will.
+  return m!=null?m:drawnRows(f,b*BLOCK,blockEnd(f,b))*ROW_H;
 }
 const phHtml=h=>'<tr class="ph"><td colspan="4" style="height:'+h+'px"></td></tr>';
 
@@ -283,7 +285,15 @@ function mountBlock(tb){
   const above=anchored(tb);
   const before=tb.offsetHeight;
   const lang=langOf(f.path), wd=wordDiff(f), html=[];
-  for(let k=from;k<to;k++) html.push(rowHtml(f,fi,k,lang,wd.get(k)));
+  const runs=delRuns(f,from,to);
+  for(let k=from;k<to;k++){
+    const run=runs.get(k);
+    if(run){
+      html.push(delRunHtml(f,fi,run));
+      if(!run.open){ k=run.end; continue; } // its rows are what the fold is standing in for
+    }
+    html.push(rowHtml(f,fi,k,lang,wd.get(k)));
+  }
   tb.innerHTML=html.join('');
   tb.dataset.on='1';
   applyNotesIn(f,fi,from,to);
@@ -298,9 +308,46 @@ function mountBlock(tb){
  * enough to put the row on screen; they correct themselves as they mount.
  */
 export function mountRowAt(fi: number,idx: number){
-  const tb=el('b'+fi+'-'+Math.floor(idx/BLOCK));
-  if(tb) mountBlock(tb);
+  const f=state.files[fi], b=Math.floor(idx/BLOCK), tb=el('b'+fi+'-'+b);
+  // A fold over the row is one more thing the reader put away, so the jump opens it like the rest —
+  // unless something is being written in the same block, whose text the redraw would take with it.
+  const safe=!!tb&&!tb.querySelector('textarea');
+  if(f&&safe&&revealRow(f,idx,b*BLOCK,blockEnd(f,b))) remountBlock(fi,idx);
+  else if(tb) mountBlock(tb);
   return el('r'+fi+'-'+idx);
+}
+/**
+ * Draws one block again where it stands, for a fold that changed which of its rows it draws. Its
+ * cached height is not dropped first: mountBlock measures what is on screen now and writes the new
+ * height itself.
+ */
+function remountBlock(fi: number,idx: number){
+  const tb=el('b'+fi+'-'+Math.floor(idx/BLOCK));
+  if(!tb) return;
+  delete tb.dataset.on;
+  mountBlock(tb);
+}
+/**
+ * Opens or folds one run of removed lines. The marker that was clicked is kept where the pointer left
+ * it — mountBlock holds the content *below* a growing block still, which is the opposite of what a
+ * click inside that block means — and a selection the fold just took off screen is let go.
+ */
+export function toggleDeleted(fi: number,idx: number){
+  const f=state.files[fi]; if(!f||!f.rows[idx]) return;
+  toggleRun(f,idx);
+  const b=Math.floor(idx/BLOCK);
+  // A run a note is attached to stays open however the click went, so ask what it actually settled on.
+  const run=delRunAt(f,idx,b*BLOCK,blockEnd(f,b));
+  const s=state.sel;
+  const dropped=!!(run&&!run.open&&s&&s.fi===fi&&
+    Math.min(s.a,s.b)<=run.end&&Math.max(s.a,s.b)>=run.start);
+  if(dropped) state.sel=null; // it covered rows the fold has just taken off the page
+  const sec=el('diff'), marker=el('d'+fi+'-'+idx);
+  const y0=marker?marker.getBoundingClientRect().top:null;
+  remountBlock(fi,idx);
+  const moved=el('d'+fi+'-'+idx);
+  if(y0!=null&&moved) sec.scrollTop+=moved.getBoundingClientRect().top-y0;
+  if(dropped) paintSel(); // rows of it outside the run are still showing the highlight
 }
 function unmountBlock(tb){
   if(!tb.dataset.on||!tb.offsetParent) return; // hidden inside a collapsed file: measuring it would cache 0
@@ -426,6 +473,29 @@ function expanders(f,fi,idx){
   if(g.to!=null) out.push(btn('up',SVG.expUp,'Show '+step+' lines further up'));
   if(idx>0) out.push(btn('down',SVG.expDown,'Show '+step+' lines further down'));
   return out.join('');
+}
+/**
+ * The marker a folded run of deletions is read as. It is a row of the table like any other, so the
+ * lines it stands for come back exactly where they were rather than in a panel somewhere else. A run
+ * a note is attached to says why it is open instead of offering to close: the note has to stay put.
+ */
+function delRunHtml(f,fi,run){
+  const first=f.rows[run.start], last=f.rows[run.end];
+  const lines=first.o!=null&&last.o!=null
+    ?(run.count===1?'line '+first.o:'lines '+first.o+'–'+last.o)
+    :'';
+  const body='<span class="ic">'+(run.open?SVG.chevD:SVG.chevR)+'</span>'+
+    '<span class="n">'+run.count+(run.count===1?' removed line':' removed lines')+'</span>'+
+    (lines?'<span class="ln">'+lines+'</span>':'');
+  const inner=run.noted
+    ?'<span class="dfb kept" title="A note is attached to these lines, so they stay open.">'+body+
+      '<span class="why">kept open by a note</span></span>'
+    :'<button class="dfb" data-df="'+run.start+'" data-fi="'+fi+'" aria-expanded="'+
+      (run.open?'true':'false')+'" title="'+
+      (run.open?'Fold these removed lines away again':'Show the lines this fold stands for')+
+      '">'+body+'</button>';
+  return '<tr id="d'+fi+'-'+run.start+'" class="dfold'+(run.open?' open':'')+'">'+
+    '<td colspan="4">'+inner+'</td></tr>';
 }
 function rowHtml(f,fi,idx,lang,wr){
   const r=f.rows[idx], id='r'+fi+'-'+idx;
