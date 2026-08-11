@@ -4,7 +4,7 @@ import { deleteReviews, listReviews } from "./output.ts";
 import { renderMarkdown } from "./review.ts";
 import { applyComment, noteFromComment, parseReview } from "./thread.ts";
 import type { ReviewDoc, ReviewMessage, ReviewNote } from "./thread.ts";
-import type { ReviewSubmission } from "./types.ts";
+import type { ReviewComment, ReviewSubmission } from "./types.ts";
 
 export interface SaveResult {
   /** Path of the session file, relative to the repository unless the output directory is absolute. */
@@ -13,15 +13,36 @@ export interface SaveResult {
   removed: string[];
 }
 
+/** The context a review is opened in: what is diffed, from where, and against which commit. */
+export interface ReviewContext {
+  range: string;
+  branch?: string;
+  base?: string;
+}
+
 /**
- * One review file per conversation. A run adopts the newest one it finds, so restarting lcr picks the
- * conversation back up where it stopped; **New review** is the only thing that starts another one.
+ * Whether a review file belongs to this invocation's context. The range is the identity and must
+ * match; branch and base only rule a file out when both sides know them, so files from before these
+ * fields — and a detached HEAD or an unresolvable base — read as belonging rather than foreign.
+ */
+export function matchesContext(doc: ReviewContext, context: ReviewContext): boolean {
+  if (doc.range !== context.range) return false;
+  if (doc.branch && context.branch && doc.branch !== context.branch) return false;
+  if (doc.base && context.base && doc.base !== context.base) return false;
+  return true;
+}
+
+/**
+ * One review file per conversation, and one conversation per context: a run adopts the newest file
+ * written for the same range, branch, and base, so restarting lcr picks that conversation back up
+ * while any other diff starts its own. **New review** starts another one by hand, and the picker
+ * reopens an earlier one.
  *
  * Both sides write this file: lcr renders it whole, the agent appends replies and rewrites status
  * lines. Every mutation here therefore re-reads the file first and keeps what it does not own — the
  * agent's messages and verdicts survive a save that happens while it is still working.
  */
-export function createSession(repoRoot: string, outDir: string, range: string) {
+export function createSession(repoRoot: string, outDir: string, range: string, context: ReviewContext = { range }) {
   let name = "";
   /** Serialises this side's read-modify-write cycles; the agent's edits are outside our control. */
   let queue: Promise<unknown> = Promise.resolve();
@@ -30,10 +51,18 @@ export function createSession(repoRoot: string, outDir: string, range: string) {
   const shown = (file: string) =>
     path.isAbsolute(outDir) ? path.join(dir(), file) : path.relative(repoRoot, path.join(dir(), file));
 
+  /** The doc a conversation opens with: this invocation's context, stamped into the file it mints. */
+  function fresh(): ReviewDoc {
+    const doc: ReviewDoc = { range, notes: [] };
+    if (context.branch) doc.branch = context.branch;
+    if (context.base) doc.base = context.base;
+    return doc;
+  }
+
   async function read(): Promise<ReviewDoc> {
-    if (!name) return { range, notes: [] };
+    if (!name) return fresh();
     const text = await readFile(path.join(dir(), name), "utf8").catch(() => "");
-    return text ? parseReview(text) : { range, notes: [] };
+    return text ? parseReview(text) : fresh();
   }
 
   /**
@@ -55,7 +84,9 @@ export function createSession(repoRoot: string, outDir: string, range: string) {
   async function write(doc: ReviewDoc): Promise<string> {
     if (!name) name = await mint();
     await mkdir(dir(), { recursive: true });
-    await writeFile(path.join(dir(), name), renderMarkdown({ ...doc, range }), "utf8");
+    // The doc's own context wins: a conversation adopted from another range or branch keeps saying
+    // where it came from, rather than being restamped with wherever it was reopened.
+    await writeFile(path.join(dir(), name), renderMarkdown({ ...doc, range: doc.range || range }), "utf8");
     return name;
   }
 
@@ -78,6 +109,28 @@ export function createSession(repoRoot: string, outDir: string, range: string) {
     async adoptNewest(): Promise<string> {
       name = (await listReviews(repoRoot, outDir)).at(-1) ?? "";
       return name;
+    },
+    /**
+     * Adopts the newest review file that belongs to this invocation's context, so a restart on the
+     * same diff continues its conversation while a different range, branch, or base starts fresh —
+     * the files that do not match stay on disk as the history they are.
+     */
+    async adoptMatching(): Promise<string> {
+      for (const candidate of (await listReviews(repoRoot, outDir)).reverse()) {
+        const text = await readFile(path.join(dir(), candidate), "utf8").catch(() => "");
+        if (text && matchesContext(parseReview(text), context)) {
+          name = candidate;
+          return name;
+        }
+      }
+      name = "";
+      return name;
+    },
+    /** Moves the conversation into one named review file, for reopening an earlier review. */
+    async adoptFile(file: string): Promise<boolean> {
+      if (!(await listReviews(repoRoot, outDir)).includes(file)) return false;
+      name = file;
+      return true;
     },
     /** Drops the current file so the next save opens a fresh conversation. */
     startFresh(): void {
@@ -116,6 +169,23 @@ export function createSession(repoRoot: string, outDir: string, range: string) {
           file: shown(file),
           removed: replace ? await deleteReviews(repoRoot, outDir, file) : [],
         };
+      });
+    },
+
+    /**
+     * Carries a note in from an earlier review: a fresh note anchored where the reviewer is looking
+     * now, holding the old conversation so neither side has to reconstruct it. The provenance marker
+     * is what keeps the original from being offered as a ghost beside its own continuation.
+     */
+    import(comment: ReviewComment, thread: ReviewMessage[], from: string): Promise<ReviewNote> {
+      return serialise(async () => {
+        const doc = await read();
+        const note = noteFromComment(comment);
+        note.messages = thread;
+        if (from) note.from = from;
+        doc.notes.push(note);
+        await write(doc);
+        return note;
       });
     },
 

@@ -12,7 +12,7 @@ import { dropEmptyReply, mountReply, renderBody, renderThread } from './thread.t
 import { renderTree } from './tree.ts';
 
 /* ---------- notes ---------- */
-function span(f,i,j,ch?){
+export function span(f,i,j,ch?){
   const rows=f.rows.slice(i,j+1).filter(r=>r.t!=='hunk');
   const ns=rows.filter(r=>r.n!=null).map(r=>r.n);
   const os=rows.filter(r=>r.n==null&&r.o!=null).map(r=>r.o);

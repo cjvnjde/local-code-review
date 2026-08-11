@@ -3,8 +3,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "bun:test";
 import { listReviews } from "./output.ts";
-import { createSession } from "./session.ts";
-import { parseReview } from "./thread.ts";
+import { renderMarkdown } from "./review.ts";
+import { createSession, matchesContext } from "./session.ts";
+import { noteFromComment, parseReview } from "./thread.ts";
 import type { ReviewComment } from "./types.ts";
 
 const workspace = async (...names: string[]) => {
@@ -195,5 +196,112 @@ describe("createSession", () => {
     const { file } = await session.save({ comments: [] });
     expect(path.isAbsolute(file)).toBe(true);
     expect(path.dirname(file)).toBe(dir);
+  });
+
+  test("stamps the context it was opened in into the file it mints", async () => {
+    const dir = await workspace();
+    const session = createSession(dir, ".", "main..HEAD", { range: "main..HEAD", branch: "feat", base: "abc123" });
+    const { file } = await session.save({ comments: [note("a|n12|n12|#1")] });
+
+    const doc = await read(dir, path.basename(file));
+    expect(doc).toMatchObject({ range: "main..HEAD", branch: "feat", base: "abc123" });
+  });
+});
+
+/** One review file written with the given context, named so the stamps sort as given. */
+const reviewFile = (stamp: string, range: string, branch?: string, base?: string) =>
+  [`review-${stamp}.md`, renderMarkdown({
+    range,
+    ...(branch ? { branch } : {}),
+    ...(base ? { base } : {}),
+    notes: [noteFromComment(note("a|n12|n12|#1"))],
+  })] as const;
+
+describe("adoptMatching", () => {
+  const fill = async (...files: (readonly [string, string])[]) => {
+    const dir = await mkdtemp(path.join(tmpdir(), "lcr-session-"));
+    for (const [name, text] of files) await writeFile(path.join(dir, name), text, "utf8");
+    return dir;
+  };
+
+  test("a restart on the same context continues its own conversation, not the newest one", async () => {
+    const dir = await fill(
+      reviewFile("2026-01-01T00-00-00", "main..HEAD", "feat", "abc123"),
+      reviewFile("2026-01-02T00-00-00", "working tree vs HEAD (incl. untracked)", "feat", "abc123"),
+    );
+    const session = createSession(dir, ".", "main..HEAD", { range: "main..HEAD", branch: "feat", base: "abc123" });
+    expect(await session.adoptMatching()).toBe("review-2026-01-01T00-00-00.md");
+  });
+
+  test("another branch's review of the same range is not this conversation", async () => {
+    const dir = await fill(reviewFile("2026-01-01T00-00-00", "main..HEAD", "other", "abc123"));
+    const session = createSession(dir, ".", "main..HEAD", { range: "main..HEAD", branch: "feat", base: "abc123" });
+    expect(await session.adoptMatching()).toBe("");
+  });
+
+  test("a moved base means new work: the old conversation stays history", async () => {
+    const dir = await fill(reviewFile("2026-01-01T00-00-00", "main..HEAD", "feat", "abc123"));
+    const session = createSession(dir, ".", "main..HEAD", { range: "main..HEAD", branch: "feat", base: "def456" });
+    expect(await session.adoptMatching()).toBe("");
+  });
+
+  test("a file from before the context fields matches on its range alone", async () => {
+    const dir = await fill(reviewFile("2026-01-01T00-00-00", "main..HEAD"));
+    const session = createSession(dir, ".", "main..HEAD", { range: "main..HEAD", branch: "feat", base: "abc123" });
+    expect(await session.adoptMatching()).toBe("review-2026-01-01T00-00-00.md");
+  });
+
+  test("matchesContext treats an unknown side as agreement, never as difference", () => {
+    expect(matchesContext({ range: "HEAD" }, { range: "HEAD", branch: "feat", base: "abc" })).toBe(true);
+    expect(matchesContext({ range: "HEAD", branch: "feat" }, { range: "HEAD" })).toBe(true);
+    expect(matchesContext({ range: "HEAD" }, { range: "HEAD~1" })).toBe(false);
+  });
+});
+
+describe("reopening and continuing", () => {
+  test("a reopened review keeps saying where it came from, not where it was reopened", async () => {
+    const dir = await workspace();
+    const first = createSession(dir, ".", "main..HEAD", { range: "main..HEAD", branch: "feat", base: "abc123" });
+    const { file } = await first.save({ comments: [note("a|n12|n12|#1")] });
+    const name = path.basename(file);
+
+    const second = createSession(dir, ".", "HEAD", { range: "HEAD", branch: "other", base: "def456" });
+    expect(await second.adoptFile(name)).toBe(true);
+    expect(await second.adoptFile("review-not-there.md")).toBe(false);
+    await second.save({ comments: [note("a|n20|n20|#2", "And this.")] });
+
+    const doc = await read(dir, name);
+    expect(doc).toMatchObject({ range: "main..HEAD", branch: "feat", base: "abc123" });
+    expect(doc.notes).toHaveLength(2);
+  });
+
+  test("an imported note lands with its old thread, its provenance, and a fresh start", async () => {
+    const dir = await workspace();
+    const session = createSession(dir, ".", "HEAD");
+    session.startFresh();
+
+    const carried = await session.import(
+      note("a|n30|n30|#9", "Rename this."),
+      [{ role: "agent", at: "", body: "Renamed the local, not the field." }],
+      "review-2026-01-01T00-00-00.md#a|n12|n12|#1",
+    );
+    expect(carried.status).toBe("pending");
+
+    const doc = await read(dir, session.file);
+    expect(doc.notes[0]).toMatchObject({
+      id: "a|n30|n30|#9",
+      body: "Rename this.",
+      status: "pending",
+      from: "review-2026-01-01T00-00-00.md#a|n12|n12|#1",
+    });
+    expect(doc.notes[0]!.messages).toEqual([{ role: "agent", at: "", body: "Renamed the local, not the field." }]);
+
+    // The reviewer edits and saves the continued note: its provenance is not the page's to drop.
+    await session.save({ comments: [note("a|n30|n30|#9", "Rename this everywhere.")] });
+    const after = await read(dir, session.file);
+    expect(after.notes[0]).toMatchObject({
+      body: "Rename this everywhere.",
+      from: "review-2026-01-01T00-00-00.md#a|n12|n12|#1",
+    });
   });
 });

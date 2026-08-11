@@ -4,6 +4,7 @@ import { delRunAt, delRuns, drawnRows, revealRow, toggleRun } from './deleted.ts
 import { expandStep } from './expand.ts';
 import { autoHidden, isHidden } from './filters.ts';
 import { gapOf, gapSize } from './gaps.ts';
+import { applyGhostsIn, placeGhosts } from './ghosts.ts';
 import { codeHtml, langOf } from './highlight.ts';
 import { applyFileNote, applyNotesIn, charMarks, mountGlobal, mountLoose } from './notes.ts';
 import { save } from './persistence.ts';
@@ -163,6 +164,7 @@ export function refreshRows(fi: number,from: number){
   const table=node.querySelector('table'); if(!table) return;
   if(state.sel&&state.sel.fi===fi) state.sel=null; // it pointed at rows that have moved
   replaceIn(f.path); // every note below the insertion is on a different row index now
+  placeGhosts(); // ghost markers hold row indices too, and every one below the insertion moved
   const first=Math.floor(from/BLOCK), prefix=f.path+'|';
   [...state.h.keys()].forEach(k=>{
     const cut=k.lastIndexOf('|');
@@ -297,6 +299,7 @@ function mountBlock(tb){
   tb.innerHTML=html.join('');
   tb.dataset.on='1';
   applyNotesIn(f,fi,from,to);
+  applyGhostsIn(f,fi,from,to);
   const after=tb.offsetHeight;
   state.h.set(f.path+'|'+b,after);
   if(above&&after!==before) el('diff').scrollTop+=after-before;
@@ -517,4 +520,5 @@ export function repaintRow(fi: number,idx: number){
   const f=state.files[fi]; if(!f||!f.rows[idx]) return;
   const td=tr.querySelector('td.c'); if(!td) return;
   td.innerHTML=codeHtml(f.rows[idx].text,langOf(f.path),wordDiff(f).get(idx),charMarks(f,fi,idx));
+  applyGhostsIn(f,fi,idx,idx+1); // the rewrite took the row's ghost marker with it
 }

@@ -3,6 +3,7 @@ import { renderBookmarks } from './bookmark-pane.ts';
 import { renderDiff } from './diff-view.ts';
 import { updateCount } from './footer.ts';
 import { markTails } from './gaps.ts';
+import { setGhosts } from './ghosts.ts';
 import { pruneViewed, restore, save } from './persistence.ts';
 import { el, esc, idxOf, isMinted, reviewTime, state } from './state.ts';
 import { renderTree } from './tree.ts';
@@ -24,9 +25,10 @@ export async function load(keep=false){
 }
 async function loadNow(keep: boolean){
   const mark=keep?scrollMark():null;
-  const [diff,review]=await Promise.all([
+  const [diff,review,ghosts]=await Promise.all([
     fetch('/api/diff').then(r=>r.json().then(d=>({ok:r.ok,d}))),
     fetch('/api/review').then(r=>r.json().then(d=>({ok:r.ok,d}))).catch(()=>({ok:false,d:{}})),
+    fetch('/api/ghosts').then(r=>r.json().then(d=>({ok:r.ok,d}))).catch(()=>({ok:false,d:{}})),
   ]);
   const d=diff.d;
   if(!diff.ok||d.error){
@@ -50,6 +52,8 @@ async function loadNow(keep: boolean){
   state.stale=new Set(pruneViewed());
   save();
   placeNotes();
+  // After the files, whose rows the placements point into; setGhosts places what it takes.
+  setGhosts(ghosts.ok?ghosts.d.ghosts:[]);
   render();
   if(mark) scrollTo(mark);
 }

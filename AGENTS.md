@@ -40,6 +40,14 @@
   only ever append. Prose after the `Status:` line with no `**Agent**`/`**Reviewer**` line above it is read as
   an agent message rather than dropped, and a status line still wins until the first explicit message, so an
   agent that appends its verdict instead of replacing `pending` is still understood.
+- Only lcr's own writing is escaped. `escapeText` guards every line lcr renders; an agent appends straight into
+  the file, so its reply is read as the prose it is. What bounds a note is therefore the lines carrying lcr's
+  marker — a `### … <!-- lcr:<id> -->` heading, a `**Agent**`/`**Reviewer**` speaker line, and the `<!-- lcr:end -->`
+  above the working agreement — and those close a fence a reply left open rather than being swallowed by it.
+  A heading the agent wrote itself carries no marker and stays inside its reply, where it renders as the
+  Markdown it is; the next save escapes it, so a file the agent broke settles on the following write. `## <file>`
+  headings and the `---` rule stay unmarked boundaries: sealing bare headings would break a fenced Markdown
+  snippet in the reviewer's own note, which the format keeps verbatim on disk.
 - Default `.review/` output remains ignored. Custom relative output directories remain locally excluded through `.git/info/exclude`.
 - Start opens the page in the default browser unless `--no-open` is passed. Launch stays best-effort: failure prints a hint and never blocks the server.
 - A taken port is not a failure: start walks up from the requested port over a bounded range and reports the one it

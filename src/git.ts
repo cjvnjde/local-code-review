@@ -50,3 +50,13 @@ async function readOutput(stream: ReadableStream<Uint8Array>, maxBytes: number):
 export async function findRepoRoot(): Promise<string> {
   return (await runGit(["rev-parse", "--show-toplevel"])).trim();
 }
+
+/** Name of the checked-out branch, or empty on a detached HEAD or when git cannot say. */
+export async function currentBranch(cwd?: string): Promise<string> {
+  try {
+    const name = (await runGit(["rev-parse", "--abbrev-ref", "HEAD"], cwd)).trim();
+    return name === "HEAD" ? "" : name;
+  } catch {
+    return "";
+  }
+}

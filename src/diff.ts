@@ -21,6 +21,36 @@ export function diffRangeLabel(diffArgs: string[]): string {
   return diffArgs.length === 0 ? "working tree vs HEAD (incl. untracked)" : diffArgs.join(" ");
 }
 
+/**
+ * Commit the diff is measured against, as a short hash. It is what tells two conversations on the
+ * same range apart: `main..HEAD` before and after the branch was merged and restarted is the same
+ * string over different work, and the base is what moved. Symmetric ranges take the merge base —
+ * the agent committing onto the branch must not read as new work — and everything is best effort:
+ * a base git cannot resolve is recorded as nothing, which matches any.
+ */
+export async function diffBase(source: DiffSource): Promise<string> {
+  const revs = source.diffArgs.slice(0, whereDashDash(source.diffArgs)).filter((arg) => !arg.startsWith("-"));
+  const short = (rev: string) => runGit(["rev-parse", "--short=12", `${rev || "HEAD"}^{commit}`], source.repoRoot);
+  try {
+    const symmetric = revs.find((arg) => arg.includes("..."));
+    if (symmetric) {
+      const [a, b] = symmetric.split("...", 2) as [string, string];
+      const merged = (await runGit(["merge-base", a || "HEAD", b || "HEAD"], source.repoRoot)).trim();
+      return (await short(merged)).trim();
+    }
+    const range = revs.find((arg) => arg.includes(".."));
+    if (range) return (await short(range.split("..", 2)[0] as string)).trim();
+    return (await short(revs[0] ?? "HEAD")).trim();
+  } catch {
+    return "";
+  }
+}
+
+const whereDashDash = (args: string[]) => {
+  const at = args.indexOf("--");
+  return at < 0 ? args.length : at;
+};
+
 export async function getDiff(source: DiffSource): Promise<DiffFile[]> {
   const defaultMode = source.diffArgs.length === 0;
   if (defaultMode) {

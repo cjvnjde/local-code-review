@@ -37,6 +37,14 @@ import type { NoteStatusKind, ReviewComment } from "./types.ts";
  * note`: it carries no path and no captured code, and is otherwise answered exactly like the rest.
  * Earlier versions kept a single overall note as plain prose under that heading, so prose found there
  * is read back as the first of these.
+ *
+ * Only one side of this file is escaped. Everything lcr writes goes through `escapeText`, so a line
+ * of the reviewer's that speaks the file's own structure cannot be read as structure; an agent
+ * appends straight into the file and nothing escapes what it writes. Its reply is therefore read as
+ * the prose it is rather than as markup the parser owns: the lines that bound a note are the ones
+ * carrying lcr's own `<!-- lcr:... -->` marker, and those close a fence the reply left open instead
+ * of being swallowed by it. A heading or a speaker line the agent wrote itself carries no marker, so
+ * it stays inside the reply — and the next save escapes it, which settles the file for good.
  */
 
 export type MessageRole = "reviewer" | "agent";
@@ -69,10 +77,16 @@ export interface ReviewNote {
   status: NoteStatusKind;
   detail: string;
   messages: ReviewMessage[];
+  /** `<review file>#<note id>` of the note this one continues, for a note carried in from an earlier review. */
+  from?: string;
 }
 
 export interface ReviewDoc {
   range: string;
+  /** Branch the review was opened on; absent in files older than this field. */
+  branch?: string;
+  /** Commit the reviewed range was measured against when the review was opened. */
+  base?: string;
   notes: ReviewNote[];
 }
 
@@ -90,7 +104,11 @@ const H1 = /^#\s/;
 const H2 = /^##\s+(.+?)\s*$/;
 const H3 = /^###\s+(.+?)\s*$/;
 const RANGE = /^Diff under review:\s*`(.*)`\s*$/;
+const BRANCH = /^Branch:\s*`(.*)`\s*$/;
+const BASE = /^Base:\s*`(.*)`\s*$/;
 const MARKER = /<!--\s*lcr:(.+?)\s*-->/;
+/** Provenance line of a note continued from an earlier review: `<file>#<id>` of the original. */
+const FROM = /^<!--\s*lcr:from\s+(.+?)\s*-->\s*$/;
 const MESSAGE = /^\*\*(Reviewer|Agent)\*\*\s*(?:<!--\s*lcr:m\s*([^>]*?)\s*-->\s*)?$/i;
 const STATUS = /^\s*status\s*:\s*(.+?)\s*$/i;
 const SNIPPET = /^Applies to this part of the line only:\s*(.+?)\s*$/;
@@ -100,6 +118,29 @@ const OVERALL = /^Overall note$/i;
 const FENCE = /^(\s*)(`{3,}|~{3,})(.*)$/;
 /** Heading without its marker: the shortest leading path that leaves a whole line label behind. */
 const LEGACY = /^(.*?):(\d+(?:-\d+)?(?::\d+-\d+)?)$/;
+/** Closes the notes in a file this version wrote, whatever a reply above it left open. */
+const END = /^<!--\s*lcr:end\s*-->\s*$/;
+/** A note heading lcr wrote. Every id it mints carries `|` separators, which is what says so. */
+const SEALED_HEAD = /^###\s+.*<!--\s*lcr:[^>]*\|[^>]*-->\s*$/;
+/** A speaker line lcr wrote. */
+const SEALED_SAID = /^\*\*(?:Reviewer|Agent)\*\*\s*<!--\s*lcr:m[^>]*-->\s*$/i;
+/**
+ * Structure lcr marked as its own, and the only thing a fence may not cross. An agent appends without
+ * going through `escapeText`, so a fence it leaves open would otherwise run to the end of the
+ * document and take every note after it into the reply. Nothing lcr leaves unescaped can look like
+ * one of these: captured code carries a diff marker in column zero, and reviewer prose is escaped
+ * line by line. Reviewer prose inside a fence of its own is the exception the format accepts — it is
+ * kept verbatim on disk, so a marker line written inside one still reads as structure.
+ */
+const sealed = (line: string): boolean =>
+  END.test(line) || SEALED_HEAD.test(line) || SEALED_SAID.test(line);
+/**
+ * Whether an unmarked heading still names a note: the whole review, a whole file, or a line range.
+ * A file that lost a marker is read by its headings, so those keep starting a note even below a
+ * thread; a heading the agent wrote in its reply names none of these and stays in the reply.
+ */
+const namesNote = (key: string): boolean =>
+  OVERALL.test(key) || WHOLE_FILE.test(key) || LEGACY.test(key.replace(OLD_SIDE, ""));
 
 /** Tracks fenced regions so captured code containing anything at all cannot be read as structure. */
 class Fences {
@@ -120,12 +161,17 @@ class Fences {
     }
     return true;
   }
+
+  /** Forgets an open fence, for the sealed lines a fence is not allowed to reach across. */
+  reset(): void {
+    this.open = "";
+  }
 }
 
 /** Line shapes the parser reads as structure when they stand outside a fence. */
 function dangerous(line: string): boolean {
   return H1.test(line) || H2.test(line) || H3.test(line) || /^-{3,}\s*$/.test(line) ||
-    STATUS.test(line) || MESSAGE.test(line) || SNIPPET.test(line);
+    STATUS.test(line) || MESSAGE.test(line) || SNIPPET.test(line) || FROM.test(line) || END.test(line);
 }
 const escapable = (line: string): boolean => dangerous(line) || FENCE.test(line);
 
@@ -192,61 +238,93 @@ interface RawSection {
   lines: string[];
 }
 
+interface Preamble {
+  range: string;
+  branch: string;
+  base: string;
+}
+
 /** Splits the document into its preamble, the overall note, and one block of lines per note. */
-function split(markdown: string): { range: string; general: string[]; sections: RawSection[] } {
+function split(markdown: string): Preamble & { general: string[]; sections: RawSection[] } {
   const fences = new Fences();
   const sections: RawSection[] = [];
   const general: string[] = [];
-  let range = "";
+  const head: Preamble = { range: "", branch: "", base: "" };
   let current: RawSection | null = null;
   let inGeneral = false;
+  // Whether the section being read has reached its thread. A thread only exists in a file this
+  // version wrote, and this version marks every heading it writes, so an unmarked heading below one
+  // is the agent writing Markdown in its reply rather than a note starting.
+  let threaded = false;
 
   for (const line of markdown.split("\n")) {
-    if (fences.step(line)) {
+    // A sealed line is lcr's own structure, so it closes a fence rather than being read inside one.
+    const seal = sealed(line);
+    if (seal) fences.reset();
+    else if (fences.step(line)) {
       if (current) current.lines.push(line);
       else if (inGeneral) general.push(line);
       continue;
     }
+    if (END.test(line)) {
+      current = null;
+      inGeneral = false;
+      threaded = false;
+      continue;
+    }
+    // The speaker line stays in the section — it is what `readSection` cuts the thread on.
+    if (seal && MESSAGE.test(line)) threaded = true;
     const third = H3.exec(line);
-    if (third) {
+    if (third && (seal || !threaded || namesNote(third[1] as string))) {
       current = { heading: third[1] as string, lines: [] };
       sections.push(current);
       inGeneral = false;
+      threaded = false;
       continue;
     }
+    // A file heading, a rule, and a title stay boundaries inside a thread as well: they are what a
+    // file older than `lcr:end` ends on, and a `##` in a reply is rarer than the `###` above.
     const second = H2.exec(line);
     if (second) {
       current = null;
       inGeneral = (second[1] as string).trim().toLowerCase() === "overall";
+      threaded = false;
       continue;
     }
-    // A rule on its own line closes the notes: everything past it is the working agreement.
     if (H1.test(line) || /^-{3,}\s*$/.test(line)) {
       current = null;
       inGeneral = false;
+      threaded = false;
       continue;
     }
     if (!current && !inGeneral) {
-      const found = RANGE.exec(line);
-      if (found) range = found[1] as string;
+      const range = RANGE.exec(line);
+      if (range) head.range = range[1] as string;
+      const branch = BRANCH.exec(line);
+      if (branch) head.branch = branch[1] as string;
+      const base = BASE.exec(line);
+      if (base) head.base = base[1] as string;
     }
     if (current) current.lines.push(line);
     else if (inGeneral) general.push(line);
   }
 
-  return { range, general, sections };
+  return { ...head, general, sections };
 }
 
 /** Reads a whole review file back into the notes and threads it holds. */
 export function parseReview(markdown: string): ReviewDoc {
-  const { range, general, sections } = split(markdown);
+  const { range, branch, base, general, sections } = split(markdown);
   const notes = sections.map(readSection).filter((note): note is ReviewNote => !!note);
   // Prose under `## Overall` is how a single overall note was written before overall notes were
   // notes. It says the same thing, so it is read back as the first of them rather than dropped; the
   // id is fixed, so reading the same file twice does not multiply it.
   const legacy = trimBlock(unescapeLines(general));
   if (legacy) notes.unshift(globalNote(LEGACY_GLOBAL_ID, legacy));
-  return { range, notes };
+  const doc: ReviewDoc = { range, notes };
+  if (branch) doc.branch = branch;
+  if (base) doc.base = base;
+  return doc;
 }
 
 /** A note about the review as a whole, carrying nothing an agent has touched yet. */
@@ -296,7 +374,9 @@ function readSection(section: RawSection): ReviewNote | null {
   let seenStatus = false;
 
   for (const line of section.lines) {
-    const fenced = fences.step(line);
+    const seal = sealed(line);
+    if (seal) fences.reset();
+    const fenced = !seal && fences.step(line);
     if (!fenced) {
       const start = MESSAGE.exec(line);
       if (start) {
@@ -387,6 +467,11 @@ function readOpening(note: ReviewNote, lines: string[]): void {
     const snippet = SNIPPET.exec(line);
     if (snippet && note.snippet == null) {
       note.snippet = readInlineCode(snippet[1] as string);
+      continue;
+    }
+    const from = FROM.exec(line);
+    if (from && note.from == null) {
+      note.from = from[1] as string;
       continue;
     }
     body.push(line);
@@ -542,6 +627,7 @@ export function headingKey(note: ReviewNote): string {
  */
 export function applyComment(note: ReviewNote, comment: ReviewComment): ReviewNote {
   const fresh = noteFromComment(comment);
+  if (note.from) fresh.from = note.from;
   return {
     ...fresh,
     id: note.id || fresh.id,
@@ -555,6 +641,7 @@ export function renderNote(note: ReviewNote): string[] {
   const marker = note.id ? ` <!-- lcr:${note.id.replace(/[<>]/g, "")} -->` : "";
   const side = !note.scope && note.side === "old" ? " (line numbers before the change)" : "";
   const out = [`### ${headingKey(note)}${side}${marker}`, ""];
+  if (note.from) out.push(`<!-- lcr:from ${note.from.replace(/[<>]/g, "")} -->`, "");
   if (note.code && note.code.trim()) {
     const fence = fenceFor(note.code);
     out.push(`${fence}diff`, note.code, fence, "");

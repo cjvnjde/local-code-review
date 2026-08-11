@@ -65,7 +65,9 @@ The page stays on the diff after you save, and follows the agent while it works.
 - The agent answers each note in the review file as it finishes it, and its reply appears under that note on the page. So does the diff it just changed.
 - **Reply** under any note to answer back. Your message goes straight into the same file, where the agent picks it up.
 - Notes stay attached as the code moves. When the change a note asked for removes the code it pointed at, the note is shown at the closest line left, or — when the file drops out of the diff entirely — at the end of the page, marked as unattached and still carrying the diff it was written against. You can keep replying to it either way.
-- One file holds the whole conversation. Saving again adds to it, and restarting `lcr` picks the newest one back up. **Settings → New review** opens a fresh one.
+- One file holds the whole conversation, and each conversation knows its diff: the file records the range, the branch, and the base commit it was opened against. Restarting `lcr` on the same diff picks that conversation back up; a different range, branch, or base starts a fresh one, and the earlier files stay on disk as history. **Settings → New review** starts fresh by hand.
+- **Settings → Review file** lists every saved review — when it was opened, its branch and range, and how many notes are still open. **Open** reopens one as the live conversation, with its notes shown against the current diff.
+- Notes from the branch's *other* reviews appear as dim markers on the lines they still match, so a remark made reviewing `main..HEAD` is not lost when you switch to reviewing the working tree. Hover the marker to read the note and its thread; **Continue in this review** carries it, history and all, into the review you are writing now.
 
 The page refreshes the diff whenever nothing is being typed. With a note editor open it waits, and shows a `diff changed` pill in the header until you are done.
 

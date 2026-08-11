@@ -1,8 +1,10 @@
 import page from "./web/shell.html";
 import { fingerprint } from "./diff.ts";
 import type { Hub } from "./events.ts";
+import type { GhostGroup, ReviewInfo } from "./history.ts";
 import type { ReviewSession } from "./session.ts";
-import type { DiffFile, DiffRow, NoteStatus, ReviewSubmission } from "./types.ts";
+import type { ReviewNote } from "./thread.ts";
+import type { DiffFile, DiffRow, NoteStatus, ReviewComment, ReviewSubmission } from "./types.ts";
 
 export interface ServerOptions {
   port: number;
@@ -16,6 +18,12 @@ export interface ServerOptions {
   getStatuses: () => Promise<NoteStatus[]>;
   listReviews: () => Promise<string[]>;
   deleteReviews: () => Promise<string[]>;
+  /** Every saved review described for the picker. */
+  describeReviews: () => Promise<ReviewInfo[]>;
+  /** Notes from the other reviews of this branch, for the page to mark beside the diff. */
+  getGhosts: () => Promise<GhostGroup[]>;
+  /** Carries one note from an earlier review into the session; null when the original is gone. */
+  importNote: (from: { file: string; id: string }, comment: ReviewComment) => Promise<ReviewNote | null>;
   /** The one review file this run is talking through. */
   session: ReviewSession;
   /** Open pages, told whenever the review file or the diff moved. */
@@ -135,7 +143,20 @@ function serve(options: ServerOptions, port: number) {
             options.hub.emit({ type: "review", file: "" });
             return Response.json({ file: "", previous });
           }
-          return new Response("method not allowed", { status: 405, headers: { allow: "GET, DELETE" } });
+          // Reopens an earlier review: the conversation moves into that file, notes and threads and all.
+          if (request.method === "PUT") {
+            if (!isJsonRequest(request)) return Response.json({ error: "JSON body required." }, { status: 415 });
+            const payload = await readJson(request) as { file?: unknown } | null;
+            const file = payload && typeof payload.file === "string" ? payload.file : "";
+            if (!file) return Response.json({ error: "A review file name is required." }, { status: 400 });
+            // Queued behind any save in flight, so its tail cannot write into the file just left.
+            const opened = await options.session.run(() => options.session.adoptFile(file));
+            if (!opened) return Response.json({ error: "That review file does not exist." }, { status: 404 });
+            console.log(`\n  reopened ${options.session.shownFile}\n`);
+            options.hub.emit({ type: "review", file: options.session.file });
+            return Response.json({ file: options.session.shownFile });
+          }
+          return new Response("method not allowed", { status: 405, headers: { allow: "GET, PUT, DELETE" } });
         }
         if (url.pathname === "/api/reply" && request.method === "POST") {
           if (!isJsonRequest(request)) return Response.json({ error: "JSON body required." }, { status: 415 });
@@ -177,11 +198,36 @@ function serve(options: ServerOptions, port: number) {
           options.hub.emit({ type: "review", file: options.session.file });
           return Response.json({ file, count: submission.comments.length, removed });
         }
+        if (url.pathname === "/api/ghosts") {
+          return Response.json({ ghosts: await options.getGhosts() });
+        }
+        if (url.pathname === "/api/import" && request.method === "POST") {
+          if (!isJsonRequest(request)) return Response.json({ error: "JSON body required." }, { status: 415 });
+          const payload = await readJson(request) as {
+            from?: { file?: unknown; id?: unknown };
+            comment?: unknown;
+          } | null;
+          const file = typeof payload?.from?.file === "string" ? payload.from.file : "";
+          const id = typeof payload?.from?.id === "string" ? payload.from.id : "";
+          const comment = payload?.comment && typeof payload.comment === "object"
+            ? payload.comment as ReviewComment
+            : null;
+          if (!file || !id || !comment || typeof comment.id !== "string" || typeof comment.body !== "string") {
+            return Response.json({ error: "A source review, a note id, and a comment are required." }, { status: 400 });
+          }
+          const note = await options.importNote({ file, id }, comment);
+          if (!note) {
+            return Response.json({ error: "That note is no longer in its review file." }, { status: 404 });
+          }
+          console.log(`\n  continued ${note.key} from ${file} in ${options.session.shownFile}\n`);
+          options.hub.emit({ type: "review", file: options.session.file });
+          return Response.json({ file: options.session.shownFile, note });
+        }
         if (url.pathname === "/api/reviews") {
           if (request.method === "GET") {
             return Response.json({
               dir: options.outDir,
-              files: await options.listReviews(),
+              reviews: await options.describeReviews(),
               session: options.session.file,
             });
           }

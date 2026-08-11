@@ -16,6 +16,7 @@ export const SVG={
   bm:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.4 2.2h7.2v11.4L8 10.8l-3.6 2.8z" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>',
   bmOn:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 1.8h8v12.4L8 11.1l-4 3.1z"/></svg>',
   x:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.2 3.1 8 6.9l3.8-3.8 1.1 1.1L9.1 8l3.8 3.8-1.1 1.1L8 9.1l-3.8 3.8-1.1-1.1L6.9 8 3.1 4.2z"/></svg>',
+  ghost:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.6 2.6h10.8v7.2H7.2l-3 2.6v-2.6H2.6z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>',
 };
 
 export const state: any={
@@ -28,7 +29,10 @@ export const state: any={
   filter:'', hideRx:[], sel:null, active:'',
   byPath:new Map(), h:new Map(), draftRow:null, draftKey:null,
   cfg:{auto:true,back:true,limit:900,toast:true,hide:'',hideDeleted:false,foldDel:false,enterSaves:false,
-    expand:20,navHidden:false,ntFold:false,bmFold:false,single:false,clearSaved:false},
+    expand:20,navHidden:false,ntFold:false,bmFold:false,single:false,clearSaved:false,ghosts:true},
+  /** Notes from the branch's other review files, shown as dim markers where they still anchor. They
+   *  are read-only visitors here: their conversations live in their own files, so none are stored. */
+  ghosts:[], ghostAt:null,
   /** Runs of removed lines the reader has opened while `cfg.foldDel` folds the rest away. Keyed by
    *  file and old-side line, so revealed context cannot shuffle them, and kept out of storage: which
    *  of them stand open is this read of the diff rather than a preference about it. */

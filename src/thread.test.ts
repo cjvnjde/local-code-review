@@ -180,6 +180,84 @@ describe("parseReview", () => {
     expect(doc.notes[1]!.body).toBe("second");
   });
 
+  // Nothing escapes what an agent appends, so its reply is read as prose and only lcr's own marked
+  // lines bound a note. Overall notes feel this first: they invite the long structured answers.
+  describe("a reply nobody escaped", () => {
+    /** One agent reply written into the first note of a two-note review. */
+    const answered = (reply: string) =>
+      parseReview(write([
+        { id: "|@|@|#g1", file: "", body: "How does this hang together?", scope: "global", start: 0, end: 0 },
+        comment,
+      ]).replace("Status: pending", `Status: answered — below\n\n**Agent** <!-- lcr:m -->\n\n${reply}\n`));
+
+    test("a fence it left open cannot swallow the note after it", () => {
+      // Quoting Markdown that itself holds a fence is what leaves one open: the inner opener is
+      // content, the first plain run closes the outer block, and the last one opens a fence for good.
+      const reply = "The README should read:\n\n```md\nUse it:\n```ts\nimport { add } from \"./math.js\";\n```\n```";
+      const doc = answered(reply);
+      expect(doc.notes.map((n) => n.id)).toEqual(["|@|@|#g1", comment.id]);
+      expect(doc.notes[1]).toMatchObject({ body: "Rename this.", status: "pending", messages: [] });
+      // The reply keeps its own words. A file heading below it has no marker to be lifted out of the
+      // open fence by, so it stays in the reply — the next save escapes it and the file settles.
+      const [said, ...rest] = doc.notes[0]!.messages;
+      expect(rest).toEqual([]);
+      expect(said).toMatchObject({ role: "agent", at: "" });
+      expect(said!.body).toStartWith(reply);
+      expect(said!.body).not.toContain("Rename this.");
+    });
+
+    test("a heading it wrote stays in the reply", () => {
+      const reply = "Split in two.\n\n### What I changed\n\n- `add` now guards\n- `sub` unchanged";
+      const doc = answered(reply);
+      expect(doc.notes.map((n) => n.id)).toEqual(["|@|@|#g1", comment.id]);
+      expect(doc.notes[0]!.messages).toEqual([{ role: "agent", at: "", body: reply }]);
+      // The next save escapes the heading, and the pass after that gives the same reply back.
+      const again = parseReview(renderMarkdown(doc));
+      expect(again.notes[0]!.messages).toEqual([{ role: "agent", at: "", body: reply }]);
+      expect(again.notes.map((n) => n.id)).toEqual(["|@|@|#g1", comment.id]);
+    });
+
+    test("the reviewer's follow-up under it is still its own message", () => {
+      const doc = answered("```\nnever closed\n\n**Reviewer** <!-- lcr:m -->\n\nThen check the exports.");
+      expect(doc.notes[0]!.messages.map((m) => m.role)).toEqual(["agent", "reviewer"]);
+      expect(doc.notes[0]!.messages[1]!.body).toBe("Then check the exports.");
+    });
+
+    test("a note heading that lost its marker still starts a note under one", () => {
+      // Read by its heading, the way a hand-edited file is, with a thread standing above it.
+      const doc = parseReview(
+        write([
+          { id: "|@|@|#g1", file: "", body: "How does this hang together?", scope: "global", start: 0, end: 0 },
+          comment,
+        ])
+          .replace("Status: pending", "Status: answered — below\n\n**Agent** <!-- lcr:m -->\n\nDone.\n")
+          .replace(` <!-- lcr:${comment.id} -->`, ""),
+      );
+      expect(doc.notes.map((n) => n.key)).toEqual(["Overall note", "src/app.ts:12"]);
+      expect(doc.notes[1]).toMatchObject({ file: "src/app.ts", label: "12", body: "Rename this." });
+    });
+
+    test("the working agreement is not read into it", () => {
+      const doc = answered("```\nnever closed");
+      expect(doc.notes).toHaveLength(2);
+      expect(doc.notes[0]!.messages[0]!.body).not.toContain("How to work through this file");
+      expect(doc.notes[1]!.messages).toEqual([]);
+    });
+  });
+
+  test("a body line that looks like the end marker stays prose", () => {
+    const doc = parseReview(write([{ ...comment, body: "<!-- lcr:end -->\nis what closes it." }, {
+      ...comment,
+      id: "src/app.ts|n20|n20|#a10",
+      start: 20,
+      end: 20,
+      label: "20",
+      body: "second",
+    }]));
+    expect(doc.notes).toHaveLength(2);
+    expect(doc.notes[0]!.body).toBe("<!-- lcr:end -->\nis what closes it.");
+  });
+
   test("a balanced fence in the body keeps its content unescaped on disk", () => {
     const body = "look:\n```\n### fenced heading\n```";
     const text = write([{ ...comment, body }]);
@@ -293,5 +371,60 @@ describe("renderNote", () => {
     note.messages = [{ role: "agent", at: "", body: "Done." }];
     const text = renderNote(note).join("\n");
     expect(text.indexOf("Status: applied — renamed")).toBeLessThan(text.indexOf("**Agent**"));
+  });
+});
+
+describe("review context", () => {
+  test("branch and base survive the round trip", () => {
+    const markdown = renderMarkdown({
+      range: "main..HEAD",
+      branch: "feature-x",
+      base: "abc123def456",
+      notes: [noteFromComment(comment)],
+    });
+    expect(markdown).toContain("Branch: `feature-x`");
+    expect(markdown).toContain("Base: `abc123def456`");
+
+    const doc = parseReview(markdown);
+    expect(doc.range).toBe("main..HEAD");
+    expect(doc.branch).toBe("feature-x");
+    expect(doc.base).toBe("abc123def456");
+  });
+
+  test("a file from before these fields parses with neither", () => {
+    const doc = parseReview(renderMarkdown({ range: "HEAD", notes: [] }));
+    expect(doc.branch).toBeUndefined();
+    expect(doc.base).toBeUndefined();
+  });
+
+  test("a Branch line in a note's own prose is not read as the review's", () => {
+    const doc = parseReview(renderMarkdown({
+      range: "HEAD",
+      notes: [noteFromComment({ ...comment, body: "Branch: `main`\nis what the docs should say." })],
+    }));
+    expect(doc.branch).toBeUndefined();
+    expect(doc.notes[0]!.body).toBe("Branch: `main`\nis what the docs should say.");
+  });
+});
+
+describe("continued notes", () => {
+  test("the provenance marker survives the round trip", () => {
+    const note = noteFromComment(comment);
+    note.from = "review-2026-01-01T00-00-00.md#src/app.ts|n8|n8|#z1";
+    note.messages = [{ role: "agent", at: "", body: "Carried over." }];
+
+    const doc = parseReview(renderMarkdown({ range: "HEAD", notes: [note] }));
+    expect(doc.notes[0]).toMatchObject({
+      from: "review-2026-01-01T00-00-00.md#src/app.ts|n8|n8|#z1",
+      body: "Rename this.",
+    });
+    expect(doc.notes[0]!.messages).toEqual([{ role: "agent", at: "", body: "Carried over." }]);
+  });
+
+  test("a body line that looks like a provenance marker stays prose", () => {
+    const note = noteFromComment({ ...comment, body: "<!-- lcr:from fake.md#x -->" });
+    const doc = parseReview(renderMarkdown({ range: "HEAD", notes: [note] }));
+    expect(doc.notes[0]!.from).toBeUndefined();
+    expect(doc.notes[0]!.body).toBe("<!-- lcr:from fake.md#x -->");
   });
 });

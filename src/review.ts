@@ -20,8 +20,11 @@ export function renderMarkdown(doc: ReviewDoc): string {
     "# Review notes",
     "",
     `Diff under review: \`${doc.range}\``,
-    "",
   ];
+  // The context the review was opened in, written so a restart can tell this conversation is its own.
+  if (doc.branch) output.push(`Branch: \`${doc.branch}\``);
+  if (doc.base) output.push(`Base: \`${doc.base}\``);
+  output.push("");
 
   // Notes about the review as a whole lead the file, in the order they were written: they are the
   // frame the rest is read in, and each is answered exactly like a note on a line.
@@ -48,6 +51,9 @@ export function renderMarkdown(doc: ReviewDoc): string {
  * one note at a time and answers as it goes, because the reviewer is watching the file for replies.
  */
 const FOOTER = [
+  // Marked, so the working agreement is out of reach of a fence a reply left open above it.
+  "<!-- lcr:end -->",
+  "",
   "---",
   "",
   "## How to work through this file",

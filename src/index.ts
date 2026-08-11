@@ -1,14 +1,17 @@
 #!/usr/bin/env bun
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { openInBrowser } from "./browser.ts";
 import { parseArgs } from "./cli.ts";
-import { diffRangeLabel, fingerprint, getDiff, getFileContext } from "./diff.ts";
+import { diffBase, diffRangeLabel, fingerprint, getDiff, getFileContext } from "./diff.ts";
 import { createHub } from "./events.ts";
-import { findRepoRoot } from "./git.ts";
+import { currentBranch, findRepoRoot } from "./git.ts";
+import { collectGhosts, describeReviews } from "./history.ts";
 import { deleteReviews, excludeRelativeOutput, listReviews } from "./output.ts";
 import { createSession } from "./session.ts";
 import { startServer } from "./server.ts";
 import { collectStatuses } from "./status.ts";
+import { parseReview } from "./thread.ts";
 import { isNoise, watchDir, watchTree } from "./watch.ts";
 
 const options = parseArgs(process.argv.slice(2));
@@ -23,10 +26,22 @@ const diffSource = {
   diffArgs: options.diffArgs,
 };
 
-const session = createSession(repoRoot, options.outDir, range);
-// A restart continues the conversation it finds rather than starting a second one beside it.
-await session.adoptNewest();
+const [branch, base] = await Promise.all([currentBranch(repoRoot), diffBase(diffSource)]);
+const session = createSession(repoRoot, options.outDir, range, { range, branch, base });
+// A restart on the same diff continues its conversation; any other context starts its own. The
+// files that did not match are history, reachable from the page's review picker.
+if (!(await session.adoptMatching())) {
+  const others = (await listReviews(repoRoot, options.outDir)).length;
+  if (others) console.log(`\n  ${others} earlier review file${others === 1 ? " is" : "s are"} for other diffs; starting fresh`);
+}
 const hub = createHub();
+
+/** One saved review parsed back, for reading a ghost note's thread out of its own file. */
+async function readReview(name: string) {
+  if (!(await listReviews(repoRoot, options.outDir)).includes(name)) return null;
+  const text = await readFile(path.resolve(repoRoot, options.outDir, name), "utf8").catch(() => "");
+  return text ? parseReview(text) : null;
+}
 
 const server = startServer({
   port: options.port,
@@ -39,6 +54,24 @@ const server = startServer({
   getStatuses: () => collectStatuses(repoRoot, options.outDir),
   listReviews: () => listReviews(repoRoot, options.outDir),
   deleteReviews: () => deleteReviews(repoRoot, options.outDir),
+  describeReviews: () => describeReviews(repoRoot, options.outDir),
+  // The branch is asked for per request rather than kept from startup: the reviewer can check
+  // another one out mid-run, and the ghosts on offer should follow them there.
+  getGhosts: async () => {
+    const doc = await session.read();
+    const taken = new Set(doc.notes.map((note) => note.from).filter((from): from is string => !!from));
+    return collectGhosts(repoRoot, options.outDir, {
+      except: session.file,
+      branch: await currentBranch(repoRoot),
+      taken,
+    });
+  },
+  importNote: async (from, comment) => {
+    const doc = await readReview(from.file);
+    const source = doc?.notes.find((note) => note.id === from.id);
+    if (!source) return null;
+    return session.import(comment, source.messages, `${from.file}#${from.id}`);
+  },
   session,
   hub,
 });
