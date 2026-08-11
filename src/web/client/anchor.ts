@@ -1,4 +1,5 @@
-import { idxOf, isFileNote, keyIndex, rowKey, state } from './state.ts';
+import { orderNotes } from './note-list.ts';
+import { idxOf, isFileNote, isGlobalNote, keyIndex, rowKey, state } from './state.ts';
 
 /**
  * Where a note is showing. The agent rewrites the code a note was written against, so the row it was
@@ -10,8 +11,11 @@ import { idxOf, isFileNote, keyIndex, rowKey, state } from './state.ts';
  *   `near`  — the code is gone, but the file still has a line close to where the note was written
  *   `loose` — the file is still in the diff, but nothing in it is close: shown under the file
  *   `null`  — the file itself left the diff: shown at the end of the page
+ *
+ * A note about the review as a whole was never anchored to anything, so it is `global` and stays
+ * that way whatever the agent does to the code: it is shown in its own card above the first file.
  */
-export type Placing = { fi: number; i: number; j: number; how: 'exact'|'moved'|'near'|'file'|'loose' } | null;
+export type Placing = { fi: number; i: number; j: number; how: 'exact'|'moved'|'near'|'file'|'loose'|'global' } | null;
 
 /** How far a note may be dragged from the line it was written on before that stops being "close by". */
 const NEAR = 60;
@@ -28,6 +32,7 @@ export function replaceIn(path: string){
 export const placeOf=(n: any): Placing=>state.place.has(n.id)?state.place.get(n.id):placeNote(n);
 
 export function placeNote(n: any): Placing{
+  if(isGlobalNote(n)) return {fi:-1,i:-1,j:-1,how:'global'};
   const fi=idxOf(n.file);
   if(fi<0) return null;
   const f=state.files[fi];
@@ -113,6 +118,8 @@ function nearest(f: any,rows: number[],from: number,side: string){
   return bestGap<=NEAR?best:-1;
 }
 
+/** The review's own notes, in the order they were written. They belong to no file and never move. */
+export const globalNotes=()=>[...state.notes.values()].filter((n: any)=>isGlobalNote(n));
 /** Notes with no place inside their file, in the order the diff shows those files. */
 export function looseNotes(fi: number){
   const f=state.files[fi];
@@ -121,6 +128,12 @@ export function looseNotes(fi: number){
     return !!p&&p.how==='loose'&&n.file===f.path;
   });
 }
+/**
+ * Every note of this review, in the order the page reads them. Placement is the diff's business and
+ * moves as the agent works, so the list is derived here rather than kept: the pane under the tree and
+ * the all-notes panel both ask for it, and both get the order the diff itself is showing.
+ */
+export const orderedNotes=()=>orderNotes([...state.notes.values()],(n: any)=>placeOf(n));
 /** Notes whose file left the diff altogether. */
 export function strayNotes(){
   return [...state.notes.values()].filter((n: any)=>placeOf(n)===null)

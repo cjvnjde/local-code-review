@@ -1,4 +1,5 @@
 import page from "./web/shell.html";
+import { fingerprint } from "./diff.ts";
 import type { Hub } from "./events.ts";
 import type { ReviewSession } from "./session.ts";
 import type { DiffFile, DiffRow, NoteStatus, ReviewSubmission } from "./types.ts";
@@ -31,6 +32,14 @@ const PAGE_PATH = "/index.html";
 
 /** Ports tried, counting the requested one, before start gives up. */
 export const PORT_ATTEMPTS = 10;
+
+/**
+ * Which repository the page is reading, for the browser store to key itself on. Every run serves
+ * from `localhost`, and a port freed by one review is taken by the next, so the origin alone cannot
+ * tell two projects apart: without this they share one localStorage record. Hashed rather than sent
+ * whole, because the store outlives the run and a working-copy path is not the page's to keep.
+ */
+export const repoId = (repoRoot: string) => fingerprint(repoRoot);
 
 export function startServer(options: ServerOptions) {
   const server = listen(options.port, (port) => serve(options, port));
@@ -89,7 +98,13 @@ function serve(options: ServerOptions, port: number) {
         if (url.pathname === "/api/events") return events(options, request);
         if (url.pathname === "/api/diff") {
           const [files, statuses] = await Promise.all([options.getDiff(), options.getStatuses()]);
-          return Response.json({ range: options.range, context: options.context, files, statuses });
+          return Response.json({
+            repo: repoId(options.repoRoot),
+            range: options.range,
+            context: options.context,
+            files,
+            statuses,
+          });
         }
         if (url.pathname === "/api/context") {
           const path = url.searchParams.get("path") ?? "";
@@ -107,7 +122,6 @@ function serve(options: ServerOptions, port: number) {
             const [doc, statuses] = await Promise.all([options.session.read(), options.getStatuses()]);
             return Response.json({
               file: options.session.shownFile,
-              general: doc.general,
               notes: doc.notes,
               statuses,
             });
@@ -141,9 +155,10 @@ function serve(options: ServerOptions, port: number) {
           return Response.json({ file: options.session.shownFile, note });
         }
         if (url.pathname === "/api/note" && request.method === "DELETE") {
-          const id = url.searchParams.get("id") ?? "";
-          if (!id) return Response.json({ error: "A note id is required." }, { status: 400 });
-          const removed = await options.session.remove(id);
+          // Many ids in one request: clearing the page is one withdrawal, not one per note.
+          const ids = url.searchParams.getAll("id").filter((id) => id);
+          if (!ids.length) return Response.json({ error: "A note id is required." }, { status: 400 });
+          const removed = await options.session.remove(ids);
           if (removed) options.hub.emit({ type: "review", file: options.session.file });
           return Response.json({ removed });
         }
@@ -151,10 +166,7 @@ function serve(options: ServerOptions, port: number) {
           if (!isJsonRequest(request)) return Response.json({ error: "JSON body required." }, { status: 415 });
           const payload = await readJson(request) as Partial<ReviewSubmission> | null;
           if (!payload) return Response.json({ error: "A JSON body is required." }, { status: 400 });
-          const submission = {
-            general: typeof payload.general === "string" ? payload.general : "",
-            comments: Array.isArray(payload.comments) ? payload.comments : [],
-          };
+          const submission = { comments: Array.isArray(payload.comments) ? payload.comments : [] };
           const { file, removed } = await options.session.save(
             submission,
             (payload as { replace?: unknown }).replace === true,

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { bmKey, bookmarkOf, orderBookmarks, stepAt } from "./bookmarks.ts";
+import { bmKey, bookmarkOf, bookmarksIn, orderBookmarks, stepAt } from "./bookmarks.ts";
 
 describe("bookmarkOf", () => {
   test("an added or context line is anchored on its new-side number", () => {
@@ -17,6 +17,33 @@ describe("bookmarkOf", () => {
     const row = { t: "ctx", n: 3, o: 3, text: "x" };
     expect(bookmarkOf("a.ts", row).key).toBe(bookmarkOf("a.ts", row).key);
     expect(bmKey("a.ts", "n3")).toBe(bookmarkOf("a.ts", row).key);
+  });
+});
+
+describe("bookmarksIn", () => {
+  const kept = { key: "a.ts|n3", file: "a.ts", a: "n3" };
+
+  test("a record made in this read hands its bookmarks back", () => {
+    expect(bookmarksIn({ scope: "r1:HEAD", list: [kept] }, "r1:HEAD")).toEqual([kept]);
+  });
+
+  test("another repository's record is not this read's, whatever the diff is called", () => {
+    expect(bookmarksIn({ scope: "r2:HEAD", list: [kept] }, "r1:HEAD")).toEqual([]);
+  });
+
+  test("the same repository read over a different range starts empty", () => {
+    expect(bookmarksIn({ scope: "r1:HEAD~1..HEAD", list: [kept] }, "r1:HEAD")).toEqual([]);
+  });
+
+  test("nothing stored, or stored as something else, is no bookmarks rather than a throw", () => {
+    expect(bookmarksIn(null, "r1:HEAD")).toEqual([]);
+    expect(bookmarksIn({ scope: "r1:HEAD" }, "r1:HEAD")).toEqual([]);
+    expect(bookmarksIn("bookmarks", "r1:HEAD")).toEqual([]);
+  });
+
+  test("an entry with no row to sit on is dropped, since nothing could place it", () => {
+    const list = [kept, null, { key: "b.ts|n1" }, { file: "b.ts", a: "n1" }];
+    expect(bookmarksIn({ scope: "r1:HEAD", list }, "r1:HEAD")).toEqual([kept]);
   });
 });
 

@@ -1,5 +1,6 @@
+import { bookmarksIn } from './bookmarks.ts';
 import { compileHide } from './filters.ts';
-import { el, idxOf, isMinted, mintNoteId, reindexNotes, saveKeyHint, state } from './state.ts';
+import { GLOBAL_ANCHOR, el, idxOf, isMinted, mintGlobalId, mintNoteId, reindexNotes, state } from './state.ts';
 
 /* ---------- persistence ---------- */
 const CFG_KEY='gitreview:settings';
@@ -15,7 +16,6 @@ export function loadCfg(){
   el('cfgEnter').checked=state.cfg.enterSaves;
   el('cfgSingle').checked=!!state.cfg.single;
   el('cfgBack').disabled=!state.cfg.auto;
-  el('saveKey').textContent=saveKeyHint();
   state.hideRx=compileHide(state.cfg.hide);
 }
 /** Writes `state.cfg` out as it stands, for the preferences that are not fields in the settings panel. */
@@ -38,11 +38,17 @@ export function saveCfg(){
   if(hide!==state.cfg.hide) state.hideRx=compileHide(hide);
   state.cfg.hide=hide;
   el('cfgBack').disabled=!state.cfg.auto;
-  el('saveKey').textContent=saveKeyHint();
   persistCfg();
   return changed;
 }
-const store=()=>'gitreview:'+state.range;
+/**
+ * Which read this is: the repository as the server named it, and the diff being read in it. Every
+ * run is served from `localhost` and a port one review frees the next one takes, so the origin alone
+ * cannot tell two projects apart — without the repository in the key, every project on a machine
+ * shares one record and reads back another project's notes.
+ */
+const scope=()=>state.repo+':'+state.range;
+const store=()=>'gitreview:'+scope();
 /** Said once per session: every save after a full store fails the same way, and one warning is news. */
 let warnedStore=false;
 function warnStore(){
@@ -61,11 +67,10 @@ export function save(){
   reindexNotes();
   try{
     localStorage.setItem(store(),JSON.stringify({
-      general:el('general').value,
       notes:[...state.notes.values()],
       hidden:[...state.hidden], shown:[...state.shown],
       collapsed:[...state.collapsed], folded:[...state.folded],
-      viewed:[...state.viewed], bookmarks:[...state.bookmarks.values()],
+      viewed:[...state.viewed],
       // The review file owns the threads; this copy is only so a reload has them before it answers.
       msgs:[...state.msgs], seen:[...state.seen],
     }));
@@ -74,10 +79,19 @@ export function save(){
   }
 }
 export function restore(){
+  // Ahead of the notes, and not after them: a repository with nothing stored yet leaves early below,
+  // and this tab may still be mid-read through it.
+  restoreBookmarks();
   try{
     const d=JSON.parse(localStorage.getItem(store())||'null');
     if(!d) return;
-    el('general').value=d.general||'';
+    // The overall note used to be one field beside the notes rather than a note. What was typed into
+    // it is still worth keeping, so it comes back as the first of the review's own notes.
+    if((d.general||'').trim()){
+      const id=mintGlobalId();
+      state.notes.set(id,{id,file:'',body:d.general.trim(),a:GLOBAL_ANCHOR,b:GLOBAL_ANCHOR,
+        scope:'global',start:0,end:0});
+    }
     (d.notes||[]).forEach(n=>{
       // Ids used to be derived from the note's location, which made a note written where a handled one
       // had been indistinguishable from it. Notes stored that way are re-minted as the fresh, unsent
@@ -90,27 +104,65 @@ export function restore(){
     state.collapsed=new Set(d.collapsed||[]);
     state.folded=new Set(d.folded||[]);
     state.viewed=new Map((d.viewed||[]).map(e=>[e[0],typeof e[1]==='string'?{h:e[1],auto:false}:e[1]]));
-    state.bookmarks=new Map((d.bookmarks||[]).filter(b=>b&&b.key).map(b=>[b.key,b]));
     state.msgs=new Map((d.msgs||[]).filter(e=>e&&e[0]&&Array.isArray(e[1])));
     state.seen=new Map((d.seen||[]).filter(e=>e&&e[0]));
   }catch(e){}
 }
+/**
+ * Bookmarks are the trail of one sitting, not a record of it: they say where the reader meant to
+ * come back to before finishing, so they belong to the tab doing the reading and go when it closes.
+ * That is what sessionStorage is — it survives the reload a live diff refresh or an F5 costs, and
+ * nothing further. Notes are the opposite and stay in `store()`, which outlives the tab.
+ */
+const BM_KEY='gitreview:bookmarks';
+export function saveBookmarks(){
+  try{
+    sessionStorage.setItem(BM_KEY,JSON.stringify({scope:scope(),list:[...state.bookmarks.values()]}));
+  }catch(e){
+    // Losing a place to jump back to costs a scroll, so it is not worth a warning of its own.
+  }
+}
+export function restoreBookmarks(){
+  let record=null;
+  try{ record=JSON.parse(sessionStorage.getItem(BM_KEY)||'null'); }catch(e){}
+  state.bookmarks=new Map(bookmarksIn(record,scope()).map((b: any)=>[b.key,b]));
+  state.bmCur='';
+}
+/** Drops every bookmark and the record behind it, for the moments that end a read-through. */
+export function clearBookmarks(){
+  state.bookmarks.clear();
+  state.bmCur='';
+  saveBookmarks();
+}
 /** A file whose notes are gone was reviewed for feedback that no longer exists, so it needs another
  *  pass; a file nobody commented on keeps its mark, which pruneViewed drops if the file changed. */
 export function unviewCommented(){
-  const commented=new Set([...state.notes.values()].map((n: any)=>n.file));
+  // A note about the review as a whole names no file, so it puts none of them back either.
+  const commented=new Set([...state.notes.values()].map((n: any)=>n.file).filter(Boolean));
   commented.forEach(p=>{ state.viewed.delete(p); state.folded.delete(p); });
   return commented;
 }
+/**
+ * Takes notes out of the review file. The page reads that file back whole on every review event, so
+ * a note only dropped here comes straight back with the next one — withdrawing is what makes
+ * clearing stick. One request for the whole set: a delete per note announces the file after each
+ * write, and the page would adopt the notes still in it back onto the page that just let them go.
+ */
+export function withdrawNotes(ids: string[]){
+  const query=ids.map(id=>'id='+encodeURIComponent(id));
+  if(!query.length) return Promise.resolve();
+  // The page has already let them go; the file catches up, and a failed delete costs a stale entry.
+  return fetch('/api/note?'+query.join('&'),{method:'DELETE'}).then(()=>{},()=>{});
+}
 /** Wipes the notes stored for this range, threads and all. Hidden and collapsed marks are not
- *  comments, so they stay. The review file itself is left on disk: it is the record of what was said. */
+ *  comments, so they stay. The review file itself is left on disk: it is the record of what was said,
+ *  and withdrawing what this drops from the page is the caller's to do. */
 export function clearNotes(){
   const unviewed=unviewCommented();
   state.notes.clear();
   state.msgs.clear();
   state.seen.clear();
   state.place.clear();
-  el('general').value='';
   save();
   return unviewed;
 }

@@ -12,9 +12,6 @@
   <b>git review</b>
   <span class="range" id="range"></span>
   <span class="spacer"></span>
-  <span class="hint">click a line to comment &middot; drag or shift-click for a range &middot;
-    select text inside a line to comment on that part &middot; <em>comment</em> in a file header notes the whole file
-    &middot; <span id="saveKey">shift+enter</span> saves &middot; the flag on a line bookmarks it</span>
   <button id="pending" class="pending" type="button" hidden
     title="The working tree changed while you were writing. Refreshes as soon as this note is done.">diff changed</button>
   <span id="live" class="live" title="Not connected"></span>
@@ -103,9 +100,25 @@
       <button id="fstat" class="fstat" type="button" title="Edit the hide patterns" hidden></button>
     </div>
     <div class="tree" id="tree"></div>
+    <div class="ntpane" id="ntpane" hidden>
+      <div class="nthead">
+        <button class="fold" id="ntFold" type="button" aria-expanded="true">
+          <span class="chev"></span><span class="ttl">Notes</span><span class="ct" id="ntct">0</span>
+        </button>
+        <span class="spacer"></span>
+        <button id="ntAll" type="button" title="Read every note together (alt+c)">Read all</button>
+        <button id="ntPrev" type="button" title="Go to the previous note (alt+k)"
+          aria-label="Previous note"></button>
+        <button id="ntNext" type="button" title="Go to the next note (alt+j)"
+          aria-label="Next note"></button>
+      </div>
+      <div class="ntlist" id="ntlist"></div>
+    </div>
     <div class="bmpane" id="bmpane" hidden>
       <div class="bmhead">
-        <span class="ttl">Bookmarks</span><span class="ct" id="bmct">0</span>
+        <button class="fold" id="bmFold" type="button" aria-expanded="true">
+          <span class="chev"></span><span class="ttl">Bookmarks</span><span class="ct" id="bmct">0</span>
+        </button>
         <span class="spacer"></span>
         <button id="bmPrev" type="button" title="Go to the previous bookmark (alt+up)"
           aria-label="Previous bookmark"></button>
@@ -116,13 +129,30 @@
       <div class="bmlist" id="bmlist"></div>
     </div>
   </nav>
-  <section id="diff"></section>
+  <!-- The panel covers the diff rather than replacing it: the diff keeps its scroll position, and its
+       rows stay mounted, so closing the panel puts the reader back exactly where they were. -->
+  <div class="pane">
+    <section id="diff"></section>
+    <div class="rdr" id="reader" hidden>
+      <div class="rdrh">
+        <span class="ttl">All notes</span><span class="ct" id="rdrCt">0</span>
+        <div class="chips" id="rdrChips"></div>
+        <span class="spacer"></span>
+        <button id="rdrRead" type="button" title="Mark every note listed here as read">Mark all read</button>
+        <button id="rdrClose" type="button" title="Back to the diff (esc)">Close</button>
+      </div>
+      <div class="rdrb" id="rdrbody"></div>
+    </div>
+  </div>
 </main>
 <div id="toasts"></div>
 <footer>
   <span class="count" id="count">0 notes</span>
+  <button id="allNotes" type="button" hidden
+    title="Read every note and reply together, away from the diff (alt+c)">Read notes</button>
   <button class="unread-pill" id="unread" type="button" hidden></button>
-  <textarea id="general" placeholder="Overall note (optional)"></textarea>
+  <button id="addGlobal" type="button"
+    title="Write a note about the review as a whole, rather than about one line">Overall note</button>
   <span class="spacer"></span>
   <button id="clearDone" hidden></button>
   <button id="clearAll" class="danger" type="button">Clear all</button>

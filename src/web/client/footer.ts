@@ -1,12 +1,12 @@
-import { GENERAL_MAX, autogrow } from './autogrow.ts';
 import { hiddenCount } from './filters.ts';
 import { load, render } from './load.ts';
-import { clearNotes, save } from './persistence.ts';
+import { renderNotePane } from './note-pane.ts';
+import { openGlobalEditor } from './notes.ts';
+import { clearNotes, save, withdrawNotes } from './persistence.ts';
+import { closeReader, syncReader } from './reader.ts';
 import { SVG, appliedNotes, el, esc, markSubmitted, state, unreadTotal } from './state.ts';
 
 /* ---------- footer ---------- */
-/** Call after setting `#general` from code — only typing grows the box on its own. */
-export const fitGeneral=autogrow(el('general'),GENERAL_MAX);
 export function updateCount(){
   const n=state.notes.size, hid=hiddenCount(), seen=state.viewed.size, done=appliedNotes().length;
   const news=unreadTotal();
@@ -28,12 +28,17 @@ export function updateCount(){
   rv.title=seen?'Mark every file in this diff as not viewed':'No file is marked viewed yet';
   /** Always on show, so starting over is findable; disabled is the honest state when nothing is stored. */
   const all=el('clearAll');
-  const empty=!n&&!el('general').value.trim();
-  all.disabled=empty;
-  all.title=empty?'Nothing to clear yet'
-    :'Delete every note and the overall note saved for this diff — '+
-      'files that had notes go back to not viewed, the rest keep their mark';
+  all.disabled=!n;
+  all.title=n?'Delete every note saved for this diff, overall notes included — '+
+      'files that had notes go back to not viewed, the rest keep their mark'
+    :'Nothing to clear yet';
+  el('allNotes').hidden=!n;
   paintSubmit();
+  /** The pane under the tree and the all-notes panel list the notes this has just counted, so they
+   *  follow it: every path that changes a note already ends here. The panel decides for itself
+   *  whether anything actually moved, because a rebuild would eat a reply being written in it. */
+  renderNotePane();
+  syncReader();
 }
 /** The button says whether this save opens the conversation or adds to the one already running. */
 function paintSubmit(){
@@ -52,30 +57,38 @@ el('clearDone').onclick=()=>{
     state.msgs.delete(n.id);
     state.seen.delete(n.id);
     state.place.delete(n.id);
-    if(n.sentAt) fetch('/api/note?id='+encodeURIComponent(n.id),{method:'DELETE'}).catch(()=>{});
   });
   save(); render();
+  withdrawNotes(done.filter((n: any)=>n.sentAt).map((n: any)=>n.id));
 };
 /** Starting over: everything typed for this diff goes, so ask before dropping work that cannot be undone. */
 el('clearAll').onclick=()=>{
   const n=state.notes.size;
-  if(!n&&!el('general').value.trim()) return;
-  const files=new Set([...state.notes.values()].map((note: any)=>note.file)).size;
-  if(!confirm('Delete '+(n?n+' note'+(n===1?'':'s'):'the overall note')+' and start from scratch?'+
+  if(!n) return;
+  const files=new Set([...state.notes.values()].map((note: any)=>note.file).filter(Boolean)).size;
+  if(!confirm('Delete '+n+' note'+(n===1?'':'s')+' and start from scratch?'+
     (files?'\n\n'+files+(files===1?' file goes':' files go')+' back to not viewed. Files without notes keep their mark.':'')+
-    (state.sessionFile?'\n\n'+state.sessionFile+' stays on disk. Use New review in settings to open a fresh one.':''))) return;
-  clearNotes(); fitGeneral(); render();
+    (state.sessionFile?'\n\n'+state.sessionFile+' stays on disk, but what is cleared here goes out of it, '+
+      'threads and all — otherwise the file would put it straight back.':''))) return;
+  // Read before the clear, and withdrawn after it: a note left in the file is fetched back.
+  const sent=[...state.notes.values()].filter((note: any)=>note.sentAt).map((note: any)=>note.id);
+  clearNotes(); render();
+  withdrawNotes(sent);
 };
-el('general').oninput=()=>{ save(); updateCount(); };
+/** A note about the review rather than about a place in it. It is written in the card above the
+ *  diff, so the panel covering the diff comes down first — with the usual ask if it is being used. */
+el('addGlobal').onclick=()=>{
+  if(!closeReader()) return;
+  openGlobalEditor();
+};
 el('reload').onclick=()=>load(true);
 el('submit').onclick=async()=>{
-  const general=el('general').value;
-  if(!state.notes.size&&!general.trim()){ alert('Add at least one note before saving.'); return; }
+  if(!state.notes.size){ alert('Add at least one note before saving.'); return; }
   const button=el('submit');
   button.disabled=true;
   try{
     const r=await fetch('/api/submit',{method:'POST',headers:{'content-type':'application/json'},
-      body:JSON.stringify({general,comments:[...state.notes.values()],replace:!!state.cfg.single})});
+      body:JSON.stringify({comments:[...state.notes.values()],replace:!!state.cfg.single})});
     const d=await r.json();
     if(!r.ok){ alert('Could not save: '+(d.error||r.status)); return; }
     /** Notes are stamped so verdicts and replies can find their way back to them. */

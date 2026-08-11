@@ -12,6 +12,16 @@ export function bookmarkOf(path: string,row: any){
   return {key:bmKey(path,a),file:path,a,side:row.n!=null?'new':'old',
     line:row.n!=null?row.n:row.o,text:clip(String(row.text||'').trim(),120)};
 }
+/**
+ * The bookmarks a stored record hands back, or none. The record carries the read it was made in, so
+ * a tab pointed at a different repository or range starts empty instead of inheriting marks that
+ * name lines in someone else's files: every run serves from `localhost`, so the browser cannot tell
+ * two projects apart by origin alone.
+ */
+export function bookmarksIn(record: any,scope: string){
+  if(!record||record.scope!==scope||!Array.isArray(record.list)) return [];
+  return record.list.filter((b: any)=>b&&b.key&&b.file&&b.a);
+}
 /** Sorts a bookmark the current diff cannot place to the end of the list, behind every live one. */
 const LAST=Number.MAX_SAFE_INTEGER;
 /**

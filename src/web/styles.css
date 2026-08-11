@@ -31,8 +31,9 @@
   body{margin:0;background:var(--bg);color:var(--ink);font:var(--fs-code)/1.5 var(--mono);display:flex;flex-direction:column}
   body.dragging{user-select:none;cursor:row-resize}
   .i{width:var(--icon);height:var(--icon);fill:currentColor;flex:none;display:block}
-  header{position:relative;display:flex;align-items:center;gap:16px;padding:10px 16px;border-bottom:1px solid var(--edge);
-    background:var(--panel2);flex:none}
+  /* one row high and no taller: the header is a strip, so nothing in it may wrap the page open */
+  header{position:relative;display:flex;align-items:center;gap:12px;padding:3px 12px;border-bottom:1px solid var(--edge);
+    background:var(--panel2);flex:none;min-height:calc(var(--tap-lg) + 6px)}
   #gear,#navToggle{border:none;background:none;padding:0;color:var(--ink-faint);display:flex;align-items:center;
     justify-content:center;width:var(--tap-lg);height:var(--tap-lg);flex:none;border-radius:5px}
   #gear:hover,#gear.on,#navToggle:hover,#navToggle.on{color:var(--ink);background:var(--s0)}
@@ -78,9 +79,10 @@
   .toast button{padding:5px 9px;font-size:var(--fs-xs);min-height:var(--tap)}
   .toast.out{opacity:0;transform:translateY(4px);transition:opacity .18s,transform .18s}
   header b{font-weight:600;letter-spacing:.06em;text-transform:uppercase;font-size:var(--fs-sm)}
-  header .range{color:var(--mark)}
+  /* a long revision spec gives way rather than wrapping the strip onto a second line */
+  header .range{color:var(--mark);font-size:var(--fs-sm);min-width:0;overflow:hidden;text-overflow:ellipsis;
+    white-space:nowrap}
   header .spacer{flex:1}
-  header .hint{color:var(--ink-faint);font-size:var(--fs-sm);font-family:var(--sans)}
   main{flex:1;display:flex;min-height:0}
 
   nav{width:330px;flex:none;display:flex;flex-direction:column;border-right:1px solid var(--edge);background:var(--panel2)}
@@ -120,15 +122,47 @@
   .tw.sel{background:var(--s0);box-shadow:inset 2px 0 0 var(--lav)}
   .tw.sel .nm{color:var(--ink)}
 
-  /* bookmarks: a list under the tree of the places this read is jumping between */
-  .bmpane{flex:none;display:flex;flex-direction:column;max-height:42%;border-top:1px solid var(--edge-hi)}
-  .bmpane[hidden]{display:none}
-  .bmhead{flex:none;display:flex;align-items:center;gap:7px;padding:7px 10px;border-bottom:1px solid var(--edge)}
-  .bmhead .ttl{font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.08em;color:var(--ink-faint)}
-  .bmhead .ct{font-size:var(--fs-xs);color:var(--crust);background:var(--mauve);border-radius:9px;padding:1px 6px;font-weight:700}
-  .bmhead .spacer{flex:1}
-  .bmhead button{padding:4px 7px;font-size:var(--fs-xs);min-height:var(--tap);display:flex;align-items:center}
-  .bmlist{flex:1;overflow:auto;padding:4px 0 10px}
+  /* two lists under the tree, built the same way: the notes this review has made, and the places the
+     read is jumping between. Notes carry the page's note colour, bookmarks their own. */
+  .ntpane,.bmpane{flex:none;display:flex;flex-direction:column;border-top:1px solid var(--edge-hi)}
+  .ntpane{max-height:38%} .bmpane{max-height:42%}
+  .ntpane[hidden],.bmpane[hidden]{display:none}
+  .nthead,.bmhead{flex:none;display:flex;align-items:center;gap:7px;padding:7px 10px;border-bottom:1px solid var(--edge)}
+  .nthead .ttl,.bmhead .ttl{font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.08em;color:var(--ink-faint)}
+  .nthead .ct,.bmhead .ct{font-size:var(--fs-xs);color:var(--crust);border-radius:9px;padding:1px 6px;font-weight:700}
+  .nthead .ct{background:var(--mark)} .bmhead .ct{background:var(--mauve)}
+  .nthead .spacer,.bmhead .spacer{flex:1}
+  .nthead button,.bmhead button{padding:4px 7px;font-size:var(--fs-xs);min-height:var(--tap);display:flex;align-items:center}
+  .ntlist,.bmlist{flex:1;overflow:auto;padding:4px 0 10px}
+  /* either list folds to its header, so a long one leaves the tree room; the count and the stepping
+     buttons stay in that header, which is what makes a folded list still worth having open */
+  .nthead .fold,.bmhead .fold{flex:none;gap:7px;padding:2px 5px;margin-left:-5px;border:none;min-height:var(--tap)}
+  .nthead .fold:hover .ttl,.bmhead .fold:hover .ttl{color:var(--ink)}
+  .nthead .chev,.bmhead .chev{display:flex;color:var(--ink-faint)}
+  .ntpane.folded,.bmpane.folded{max-height:none}
+  .ntpane.folded .ntlist,.bmpane.folded .bmlist{display:none}
+  /* nothing below the header to divide it from, and the pane's own top border already draws the line */
+  .ntpane.folded .nthead,.bmpane.folded .bmhead{border-bottom:none}
+
+  /* one note per row: where it sits, what it says, and what has happened to it since */
+  .nw{display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer;color:var(--ink-dim)}
+  .nw:hover{background:var(--s0)}
+  .nw.cur{background:var(--s0);box-shadow:inset 2px 0 0 var(--mark)}
+  .nw .ni{flex:1;min-width:0;display:flex;flex-direction:column}
+  .nw .loc{color:var(--mark);font-size:var(--fs-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .nw .tx{color:var(--ink-faint);font-size:var(--fs-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    font-family:var(--sans)}
+  .nw:hover .tx{color:var(--ink-dim)}
+  .nw.gone .loc{color:var(--peach);text-decoration:line-through}
+  .nw .nb{flex:none;display:flex;align-items:center;gap:5px}
+  .nw .unread{font:700 var(--fs-xs)/1.5 var(--mono);padding:1px 6px;border-radius:9px;
+    background:var(--mark);color:var(--crust)}
+  /* the verdict an agent reported, in the colours the note's own badge uses */
+  .nw .dot{width:7px;height:7px;border-radius:50%;background:var(--s2)}
+  .nw .dot.applied{background:var(--green)}
+  .nw .dot.answered{background:var(--teal)}
+  .nw .dot.skipped{background:var(--peach)}
+  .nw .dot.needs-input{background:var(--sapphire)}
   .bw{display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer;color:var(--ink-dim)}
   .bw:hover{background:var(--s0)}
   .bw.cur{background:var(--s0);box-shadow:inset 2px 0 0 var(--mauve)}
@@ -143,6 +177,9 @@
   .bw .rm:hover{color:var(--del);background:var(--s1)}
   .bw .rm:focus-visible{opacity:1}
 
+  /* the diff and the panel that covers it share this box, so the diff is never unmounted and keeps
+     both its scroll position and its rows while the notes are being read */
+  .pane{flex:1;min-width:0;position:relative;display:flex}
   /* we compensate scrollTop by hand when content above the fold resizes; the browser's own
      scroll anchoring would apply the same correction a second time */
   section{flex:1;overflow:auto;overflow-anchor:none;padding:0 0 40vh;scroll-behavior:auto}
@@ -256,7 +293,7 @@
   .nhead .sug:hover{color:var(--add);border-color:var(--add)}
   .nbox.done{opacity:.7}
   .nbox.done:hover{opacity:1}
-  .nbody{padding:10px 12px;white-space:pre-wrap;font-family:var(--sans);font-size:var(--fs-code);line-height:1.55}
+  .nbody{padding:10px 12px;font-family:var(--sans);font-size:var(--fs-code);line-height:1.55}
   /* the replacement a note proposes, set apart from the prose around it and read as code */
   .nbody .sugb{margin:8px 0;border:1px solid var(--edge-hi);border-radius:5px;background:var(--crust);overflow:hidden}
   .nbody .sugb:first-child{margin-top:0}
@@ -289,9 +326,6 @@
   footer{flex:none;border-top:1px solid var(--edge);background:var(--panel2);padding:10px 16px;display:flex;gap:14px;align-items:center}
   footer .count{color:var(--mark);flex:none}
   footer .spacer{flex:1}
-  #general{flex:1;max-width:620px;background:var(--crust);color:var(--ink);border:1px solid var(--edge-hi);border-radius:5px;
-    padding:8px 10px;font:var(--fs-ui)/1.5 var(--sans);min-height:38px;height:38px;resize:none;overflow-y:hidden}
-  #general:focus{outline:none;border-color:var(--accent)}
   .empty{padding:34px 18px;color:var(--ink-faint);font-family:var(--sans);font-size:var(--fs-ui)}
 
   /* ---- the conversation on a note ----
@@ -314,7 +348,7 @@
   .msg .newtag{font:700 var(--fs-xs)/1.5 var(--mono);letter-spacing:.06em;padding:2px 7px;border-radius:9px;
     background:var(--mark);color:var(--crust);flex:none}
   .msg .when{margin-left:auto;color:var(--ink-faint);font-size:var(--fs-xs);flex:none}
-  .msg .mb{padding:10px 12px;white-space:pre-wrap;font-family:var(--sans);font-size:var(--fs-code);
+  .msg .mb{padding:10px 12px;font-family:var(--sans);font-size:var(--fs-code);
     line-height:1.55;color:var(--ink)}
   .msg .mb .sugb{margin:8px 0;border:1px solid var(--edge-hi);border-radius:5px;background:var(--crust);overflow:hidden}
   .msg .mb .sugb:first-child{margin-top:0}
@@ -340,6 +374,47 @@
     background:var(--mark);color:var(--crust);font-weight:700}
   .nhead .unread[hidden]{display:none}
   .nbox.unread-on{border-color:var(--mark)}
+
+  /* ---- prose, on both sides of the conversation ----
+     A note and the answer to it are Markdown, so both are set as text with code in it: sans for the
+     prose, mono only where something is code. Every size is the page's own scale stepped off
+     --fs-code, so the body of a message stays the size it was before it was rendered. */
+  /* a note box mounted in the diff sits inside a cell, so it would otherwise inherit the diff's own
+     pre-wrap; the blocks below carry the layout now, and a note reads the same wherever it is mounted */
+  .md{white-space:normal;word-break:break-word}
+  .md>:first-child{margin-top:0}
+  .md>:last-child{margin-bottom:0}
+  .md p{margin:0 0 8px}
+  .md h1,.md h2,.md h3,.md h4,.md h5,.md h6{margin:13px 0 6px;font-weight:600;line-height:1.3;color:var(--ink)}
+  .md h1{font-size:calc(var(--fs-code) + 4px)}
+  .md h2{font-size:calc(var(--fs-code) + 2px)}
+  .md h3{font-size:calc(var(--fs-code) + 1px)}
+  .md h4,.md h5,.md h6{font-size:var(--fs-code)}
+  .md h1,.md h2{padding-bottom:4px;border-bottom:1px solid var(--edge)}
+  .md ul,.md ol{margin:6px 0 8px;padding-left:22px}
+  .md li{margin:2px 0}
+  .md li>ul,.md li>ol{margin:2px 0}
+  .md li>p{margin:0 0 6px}
+  /* a ticked-off item reads as the box the agent wrote, and stays as unclickable as the file it is in.
+     The marker is dropped rather than pulled out of the list, so a box lines up with the items around it. */
+  .md li.task{list-style:none}
+  .md li.task input{margin:0 7px 0 0;accent-color:var(--accent);vertical-align:baseline}
+  .md blockquote{margin:8px 0;padding:1px 0 1px 11px;border-left:3px solid var(--s2);color:var(--ink-dim)}
+  .md hr{border:none;border-top:1px solid var(--edge-hi);margin:11px 0}
+  .md a{color:var(--accent);text-decoration:none;border-bottom:1px solid rgba(137,180,250,.4)}
+  .md a:hover{border-bottom-color:var(--accent)}
+  .md strong{font-weight:600;color:var(--ink)}
+  .md del{color:var(--ink-faint)}
+  .md code{font:var(--fs-sm)/1.5 var(--mono);background:var(--s0);border-radius:3px;padding:1px 5px;color:var(--ink)}
+  /* a fence is code the same way the diff is code: same frame as a suggestion, coloured by class `c` */
+  .md pre.mdb{margin:8px 0;padding:8px 10px;background:var(--crust);border:1px solid var(--edge-hi);
+    border-radius:5px;overflow-x:auto;white-space:pre;font:var(--fs-code)/1.55 var(--mono);color:var(--ink)}
+  .md pre.mdb code{background:none;padding:0;font:inherit;color:inherit}
+  /* the page's tables are the diff's, and those are fixed and full width; a written one is neither */
+  .md .mdt{margin:8px 0;overflow-x:auto}
+  .md table{width:auto;table-layout:auto;font-size:var(--fs-sm)}
+  .md th,.md td{padding:4px 9px;border:1px solid var(--edge-hi);white-space:normal;vertical-align:top;text-align:left}
+  .md th{background:var(--s0);font-weight:600;color:var(--ink)}
 
   /* ---- notes the diff can no longer hold where they were written ---- */
   .lost{display:flex;align-items:baseline;gap:9px;padding:6px 12px;background:rgba(250,179,135,.09);
@@ -371,10 +446,56 @@
     text-transform:uppercase;letter-spacing:.06em}
   .loose .nrow{display:block}
   .loose .nbox{margin:8px 12px}
+  /* notes about the review as a whole: the same card as a file's, above the first of them */
+  #diff .gcard{border:1px solid var(--edge);border-radius:6px;margin:12px 14px;overflow:clip;background:var(--panel);
+    border-left:3px solid var(--mark)}
+  #diff .gcard .fh .p{color:var(--mark)}
+  #diff .gcard .loose{border-top:none;padding:2px 0 4px}
   #diff .file.stray{border-color:var(--peach);border-style:dashed}
   #diff .file.stray .fh .p{color:var(--peach)}
   .strayw{padding:2px 0 6px}
   .strayw .note{margin:9px 12px 0;color:var(--ink-faint);font-family:var(--sans);font-size:var(--fs-sm);line-height:1.5}
+
+  /* ---- all notes: the review read as a conversation, over the top of the diff ---- */
+  .rdr{position:absolute;inset:0;z-index:5;background:var(--bg);display:flex;flex-direction:column}
+  .rdr[hidden]{display:none}
+  .rdrh{flex:none;display:flex;align-items:center;gap:10px;padding:8px 14px;background:var(--panel2);
+    border-bottom:1px solid var(--edge)}
+  .rdrh .ttl{font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.08em;color:var(--ink-faint);flex:none}
+  .rdrh .ct{font-size:var(--fs-xs);color:var(--crust);background:var(--mark);border-radius:9px;padding:1px 6px;
+    font-weight:700;flex:none}
+  .rdrh .spacer{flex:1}
+  .rdrh button{padding:5px 9px;font-size:var(--fs-xs);min-height:var(--tap)}
+  .chips{display:flex;gap:5px;flex-wrap:wrap;margin-left:6px}
+  .chip{padding:4px 9px;font-size:var(--fs-xs);min-height:var(--tap);gap:6px}
+  .chip.on{background:var(--mark);border-color:var(--mark);color:var(--crust);font-weight:700}
+  .chip.on:hover{background:var(--peach);border-color:var(--peach);color:var(--crust)}
+  .chip .n{font-weight:700;color:var(--ink-faint)}
+  .chip.on .n{color:var(--crust)}
+  .rdrb{flex:1;overflow:auto;overflow-anchor:none;padding:0 0 40vh}
+  .rdrg{margin:12px 14px}
+  /* the file a run of notes was written on stays put while they are read */
+  .rdrg .gh{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:10px;padding:7px 12px;
+    background:var(--panel2);border:1px solid var(--edge);border-radius:6px 6px 0 0;box-shadow:0 1px 0 var(--crust)}
+  .rdrg .gh .p{color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .rdrg .gh .p.stray{color:var(--peach)}
+  .rdrg .gh .ct,.rdrg .gh .hid{font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.05em;flex:none}
+  .rdrg .gh .ct{color:var(--ink-faint)}
+  .rdrg .gh .hid{color:var(--mark)}
+  .rdrg .gn{border:1px solid var(--edge);border-top:none;border-radius:0 0 6px 6px;background:var(--panel);
+    padding:2px 0 6px}
+  /* clear of the sticky heading, so stepping with j/k lands on the note rather than under its file */
+  .rdrn{scroll-margin-top:2.6em}
+  .rdr .nrow{display:block}
+  .rdr .nbox{margin:9px 12px}
+  /* the captured code is what a note is about, not what it says: it is folded until it is asked for */
+  .rdr .cap .capc{max-height:9.4em}
+  .rdr .cap.open .capc{max-height:38vh}
+  .rdr .cap .caph{cursor:pointer;display:flex;align-items:center}
+  .rdr .cap .caph::after{content:"⌄";margin-left:auto;color:var(--ink-faint);font-size:var(--fs-ui)}
+  .rdr .cap.open .caph::after{content:"⌃"}
+  .nhead .jmp{color:var(--accent)}
+  .nhead .jmp:hover{color:var(--accent);border-color:var(--accent)}
 
   /* ---- following the agent ---- */
   .live{width:8px;height:8px;border-radius:50%;flex:none;background:var(--s2)}

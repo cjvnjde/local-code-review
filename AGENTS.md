@@ -31,6 +31,11 @@
   updates the reviewer's wording and leaves the agent's thread and verdict exactly as written; a note the page
   no longer sends stays in the file, because handing a note over is not withdrawing it. Deleting the note on
   the page is the one thing that takes it out.
+- Clearing on the page is deleting: **Clear all** and **Remove N applied** withdraw what they drop, overall
+  notes with them, because those are notes too. The page reads the review file back whole on every event, so
+  anything left in it returns. One request carries the whole set — `session.remove` takes ids and writes once — because a
+  delete per note announces the file after each write and the page would adopt the rest straight back. **New
+  review** is the exception: it has already let go of the file, which keeps everything said in it.
 - A note's section is written verdict-first — captured code, note, `Status:`, then the thread — so both sides
   only ever append. Prose after the `Status:` line with no `**Agent**`/`**Reviewer**` line above it is read as
   an agent message rather than dropped, and a status line still wins until the first explicit message, so an
@@ -50,6 +55,12 @@
   to where it was reading rather than to the top.
 - The page is served from `/` with `cache-control: no-store`; the HTML bundle route stays on `/index.html`. Bun gives that route one ETag for every build, so mounting the bundle on `/` again lets a browser revalidate into an older page whose asset chunks are gone.
 - Review notes anchor on captured code plus line metadata. A note may narrow to a character range inside one line; keep its columns, snippet, and `ca`/`cb` offsets together with the line anchor.
+- The two selections are one gesture apart, in both directions: a selected line narrows to a character range as
+  soon as a press inside its code collects one, the same press re-picks the range on a line that already carries
+  one, and a plain click on the row takes it back to the whole line. `pressKind` reads a finished press as rows,
+  characters, or a click the row handler answers. The pressed row therefore keeps the highlight it already shows
+  until the press is over — repainting a cell under a live press replaces the node the browser anchored the drag
+  on, and the drag then collects nothing — so every way a press can end has to paint again.
 - One line or range holds any number of notes. Each gets its own box under the anchor row, matched by `data-nid`. Removing one repaints the span it covered rather than clearing it, because other notes may still cover those lines.
 - One note editor stands open at a time. An untouched draft still moves to wherever the next click lands; a box with
   text in it keeps the floor, and anything that would open a second editor scrolls that one back into view and focuses
@@ -59,9 +70,25 @@
   ordinary note body text, so it reaches the review file verbatim, and `apply-lcr` reads it as the proposed replacement.
   A saved note shows it as code, coloured line by line by the diff's own `codeHtml`: class `c` is what carries the
   syntax token styles, so every container of highlighted code needs it.
+- A note and the answer to it are Markdown. `renderBody` draws both sides of the conversation, and the prose in them
+  goes through `client/markdown.ts`: headings, fenced and inline code, lists and checklists, quotes, tables, emphasis,
+  links, rules. Nothing else is markup — every run of text is escaped and the only tags in the output are the ones that
+  file writes, so a body containing HTML shows the HTML. A fence with no language named is coloured as the file the note
+  is on, and its `pre` carries class `c` like every other code container. A link is followed only on a safe scheme and
+  opens away from the page; an image is shown as a link, because the page fetches nothing from the network. The
+  Markdown reaches the review file verbatim — `escapeText` only ever guards a line the parser would read as structure,
+  and `unescapeLines` is its exact inverse — so what the file holds is what the page renders.
 - A note's id is minted once by `mintNoteId`, as its location plus a `|#<unique>` suffix, and never re-derived. Statuses match on it, so a note written where a handled one stood is a new note. Stored notes whose id lacks that suffix are re-minted on restore as fresh, unsubmitted notes. Do not make ids derivable from location again.
 - A verdict only reaches a note that was handed over: `markSubmitted` stamps `sentAt` from the saved review file's name at first submission. The `noteKey` heading fallback, for a review file that lost its marker, additionally needs a heading claimed by exactly one submitted note and a file no older than that stamp.
 - A note may instead cover a whole file. It uses `*` for both row anchors, carries `scope:"file"` and no captured code, and renders as `### <path> (whole file)`. One per file, found by that anchor rather than by a predictable id, and mounted under the file header so binary and collapsed files keep it. `noteKey` must keep producing that same heading text.
+- A note may belong to no file at all. It uses `@` for both row anchors, carries `scope:"global"` and an empty
+  `file`, and renders as `### Overall note` under `## Overall`, ahead of every file section. There is no limit
+  on how many a review has; **Overall note** in the footer writes another. Everything a note has, one has —
+  its own id, thread, verdict, edit and delete — and the one thing it does not have is a place on the diff, so
+  `placeNote` answers `global` for it and it is read in the card above the first file. Prose an earlier lcr
+  wrote directly under `## Overall`, and a `general` field in the browser store, are both read back as one of
+  these; that is the only thing left of the single overall field, and neither the submission nor the page has
+  one any more.
 - File hide patterns are a display preference in settings. Manual eye toggles keep overriding them per file.
 - The header toggle collapses the file tree pane, and that state is a settings preference like the rest. Collapsing changes the diff pane's width, so it drops cached block heights and renders the diff again, exactly as a window resize does.
 - The tree follows the diff: the file under the top of the diff pane carries `.tw.sel`, read once per animation frame while scrolling and again after every tree or diff render. A file whose row is folded away marks the deepest folder still shown. The tree only scrolls itself when that row changes, so expanding a folder does not drag the pane back to the file being read.
@@ -69,9 +96,36 @@
 - Hunk separators expand the unchanged lines git left out. `/api/context` re-diffs one file with unlimited context and answers an inclusive new-side line range, which keeps every revision spec working without picking a side to read blobs from. The page splices those rows into the file, rebuilds the hunk header from the rows it now covers, and drops a separator once its gap closes. Expansions live only in the page; a reload starts over.
 - The trailing separator is inferred: git prints at most `-U` context lines after the last change, so a full run means the file continues. `/api/diff` must keep reporting `context` for that. A run that happened to end on the last line self-corrects, because the first expansion comes back empty and drops the separator.
 - Revealed lines are ordinary context rows, so notes anchor to them normally. Row indices below an insertion all move, which is why the file's table is rendered again and both row-indexed caches (`wd`, `ki`) are dropped. Cached block heights above the insertion stay valid and must be kept, or the page jumps.
-- Bookmarks are navigation, not feedback: they are stored with the notes for a range but never submitted, and `Clear all` in the footer leaves them alone. One per row, keyed by `bmKey` on the same row anchor a note uses, so revealed context carries them and `keyIndex` turns them back into a place on screen.
+- The browser store is keyed on repository and range together. Every run serves from `localhost` and a port one review frees the next one takes, so the origin cannot tell two projects apart; `/api/diff` reports `repo` as `repoId`, a hash of the repository root, and the page keys on `<repo>:<range>`. The path itself never reaches the page, because the store outlives the run.
+- Bookmarks are navigation, not feedback: they are never submitted, and `Clear all` in the footer leaves them alone. One per row, keyed by `bmKey` on the same row anchor a note uses, so revealed context carries them and `keyIndex` turns them back into a place on screen.
+- Bookmarks last one sitting, not one project. They live in `sessionStorage` under their own key, stamped with the read that made them: the tab that closes takes them, a reload keeps them, and a record whose stamp is another repository or range is dropped rather than restored. **New review** clears them too. Notes are the opposite and stay in the durable per-repository store.
 - The bookmark list sits under the file tree, in the pane the header toggle hides, and shows itself only while something is bookmarked. It reads in diff order, not the order bookmarks were made, so stepping through it walks the review top to bottom; one whose file or line the diff no longer holds sorts to the end as `gone`. `alt+up`/`alt+down` step it from anywhere outside a text field.
+- Both lists under the tree fold to their headers, and each fold is a settings preference like the tree's own.
+  A folded list keeps its count and its stepping buttons, so `alt+j`/`alt+k` and `alt+up`/`alt+down` still walk it.
+  Neither fold changes the diff pane's width, so unlike the tree toggle neither re-renders the diff.
 - A jump has to be able to land: it un-hides the file, expands it if a viewed mark folded it, and mounts the one block its row lives in, because that row may be in a file the pane never scrolled through. The viewed mark itself is progress and survives the jump.
+- Every note is readable as a list as well as as a mark on the diff: the pane under the file tree, and the
+  all-notes panel over it. Both read `orderedNotes`, so both are in the order the diff shows them — the review's
+  own notes first, then down the files, a file's own note ahead of the lines it covers, one the file can no
+  longer place after them, and a note whose file left the diff last of all. Neither list may tell a different
+  story than the pane beside it.
+- The all-notes panel covers the diff rather than replacing it, which is why `#diff` sits in `.pane` with it
+  rather than in `main`. Nothing is unmounted, so the diff keeps its scroll position and its mounted rows, and
+  **in diff** on any note is one jump away. A tab, a route, or a `display:none` would cost all three.
+- A note in the panel is a note box like any other: `mountNoteIn` gives it the same thread, reply, edit and
+  delete the diff gives it, and `viewUI` reads its own surroundings to know it is there. One note is therefore
+  mounted twice, and everything that changes a note has to reach both copies — `repaintNote` walks them by
+  `data-nid`, editing one repaints the rest, and deleting one takes them all.
+- The panel is rebuilt only when the notes it lists actually change; a note whose placement moved is redrawn
+  where it stands. A rebuild that would eat a reply being written is deferred instead of taken, and the idle
+  check in `live.ts` that takes a waiting diff refresh takes it too. Closing the panel, or jumping to the diff
+  out of it, asks first when something is half-written — and a jump the reader calls off must not happen behind
+  the panel either.
+- The panel's filters are `all`, `new`, `open`, and `done`. Only `applied`, `answered`, and `skipped` finish a
+  note; everything else, an unknown kind included, is open. Adding a status kind therefore needs nothing here.
+- `alt+j`/`alt+k` step the note list from anywhere outside a text field, `alt+c` opens the panel and closes it,
+  and `j`/`k` step it entry by entry while it is open. `alt` plus the arrows stays the bookmark list's. Letters
+  are read off `code` rather than `key`, because alt turns a letter into another character entirely on macOS.
 - Where a note shows is worked out by `client/anchor.ts`, never stored: the agent rewrites the code notes were
   written against, so an anchor is re-derived from the diff on every load. It degrades in order — the note's own
   rows while they still hold its captured code, then that code wherever it now reads, then its unchanged lines

@@ -3,8 +3,8 @@ import { renderMarkdown } from "./review.ts";
 import { noteFromComment, parseReview, renderNote } from "./thread.ts";
 import type { ReviewComment } from "./types.ts";
 
-const write = (comments: ReviewComment[], general = "") =>
-  renderMarkdown({ range: "HEAD", general, notes: comments.map(noteFromComment) });
+const write = (comments: ReviewComment[]) =>
+  renderMarkdown({ range: "HEAD", notes: comments.map(noteFromComment) });
 
 const comment: ReviewComment = {
   id: "src/app.ts|n12|n12|#a1",
@@ -26,10 +26,9 @@ describe("parseReview", () => {
       ca: 6,
       cb: 14,
       snippet: "tmpValue",
-    }], "Watch the call sites."));
+    }]));
 
     expect(doc.range).toBe("HEAD");
-    expect(doc.general).toBe("Watch the call sites.");
     expect(doc.notes).toHaveLength(1);
     expect(doc.notes[0]).toMatchObject({
       id: "src/app.ts|n12|n12|6-14|#a1",
@@ -189,11 +188,45 @@ describe("parseReview", () => {
     expect(parseReview(text).notes[0]!.body).toBe(body);
   });
 
-  test("structure lines in the overall note stay in the overall note", () => {
-    const general = "Fine overall.\n### src/app.ts:1\n---\ndone";
-    const doc = parseReview(write([comment], general));
-    expect(doc.general).toBe(general);
-    expect(doc.notes).toHaveLength(1);
+  test("structure lines in an overall note stay in that note", () => {
+    const body = "Fine overall.\n### src/app.ts:1\n---\ndone";
+    const doc = parseReview(write([{ id: "|@|@|#g1", file: "", body, scope: "global", start: 0, end: 0 }, comment]));
+    expect(doc.notes).toHaveLength(2);
+    expect(doc.notes[0]).toMatchObject({ id: "|@|@|#g1", scope: "global", key: "Overall note", file: "", body });
+    expect(doc.notes[1]!.id).toBe(comment.id);
+  });
+
+  test("an overall note round-trips with its thread and its verdict", () => {
+    const text = write([{ id: "|@|@|#g1", file: "", body: "Split this branch up.", scope: "global", start: 0, end: 0 }])
+      .replace("Status: pending", "Status: skipped — one branch is the ask\n\n**Agent** <!-- lcr:m -->\n\nKeeping it.\n");
+    const note = parseReview(text).notes[0]!;
+    expect(note).toMatchObject({ scope: "global", status: "skipped", detail: "one branch is the ask", label: "" });
+    expect(note.messages).toEqual([{ role: "agent", at: "", body: "Keeping it." }]);
+  });
+
+  test("prose an older lcr wrote under `## Overall` comes back as the first overall note", () => {
+    const doc = parseReview([
+      "# Review notes",
+      "",
+      "Diff under review: `HEAD`",
+      "",
+      "## Overall",
+      "",
+      "Watch the call sites.",
+      "",
+      "## src/app.ts",
+      "",
+      "### src/app.ts:12 <!-- lcr:src/app.ts|n12|n12|#old -->",
+      "",
+      "Rename this.",
+      "",
+      "Status: pending",
+      "",
+    ].join("\n"));
+    expect(doc.notes.map((n) => n.id)).toEqual(["|@|@|#legacy", "src/app.ts|n12|n12|#old"]);
+    expect(doc.notes[0]).toMatchObject({ scope: "global", body: "Watch the call sites.", status: "pending" });
+    // Reading what that produced does not produce it again.
+    expect(parseReview(renderMarkdown({ range: "HEAD", notes: doc.notes })).notes).toHaveLength(2);
   });
 
   test("a snippet keeping its surrounding spaces survives the round trip", () => {

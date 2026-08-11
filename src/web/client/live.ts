@@ -3,8 +3,10 @@ import { mountRowAt, setFolded, setHidden } from './diff-view.ts';
 import { isHidden } from './filters.ts';
 import { updateCount } from './footer.ts';
 import { adopt, load, render } from './load.ts';
+import { markCurrentNote } from './note-pane.ts';
 import { save } from './persistence.ts';
 import { repaintNote } from './notes.ts';
+import { closeReader, syncReader } from './reader.ts';
 import { SVG, el, esc, idxOf, msgsOf, state } from './state.ts';
 import { paintActive } from './tree.ts';
 
@@ -42,7 +44,9 @@ export function startLive(){
   setInterval(()=>{
     if(editing()) return;
     if(state.pendingDiff){ applyDiff(); return; }
-    if(state.pendingNotes){ state.pendingNotes=false; placeNotes(); render(); }
+    if(state.pendingNotes){ state.pendingNotes=false; placeNotes(); render(); return; }
+    // A panel rebuild the editor above was holding off: taking it now costs nobody anything.
+    if(state.rdrStale){ state.rdrStale=false; syncReader(); }
   },700);
 }
 
@@ -129,8 +133,9 @@ function announce(before: Map<string,number>){
     if(msgs.length<=had||!last||last.role!=='agent') return;
     const toast=document.createElement('div');
     toast.className='toast reply';
+    const where=n.file?n.file.split('/').pop()+(n.label?':'+n.label:''):'Overall';
     toast.innerHTML='<span class="ic">'+SVG.check+'</span>'+
-      '<span class="tx" title="'+esc(n.file)+'">'+esc(n.file.split('/').pop()+(n.label?':'+n.label:''))+'</span>'+
+      '<span class="tx" title="'+esc(n.file||'about the review as a whole')+'">'+esc(where)+'</span>'+
       '<span class="lbl">replied</span><button class="undo">show</button>';
     toast.querySelector('.undo').onclick=()=>{ jumpToNote(n.id); toast.remove(); };
     host.append(toast);
@@ -153,16 +158,21 @@ el('pending').onclick=()=>{
 /** Brings one note on screen, opening whatever the reader had put away to get there. */
 export function jumpToNote(id: string){
   const note=state.notes.get(id); if(!note) return;
+  // Going to a note means going to its code, so the panel over the diff comes down first. A reader
+  // who would rather keep writing in it keeps the panel, and the jump waits for them.
+  if(!closeReader()) return;
+  markCurrentNote(id); // however the jump started, this is the note the pane steps on from
   const place=placeOf(note);
-  if(place){
+  if(place&&place.how!=='global'){
     if(isHidden(note.file)) setHidden([note.file],false);
     if(state.folded.has(note.file)) setFolded(note.file,false);
     state.jumpUntil=performance.now()+500;
     if(place.i>=0) mountRowAt(place.fi,place.j);
     state.active=note.file; paintActive();
   }
-  const row=[...document.querySelectorAll('.nrow')].find((n: any)=>n.dataset.nid===id);
-  const target=row||el('f'+idxOf(note.file))||el('fstray');
+  // The note may also be mounted in the panel, which is not where this jump is going.
+  const row=[...el('diff').querySelectorAll('.nrow')].find((n: any)=>n.dataset.nid===id);
+  const target=row||(note.file?el('f'+idxOf(note.file)):el('fglobal'))||el('fstray');
   if(target) (target as any).scrollIntoView({block:row?'center':'start'});
   if(row) (row as any).querySelector('.nbox')?.click();
 }

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { GENERAL_MAX, NOTE_MAX, fitHeight } from "./autogrow.ts";
+import { NOTE_MAX, fitHeight } from "./autogrow.ts";
 
 const MIN = 64, MAX = 320;
 
@@ -24,8 +24,7 @@ describe("fitHeight", () => {
     expect(fitHeight(500, 64, 30)).toBe(64);
   });
 
-  test("both caps leave room for several lines", () => {
+  test("the cap leaves room for several lines", () => {
     expect(NOTE_MAX).toBeGreaterThan(64);
-    expect(GENERAL_MAX).toBeGreaterThan(34 * 2);
   });
 });

@@ -1,6 +1,7 @@
 import { NOTE_MAX, autogrow } from './autogrow.ts';
 import { codeHtml, langOf } from './highlight.ts';
 import { editorAction } from './keys.ts';
+import { mdHtml } from './markdown.ts';
 import { save } from './persistence.ts';
 import { SVG, esc, markRead, msgsOf, saveKeyHint, state } from './state.ts';
 import { bodyParts } from './suggest.ts';
@@ -13,13 +14,22 @@ import { bodyParts } from './suggest.ts';
  * the file. Nothing on this side ever invents a message.
  */
 
-/** A saved note reads as it was typed, except that a suggestion block is shown as the code it is
- *  rather than as the backticks around it. Prose goes in as text: a note is never markup. */
+/**
+ * A message body, either side's: the reviewer's note and the agent's answer are the same kind of
+ * writing and are drawn by the same code. Prose is Markdown — `mdHtml` escapes it and emits only its
+ * own tags, so a body that contains markup shows it rather than running it — and a suggestion block
+ * is lifted out ahead of that and shown as the code it is rather than as the backticks around it.
+ */
 export function renderBody(host: any,body: string,path: string){
   host.textContent='';
   const lang=langOf(path);
   bodyParts(body||'').forEach(part=>{
-    if(part.t==='text'){ host.append(document.createTextNode(part.v)); return; }
+    if(part.t==='text'){
+      const md=document.createElement('div'); md.className='md';
+      md.innerHTML=mdHtml(part.v,path);
+      host.append(md);
+      return;
+    }
     const wrap=document.createElement('div'); wrap.className='sugb';
     const head=document.createElement('div'); head.className='sugh'; head.textContent='suggested change';
     // Coloured by the diff's own tokeniser, line by line as the diff does it; it escapes as it goes.

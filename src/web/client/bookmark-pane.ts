@@ -1,7 +1,7 @@
 import { bmKey, bookmarkOf, orderBookmarks, stepAt } from './bookmarks.ts';
 import { mountRowAt, setFolded, setHidden } from './diff-view.ts';
 import { isHidden } from './filters.ts';
-import { save } from './persistence.ts';
+import { saveBookmarks } from './persistence.ts';
 import { SVG, clip, el, esc, idxOf, keyIndex, rowKey, state } from './state.ts';
 import { paintActive } from './tree.ts';
 
@@ -60,13 +60,13 @@ export function toggleBookmark(fi: number,idx: number){
     state.bookmarks.set(b.key,b);
     state.bmCur=b.key; // stepping on from the one just made is the move that follows
   }
-  save(); paintRow(fi,idx); renderBookmarks();
+  saveBookmarks(); paintRow(fi,idx); renderBookmarks();
 }
 function removeBookmark(key: string){
   const b=state.bookmarks.get(key); if(!b) return;
   state.bookmarks.delete(key);
   if(state.bmCur===key) state.bmCur='';
-  save(); repaintAnchor(b); renderBookmarks();
+  saveBookmarks(); repaintAnchor(b); renderBookmarks();
 }
 /** Marks the row a jump landed on for a moment, so the eye finds it without hunting the pane.
  *  The pending timer is dropped with the mark it was set for, or landing on the same row twice in
@@ -115,7 +115,7 @@ el('bmClear').onclick=()=>{
   if(!all.length) return;
   if(!confirm('Remove '+all.length+' bookmark'+(all.length===1?'':'s')+'?')) return;
   state.bookmarks.clear(); state.bmCur='';
-  save();
+  saveBookmarks();
   all.forEach(repaintAnchor);
   renderBookmarks();
 };

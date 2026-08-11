@@ -1,7 +1,6 @@
 import { renderDiff, setViewed } from './diff-view.ts';
-import { fitGeneral } from './footer.ts';
 import { load, render } from './load.ts';
-import { clearNotes, saveCfg } from './persistence.ts';
+import { clearBookmarks, clearNotes, saveCfg } from './persistence.ts';
 import { SVG, el, state } from './state.ts';
 
 /* ---------- settings ---------- */
@@ -85,7 +84,7 @@ el('newReview').onclick=async()=>{
   }
   state.sessionFile='';
   clearNotes();
-  fitGeneral();
+  clearBookmarks(); // the read that made them is the one being closed
   await load();
   await refreshReviews();
 };

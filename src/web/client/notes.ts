@@ -1,12 +1,12 @@
 import { placeOf } from './anchor.ts';
 import { NOTE_MAX, autogrow } from './autogrow.ts';
-import { repaintRow } from './diff-view.ts';
+import { globalHost, repaintRow, syncGlobals } from './diff-view.ts';
 import { updateCount } from './footer.ts';
 import { codeHtml, langOf } from './highlight.ts';
 import { editorAction } from './keys.ts';
-import { save } from './persistence.ts';
+import { save, withdrawNotes } from './persistence.ts';
 import { clearSel } from './selection.ts';
-import { FILE_ANCHOR, SVG, clip, el, esc, isFileNote, keyIndex, locKey, markRead, mintNoteId, rowKey, saveKeyHint, state, statusOf, unreadOf } from './state.ts';
+import { FILE_ANCHOR, GLOBAL_ANCHOR, SVG, clip, el, esc, isFileNote, isGlobalNote, keyIndex, locKey, markRead, mintGlobalId, mintNoteId, rowKey, saveKeyHint, state, statusOf, unreadOf } from './state.ts';
 import { insertBlock, suggestLines, suggestionBlock } from './suggest.ts';
 import { dropEmptyReply, mountReply, renderBody, renderThread } from './thread.ts';
 import { renderTree } from './tree.ts';
@@ -68,7 +68,9 @@ function dropEmptyDraft(){
   state.draftRow=state.draftKey=null;
   if(!row||!row.isConnected) return;
   const ta=row.querySelector('textarea');
-  if(ta&&!ta.value.trim()) row.remove();
+  if(!ta||ta.value.trim()) return;
+  row.remove();
+  syncGlobals(); // it may have been the only thing in the card at the top
 }
 /** The text box of the draft standing open on this exact range, if the last one opened is still there. */
 function draftFor(key: string){
@@ -131,6 +133,22 @@ export function openFileEditor(fi: number){
   state.draftRow=rowOf(box); state.draftKey=locKey(f.path,FILE_ANCHOR,FILE_ANCHOR);
   editUI(box,ctx);
 }
+/**
+ * A note about the review as a whole. It is a note like any other — its own thread, its own verdict,
+ * as many as the review earns — and the only thing it does not have is somewhere in the diff to sit,
+ * so it lives in the card above the first file rather than against a line.
+ */
+export function openGlobalEditor(){
+  // Asked before the card is made, so a refused open leaves no empty card standing over the diff.
+  if(busyEditor()) return;
+  const host=globalHost(true); if(!host) return;
+  const id=mintGlobalId();
+  const box=mountFileBox(host,id);
+  state.draftRow=rowOf(box); state.draftKey=locKey('',GLOBAL_ANCHOR,GLOBAL_ANCHOR);
+  const card=el('fglobal');
+  if(card) card.scrollIntoView({block:'start'});
+  editUI(box,{f:{path:'',rows:[]},fi:-1,i:null,j:null,ch:null,scope:'global',id,body:''});
+}
 /** The file's own note, found by what it is anchored to rather than by a predictable id. */
 const fileNoteOf=(path: string)=>[...state.notes.values()].find((n: any)=>n.file===path&&isFileNote(n))||null;
 /** Several ranges can end on the same row, so each note row is tagged and matched by id. */
@@ -166,22 +184,29 @@ function statusChip(st){
   return '<span class="stat '+esc(st.status)+'" title="'+esc(st.source+(st.detail?' — '+st.detail:''))+'">'+
     esc(st.status.replace('-',' '))+'</span>';
 }
-/** A missing label means the note covers the file, so the head says so instead of naming lines. */
-function headHtml(f,label,snippet,extra){
-  return '<div class="nhead"><span class="loc">'+esc(f.path)+(label?':'+label:'')+'</span>'+
-    (label?'':'<span class="all">whole file</span>')+
+/**
+ * What a note says it is about. A note on the whole review names no file, one on a whole file names
+ * no lines, and the badge under `all` is what carries that instead of a line range.
+ */
+function headHtml(f,label,snippet,extra,scope?){
+  const global=scope==='global';
+  return '<div class="nhead"><span class="loc">'+(global?'Overall':esc(f.path)+(label?':'+label:''))+'</span>'+
+    (global?'<span class="all">whole review</span>':label?'':'<span class="all">whole file</span>')+
     (snippet?'<span class="snip" title="'+esc(snippet)+'">'+esc(clip(snippet.trim()))+'</span>':'')+
     '<span class="spacer"></span>'+(extra||'')+'</div>';
 }
 function editUI(box,ctx){
   const {f,fi,i,j,ch,id}=ctx;
-  const whole=ctx.scope==='file';
+  const global=ctx.scope==='global';
+  const whole=global||ctx.scope==='file';
   const sp=whole?null:span(f,i,j,ch);
-  // A file note covers no lines, so it has nothing to suggest a replacement for.
+  // A note covering no lines has nothing to suggest a replacement for.
   const suggest=whole?'':'<button class="sug" title="Insert these lines as a suggested change">'+
     SVG.plus+' suggest</button>';
-  box.innerHTML=headHtml(f,whole?null:sp.label,whole?null:sp.snippet,suggest)+
-    '<div class="nedit"><textarea placeholder="'+(whole?'What should change in this file?':
+  box.innerHTML=headHtml(f,whole?null:sp.label,whole?null:sp.snippet,suggest,ctx.scope)+
+    '<div class="nedit"><textarea placeholder="'+
+      (global?'What should be said about this review as a whole?':
+      whole?'What should change in this file?':
       ch?'What should change in this part of the line?':'What should change here?')+'"></textarea>'+
     '<div class="acts"><button class="primary">Save note</button><button class="cancel">Cancel</button>'+
     '<span class="spacer"></span><span class="tip">'+saveKeyHint()+' save &middot; esc cancel</span></div></div>';
@@ -201,7 +226,9 @@ function editUI(box,ctx){
     const body=ta.value.trim();
     if(!body){ drop(); return; }
     const kept=state.notes.get(id);
-    const note: any=whole
+    const note: any=global
+      ?{id,file:'',body,a:GLOBAL_ANCHOR,b:GLOBAL_ANCHOR,scope:'global',start:0,end:0}
+      :whole
       ?{id,file:f.path,body,a:FILE_ANCHOR,b:FILE_ANCHOR,scope:'file',start:0,end:0}
       :{id,file:f.path,body,a:rowKey(f.rows[i]),b:rowKey(f.rows[j]),
         side:sp.side,start:sp.start,end:sp.end,label:sp.label,code:sp.code};
@@ -209,9 +236,11 @@ function editUI(box,ctx){
     // Editing a note that is already in the review file leaves it in the same conversation.
     if(kept&&kept.sentAt) note.sentAt=kept.sentAt;
     state.notes.set(id,note);
-    state.place.set(id,whole?{fi,i:-1,j:-1,how:'file'}:{fi,i,j,how:'exact'});
+    state.place.set(id,global?{fi:-1,i:-1,j:-1,how:'global'}
+      :whole?{fi,i:-1,j:-1,how:'file'}:{fi,i,j,how:'exact'});
     save(); clearSel();
     viewUI(box,note,ctx);
+    repaintNote(id,box); // the same note may be mounted in the all-notes panel as well
     mark(fi,i,j,true);
     if(ch) repaintRow(fi,i);
     renderTree(); updateCount();
@@ -223,13 +252,14 @@ function editUI(box,ctx){
     if(kept){ clearSel(); removeNote(box,kept,ctx); return; }
     rowOf(box).remove(); clearSel();
     if(ch) repaintRow(fi,i);
+    syncGlobals(); // the card the draft opened has nothing left to hold
   };
   box.querySelector('.primary').onclick=commit;
   box.querySelector('.cancel').onclick=()=>{
     const kept=state.notes.get(id);
     clearSel();
     if(kept) viewUI(box,kept,ctx);
-    else rowOf(box).remove();
+    else{ rowOf(box).remove(); syncGlobals(); }
   };
   ta.onkeydown=e=>{
     const action=editorAction(e,state.cfg.enterSaves);
@@ -279,13 +309,20 @@ export function viewUI(box,note,ctx){
   const how=ctx.how||'exact';
   const lost=how==='loose'||how==='stray';
   const unread=unreadOf(note);
+  // A note read away from the diff needs the way back to it. Read off the DOM rather than passed in,
+  // so a note repainted by a reply or a verdict keeps the button wherever it is mounted.
+  const away=!!box.closest('.rdr');
   box.classList.toggle('done',!!st&&st.status==='applied');
   box.classList.toggle('adrift',lost);
   box.classList.toggle('unread-on',!!unread);
   box.innerHTML=headHtml(ctx.f,note.label,note.snippet,
       '<span class="unread"'+(unread?'':' hidden')+'>'+(unread?unread+' new':'')+'</span>'+
-      statusChip(st)+'<button class="edit">Edit</button><button class="danger del">Delete</button>')+
-    placeHtml(how==='exact'||how==='file'?'':how)+
+      statusChip(st)+
+      (away?'<button class="jmp" data-goto="'+esc(note.id)+
+        '" title="Show this note where it sits in the diff">'+
+        (ctx.scope==='global'?'show':'in diff')+'</button>':'')+
+      '<button class="edit">Edit</button><button class="danger del">Delete</button>',ctx.scope)+
+    placeHtml(how==='exact'||how==='file'||how==='global'?'':how)+
     capturedHtml(note,how)+
     '<div class="nbody"></div>'+(st&&st.detail?'<div class="nstat"></div>':'')+
     '<div class="thread"></div><div class="replyhost"></div>';
@@ -328,13 +365,12 @@ function removeNote(box,note,ctx){
   state.place.delete(note.id);
   save();
   if(ctx.f&&ctx.i!=null&&ctx.i>=0) remark(ctx.f,ctx.fi,ctx.i,ctx.j);
-  rowOf(box).remove();
+  // Every box the note had, not only the one deleted from: it may also be mounted in the panel.
+  document.querySelectorAll('.nrow').forEach((row: any)=>{ if(row.dataset.nid===note.id) row.remove(); });
   if(note.ca!=null&&ctx.i!=null&&ctx.i>=0) repaintRow(ctx.fi,ctx.i);
+  syncGlobals(); // the card at the top goes with the last note in it
   renderTree(); updateCount();
-  if(note.sentAt){
-    fetch('/api/note?id='+encodeURIComponent(note.id),{method:'DELETE'})
-      .catch(()=>{}); // the page has already let it go; the file catches up on the next save
-  }
+  if(note.sentAt) withdrawNotes([note.id]);
 }
 function mark(fi,i,j,on){
   if(i==null||i<0) return; // a file note, or one with no rows left, marks no lines
@@ -385,22 +421,45 @@ export function mountLoose(host: any,note: any,f: any,fi: number,how: string){
   viewUI(box,note,{f,fi,i:null,j:null,ch:null,how});
 }
 /**
- * Redraws one note wherever it is mounted, for a reply or a verdict that arrived from the review
- * file. A box being typed into is left alone: the news can wait until the note is finished.
+ * How a note is drawn wherever it is mounted, worked out from where the diff places it now rather
+ * than from where it was written. Edit reads the note's shape off this, so a whole-file note must
+ * say it is one here too.
  */
-export function repaintNote(id: string){
-  const n=state.notes.get(id); if(!n) return;
+function ctxFor(n: any){
+  if(isGlobalNote(n)) return {f:{path:'',rows:[]},fi:-1,i:null,j:null,ch:null,how:'global',scope:'global'};
   const p=placeOf(n);
   const f=p?state.files[p.fi]:{path:n.file,rows:[]};
   const how=p?p.how:'stray';
   const ch=n.ca!=null&&how!=='near'&&p&&p.i>=0&&f.rows[p.i]?charSpan(n,f.rows[p.i].text):null;
-  // Edit reads the note's shape off this ctx, so a whole-file note must say it is one here too.
   const ctx: any={f,fi:p?p.fi:-1,i:p?p.i:null,j:p?p.j:null,ch,how};
   if(isFileNote(n)) ctx.scope='file';
+  return ctx;
+}
+/** Mounts one of the review's own notes in the card above the diff. */
+export function mountGlobal(host: any,note: any){
+  viewUI(mountFileBox(host,note.id),note,ctxFor(note));
+}
+/**
+ * Mounts a note somewhere that is not the row it belongs to — the all-notes panel reads the whole
+ * review this way. It is the same box the diff shows, so everything a note can do it can do here.
+ */
+export function mountNoteIn(host: any,note: any){
+  const box=mountFileBox(host,note.id);
+  viewUI(box,note,ctxFor(note));
+  return box;
+}
+/**
+ * Redraws one note wherever it is mounted, for a reply or a verdict that arrived from the review
+ * file. A box being typed into is left alone: the news can wait until the note is finished. `skip` is
+ * the box whose own change started this, which has already been drawn with what it knows.
+ */
+export function repaintNote(id: string,skip?: any){
+  const n=state.notes.get(id); if(!n) return;
+  const ctx=ctxFor(n);
   document.querySelectorAll('.nrow').forEach((row: any)=>{
     if(row.dataset.nid!==id) return;
     const box=row.querySelector('.nbox');
-    if(!box||box.querySelector('textarea')) return;
+    if(!box||box===skip||box.querySelector('textarea')) return;
     viewUI(box,n,ctx);
   });
 }

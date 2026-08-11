@@ -41,8 +41,10 @@ Arguments not recognized by `lcr` are passed to `git diff`.
 ## How it works
 
 1. Open `lcr` in a repository with changes.
-2. Click a diff line, drag across lines, or select part of one line to add a note. File-level notes and bookmarks are also available.
-3. Add optional overall feedback, then select **Save review**.
+2. Click a diff line, drag across lines, or select part of one line to add a note. A selected line narrows to
+   part of itself as soon as you select inside it, selecting again re-picks that part, and clicking the line goes
+   back to the whole line. File-level notes and bookmarks are also available.
+3. Use **Overall note** for anything about the review as a whole rather than about one place in it; add as many as you need. Then select **Save review**.
 4. `lcr` writes `.review/review-<timestamp>.md`. The default `.review/` directory is ignored by Git.
 5. Give that Markdown review to your coding agent.
 

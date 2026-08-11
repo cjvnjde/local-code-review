@@ -3,12 +3,14 @@ import { renderMarkdown } from "./review.ts";
 import { noteFromComment } from "./thread.ts";
 import type { ReviewComment } from "./types.ts";
 
-const write = (general: string, comments: ReviewComment[], range = "HEAD") =>
-  renderMarkdown({ range, general, notes: comments.map(noteFromComment) });
+const write = (comments: ReviewComment[], range = "HEAD") =>
+  renderMarkdown({ range, notes: comments.map(noteFromComment) });
+
+const overall = (id: string, body: string): ReviewComment => ({ id, file: "", body, scope: "global", start: 0, end: 0 });
 
 describe("renderMarkdown", () => {
   test("renders overall and anchored old-line feedback", () => {
-    const markdown = write("Check all call sites.", [{
+    const markdown = write([overall("|@|@|#g1", "Check all call sites."), {
       file: "src/example.ts",
       body: "Keep compatibility.",
       start: 4,
@@ -18,14 +20,31 @@ describe("renderMarkdown", () => {
     }], "HEAD~1");
 
     expect(markdown).toContain("Diff under review: `HEAD~1`");
-    expect(markdown).toContain("## Overall\n\nCheck all call sites.");
+    expect(markdown).toContain("## Overall\n\n### Overall note <!-- lcr:|@|@|#g1 -->");
+    expect(markdown).toContain("Check all call sites.\n\nStatus: pending");
     expect(markdown).toContain("### src/example.ts:4-5 (line numbers before the change)");
     expect(markdown).toContain("```diff\n-oldCall()\n```");
     expect(markdown).toContain("Keep compatibility.");
   });
 
+  test("every overall note reads before the files, in the order they were written", () => {
+    const markdown = write([
+      { file: "src/example.ts", body: "Rename this.", start: 9, end: 9, code: "+function h() {}" },
+      overall("|@|@|#g1", "The naming is inconsistent."),
+      overall("|@|@|#g2", "No tests came with this."),
+    ]);
+
+    const first = markdown.indexOf("The naming is inconsistent.");
+    const second = markdown.indexOf("No tests came with this.");
+    expect(first).toBeLessThan(second);
+    expect(second).toBeLessThan(markdown.indexOf("## src/example.ts"));
+    // No path and no line range: an overall note is about the review, not about a place in it.
+    expect(markdown).not.toContain("### :0");
+    expect(markdown).not.toContain("(line numbers before the change)");
+  });
+
   test("renders a note anchored to part of a line", () => {
-    const markdown = write("", [{
+    const markdown = write([{
       file: "src/example.ts",
       body: "Rename this variable.",
       start: 12,
@@ -44,7 +63,7 @@ describe("renderMarkdown", () => {
   });
 
   test("heads a whole-file note without lines and puts it before the line notes", () => {
-    const markdown = write("", [
+    const markdown = write([
       {
         id: "src/example.ts|n9|n9",
         file: "src/example.ts",
@@ -70,7 +89,7 @@ describe("renderMarkdown", () => {
   });
 
   test("fences a selected fragment that contains backticks", () => {
-    const markdown = write("", [{
+    const markdown = write([{
       file: "src/example.ts",
       body: "Drop the template literal.",
       start: 3,
@@ -83,7 +102,7 @@ describe("renderMarkdown", () => {
   });
 
   test("fences captured code that contains a fence of its own", () => {
-    const markdown = write("", [{
+    const markdown = write([{
       file: "docs/guide.md",
       body: "Drop this block.",
       start: 2,
@@ -95,7 +114,7 @@ describe("renderMarkdown", () => {
   });
 
   test("tells the agent to answer in the file as it works", () => {
-    const markdown = write("", []);
+    const markdown = write([]);
     expect(markdown).toContain("**Agent** <!-- lcr:m -->");
     expect(markdown).toContain("one at a time");
   });

@@ -24,7 +24,5 @@ export function autogrow(ta: any,max: number){
   fit();
   return fit;
 }
-/** Caps, in px. A note sits in the scrollable diff pane so it can afford to be tall; the overall note
- *  lives in the footer, where every pixel it takes comes off the diff. */
+/** Cap, in px. A note sits in the scrollable diff pane, so it can afford to be tall. */
 export const NOTE_MAX=320;
-export const GENERAL_MAX=140;

@@ -36,6 +36,7 @@ export interface NoteStatus {
 export interface ReviewComment {
   /** Stable anchor id, also written into the review file so statuses can be matched back. */
   id?: string;
+  /** Empty for a note about the review as a whole, which belongs to no file. */
   file: string;
   body: string;
   start: number;
@@ -43,8 +44,8 @@ export interface ReviewComment {
   label?: string;
   side?: "new" | "old";
   code?: string;
-  /** Set when the note is about the file as a whole; it then carries no line range. */
-  scope?: "file";
+  /** Set when the note covers the file as a whole, or the review as a whole; it then has no lines. */
+  scope?: "file" | "global";
   /** Half-open character range inside the single anchored line, when the note targets part of it. */
   ca?: number;
   cb?: number;
@@ -53,7 +54,6 @@ export interface ReviewComment {
 }
 
 export interface ReviewSubmission {
-  general: string;
   comments: ReviewComment[];
 }
 

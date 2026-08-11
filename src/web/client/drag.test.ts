@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { ROW_SLIP, START_SLIP, atStart, charRange, leftRow } from "./drag.ts";
+import { ROW_SLIP, START_SLIP, atStart, charRange, leftRow, pressKind } from "./drag.ts";
 
 // A code row is 24px tall; the pressed row here spans y 100..124.
 const top = 100, bottom = 124;
@@ -46,6 +46,40 @@ describe("atStart", () => {
 
   test("a wrapped line puts its other visual rows out of reach vertically", () => {
     expect(atStart(x0, y0 + START_SLIP + 1, x0, y0)).toBe(false);
+  });
+});
+
+describe("pressKind", () => {
+  // A press on the code cell of the row spanning y 100..124, started at x 200.
+  const press = (over: any = {}) => ({ cell: {}, x0, y0, ...over });
+
+  test("a press that stayed inside one code cell reads the characters it collected", () => {
+    expect(pressKind(press({ away: true }), x0 + 60, y0)).toBe("chars");
+  });
+
+  test("a line already selected narrows to part of itself the same way", () => {
+    // Nothing about the press says the row was selected already: it is the same drag either way.
+    expect(pressKind(press({ away: true }), x0 - 60, y0)).toBe("chars");
+  });
+
+  test("a press too short to leave the start point is still a fragment", () => {
+    expect(pressKind(press({ away: false }), x0 + 4, y0)).toBe("chars");
+  });
+
+  test("a drag that wandered onto other rows answers in rows", () => {
+    expect(pressKind(press({ wandered: true, away: true }), x0 + 60, y0)).toBe("rows");
+  });
+
+  test("a shift-extend answers in rows even on a code cell", () => {
+    expect(pressKind(press({ extended: true, away: true }), x0 + 60, y0)).toBe("rows");
+  });
+
+  test("travelling and coming back to the press point means the whole line", () => {
+    expect(pressKind(press({ away: true }), x0, y0)).toBe("rows");
+  });
+
+  test("a press on the gutter picked its row on the way down", () => {
+    expect(pressKind(press({ cell: null, away: true }), x0 + 60, y0)).toBe("click");
   });
 });
 

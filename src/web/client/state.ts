@@ -19,13 +19,16 @@ export const SVG={
 };
 
 export const state: any={
-  files:[], range:'', notes:new Map(), status:new Map(), statusByKey:new Map(), soloKeys:new Set(),
+  files:[], repo:'', range:'', notes:new Map(), status:new Map(), statusByKey:new Map(), soloKeys:new Set(),
   hidden:new Set(), shown:new Set(), collapsed:new Set(), folded:new Set(), viewed:new Map(),
   bookmarks:new Map(), bmCur:'',
+  /** Reading the notes as a list: which one the pane is stepping from, and the panel that shows them
+   *  all. Both are how the review is being read right now, not part of it, so neither is stored. */
+  ntCur:'', reader:false, rdrFilter:'all', rdrStale:false,
   filter:'', hideRx:[], sel:null, active:'',
   byPath:new Map(), h:new Map(), draftRow:null, draftKey:null,
   cfg:{auto:true,back:true,limit:900,toast:true,hide:'',hideDeleted:false,enterSaves:false,expand:20,
-    navHidden:false,single:false,clearSaved:false},
+    navHidden:false,ntFold:false,bmFold:false,single:false,clearSaved:false},
   scrolled:false, jumpUntil:0, autoNow:new Set(), lastUndo:0,
   /** Threads as the review file holds them, by note id. The file is their only writer. */
   msgs:new Map(), seen:new Map(), sessionFile:'', live:false, pendingDiff:false, pendingNotes:false,
@@ -51,6 +54,15 @@ export function keyIndex(f: any){
 /** Anchor of a note on the file itself. Row keys are always `n<line>`/`o<line>`, so it cannot collide. */
 export const FILE_ANCHOR='*';
 export const isFileNote=(n: any)=>!!n&&n.a===FILE_ANCHOR;
+/**
+ * A note about the review as a whole belongs to no file at all: it anchors to nothing, so it is
+ * never placed on the diff and never moves when the agent rewrites the code. Its own anchor, so an
+ * id says which kind of note it is without the note beside it.
+ */
+export const GLOBAL_ANCHOR='@';
+export const isGlobalNote=(n: any)=>!!n&&n.a===GLOBAL_ANCHOR;
+/** Heading a global note is written under in the review file. */
+export const OVERALL_KEY='Overall note';
 /** Where a note sits. Character offsets belong in it: part of a line is not the whole line. */
 export const locKey=(path: string,a: string,b: string,ca?: number|null,cb?: number|null)=>
   path+'|'+a+'|'+b+(ca!=null?'|'+ca+'-'+cb:'');
@@ -62,12 +74,15 @@ let minted=0;
  */
 export const mintNoteId=(path: string,a: string,b: string,ca?: number|null,cb?: number|null)=>
   locKey(path,a,b,ca,cb)+'|#'+Date.now().toString(36)+(minted++).toString(36);
+export const mintGlobalId=()=>mintNoteId('',GLOBAL_ANCHOR,GLOBAL_ANCHOR);
 export const isMinted=(id: unknown)=>typeof id==='string'&&/\|#[0-9a-z]+$/.test(id);
 export const clip=(text: string,max=48)=>text.length>max?text.slice(0,max-1)+'…':text;
 /** The chord that saves a note under the current setting, phrased for the on-screen hints. */
 export const saveKeyHint=()=>state.cfg.enterSaves?'enter':'shift+enter';
 /** Heading text a review file uses for a note, and the fallback key when its id marker was lost. */
-export const noteKey=(n: any)=>isFileNote(n)
+export const noteKey=(n: any)=>isGlobalNote(n)
+  ?OVERALL_KEY
+  :isFileNote(n)
   ?n.file+' (whole file)'
   :n.file+':'+(n.label||(n.start===n.end?String(n.start):n.start+'-'+n.end));
 /** When a review file was written, read off its name; 0 for a name that does not carry a stamp. */

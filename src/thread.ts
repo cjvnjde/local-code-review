@@ -32,6 +32,11 @@ import type { NoteStatusKind, ReviewComment } from "./types.ts";
  * lcr versions produced; a file from one of those parses as a note whose thread has not started yet.
  * Replies are appended, never inserted, so an agent editing the file and lcr writing it are only ever
  * adding to the end of a section.
+ *
+ * A note about the review as a whole is the same section under `## Overall`, headed `### Overall
+ * note`: it carries no path and no captured code, and is otherwise answered exactly like the rest.
+ * Earlier versions kept a single overall note as plain prose under that heading, so prose found there
+ * is read back as the first of these.
  */
 
 export type MessageRole = "reviewer" | "agent";
@@ -48,10 +53,11 @@ export interface ReviewNote {
   id: string;
   /** `<file>:<label>` heading text, used to match a status when the id marker was lost. */
   key: string;
+  /** Empty for a note about the review as a whole, which belongs to no file. */
   file: string;
   /** Line label such as `42` or `12:7-14`; empty for a note on the whole file. */
   label: string;
-  scope?: "file";
+  scope?: "file" | "global";
   side?: "new" | "old";
   start: number;
   end: number;
@@ -67,9 +73,18 @@ export interface ReviewNote {
 
 export interface ReviewDoc {
   range: string;
-  general: string;
   notes: ReviewNote[];
 }
+
+/**
+ * Row anchor of a note that belongs to no file. Line anchors are `n<line>`/`o<line>` and a whole-file
+ * note takes `*`, so this cannot collide with either; the page mints the same shape of id.
+ */
+export const GLOBAL_ANCHOR = "@";
+/** Heading a note about the whole review is written under, and the key a lost marker matches on. */
+export const OVERALL_KEY = "Overall note";
+/** Id given to an overall note read back out of the prose an earlier lcr version wrote. */
+export const LEGACY_GLOBAL_ID = `|${GLOBAL_ANCHOR}|${GLOBAL_ANCHOR}|#legacy`;
 
 const H1 = /^#\s/;
 const H2 = /^##\s+(.+?)\s*$/;
@@ -81,6 +96,7 @@ const STATUS = /^\s*status\s*:\s*(.+?)\s*$/i;
 const SNIPPET = /^Applies to this part of the line only:\s*(.+?)\s*$/;
 const OLD_SIDE = /\s*\(line numbers before the change\)\s*$/;
 const WHOLE_FILE = /\s*\(whole file\)\s*$/;
+const OVERALL = /^Overall note$/i;
 const FENCE = /^(\s*)(`{3,}|~{3,})(.*)$/;
 /** Heading without its marker: the shortest leading path that leaves a whole line label behind. */
 const LEGACY = /^(.*?):(\d+(?:-\d+)?(?::\d+-\d+)?)$/;
@@ -224,10 +240,29 @@ function split(markdown: string): { range: string; general: string[]; sections: 
 /** Reads a whole review file back into the notes and threads it holds. */
 export function parseReview(markdown: string): ReviewDoc {
   const { range, general, sections } = split(markdown);
+  const notes = sections.map(readSection).filter((note): note is ReviewNote => !!note);
+  // Prose under `## Overall` is how a single overall note was written before overall notes were
+  // notes. It says the same thing, so it is read back as the first of them rather than dropped; the
+  // id is fixed, so reading the same file twice does not multiply it.
+  const legacy = trimBlock(unescapeLines(general));
+  if (legacy) notes.unshift(globalNote(LEGACY_GLOBAL_ID, legacy));
+  return { range, notes };
+}
+
+/** A note about the review as a whole, carrying nothing an agent has touched yet. */
+function globalNote(id: string, body: string): ReviewNote {
   return {
-    range,
-    general: trimBlock(unescapeLines(general)),
-    notes: sections.map(readSection).filter((note): note is ReviewNote => !!note),
+    id,
+    key: OVERALL_KEY,
+    file: "",
+    label: "",
+    scope: "global",
+    start: 0,
+    end: 0,
+    body,
+    status: "pending",
+    detail: "",
+    messages: [],
   };
 }
 
@@ -339,8 +374,8 @@ function readOpening(note: ReviewNote, lines: string[]): void {
     }
     if (match) {
       open = match[2] as string;
-      // A whole-file note never captured code, so a leading `diff` block is its own prose.
-      if (!taken && note.scope !== "file" && !body.some((entry) => entry.trim()) &&
+      // A note on no lines never captured code, so a leading `diff` block is its own prose.
+      if (!taken && !note.scope && !body.some((entry) => entry.trim()) &&
         (match[3] as string).trim() === "diff") {
         code = [];
         taken = true;
@@ -372,11 +407,21 @@ function locate(note: ReviewNote, key: string): void {
       note.cb = Number(cb);
     }
     if (parts[1] === "*") note.scope = "file";
+    if (parts[1] === GLOBAL_ANCHOR) note.scope = "global";
     note.start = lineOf(parts[1] as string);
     note.end = lineOf(parts[2] as string);
     if ((parts[1] as string).startsWith("o")) note.side = "old";
   }
 
+  // A heading alone only says "overall" when no id contradicts it: a file may be called anything.
+  if (note.scope === "global" || (!note.id && OVERALL.test(key))) {
+    note.scope = "global";
+    note.file = "";
+    note.label = "";
+    note.start = 0;
+    note.end = 0;
+    return;
+  }
   if (WHOLE_FILE.test(key)) {
     note.scope = "file";
     note.file = note.file || key.replace(WHOLE_FILE, "").trim();
@@ -454,8 +499,8 @@ export function noteFromComment(comment: ReviewComment): ReviewNote {
   const note: ReviewNote = {
     id: comment.id ?? "",
     key: "",
-    file: comment.file,
-    label: comment.scope === "file" ? "" : (comment.label ?? labelOf({
+    file: comment.scope === "global" ? "" : comment.file,
+    label: comment.scope ? "" : (comment.label ?? labelOf({
       start: comment.start,
       end: comment.end,
       ca: comment.ca,
@@ -469,7 +514,11 @@ export function noteFromComment(comment: ReviewComment): ReviewNote {
     detail: "",
     messages: [],
   };
-  if (comment.scope === "file") note.scope = "file";
+  if (comment.scope) note.scope = comment.scope;
+  if (comment.scope === "global") {
+    note.start = 0;
+    note.end = 0;
+  }
   if (comment.ca != null) {
     note.ca = comment.ca;
     note.cb = comment.cb;
@@ -482,6 +531,7 @@ export function noteFromComment(comment: ReviewComment): ReviewNote {
 
 /** The heading text a note is written under, and the fallback key a lost marker is matched by. */
 export function headingKey(note: ReviewNote): string {
+  if (note.scope === "global") return OVERALL_KEY;
   return note.scope === "file" ? `${note.file} (whole file)` : `${note.file}:${note.label}`;
 }
 
@@ -503,7 +553,7 @@ export function applyComment(note: ReviewNote, comment: ReviewComment): ReviewNo
 
 export function renderNote(note: ReviewNote): string[] {
   const marker = note.id ? ` <!-- lcr:${note.id.replace(/[<>]/g, "")} -->` : "";
-  const side = note.scope !== "file" && note.side === "old" ? " (line numbers before the change)" : "";
+  const side = !note.scope && note.side === "old" ? " (line numbers before the change)" : "";
   const out = [`### ${headingKey(note)}${side}${marker}`, ""];
   if (note.code && note.code.trim()) {
     const fence = fenceFor(note.code);

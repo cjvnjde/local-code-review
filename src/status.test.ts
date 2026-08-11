@@ -10,7 +10,7 @@ import { mintNoteId, noteKey } from "./web/client/state.ts";
 
 const review = (...sections: string[]) => ["# Review notes", "", ...sections].join("\n");
 const write = (comments: ReviewComment[]) =>
-  renderMarkdown({ range: "HEAD", general: "", notes: comments.map(noteFromComment) });
+  renderMarkdown({ range: "HEAD", notes: comments.map(noteFromComment) });
 
 describe("parseStatuses", () => {
   test("reads the id marker, verdict, and detail of each note", () => {

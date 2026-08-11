@@ -13,6 +13,18 @@ export const START_SLIP=12;
 export const atStart=(x: number,y: number,x0: number,y0: number,slip=START_SLIP)=>
   Math.abs(x-x0)<=slip&&Math.abs(y-y0)<=slip;
 /**
+ * How a finished press is read. A drag that left the pressed row, one extended with shift, and one
+ * that came back to where it began all answer in whole rows; a press on the gutter picked its row on
+ * the way down and has nothing left to settle. Anything else stayed inside one code cell, where the
+ * browser's own highlight is what says which characters it collected — which is how a line already
+ * selected narrows to part of itself, and how a part already picked is picked again.
+ */
+export function pressKind(d: any,x: number,y: number){
+  if(d.wandered||d.extended) return 'rows';
+  if(!d.cell) return 'click';
+  return d.away&&atStart(x,y,d.x0,d.y0)?'rows':'chars';
+}
+/**
  * The character range a pair of offsets notes inside a line, or null when nothing narrower than the
  * line is covered: an empty run, a blank run, and the full line are all plain line notes.
  */

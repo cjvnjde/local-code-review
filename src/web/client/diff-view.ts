@@ -1,10 +1,10 @@
-import { looseNotes, replaceIn, strayNotes } from './anchor.ts';
+import { globalNotes, looseNotes, replaceIn, strayNotes } from './anchor.ts';
 import { bmKey } from './bookmarks.ts';
 import { expandStep } from './expand.ts';
 import { autoHidden, isHidden } from './filters.ts';
 import { gapOf, gapSize } from './gaps.ts';
 import { codeHtml, langOf } from './highlight.ts';
-import { applyFileNote, applyNotesIn, charMarks, mountLoose } from './notes.ts';
+import { applyFileNote, applyNotesIn, charMarks, mountGlobal, mountLoose } from './notes.ts';
 import { save } from './persistence.ts';
 import { paintSel } from './selection.ts';
 import { SVG, el, esc, idxOf, rowKey, state } from './state.ts';
@@ -28,23 +28,57 @@ export function renderDiff(){
   obsMount.disconnect(); obsDrop.disconnect();
   // An empty diff is where a finished review ends up, and its notes are exactly what is left to read.
   if(!state.files.length){
-    sec.innerHTML='<div class="empty">No changes in this diff. Nothing to review.</div>'+strayHtml();
-    applyStray();
+    sec.innerHTML=globalHtml()+'<div class="empty">No changes in this diff. Nothing to review.</div>'+strayHtml();
+    applyGlobals(); applyStray();
     return;
   }
   const shown=state.files.map((f,i)=>i).filter(i=>!isHidden(state.files[i].path));
   if(!shown.length){
-    sec.innerHTML='<div class="empty">Every file is hidden. Use the eye icons in the tree, '+
+    sec.innerHTML=globalHtml()+'<div class="empty">Every file is hidden. Use the eye icons in the tree, '+
       'or clear the hide patterns in settings, to bring them back.</div>'+strayHtml();
-    applyStray();
+    applyGlobals(); applyStray();
     return;
   }
-  sec.innerHTML=shown.map(i=>fileHtml(state.files[i],i)).join('')+strayHtml();
+  sec.innerHTML=globalHtml()+shown.map(i=>fileHtml(state.files[i],i)).join('')+strayHtml();
+  applyGlobals();
   shown.forEach(i=>{ applyFileNote(state.files[i],i); applyLoose(i); });
   applyStray();
   sec.querySelectorAll('tbody.blk').forEach(observeBlock);
   sec.querySelectorAll('.file').forEach(n=>obsPass.observe(n));
   followDiff(); // the cards moved, so which of them the pane is showing may have changed
+}
+
+/**
+ * Notes about the review as a whole, in the card at the top of the pane. They are about no file, so
+ * they are read before the first one rather than filed under it, and the card only exists while
+ * there is something in it — an empty review costs the diff no room.
+ */
+function globalHtml(force?: boolean){
+  if(!force&&!globalNotes().length) return '';
+  return '<div class="gcard" id="fglobal"><div class="fh">'+
+    '<span class="p">Overall</span><span class="s">whole review</span><span class="spacer"></span>'+
+    '<button class="cf" data-gn="1" title="Write another note about the review as a whole">'+
+    SVG.plus+' note</button></div><div class="loose" id="loGlobal"></div></div>';
+}
+function applyGlobals(){
+  const host=el('loGlobal'); if(!host) return;
+  host.textContent='';
+  globalNotes().forEach((n: any)=>mountGlobal(host,n));
+}
+/** The card's note host, made on demand for the first note written into it. */
+export function globalHost(create=false){
+  if(!el('fglobal')&&create){
+    const tmp=document.createElement('div');
+    tmp.innerHTML=globalHtml(true);
+    el('diff').prepend(tmp.firstElementChild);
+  }
+  return el('loGlobal');
+}
+/** Takes the card away once nothing is left in it, so it never stands empty over the diff. */
+export function syncGlobals(){
+  const card=el('fglobal'); if(!card) return;
+  if(globalNotes().length||card.querySelector('textarea')) return;
+  card.remove();
 }
 
 /**

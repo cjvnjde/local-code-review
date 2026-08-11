@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { PORT_ATTEMPTS, listen } from "./server.ts";
+import { PORT_ATTEMPTS, listen, repoId } from "./server.ts";
 
 function inUse(): Error {
   return Object.assign(new Error("Failed to start server. Is port in use?"), { code: "EADDRINUSE" });
@@ -54,5 +54,19 @@ describe("listen", () => {
         throw new Error("permission denied");
       })
     ).toThrow("permission denied");
+  });
+});
+
+describe("repoId", () => {
+  test("two working copies key apart, so one machine's reviews do not share a browser store", () => {
+    expect(repoId("/home/me/alpha")).not.toBe(repoId("/home/me/beta"));
+  });
+
+  test("the same working copy keys the same across runs, so a restart finds its notes", () => {
+    expect(repoId("/home/me/alpha")).toBe(repoId("/home/me/alpha"));
+  });
+
+  test("the path itself does not reach the page", () => {
+    expect(repoId("/home/me/alpha")).not.toContain("alpha");
   });
 });

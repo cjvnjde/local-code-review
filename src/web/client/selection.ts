@@ -1,22 +1,33 @@
 import { toggleBookmark } from './bookmark-pane.ts';
 import { repaintRow, setFolded, setHidden, setViewed } from './diff-view.ts';
-import { atStart, charRange, leftRow } from './drag.ts';
+import { atStart, charRange, leftRow, pressKind } from './drag.ts';
 import { expandGap } from './expand.ts';
 import { isHidden } from './filters.ts';
-import { openEditor, openFileEditor } from './notes.ts';
+import { openEditor, openFileEditor, openGlobalEditor } from './notes.ts';
 import { el, idxOf, state } from './state.ts';
 
 /* ---------- selection ---------- */
 let drag: any=null;
 /** Row whose code cell currently carries the character highlight, so it can be cleaned up. */
 let charRow: any=null;
-export function paintSel(){
+const sameRow=(a: any,b: any)=>!!a&&!!b&&a.fi===b.fi&&a.i===b.i;
+/**
+ * `keep` is the row a live press landed in, whose code cell is left exactly as it stands. The browser
+ * anchors the text drag it is about to start on a node a repaint would replace, so repainting now
+ * would cost the drag everything it goes on to collect — which is what a character range on a line
+ * that already carries one is made of. Every way of finishing the press paints again, and that paint
+ * is what takes the old range off the row.
+ */
+export function paintSel(keep?: any){
   el('diff').querySelectorAll('tr.sel').forEach(tr=>tr.classList.remove('sel'));
   const s=state.sel;
   const next=s&&s.ca!=null?{fi:s.fi,i:s.a}:null;
-  const prev=charRow; charRow=next;
-  if(prev&&(!next||prev.fi!==next.fi||prev.i!==next.i)) repaintRow(prev.fi,prev.i);
-  if(next) repaintRow(next.fi,next.i);
+  const prev=charRow;
+  if(!sameRow(prev,keep)){
+    charRow=next;
+    if(prev&&!sameRow(prev,next)) repaintRow(prev.fi,prev.i);
+    if(next) repaintRow(next.fi,next.i);
+  }
   if(!s||s.ca!=null) return; // a character range highlights characters, not the whole row
   const [i,j]=[Math.min(s.a,s.b),Math.max(s.a,s.b)];
   for(let k=i;k<=j;k++){
@@ -110,7 +121,9 @@ el('diff').addEventListener('mousedown',e=>{
   // Taken now rather than on the way back: a wheel scroll mid-drag moves the press point out from under x0,y0.
   const off0=cell&&row?offsetAt(cell,e.clientX,e.clientY,row.text.length):null;
   drag={fi,i,a:state.sel.a,cell,off0,extended,x0:e.clientX,y0:e.clientY,rows:false,wandered:false,away:false};
-  paintSel();
+  // Pressing on code may be the start of a fragment on this very row, so the row keeps what it shows
+  // until the press says what it meant; the gutter cannot start one and repaints straight away.
+  paintSel(cell?{fi,i}:null);
 });
 // Hit-test the pointer: while a text drag is in flight the browser keeps sending events to the press target.
 document.addEventListener('mousemove',e=>{
@@ -152,22 +165,22 @@ document.addEventListener('mousemove',e=>{
 });
 document.addEventListener('mouseup',e=>{
   if(!drag) return;
-  const {wandered,away,cell,extended,x0,y0}=drag; drag=null;
+  const d=drag; drag=null;
   document.body.classList.remove('dragging');
-  // A drag that left the pressed row already holds its own answer: rows, a measured fragment,
-  // or the plain line it came back to. The browser highlight plays no part in it.
-  if(wandered){ dropTextSel(); openEditor(); return; }
-  // A shift-click extends by whole rows even on a code cell: the highlight the browser stretched
-  // from the last click is a side effect of the shift, not a fragment picked on this row.
-  if(extended){ dropTextSel(); openEditor(); return; }
-  if(!cell) return;
-  // Released where it began after travelling: the text it brushed on the way was not the point.
-  if(away&&atStart(e.clientX,e.clientY,x0,y0)){ dropTextSel(); openEditor(); return; }
-  const cs=charSel(cell);
-  if(!cs) return;
-  // The painted range replaces the browser highlight, which the repaint below would drop anyway.
-  dropTextSel();
-  state.sel=cs; paintSel(); openEditor();
+  // `rows` already holds its own answer in state.sel — rows, or the plain line the drag came back to —
+  // and the highlight it brushed on the way, a shift-extend's included, was never the point of it.
+  const kind=pressKind(d,e.clientX,e.clientY);
+  const cs=kind==='chars'?charSel(d.cell):null;
+  // Narrowing to part of a line, and re-picking that part, both land here: the fragment is read off
+  // the browser highlight, which the paint below replaces. A press that collected nothing narrower
+  // than the line leaves the highlight alone, so selecting a line to copy it still copies.
+  const took=kind==='rows'||!!cs;
+  if(took) dropTextSel();
+  if(cs) state.sel=cs;
+  paintSel(); // the row the press held now shows whatever it settled on, line or fragment
+  // A press that settled on the plain line leaves the editor to the click behind it, which is also
+  // what turns a line already narrowed to a fragment back into a note on the whole line.
+  if(took) openEditor();
 });
 el('diff').addEventListener('click',e=>{
   const xp=e.target.closest('[data-exp]');
@@ -186,6 +199,8 @@ el('diff').addEventListener('click',e=>{
   if(hf){ setHidden([hf.dataset.hf],!isHidden(hf.dataset.hf)); return; }
   const cf=e.target.closest('[data-cf]');
   if(cf){ clearSel(); openFileEditor(idxOf(cf.dataset.cf)); return; }
+  const gn=e.target.closest('[data-gn]');
+  if(gn){ clearSel(); openGlobalEditor(); return; }
   const tr=e.target.closest('tr.r');
   if(!tr||e.target.closest('.nbox')) return;
   if(state.sel&&state.sel.ca!=null) return; // mouseup already opened the editor for this range

@@ -31,9 +31,9 @@ export function createSession(repoRoot: string, outDir: string, range: string) {
     path.isAbsolute(outDir) ? path.join(dir(), file) : path.relative(repoRoot, path.join(dir(), file));
 
   async function read(): Promise<ReviewDoc> {
-    if (!name) return { range, general: "", notes: [] };
+    if (!name) return { range, notes: [] };
     const text = await readFile(path.join(dir(), name), "utf8").catch(() => "");
-    return text ? parseReview(text) : { range, general: "", notes: [] };
+    return text ? parseReview(text) : { range, notes: [] };
   }
 
   /**
@@ -111,7 +111,6 @@ export function createSession(repoRoot: string, outDir: string, range: string) {
           if (kept) Object.assign(kept, applyComment(kept, comment));
           else doc.notes.push(noteFromComment(comment));
         }
-        if (submission.general.trim()) doc.general = submission.general;
         const file = await write(doc);
         return {
           file: shown(file),
@@ -133,11 +132,18 @@ export function createSession(repoRoot: string, outDir: string, range: string) {
       });
     },
 
-    /** Withdraws a note. Deleting it on the page is the one thing that takes it out of the file. */
-    remove(id: string): Promise<boolean> {
+    /**
+     * Withdraws notes, overall notes included — they are notes like the rest. Deleting on the page is
+     * the one thing that takes a note out of the file. A set is withdrawn in one read-modify-write, so
+     * the page is never told about a half-cleared file and never adopts the notes still in it back
+     * onto the page that has just let them go.
+     */
+    remove(ids: string | string[]): Promise<boolean> {
       return serialise(async () => {
+        const gone = new Set(typeof ids === "string" ? [ids] : ids);
         const doc = await read();
-        const next = doc.notes.filter((note) => note.id !== id);
+        const next = doc.notes.filter((note) => !gone.has(note.id));
+        // Nothing to take out: leave the file untouched, so a session with none never mints one.
         if (next.length === doc.notes.length) return false;
         doc.notes = next;
         await write(doc);

@@ -1,4 +1,4 @@
-import { type ReviewDoc, type ReviewNote, escapeText, renderNote } from "./thread.ts";
+import { type ReviewDoc, type ReviewNote, renderNote } from "./thread.ts";
 
 /**
  * Writes the review file. It is one running conversation, not a report: the notes carry whatever the
@@ -6,7 +6,12 @@ import { type ReviewDoc, type ReviewNote, escapeText, renderNote } from "./threa
  */
 export function renderMarkdown(doc: ReviewDoc): string {
   const byFile = new Map<string, ReviewNote[]>();
+  const global: ReviewNote[] = [];
   for (const note of doc.notes) {
+    if (note.scope === "global") {
+      global.push(note);
+      continue;
+    }
     if (!byFile.has(note.file)) byFile.set(note.file, []);
     byFile.get(note.file)!.push(note);
   }
@@ -18,8 +23,11 @@ export function renderMarkdown(doc: ReviewDoc): string {
     "",
   ];
 
-  if (doc.general.trim()) {
-    output.push("## Overall", "", escapeText(doc.general.trim()), "");
+  // Notes about the review as a whole lead the file, in the order they were written: they are the
+  // frame the rest is read in, and each is answered exactly like a note on a line.
+  if (global.length) {
+    output.push("## Overall", "");
+    for (const note of global) output.push(...renderNote(note));
   }
 
   for (const [file, notes] of byFile) {
@@ -50,6 +58,10 @@ const FOOTER = [
   "",
   "For each note, the last message in its thread is what you are answering. Everything above it is " +
     "history. A note with no thread yet is asking about the code under its `diff` block.",
+  "",
+  "A note headed `### Overall note`, under `## Overall`, is about the review as a whole rather than " +
+    "about one place in it, so it carries no path and no `diff` block. Answer it exactly like the " +
+    "rest: it has its own `Status:` line and its own thread.",
   "",
   "Fix what you agree with. If a note is wrong or would break something, say so instead of " +
     "implementing it. A note that only asks a question about the code has two outcomes: fix the " +

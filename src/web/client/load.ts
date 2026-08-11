@@ -1,7 +1,7 @@
 import { placeNotes } from './anchor.ts';
 import { renderBookmarks } from './bookmark-pane.ts';
 import { renderDiff } from './diff-view.ts';
-import { fitGeneral, updateCount } from './footer.ts';
+import { updateCount } from './footer.ts';
 import { markTails } from './gaps.ts';
 import { pruneViewed, restore, save } from './persistence.ts';
 import { el, esc, idxOf, isMinted, reviewTime, state } from './state.ts';
@@ -34,7 +34,7 @@ async function loadNow(keep: boolean){
       '<br><br>Restart the server with different arguments.</div>';
     return;
   }
-  state.files=d.files; state.range=d.range;
+  state.files=d.files; state.repo=d.repo||''; state.range=d.range;
   markTails(d.files,Number(d.context));
   state.byPath=new Map(d.files.map((f,i)=>[f.path,i]));
   // Oldest review file first, so a newer verdict on the same note replaces an older one.
@@ -47,7 +47,6 @@ async function loadNow(keep: boolean){
   el('range').textContent=d.range;
   if(!state.loaded){ restore(); state.loaded=true; }
   if(review.ok) adopt(review.d);
-  fitGeneral();
   state.stale=new Set(pruneViewed());
   save();
   placeNotes();
@@ -76,7 +75,6 @@ export function adopt(review: any){
   });
   // A thread whose note left the file went with it; keeping it would haunt the next note on that id.
   [...state.msgs.keys()].forEach((id: any)=>{ if(!held.has(id)) state.msgs.delete(id); });
-  if(!el('general').value.trim()&&review.general) el('general').value=review.general;
 }
 
 /** Anchors are carried in the note's own id, which is what makes a review file readable back. */
@@ -87,9 +85,9 @@ function anchorsFrom(id: string){
 function noteFrom(n: any,at: number){
   if(!isMinted(n.id)) return null; // an id we cannot prove was minted here cannot be matched back
   const anchors=anchorsFrom(n.id); if(!anchors) return null;
-  const note: any={id:n.id,file:n.file,body:n.body||'',a:anchors[0],b:anchors[1],
+  const note: any={id:n.id,file:n.file||'',body:n.body||'',a:anchors[0],b:anchors[1],
     side:n.side==='old'?'old':'new',start:n.start||0,end:n.end||0,sentAt:at};
-  if(n.scope==='file'){ note.scope='file'; note.start=0; note.end=0; }
+  if(n.scope==='file'||n.scope==='global'){ note.scope=n.scope; note.start=0; note.end=0; }
   else note.label=n.label||'';
   if(n.code) note.code=n.code;
   if(n.ca!=null){ note.ca=n.ca; note.cb=n.cb; }

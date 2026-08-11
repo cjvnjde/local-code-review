@@ -22,6 +22,8 @@ const note = (id: string, body = "Rename this."): ReviewComment => ({
   side: "new",
   code: "+  const tmpValue = load();",
 });
+const overall = (id: string, body = "This branch does two things."): ReviewComment =>
+  ({ id, file: "", body, scope: "global", start: 0, end: 0 });
 const read = async (dir: string, file: string) => parseReview(await readFile(path.join(dir, file), "utf8"));
 
 describe("createSession", () => {
@@ -30,10 +32,10 @@ describe("createSession", () => {
     const session = createSession(dir, ".review", "HEAD");
     await session.adoptNewest();
 
-    const first = await session.save({ general: "", comments: [note("a|n12|n12|#1")] });
+    const first = await session.save({ comments: [note("a|n12|n12|#1")] });
     expect(first.file).toMatch(/^\.review\/review-\d{4}-\d\d-\d\dT\d\d-\d\d-\d\d\.md$/);
 
-    const second = await session.save({ general: "", comments: [note("a|n12|n12|#1"), note("a|n20|n20|#2", "And this.")] });
+    const second = await session.save({ comments: [note("a|n12|n12|#1"), note("a|n20|n20|#2", "And this.")] });
     expect(second.file).toBe(first.file);
     expect(await listReviews(dir, ".review")).toHaveLength(1);
   });
@@ -43,7 +45,7 @@ describe("createSession", () => {
     const session = createSession(dir, ".", "HEAD");
     expect(await session.adoptNewest()).toBe("review-2026-02-01T00-00-00.md");
 
-    const { file } = await session.save({ general: "", comments: [note("a|n12|n12|#1")] });
+    const { file } = await session.save({ comments: [note("a|n12|n12|#1")] });
     expect(path.basename(file)).toBe("review-2026-02-01T00-00-00.md");
   });
 
@@ -51,7 +53,7 @@ describe("createSession", () => {
     const dir = await workspace();
     const session = createSession(dir, ".", "HEAD");
     await session.adoptNewest();
-    const { file } = await session.save({ general: "", comments: [note("a|n12|n12|#1")] });
+    const { file } = await session.save({ comments: [note("a|n12|n12|#1")] });
 
     const name = path.basename(file);
     const answered = (await readFile(path.join(dir, name), "utf8"))
@@ -59,7 +61,7 @@ describe("createSession", () => {
     await writeFile(path.join(dir, name), answered, "utf8");
 
     // The reviewer edits the note and saves again while the agent is still working.
-    await session.save({ general: "", comments: [note("a|n12|n12|#1", "Rename this, and the fixture.")] });
+    await session.save({ comments: [note("a|n12|n12|#1", "Rename this, and the fixture.")] });
     const doc = await read(dir, name);
     expect(doc.notes[0]).toMatchObject({
       body: "Rename this, and the fixture.",
@@ -74,11 +76,10 @@ describe("createSession", () => {
     const session = createSession(dir, ".", "HEAD");
     await session.adoptNewest();
     const { file } = await session.save({
-      general: "",
       comments: [note("a|n12|n12|#1"), note("a|n20|n20|#2", "And this.")],
     });
 
-    await session.save({ general: "", comments: [note("a|n12|n12|#1")] });
+    await session.save({ comments: [note("a|n12|n12|#1")] });
     const doc = await read(dir, path.basename(file));
     expect(doc.notes.map((entry) => entry.id)).toEqual(["a|n12|n12|#1", "a|n20|n20|#2"]);
   });
@@ -87,7 +88,7 @@ describe("createSession", () => {
     const dir = await workspace();
     const session = createSession(dir, ".", "HEAD");
     await session.adoptNewest();
-    const { file } = await session.save({ general: "", comments: [note("a|n12|n12|#1")] });
+    const { file } = await session.save({ comments: [note("a|n12|n12|#1")] });
 
     expect(await session.reply("nope|n1|n1|#x", "hello")).toBeNull();
     const replied = await session.reply("a|n12|n12|#1", "Also the fixture, please.");
@@ -103,7 +104,6 @@ describe("createSession", () => {
     const session = createSession(dir, ".", "HEAD");
     await session.adoptNewest();
     const { file } = await session.save({
-      general: "",
       comments: [note("a|n12|n12|#1"), note("a|n20|n20|#2", "And this.")],
     });
 
@@ -113,14 +113,60 @@ describe("createSession", () => {
     expect(doc.notes.map((entry) => entry.id)).toEqual(["a|n12|n12|#1"]);
   });
 
+  test("clearing the page withdraws every note, overall notes included, in one write", async () => {
+    const dir = await workspace();
+    const session = createSession(dir, ".", "HEAD");
+    await session.adoptNewest();
+    const { file } = await session.save({
+      comments: [overall("|@|@|#g1"), note("a|n12|n12|#1"), note("a|n20|n20|#2", "And this.")],
+    });
+
+    expect(await session.remove(["|@|@|#g1", "a|n12|n12|#1", "a|n20|n20|#2"])).toBe(true);
+    const doc = await read(dir, path.basename(file));
+    expect(doc.notes).toEqual([]);
+    // Nothing left to take out: the file is not rewritten again.
+    expect(await session.remove(["a|n12|n12|#1"])).toBe(false);
+  });
+
+  test("an overall note keeps its thread across a save, like any other note", async () => {
+    const dir = await workspace();
+    const session = createSession(dir, ".", "HEAD");
+    await session.adoptNewest();
+    const { file } = await session.save({ comments: [overall("|@|@|#g1")] });
+
+    const name = path.basename(file);
+    const answered = (await readFile(path.join(dir, name), "utf8"))
+      .replace("Status: pending", "Status: answered — split in a follow-up\n\n**Agent** <!-- lcr:m -->\n\nNoted.\n");
+    await writeFile(path.join(dir, name), answered, "utf8");
+
+    await session.save({ comments: [overall("|@|@|#g1", "This branch does two things. Split it.")] });
+    const doc = await read(dir, name);
+    expect(doc.notes[0]).toMatchObject({
+      scope: "global",
+      body: "This branch does two things. Split it.",
+      status: "answered",
+      detail: "split in a follow-up",
+    });
+    expect(doc.notes[0]!.messages).toEqual([{ role: "agent", at: "", body: "Noted." }]);
+  });
+
+  test("withdrawing against a session with no file yet opens none", async () => {
+    const dir = await workspace();
+    const session = createSession(dir, ".", "HEAD");
+    session.startFresh();
+
+    expect(await session.remove(["a|n12|n12|#1"])).toBe(false);
+    expect(await listReviews(dir, ".")).toEqual([]);
+  });
+
   test("starting fresh leaves the old file alone and opens another one", async () => {
     const dir = await workspace();
     const session = createSession(dir, ".", "HEAD");
     await session.adoptNewest();
-    const first = await session.save({ general: "", comments: [note("a|n12|n12|#1")] });
+    const first = await session.save({ comments: [note("a|n12|n12|#1")] });
 
     session.startFresh();
-    const second = await session.save({ general: "", comments: [note("a|n20|n20|#2", "And this.")] });
+    const second = await session.save({ comments: [note("a|n20|n20|#2", "And this.")] });
 
     expect(second.file).not.toBe(first.file);
     expect(await listReviews(dir, ".")).toHaveLength(2);
@@ -135,7 +181,7 @@ describe("createSession", () => {
     const dir = await workspace("review-2026-01-01T00-00-00.md", "notes.md");
     const session = createSession(dir, ".", "HEAD");
     session.startFresh(); // do not adopt: this run wants its own file
-    const { file, removed } = await session.save({ general: "", comments: [note("a|n12|n12|#1")] }, true);
+    const { file, removed } = await session.save({ comments: [note("a|n12|n12|#1")] }, true);
 
     expect(removed).toEqual(["review-2026-01-01T00-00-00.md"]);
     expect(await listReviews(dir, ".")).toEqual([path.basename(file)]);
@@ -146,7 +192,7 @@ describe("createSession", () => {
     const dir = await workspace();
     const session = createSession(path.join(dir, "repo"), dir, "HEAD");
     await session.adoptNewest();
-    const { file } = await session.save({ general: "", comments: [] });
+    const { file } = await session.save({ comments: [] });
     expect(path.isAbsolute(file)).toBe(true);
     expect(path.dirname(file)).toBe(dir);
   });
