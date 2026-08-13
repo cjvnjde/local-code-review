@@ -1,5 +1,5 @@
 import { toggleBookmark } from './bookmark-pane.ts';
-import { repaintRow, setFolded, setHidden, setViewed, toggleDeleted } from './diff-view.ts';
+import { repaintRow, setFolded, setHidden, setViewed, toggleDeleted, toggleFileDeleted } from './diff-view.ts';
 import { atStart, charRange, leftRow, pressKind } from './drag.ts';
 import { expandGap } from './expand.ts';
 import { isHidden } from './filters.ts';
@@ -105,8 +105,15 @@ function pointRange(d: any,x: number,y: number){
   const off=offsetAt(d.cell,x,y,row.text.length);
   return off==null?null:charRange(row.text,d.off0,off);
 }
+/**
+ * Reading a diff is also copying out of it, and every ordinary press over the code is spoken for:
+ * it selects a line, or part of one, and opens a note on it. Alt is the way to say the text itself
+ * is what is wanted — the press is left entirely to the browser, so nothing is selected on the page,
+ * nothing is painted, and no editor opens over what was just highlighted to be copied.
+ */
+const plainText=(e: any)=>!!e.altKey;
 el('diff').addEventListener('mousedown',e=>{
-  if(e.button!==0) return;
+  if(e.button!==0||plainText(e)) return;
   const tr=e.target.closest('tr.r');
   // The bookmark flag is not a way into a note, so it takes no selection with it.
   if(!tr||e.target.closest('.nbox')||e.target.closest('[data-bm]')) return;
@@ -191,6 +198,12 @@ el('diff').addEventListener('click',e=>{
     if(!busyEditor()) toggleDeleted(Number(df.dataset.fi),Number(df.dataset.df));
     return;
   }
+  const dl=e.target.closest('[data-dl]');
+  // The whole file is drawn again, which would eat an editor open anywhere inside it.
+  if(dl){
+    if(!busyEditor()) toggleFileDeleted(dl.dataset.dl);
+    return;
+  }
   const fold=e.target.closest('[data-fold]');
   if(fold){ setFolded(fold.dataset.fold,!state.folded.has(fold.dataset.fold)); return; }
   const bm=e.target.closest('[data-bm]');
@@ -209,6 +222,9 @@ el('diff').addEventListener('click',e=>{
   if(gn){ clearSel(); openGlobalEditor(); return; }
   const tr=e.target.closest('tr.r');
   if(!tr||e.target.closest('.nbox')) return;
+  // The controls above answer to alt like any other click; a press on the code itself does not,
+  // because alt is what took that press for the text under it.
+  if(plainText(e)) return;
   if(state.sel&&state.sel.ca!=null) return; // mouseup already opened the editor for this range
   if(textSelected()){ clearSel(); return; }
   const fi=Number(tr.dataset.fi), i=Number(tr.dataset.i);

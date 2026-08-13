@@ -1,14 +1,15 @@
 import { placeOf } from './anchor.ts';
 import { NOTE_MAX, autogrow } from './autogrow.ts';
 import { globalHost, repaintRow, syncGlobals } from './diff-view.ts';
+import { reaims } from './drag.ts';
 import { updateCount } from './footer.ts';
 import { codeHtml, langOf } from './highlight.ts';
 import { editorAction } from './keys.ts';
 import { save, withdrawNotes } from './persistence.ts';
 import { clearSel } from './selection.ts';
 import { FILE_ANCHOR, GLOBAL_ANCHOR, SVG, clip, el, esc, isFileNote, isGlobalNote, keyIndex, locKey, markRead, mintGlobalId, mintNoteId, rowKey, saveKeyHint, state, statusOf, unreadOf } from './state.ts';
-import { insertBlock, suggestLines, suggestionBlock } from './suggest.ts';
-import { dropEmptyReply, mountReply, renderBody, renderThread } from './thread.ts';
+import { capturedLines, insertBlock, suggestLines, suggestionBlock } from './suggest.ts';
+import { dropCleanEdit, dropEmptyReply, mountReply, renderBody, renderThread } from './thread.ts';
 import { renderTree } from './tree.ts';
 
 /* ---------- notes ---------- */
@@ -65,7 +66,7 @@ export function charMarks(f: any,fi: number,idx: number){
 /** An untouched draft is disposable: a new click or shift-extend should move it, not stack a second box. */
 function dropEmptyDraft(){
   const row=state.draftRow;
-  state.draftRow=state.draftKey=null;
+  state.draftRow=state.draftKey=state.draftAt=null;
   if(!row||!row.isConnected) return;
   const ta=row.querySelector('textarea');
   if(!ta||ta.value.trim()) return;
@@ -86,6 +87,7 @@ function draftFor(key: string){
 export function busyEditor(){
   dropEmptyDraft();
   dropEmptyReply();
+  dropCleanEdit();
   const ta: any=document.querySelector('.nbox textarea');
   if(!ta||!ta.isConnected) return false;
   const box=ta.closest('.nbox');
@@ -98,6 +100,19 @@ export function busyEditor(){
   ta.focus();
   return true;
 }
+/**
+ * What the draft standing open is carrying, when a selection has landed on lines it covers and is
+ * therefore that same note being aimed again rather than a second one; null when there is nothing to
+ * carry over. A saved note reopened for editing has a box of exactly the same shape, so the note
+ * store is what tells the two apart: a draft is the one nothing has been written down about yet.
+ */
+function carriedDraft(fi: number,i: number,j: number){
+  if(!reaims(state.draftAt,fi,i,j)) return null;
+  const row=state.draftRow;
+  if(!row||!row.isConnected||state.notes.has(row.dataset.nid)) return null;
+  const ta: any=row.querySelector('.nedit textarea');
+  return ta?{body:ta.value,from:ta.selectionStart,to:ta.selectionEnd}:null;
+}
 /** Opens a new note on the selected range. A range that already carries notes gets another one:
  *  a line can hold as many remarks as it earns, and each is edited from its own box. */
 export function openEditor(){
@@ -108,11 +123,18 @@ export function openEditor(){
   const key=locKey(f.path,a,z,ch&&ch.ca,ch&&ch.cb);
   const open=draftFor(key);
   if(open){ open.focus(); return; }
-  if(busyEditor()){ clearSel(); return; }
+  // Narrowing a line to a fragment, and re-picking that fragment, are the same gesture that opened
+  // the draft, so a half-written note follows the selection rather than keeping the floor and going
+  // on describing a range the reader has already left. The box is drawn from its range, so it is
+  // built again around what was written into it.
+  const carried=carriedDraft(fi,i,j);
+  if(carried){ dropEmptyReply(); state.draftRow.remove(); }
+  else if(busyEditor()){ clearSel(); return; }
   const id=mintNoteId(f.path,a,z,ch&&ch.ca,ch&&ch.cb);
   const box=mountRow(anchor,id);
-  state.draftRow=rowOf(box); state.draftKey=key;
-  editUI(box,{f,fi,i,j,ch,id,body:''});
+  state.draftRow=rowOf(box); state.draftKey=key; state.draftAt={fi,i,j};
+  editUI(box,{f,fi,i,j,ch,id,body:carried?carried.body:''});
+  if(carried) box.querySelector('textarea').setSelectionRange(carried.from,carried.to);
 }
 /** A note on the file itself: no line anchor, one per file, mounted under the file header. */
 export function openFileEditor(fi: number){
@@ -130,7 +152,8 @@ export function openFileEditor(fi: number){
     return;
   }
   const box=mountFileBox(host,id);
-  state.draftRow=rowOf(box); state.draftKey=locKey(f.path,FILE_ANCHOR,FILE_ANCHOR);
+  // No `draftAt`: a note on the whole file covers no lines, so no selection can re-aim it.
+  state.draftRow=rowOf(box); state.draftKey=locKey(f.path,FILE_ANCHOR,FILE_ANCHOR); state.draftAt=null;
   editUI(box,ctx);
 }
 /**
@@ -144,7 +167,7 @@ export function openGlobalEditor(){
   const host=globalHost(true); if(!host) return;
   const id=mintGlobalId();
   const box=mountFileBox(host,id);
-  state.draftRow=rowOf(box); state.draftKey=locKey('',GLOBAL_ANCHOR,GLOBAL_ANCHOR);
+  state.draftRow=rowOf(box); state.draftKey=locKey('',GLOBAL_ANCHOR,GLOBAL_ANCHOR); state.draftAt=null;
   const card=el('fglobal');
   if(card) card.scrollIntoView({block:'start'});
   editUI(box,{f:{path:'',rows:[]},fi:-1,i:null,j:null,ch:null,scope:'global',id,body:''});
@@ -326,9 +349,9 @@ export function viewUI(box,note,ctx){
     capturedHtml(note,how)+
     '<div class="nbody"></div>'+(st&&st.detail?'<div class="nstat"></div>':'')+
     '<div class="thread"></div><div class="replyhost"></div>';
-  renderBody(box.querySelector('.nbody'),note.body,note.file);
+  renderBody(box.querySelector('.nbody'),note.body,note.file,capturedLines(note.code));
   if(st&&st.detail) box.querySelector('.nstat').textContent=st.status.replace('-',' ')+' — '+st.detail;
-  renderThread(box.querySelector('.thread'),note);
+  renderThread(box.querySelector('.thread'),note,()=>repaintNote(note.id));
   mountReply(box.querySelector('.replyhost'),note,()=>repaintNote(note.id));
   // Looking at a note is what reads its thread; the count in the footer follows from that. The box
   // outlives its contents, so the listener is attached once and finds the note again when it fires.

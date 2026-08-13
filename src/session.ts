@@ -33,6 +33,30 @@ export function matchesContext(doc: ReviewContext, context: ReviewContext): bool
 }
 
 /**
+ * A stamp no message in this thread already carries. The stamp in a message's marker is the only
+ * name it has — it is how the page says which message to rewrite or take back — so two messages
+ * sharing one would leave the older of them unaddressable.
+ */
+function freeStamp(note: ReviewNote): string {
+  const taken = new Set(note.messages.map((entry) => entry.at));
+  let at = Date.now();
+  while (taken.has(new Date(at).toISOString())) at++;
+  return new Date(at).toISOString();
+}
+
+/**
+ * One of the reviewer's own messages, found by the stamp it carries. The agent's messages are not
+ * ours to touch, and a reviewer line written without a stamp has no name to be asked for by, so
+ * neither is ever answered here.
+ */
+function ownMessage(doc: ReviewDoc, id: string, at: string) {
+  if (!at) return null;
+  const note = doc.notes.find((entry) => entry.id === id);
+  const message = note?.messages.find((entry) => entry.role === "reviewer" && entry.at === at);
+  return note && message ? { note, message } : null;
+}
+
+/**
  * One review file per conversation, and one conversation per context: a run adopts the newest file
  * written for the same range, branch, and base, so restarting lcr picks that conversation back up
  * while any other diff starts its own. **New review** starts another one by hand, and the picker
@@ -195,10 +219,38 @@ export function createSession(repoRoot: string, outDir: string, range: string, c
         const doc = await read();
         const note = doc.notes.find((entry) => entry.id === id);
         if (!note) return null;
-        const message: ReviewMessage = { role: "reviewer", at: new Date().toISOString(), body };
+        const message: ReviewMessage = { role: "reviewer", at: freeStamp(note), body };
         note.messages.push(message);
         await write(doc);
         return note;
+      });
+    },
+
+    /**
+     * Rewrites one of the reviewer's own messages where it stands, so a reply can be corrected
+     * without a second one contradicting it. Its stamp and its place in the thread are kept: the
+     * message is the one the agent was already reading, saying something else.
+     */
+    editReply(id: string, at: string, body: string): Promise<ReviewNote | null> {
+      return serialise(async () => {
+        const doc = await read();
+        const found = ownMessage(doc, id, at);
+        if (!found) return null;
+        found.message.body = body;
+        await write(doc);
+        return found.note;
+      });
+    },
+
+    /** Withdraws one of the reviewer's own messages, the way deleting a note withdraws the note. */
+    dropReply(id: string, at: string): Promise<ReviewNote | null> {
+      return serialise(async () => {
+        const doc = await read();
+        const found = ownMessage(doc, id, at);
+        if (!found) return null;
+        found.note.messages = found.note.messages.filter((entry) => entry !== found.message);
+        await write(doc);
+        return found.note;
       });
     },
 

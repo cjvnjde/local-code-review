@@ -1,5 +1,14 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { delKey, delRunAt, delRuns, drawnRows, foldingDeleted, revealRow, toggleRun } from "./deleted.ts";
+import {
+  delKey,
+  delRunAt,
+  delRuns,
+  drawnRows,
+  foldingDeleted,
+  revealRow,
+  toggleFileFold,
+  toggleRun,
+} from "./deleted.ts";
 import { state } from "./state.ts";
 
 /** A file whose rows read as the types given: `+` added, `-` removed, ` ` context, `@` a hunk row. */
@@ -22,6 +31,7 @@ const noteOn = (path: string, i: number, j: number) => {
 afterEach(() => {
   state.cfg.foldDel = false;
   state.openDel = new Set<string>();
+  state.delFold = new Map<string, boolean>();
   state.notes = new Map();
   state.place = new Map();
 });
@@ -105,6 +115,35 @@ describe("folding removed lines", () => {
     expect(state.openDel.has("src/a.ts|o2")).toBe(true);
     expect(revealRow(f, 3, 0, f.rows.length)).toBe(false);
     expect(revealRow(f, 0, 0, f.rows.length)).toBe(false);
+  });
+
+  test("a file answers for itself, and the setting is only its default", () => {
+    const f = fileOf(" -- ", "src/a.ts");
+    const other = fileOf(" -- ", "src/b.ts");
+    // Folding one file while the setting is off leaves every other file alone.
+    expect(toggleFileFold(f.path)).toBe(true);
+    expect(foldingDeleted(f.path)).toBe(true);
+    expect(delRuns(f, 0, f.rows.length).size).toBe(1);
+    expect(delRuns(other, 0, other.rows.length).size).toBe(0);
+    // And opening one file inside a folded diff is the same answer the other way.
+    state.cfg.foldDel = true;
+    expect(toggleFileFold(f.path)).toBe(false);
+    expect(delRuns(f, 0, f.rows.length).size).toBe(0);
+    expect(delRuns(other, 0, other.rows.length).size).toBe(1);
+    // The setting moving does not take that answer back.
+    state.cfg.foldDel = false;
+    expect(foldingDeleted(f.path)).toBe(false);
+    expect(foldingDeleted()).toBe(false);
+  });
+
+  test("folding a file again folds all of it, and leaves other files' runs open", () => {
+    state.cfg.foldDel = true;
+    const f = fileOf(" -- - ", "src/a.ts");
+    toggleRun(f, 1);
+    toggleRun(fileOf(" --", "src/b.ts"), 1);
+    expect(toggleFileFold(f.path)).toBe(false); // opened whole
+    expect(state.openDel.has("src/a.ts|o2")).toBe(false);
+    expect(state.openDel.has("src/b.ts|o2")).toBe(true);
   });
 
   test("hunk rows break a run, and a binary file has none", () => {

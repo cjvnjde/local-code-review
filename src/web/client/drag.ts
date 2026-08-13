@@ -25,6 +25,16 @@ export function pressKind(d: any,x: number,y: number){
   return d.away&&atStart(x,y,d.x0,d.y0)?'rows':'chars';
 }
 /**
+ * Whether a finished selection is the draft standing open being aimed again rather than a second note.
+ * A draft follows any selection that still touches the lines it covers — narrowing a line to a
+ * fragment, re-picking that fragment, and widening back out to whole lines are all one note being
+ * pointed at more precisely — and holds its ground for a selection that has left them, because that
+ * is a note of its own. `at` is where the draft currently sits, or null when it has none: a note on a
+ * whole file or on the review has no lines to be aimed at.
+ */
+export const reaims=(at: any,fi: number,i: number,j: number)=>
+  !!at&&at.fi===fi&&i<=at.j&&j>=at.i;
+/**
  * The character range a pair of offsets notes inside a line, or null when nothing narrower than the
  * line is covered: an empty run, a blank run, and the full line are all plain line notes.
  */

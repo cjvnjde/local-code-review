@@ -100,6 +100,79 @@ describe("createSession", () => {
     expect(doc.notes[0]!.messages[0]).toMatchObject({ role: "reviewer", body: "Also the fixture, please." });
   });
 
+  test("two replies on one note never share a stamp, so each stays addressable", async () => {
+    const dir = await workspace();
+    const session = createSession(dir, ".", "HEAD");
+    await session.adoptNewest();
+    await session.save({ comments: [note("a|n12|n12|#1")] });
+
+    await session.reply("a|n12|n12|#1", "One.");
+    const twice = await session.reply("a|n12|n12|#1", "Two.");
+    const stamps = twice!.messages.map((entry) => entry.at);
+    expect(stamps.filter(Boolean)).toHaveLength(2);
+    expect(new Set(stamps).size).toBe(2);
+  });
+
+  test("a reply can be reworded where it stands, keeping its stamp and its place", async () => {
+    const dir = await workspace();
+    const session = createSession(dir, ".", "HEAD");
+    await session.adoptNewest();
+    const { file } = await session.save({ comments: [note("a|n12|n12|#1")] });
+    const first = await session.reply("a|n12|n12|#1", "Also the fixture, please.");
+    await session.reply("a|n12|n12|#1", "And the docs.");
+    const at = first!.messages[0]!.at;
+
+    expect(await session.editReply("a|n12|n12|#1", at, "Also the fixture — and its snapshot.")).not.toBeNull();
+    const doc = await read(dir, path.basename(file));
+    expect(doc.notes[0]!.messages).toEqual([
+      { role: "reviewer", at, body: "Also the fixture — and its snapshot." },
+      { role: "reviewer", at: doc.notes[0]!.messages[1]!.at, body: "And the docs." },
+    ]);
+
+    // A stamp nobody wrote, and a note that is not in the file, are both refusals rather than writes.
+    expect(await session.editReply("a|n12|n12|#1", "2020-01-01T00:00:00.000Z", "nope")).toBeNull();
+    expect(await session.editReply("gone|n1|n1|#x", at, "nope")).toBeNull();
+    expect(await session.editReply("a|n12|n12|#1", "", "nope")).toBeNull();
+  });
+
+  test("the agent's own messages are not the page's to rewrite or take back", async () => {
+    const dir = await workspace();
+    const session = createSession(dir, ".", "HEAD");
+    await session.adoptNewest();
+    const { file } = await session.save({ comments: [note("a|n12|n12|#1")] });
+
+    const name = path.basename(file);
+    const answered = (await readFile(path.join(dir, name), "utf8")).replace(
+      "Status: pending",
+      "Status: applied — renamed\n\n**Agent** <!-- lcr:m 2026-03-01T10-00-00.000Z -->\n\nRenamed it.\n",
+    );
+    await writeFile(path.join(dir, name), answered, "utf8");
+
+    const stamp = (await read(dir, name)).notes[0]!.messages[0]!.at;
+    expect(await session.editReply("a|n12|n12|#1", stamp, "no i didn't")).toBeNull();
+    expect(await session.dropReply("a|n12|n12|#1", stamp)).toBeNull();
+    expect((await read(dir, name)).notes[0]!.messages).toEqual([
+      { role: "agent", at: stamp, body: "Renamed it." },
+    ]);
+  });
+
+  test("deleting a reply takes that message out of the thread and leaves the rest", async () => {
+    const dir = await workspace();
+    const session = createSession(dir, ".", "HEAD");
+    await session.adoptNewest();
+    const { file } = await session.save({ comments: [note("a|n12|n12|#1")] });
+    const first = await session.reply("a|n12|n12|#1", "Also the fixture, please.");
+    await session.reply("a|n12|n12|#1", "And the docs.");
+    const at = first!.messages[0]!.at;
+
+    expect(await session.dropReply("a|n12|n12|#1", at)).not.toBeNull();
+    expect(await session.dropReply("a|n12|n12|#1", at)).toBeNull();
+    const doc = await read(dir, path.basename(file));
+    expect(doc.notes[0]!.messages.map((entry) => entry.body)).toEqual(["And the docs."]);
+    // The note itself is untouched by what it said back.
+    expect(doc.notes[0]).toMatchObject({ id: "a|n12|n12|#1", body: "Rename this." });
+  });
+
   test("deleting a note takes it out of the file", async () => {
     const dir = await workspace();
     const session = createSession(dir, ".", "HEAD");

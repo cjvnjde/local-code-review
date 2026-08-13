@@ -27,7 +27,11 @@ export const state: any={
    *  all. Both are how the review is being read right now, not part of it, so neither is stored. */
   ntCur:'', reader:false, rdrFilter:'all', rdrStale:false,
   filter:'', hideRx:[], sel:null, active:'',
-  byPath:new Map(), h:new Map(), draftRow:null, draftKey:null,
+  byPath:new Map(), h:new Map(),
+  /** The note being written and not yet saved: the row its box stands in, the range it was opened on,
+   *  and where on the diff that range sits — which is what a selection over the same lines re-aims
+   *  instead of opening a second note. A draft with no lines under it has no `draftAt`. */
+  draftRow:null, draftKey:null, draftAt:null,
   cfg:{auto:true,back:true,limit:900,toast:true,hide:'',hideDeleted:false,foldDel:false,enterSaves:false,
     expand:20,navHidden:false,ntFold:false,bmFold:false,single:false,clearSaved:false,ghosts:true},
   /** Notes from the branch's other review files, shown as dim markers where they still anchor. They
@@ -37,6 +41,10 @@ export const state: any={
    *  file and old-side line, so revealed context cannot shuffle them, and kept out of storage: which
    *  of them stand open is this read of the diff rather than a preference about it. */
   openDel:new Set(),
+  /** Files that answered for themselves about their removed lines, by path. The setting is only the
+   *  default: a rewrite whose new side is the hard part is folded on its own, and one file inside a
+   *  folded diff is opened on its own, without either answer moving the other. */
+  delFold:new Map(),
   scrolled:false, jumpUntil:0, autoNow:new Set(), lastUndo:0,
   /** Threads as the review file holds them, by note id. The file is their only writer. */
   msgs:new Map(), seen:new Map(), sessionFile:'', live:false, pendingDiff:false, pendingNotes:false,

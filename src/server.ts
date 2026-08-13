@@ -1,3 +1,4 @@
+import type { Server } from "bun";
 import page from "./web/shell.html";
 import { fingerprint } from "./diff.ts";
 import type { Hub } from "./events.ts";
@@ -103,7 +104,7 @@ function serve(options: ServerOptions, port: number) {
     async fetch(request) {
       try {
         const url = new URL(request.url);
-        if (url.pathname === "/api/events") return events(options, request);
+        if (url.pathname === "/api/events") return events(options, request, server);
         if (url.pathname === "/api/diff") {
           const [files, statuses] = await Promise.all([options.getDiff(), options.getStatuses()]);
           return Response.json({
@@ -158,22 +159,43 @@ function serve(options: ServerOptions, port: number) {
           }
           return new Response("method not allowed", { status: 405, headers: { allow: "GET, PUT, DELETE" } });
         }
-        if (url.pathname === "/api/reply" && request.method === "POST") {
-          if (!isJsonRequest(request)) return Response.json({ error: "JSON body required." }, { status: 415 });
-          const payload = await readJson(request) as { id?: unknown; body?: unknown } | null;
-          if (!payload) return Response.json({ error: "A JSON body is required." }, { status: 400 });
-          const id = typeof payload.id === "string" ? payload.id : "";
-          const body = typeof payload.body === "string" ? payload.body.trim() : "";
-          if (!id || !body) return Response.json({ error: "A note id and a message are required." }, { status: 400 });
-          const note = await options.session.reply(id, body);
-          if (!note) {
-            return Response.json({ error: "That note is not in the review file yet. Save the review first." }, {
-              status: 404,
-            });
+        // The reviewer's side of a thread: sent, rewritten, or taken back. A message is named by the
+        // stamp in its marker, which is what a rewrite keeps and what a withdrawal is asked for by.
+        if (url.pathname === "/api/reply") {
+          if (request.method === "POST" || request.method === "PUT") {
+            if (!isJsonRequest(request)) return Response.json({ error: "JSON body required." }, { status: 415 });
+            const payload = await readJson(request) as { id?: unknown; at?: unknown; body?: unknown } | null;
+            if (!payload) return Response.json({ error: "A JSON body is required." }, { status: 400 });
+            const id = typeof payload.id === "string" ? payload.id : "";
+            const at = typeof payload.at === "string" ? payload.at : "";
+            const body = typeof payload.body === "string" ? payload.body.trim() : "";
+            if (!id || !body) return Response.json({ error: "A note id and a message are required." }, { status: 400 });
+            if (request.method === "PUT" && !at) {
+              return Response.json({ error: "A message stamp is required." }, { status: 400 });
+            }
+            const note = request.method === "POST"
+              ? await options.session.reply(id, body)
+              : await options.session.editReply(id, at, body);
+            if (!note) return Response.json({ error: missing(request.method) }, { status: 404 });
+            console.log(
+              `\n  ${request.method === "POST" ? "replied" : "reworded a reply"} on ${note.key} in ${options.session.shownFile}\n`,
+            );
+            options.hub.emit({ type: "review", file: options.session.file });
+            return Response.json({ file: options.session.shownFile, note });
           }
-          console.log(`\n  replied on ${note.key} in ${options.session.shownFile}\n`);
-          options.hub.emit({ type: "review", file: options.session.file });
-          return Response.json({ file: options.session.shownFile, note });
+          if (request.method === "DELETE") {
+            const id = url.searchParams.get("id") ?? "";
+            const at = url.searchParams.get("at") ?? "";
+            if (!id || !at) {
+              return Response.json({ error: "A note id and a message stamp are required." }, { status: 400 });
+            }
+            const note = await options.session.dropReply(id, at);
+            if (!note) return Response.json({ error: missing(request.method) }, { status: 404 });
+            console.log(`\n  took a reply back on ${note.key} in ${options.session.shownFile}\n`);
+            options.hub.emit({ type: "review", file: options.session.file });
+            return Response.json({ file: options.session.shownFile, note });
+          }
+          return new Response("method not allowed", { status: 405, headers: { allow: "POST, PUT, DELETE" } });
         }
         if (url.pathname === "/api/note" && request.method === "DELETE") {
           // Many ids in one request: clearing the page is one withdrawal, not one per note.
@@ -262,7 +284,12 @@ function serve(options: ServerOptions, port: number) {
  * The page's live connection. Events say only that something moved; the page fetches the new state
  * itself, so a dropped or repeated event costs a fetch rather than correctness.
  */
-function events(options: ServerOptions, request: Request): Response {
+function events(options: ServerOptions, request: Request, server: Server): Response {
+  // A quiet review is the normal case, and a connection that sends nothing reads to the runtime as
+  // idle: left at the ten-second default it would be cut and reopened all day, and the heartbeat
+  // that is meant to hold it open would never arrive in time. Only this route waits on the reviewer,
+  // so only this route drops the limit.
+  server.timeout(request, 0);
   const encoder = new TextEncoder();
   let detach: (() => void) | null = null;
   const stream = new ReadableStream({
@@ -292,6 +319,13 @@ function events(options: ServerOptions, request: Request): Response {
       connection: "keep-alive",
     },
   });
+}
+
+/** Why a thread could not be written to: the note is not in the file, or the message is not yours. */
+function missing(method: string): string {
+  return method === "POST"
+    ? "That note is not in the review file yet. Save the review first."
+    : "That message is not one of yours in the review file any more.";
 }
 
 function plural(count: number, noun: string): string {

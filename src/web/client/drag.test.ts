@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { ROW_SLIP, START_SLIP, atStart, charRange, leftRow, pressKind } from "./drag.ts";
+import { ROW_SLIP, START_SLIP, atStart, charRange, leftRow, pressKind, reaims } from "./drag.ts";
 
 // A code row is 24px tall; the pressed row here spans y 100..124.
 const top = 100, bottom = 124;
@@ -80,6 +80,37 @@ describe("pressKind", () => {
 
   test("a press on the gutter picked its row on the way down", () => {
     expect(pressKind(press({ cell: null, away: true }), x0 + 60, y0)).toBe("click");
+  });
+});
+
+describe("reaims", () => {
+  // A note being written on rows 4..6 of the second file.
+  const at = { fi: 1, i: 4, j: 6 };
+
+  test("narrowing to part of a line the draft covers is the same note", () => {
+    expect(reaims(at, 1, 5, 5)).toBe(true);
+  });
+
+  test("the range it was opened on re-aims it, which is how a fragment goes back to its line", () => {
+    expect(reaims(at, 1, 4, 6)).toBe(true);
+  });
+
+  test("a selection growing past the draft still touches it", () => {
+    expect(reaims(at, 1, 2, 9)).toBe(true);
+    expect(reaims(at, 1, 6, 9)).toBe(true);
+  });
+
+  test("lines the draft never covered are a note of their own", () => {
+    expect(reaims(at, 1, 7, 9)).toBe(false);
+    expect(reaims(at, 1, 0, 3)).toBe(false);
+  });
+
+  test("the same rows in another file are another place entirely", () => {
+    expect(reaims(at, 0, 4, 6)).toBe(false);
+  });
+
+  test("a draft with no lines under it — a file or review note — is never re-aimed", () => {
+    expect(reaims(null, 1, 4, 6)).toBe(false);
   });
 });
 

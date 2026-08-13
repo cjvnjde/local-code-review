@@ -14,9 +14,25 @@ import { rowKey, state } from './state.ts';
  * block is the unit that gets drawn and a fold spanning two of them would have each draw its own half
  * of the label. Which runs are open lives in this page only, exactly as revealed context does: the
  * setting is the preference, and the runs you opened are this read.
+ *
+ * The setting is a default rather than a verdict: a file answers for itself as soon as its header
+ * button is clicked, and keeps that answer whichever way the setting later goes. One heavy rewrite
+ * can therefore be read as the file it leaves behind without folding the rest of the diff away.
  */
 
-export const foldingDeleted=()=>!!state.cfg.foldDel;
+/** Whether removed lines are folded in one file: the file's own answer, or the setting. */
+export const foldingDeleted=(path?: string)=>
+  path!=null&&state.delFold.has(path)?!!state.delFold.get(path):!!state.cfg.foldDel;
+/**
+ * Flips one file's answer and reports it. The runs held open belong to the fold being replaced, so
+ * they go with it: folding a file folds all of it, and opening one is opening the whole of it.
+ */
+export function toggleFileFold(path: string){
+  const on=!foldingDeleted(path);
+  state.delFold.set(path,on);
+  state.openDel.forEach((k: string)=>{ if(k.slice(0,k.lastIndexOf('|'))===path) state.openDel.delete(k); });
+  return on;
+}
 /** A run's identity: its file, and the line the first row of it takes away. */
 export const delKey=(f: any,i: number)=>f.path+'|'+rowKey(f.rows[i]);
 
@@ -42,7 +58,7 @@ function notedSpans(f: any){
  */
 export function delRuns(f: any,from: number,to: number){
   const out=new Map<number,DelRun>();
-  if(!foldingDeleted()||f.binary) return out;
+  if(!foldingDeleted(f.path)||f.binary) return out;
   const spans=notedSpans(f);
   for(let k=from;k<to;k++){
     if(f.rows[k].t!=='del') continue;

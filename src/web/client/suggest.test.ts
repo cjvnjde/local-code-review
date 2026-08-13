@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { bodyParts, insertBlock, suggestLines, suggestionBlock } from "./suggest.ts";
+import { bodyParts, capturedLines, insertBlock, lineDiff, suggestLines, suggestionBlock } from "./suggest.ts";
 
 const ctx = (n: number, text: string) => ({ t: "ctx", o: n, n, text });
 const add = (n: number, text: string) => ({ t: "add", n, text });
@@ -42,6 +42,86 @@ describe("suggestionBlock", () => {
 
   test("an empty range still opens a block to write in", () => {
     expect(suggestionBlock([])).toBe("```suggestion\n\n```");
+  });
+});
+
+describe("capturedLines", () => {
+  test("reads the new side of a capture, as the suggestion was seeded from", () => {
+    expect(capturedLines(" const a = 1;\n-const old = 2;\n+const b = 2;"))
+      .toEqual(["const a = 1;", "const b = 2;"]);
+  });
+
+  test("a capture of nothing but removals is what the suggestion replaces", () => {
+    expect(capturedLines("-const old = 1;\n-const gone = 2;"))
+      .toEqual(["const old = 1;", "const gone = 2;"]);
+  });
+
+  test("a note that captured no code has nothing to read a suggestion against", () => {
+    expect(capturedLines("")).toEqual([]);
+    expect(capturedLines(undefined as any)).toEqual([]);
+  });
+
+  test("an empty line keeps its place, marker and all", () => {
+    expect(capturedLines(" a\n \n b")).toEqual(["a", "", "b"]);
+  });
+});
+
+describe("lineDiff", () => {
+  test("shows what a replacement takes away as well as what it puts there", () => {
+    expect(lineDiff(["const a = 1;"], ["const a = 2;"])).toEqual([
+      { t: "del", v: "const a = 1;" },
+      { t: "add", v: "const a = 2;" },
+    ]);
+  });
+
+  test("lines the suggestion keeps read as context, top and bottom", () => {
+    expect(lineDiff(["a", "b", "c"], ["a", "B", "c"])).toEqual([
+      { t: "ctx", v: "a" },
+      { t: "del", v: "b" },
+      { t: "add", v: "B" },
+      { t: "ctx", v: "c" },
+    ]);
+  });
+
+  test("a line only added, and a line only removed", () => {
+    expect(lineDiff(["a", "c"], ["a", "b", "c"])).toEqual([
+      { t: "ctx", v: "a" },
+      { t: "add", v: "b" },
+      { t: "ctx", v: "c" },
+    ]);
+    expect(lineDiff(["a", "b", "c"], ["a", "c"])).toEqual([
+      { t: "ctx", v: "a" },
+      { t: "del", v: "b" },
+      { t: "ctx", v: "c" },
+    ]);
+  });
+
+  test("a line kept in the middle is found rather than rewritten around", () => {
+    expect(lineDiff(["a", "keep", "b"], ["x", "keep", "y"])).toEqual([
+      { t: "del", v: "a" },
+      { t: "add", v: "x" },
+      { t: "ctx", v: "keep" },
+      { t: "del", v: "b" },
+      { t: "add", v: "y" },
+    ]);
+  });
+
+  test("a suggestion that changes nothing says so, and one with no base is all new", () => {
+    expect(lineDiff(["a", "b"], ["a", "b"])).toEqual([
+      { t: "ctx", v: "a" },
+      { t: "ctx", v: "b" },
+    ]);
+    expect(lineDiff([], ["a"])).toEqual([{ t: "add", v: "a" }]);
+    expect(lineDiff(["a"], [])).toEqual([{ t: "del", v: "a" }]);
+  });
+
+  test("a block past the pairing limit is shown removed whole and added whole", () => {
+    const base = Array.from({ length: 80 }, (_, k) => "line " + k);
+    const next = base.map((line) => line + ";");
+    const out = lineDiff(base, next);
+    expect(out.length).toBe(160);
+    expect(out.slice(0, 80).every((line) => line.t === "del")).toBe(true);
+    expect(out.slice(80).every((line) => line.t === "add")).toBe(true);
   });
 });
 

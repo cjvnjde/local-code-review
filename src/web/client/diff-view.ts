@@ -1,6 +1,6 @@
 import { globalNotes, looseNotes, replaceIn, strayNotes } from './anchor.ts';
 import { bmKey } from './bookmarks.ts';
-import { delRunAt, delRuns, drawnRows, revealRow, toggleRun } from './deleted.ts';
+import { delRunAt, delRuns, drawnRows, foldingDeleted, revealRow, toggleFileFold, toggleRun } from './deleted.ts';
 import { expandStep } from './expand.ts';
 import { autoHidden, isHidden } from './filters.ts';
 import { gapOf, gapSize } from './gaps.ts';
@@ -134,6 +134,7 @@ function fileHtml(f,fi){
     '<button class="vw'+(seen?' on':'')+'" data-vw="'+esc(f.path)+'" title="'+
       (seen?'Mark as not reviewed':'Mark reviewed — collapses until the file changes')+'">'+
       (seen?SVG.boxOn:SVG.box)+' viewed</button>'+
+    delBtnHtml(f)+
     '<button class="eye" data-hf="'+esc(f.path)+'" title="Hide from diff">'+SVG.eye+' hide</button></div>'+
     // Whole-file notes hang off the header, so a binary or folded file can still carry one.
     '<div class="fnotes" id="fn'+fi+'"></div>';
@@ -351,6 +352,100 @@ export function toggleDeleted(fi: number,idx: number){
   const moved=el('d'+fi+'-'+idx);
   if(y0!=null&&moved) sec.scrollTop+=moved.getBoundingClientRect().top-y0;
   if(dropped) paintSel(); // rows of it outside the run are still showing the highlight
+}
+
+/**
+ * One file's own answer about its removed lines, in its header beside the other display controls.
+ * Reviewing what a rewrite leaves behind is a per-file need — the file being read is the one whose
+ * old side is in the way — so the setting stays the default and this is where a file departs from it.
+ * A file the diff only added to has nothing to fold, and a binary one has no rows at all.
+ */
+function delBtnHtml(f){
+  if(f.binary||!f.removed) return '';
+  const on=foldingDeleted(f.path);
+  const lines=f.removed+' removed line'+(f.removed===1?'':'s');
+  return '<button class="dl'+(on?' on':'')+'" data-dl="'+esc(f.path)+'" title="'+
+    (on?'Show the '+lines+' in this file':'Fold this file’s '+lines+' away')+'">'+
+    (on?SVG.chevR:SVG.chevD)+' removed</button>';
+}
+/**
+ * Folds one file's removed lines away, or brings them all back. Every block of the file draws
+ * different rows now, so the table is built again and the heights measured under the old fold go
+ * with it. What the pane is reading stays where it is: the topmost row on screen is found first and
+ * put back under the same edge afterwards, answered for by the marker standing in its place when the
+ * fold has just taken that row away.
+ */
+export function toggleFileDeleted(path: string){
+  const fi=idxOf(path), f=state.files[fi];
+  if(!f) return;
+  const sec=el('diff'), node=el('f'+fi);
+  const paneTop=sec.getBoundingClientRect().top;
+  const above=!!node&&node.getBoundingClientRect().bottom<=paneTop;
+  const h0=node?node.offsetHeight:0;
+  const keep=node?topRow(fi):null;
+  toggleFileFold(f.path);
+  dropFoldedSel(fi); // a selection the fold has just taken off the page cannot stay on it
+  save();
+  if(!node) return;
+  const btn=node.querySelector('[data-dl]');
+  if(btn) btn.outerHTML=delBtnHtml(f);
+  redrawFile(fi);
+  const anchor=keep?rowAnchorEl(fi,keep.idx):null;
+  if(anchor){
+    const now=anchor.getBoundingClientRect().top-sec.getBoundingClientRect().top;
+    sec.scrollTop=Math.max(0,sec.scrollTop+(now-keep.dy));
+  }
+  // Nothing of it was on screen to hold still, so only the room it takes up above the fold matters.
+  else if(above) sec.scrollTop=Math.max(0,sec.scrollTop+(node.offsetHeight-h0));
+}
+/** The first row of a file the pane is still showing, and how far below its top edge it sits. */
+function topRow(fi: number){
+  const node=el('f'+fi); if(!node) return null;
+  const top=el('diff').getBoundingClientRect().top;
+  const rows=node.querySelectorAll('tr.r,tr.hunk,tr.dfold');
+  for(const tr of rows){
+    const box=tr.getBoundingClientRect();
+    if(box.bottom>top+1) return {idx:Number(tr.id.slice(tr.id.indexOf('-')+1)),dy:box.top-top};
+  }
+  return null;
+}
+/** Where a row is on screen after a fold moved: the row itself, or the marker standing in for it. */
+function rowAnchorEl(fi: number,idx: number){
+  const direct=el('r'+fi+'-'+idx);
+  if(direct) return direct;
+  const f=state.files[fi], b=Math.floor(idx/BLOCK);
+  const run=f?delRunAt(f,idx,b*BLOCK,blockEnd(f,b)):null;
+  return run?el('d'+fi+'-'+run.start):null;
+}
+/** Lets go of a selection once any removed row it covers has been folded away under it. */
+function dropFoldedSel(fi: number){
+  const s=state.sel, f=state.files[fi];
+  if(!s||s.fi!==fi||!f) return;
+  const hi=Math.min(Math.max(s.a,s.b),f.rows.length-1);
+  for(let i=Math.min(s.a,s.b);i<=hi;i++){
+    if(f.rows[i].t!=='del') continue;
+    const b=Math.floor(i/BLOCK), run=delRunAt(f,i,b*BLOCK,blockEnd(f,b));
+    if(run&&!run.open){ state.sel=null; return; }
+  }
+}
+/**
+ * Draws one file's rows again where they stand. Row indices have not moved — only which of them are
+ * drawn — so notes and ghosts re-place themselves as the blocks mount and nothing has to be rebound.
+ * The blocks that were mounted are mounted again straight away rather than a frame later, so the
+ * caller can measure where the file's rows landed.
+ */
+function redrawFile(fi: number){
+  const f=state.files[fi], node=el('f'+fi);
+  if(!f||!node) return;
+  const table=node.querySelector('table'); if(!table) return;
+  const on=[...table.querySelectorAll('tbody.blk')].filter((tb: any)=>tb.dataset.on)
+    .map((tb: any)=>Number(tb.dataset.b));
+  // Every height was measured under the fold that has just been replaced.
+  [...state.h.keys()].forEach(k=>{ if(k.slice(0,k.lastIndexOf('|'))===f.path) state.h.delete(k); });
+  table.querySelectorAll('tbody.blk').forEach(tb=>{ obsMount.unobserve(tb); obsDrop.unobserve(tb); });
+  table.innerHTML=tableHtml(f,fi);
+  table.querySelectorAll('tbody.blk').forEach(observeBlock);
+  on.forEach(b=>{ const tb=el('b'+fi+'-'+b); if(tb) mountBlock(tb); });
 }
 function unmountBlock(tb){
   if(!tb.dataset.on||!tb.offsetParent) return; // hidden inside a collapsed file: measuring it would cache 0

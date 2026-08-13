@@ -79,7 +79,7 @@ export function save(){
       notes:[...state.notes.values()],
       hidden:[...state.hidden], shown:[...state.shown],
       collapsed:[...state.collapsed], folded:[...state.folded],
-      viewed:[...state.viewed],
+      viewed:[...state.viewed], delFold:[...state.delFold],
       // The review file owns the threads; this copy is only so a reload has them before it answers.
       msgs:[...state.msgs], seen:[...state.seen],
     }));
@@ -112,6 +112,8 @@ export function restore(){
     state.shown=new Set(d.shown||[]);
     state.collapsed=new Set(d.collapsed||[]);
     state.folded=new Set(d.folded||[]);
+    // Which runs stand open is this read of the diff; which files fold theirs at all is a preference.
+    state.delFold=new Map((d.delFold||[]).filter(e=>e&&typeof e[0]==='string').map(e=>[e[0],!!e[1]]));
     state.viewed=new Map((d.viewed||[]).map(e=>[e[0],typeof e[1]==='string'?{h:e[1],auto:false}:e[1]]));
     state.msgs=new Map((d.msgs||[]).filter(e=>e&&e[0]&&Array.isArray(e[1])));
     state.seen=new Map((d.seen||[]).filter(e=>e&&e[0]));

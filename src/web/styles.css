@@ -213,11 +213,13 @@
   .fh .plus{color:var(--add);font-size:var(--fs-sm)}
   .fh .minus{color:var(--del);font-size:var(--fs-sm)}
   .fh .spacer{flex:1}
-  .fh .eye,.fh .vw,.fh .cf{border:none;background:none;color:var(--ink-faint);padding:5px 8px;display:flex;gap:6px;
+  .fh .eye,.fh .vw,.fh .cf,.fh .dl{border:none;background:none;color:var(--ink-faint);padding:5px 8px;display:flex;gap:6px;
     align-items:center;min-height:var(--tap);flex:none;font-size:var(--fs-xs);text-transform:uppercase;
     letter-spacing:.05em;border-radius:4px}
-  .fh .eye:hover,.fh .vw:hover,.fh .cf:hover{color:var(--ink);background:var(--s1)}
+  .fh .eye:hover,.fh .vw:hover,.fh .cf:hover,.fh .dl:hover{color:var(--ink);background:var(--s1)}
   .fh .vw.on{color:var(--green)}
+  /* folded away: the header says so in the colour the removed lines themselves are drawn in */
+  .fh .dl.on{color:var(--del)}
   .fh .stale{color:var(--peach);font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.05em}
 
   table{width:100%;border-collapse:collapse;table-layout:fixed}
@@ -366,6 +368,13 @@
     text-transform:uppercase;letter-spacing:.05em}
   .nbody .sugb pre{margin:0;padding:8px 10px;overflow-x:auto;white-space:pre;
     font:var(--fs-code)/1.55 var(--mono);color:var(--ink)}
+  /* a replacement read as the change it makes: the lines it takes away above the lines it puts there */
+  .sugb .sugc{padding:5px 0;font:var(--fs-code)/1.5 var(--mono);color:var(--ink)}
+  .sugb .sugc .cl{display:flex;gap:6px;padding:0 10px;white-space:pre-wrap;word-break:break-word}
+  .sugb .sugc .cl .cm{flex:none;width:8px;color:var(--ink-faint)}
+  .sugb .sugc .cl .c{flex:1;min-width:0}
+  .sugb .sugc .cl.add{background:var(--add-bg)} .sugb .sugc .cl.add .cm{color:var(--add)}
+  .sugb .sugc .cl.del{background:var(--del-bg)} .sugb .sugc .cl.del .cm{color:var(--del)}
   .nstat{padding:0 12px 9px;color:var(--ink-faint);font-family:var(--sans);font-size:var(--fs-sm)}
   .nedit{padding:10px}
   .nedit textarea{width:100%;background:var(--crust);color:var(--ink);border:1px solid var(--edge-hi);border-radius:5px;
@@ -412,6 +421,14 @@
   .msg .newtag{font:700 var(--fs-xs)/1.5 var(--mono);letter-spacing:.06em;padding:2px 7px;border-radius:9px;
     background:var(--mark);color:var(--crust);flex:none}
   .msg .when{margin-left:auto;color:var(--ink-faint);font-size:var(--fs-xs);flex:none}
+  /* your own words stay yours: reword or withdraw one from the strip that names its speaker */
+  .msg .who button{padding:4px 8px;min-height:var(--tap);font-size:var(--fs-xs);flex:none}
+  .msg .who .rewrite:hover{color:var(--mauve);border-color:var(--mauve)}
+  .msg .medit{padding:10px 12px}
+  .msg .medit textarea{width:100%;background:var(--crust);color:var(--ink);border:1px solid var(--edge-hi);
+    border-radius:5px;padding:8px 10px;font:var(--fs-code)/1.55 var(--sans);resize:none;min-height:62px;
+    display:block;overflow-y:hidden}
+  .msg .medit textarea:focus{outline:none;border-color:var(--mauve)}
   .msg .mb{padding:10px 12px;font-family:var(--sans);font-size:var(--fs-code);
     line-height:1.55;color:var(--ink)}
   .msg .mb .sugb{margin:8px 0;border:1px solid var(--edge-hi);border-radius:5px;background:var(--crust);overflow:hidden}

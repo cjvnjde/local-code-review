@@ -36,6 +36,14 @@
   anything left in it returns. One request carries the whole set — `session.remove` takes ids and writes once — because a
   delete per note announces the file after each write and the page would adopt the rest straight back. **New
   review** is the exception: it has already let go of the file, which keeps everything said in it.
+- The reviewer's own messages stay the reviewer's. A reply can be reworded where it stands or taken back
+  out of the thread, exactly as the note above it can; the agent's messages cannot, because they are its
+  account of what it did. A message is named by the stamp in its marker — `reply` mints one no other
+  message in that thread carries, and `editReply`/`dropReply` are asked for by it — so a `**Reviewer**`
+  line that reached the file without a stamp is shown and left alone. A rewrite keeps the stamp and the
+  place in the thread: it is the message the agent was already reading, saying something else. `/api/reply`
+  carries all three — POST sends, PUT rewords, DELETE withdraws — and each answers the note whole, because
+  the page takes threads back from the file rather than editing its own copy.
 - A note's section is written verdict-first — captured code, note, `Status:`, then the thread — so both sides
   only ever append. Prose after the `Status:` line with no `**Agent**`/`**Reviewer**` line above it is read as
   an agent message rather than dropped, and a status line still wins until the first explicit message, so an
@@ -68,16 +76,29 @@
   one, and a plain click on the row takes it back to the whole line. `pressKind` reads a finished press as rows,
   characters, or a click the row handler answers. The pressed row therefore keeps the highlight it already shows
   until the press is over — repainting a cell under a live press replaces the node the browser anchored the drag
-  on, and the drag then collects nothing — so every way a press can end has to paint again.
+  on, and the drag then collects nothing — so every way a press can end has to paint again. A press held with
+  alt is not a selection at all: it is left to the browser, so the code can be highlighted and copied as text
+  without a note opening over it, and the click that follows one is ignored for the same reason.
 - One line or range holds any number of notes. Each gets its own box under the anchor row, matched by `data-nid`. Removing one repaints the span it covered rather than clearing it, because other notes may still cover those lines.
 - One note editor stands open at a time. An untouched draft still moves to wherever the next click lands; a box with
   text in it keeps the floor, and anything that would open a second editor scrolls that one back into view and focuses
-  it instead.
+  it instead. A draft is the exception to its own rule for the lines it covers: a selection that still touches them
+  re-aims it, half-written text and caret carried over, because narrowing a line to a fragment and re-picking that
+  fragment are the same gesture that opened it, and a heading naming a range the reader has already left is a lie
+  about what the note will say. `state.draftAt` is where it sits and `reaims` is the test; a draft on a whole file
+  or on the review covers no lines and so has none.
 - The editor seeds a fenced `suggestion` block from the lines the note covers. A note narrowed to part of a line still
   suggests whole lines, because a suggestion replaces lines; the fence outgrows any backticks in the code. The block is
   ordinary note body text, so it reaches the review file verbatim, and `apply-lcr` reads it as the proposed replacement.
   A saved note shows it as code, coloured line by line by the diff's own `codeHtml`: class `c` is what carries the
   syntax token styles, so every container of highlighted code needs it.
+- A shown suggestion is read against the lines it replaces, as the change it makes rather than as an answer with the
+  question missing: `capturedLines` takes the new side of the note's own capture — the same lines `suggestLines` seeds
+  the block with — and `lineDiff` pairs them with the block, so kept lines read as context and the rest as removed
+  above added. It is only ever the display. What the review file holds stays the replacement alone, because that is
+  what `apply-lcr` puts back. A suggestion in an agent's reply is read against the same capture, since both sides are
+  proposing for the same lines, and a note that captured nothing — on a whole file or on the review — has no base, so
+  its block is shown as the code it is.
 - A note and the answer to it are Markdown. `renderBody` draws both sides of the conversation, and the prose in them
   goes through `client/markdown.ts`: headings, fenced and inline code, lists and checklists, quotes, tables, emphasis,
   links, rules. Nothing else is markup — every run of text is escaped and the only tags in the output are the ones that
@@ -113,6 +134,14 @@
   being drawn is one nobody knows to look for — and a jump opens the fold over the row it lands on.
   `drawnRows` is what an unmounted block's placeholder height is estimated from, and flipping the setting
   drops every measured height with it.
+- The setting is a default and a file may answer for itself: **removed** in a file's header folds that one
+  file's removed lines away, or opens them, whichever way the setting stands, and the answer keeps holding
+  when the setting later moves. `state.delFold` holds it by path — a display preference like a hide mark,
+  so it is stored with them — and `foldingDeleted(path)` is the one place the two are resolved. Flipping a
+  file drops the runs it had open, because folding a file folds all of it, and redraws only that file:
+  row indices have not moved, so nothing is rebound, but every height it measured under the old fold goes.
+  The pane holds the topmost row it was showing still, answered for by the marker standing in its place
+  when the fold has just taken that row away.
 - The browser store is keyed on repository and range together. Every run serves from `localhost` and a port one review frees the next one takes, so the origin cannot tell two projects apart; `/api/diff` reports `repo` as `repoId`, a hash of the repository root, and the page keys on `<repo>:<range>`. The path itself never reaches the page, because the store outlives the run.
 - Bookmarks are navigation, not feedback: they are never submitted, and `Clear all` in the footer leaves them alone. One per row, keyed by `bmKey` on the same row anchor a note uses, so revealed context carries them and `keyIndex` turns them back into a place on screen.
 - Bookmarks last one sitting, not one project. They live in `sessionStorage` under their own key, stamped with the read that made them: the tab that closes takes them, a reload keeps them, and a record whose stamp is another repository or range is dropped rather than restored. **New review** clears them too. Notes are the opposite and stay in the durable per-repository store.

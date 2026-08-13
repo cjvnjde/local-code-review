@@ -51,6 +51,9 @@
         one line you click to open, and click again to fold away. Nothing is dropped — a run a note is
         attached to stays open, and jumping to a bookmark or a note inside a fold opens it. Which runs
         you opened lasts for this read of the diff, not beyond it.</p>
+      <p class="note">This is the default for every file. <b>removed</b> in a file’s own header folds
+        that one file away, or opens it again, whichever way this setting is set — so a single heavy
+        rewrite can be read as what it leaves behind without folding the rest of the diff.</p>
     </div>
     <div class="settings-section">
       <h4>Review file</h4>
@@ -85,6 +88,14 @@
       <p class="note">Arrows on a hunk separator pull in the unchanged lines git left out of the diff:
         down continues the hunk above, up continues the one below. A gap no larger than this opens in
         one click, and the last separator keeps reaching towards the end of the file.</p>
+    </div>
+    <div class="settings-section">
+      <h4>Selecting code</h4>
+      <p class="note">Click a line to note it, drag down the line numbers for several lines, and drag
+        inside the code to note part of one line. Selecting again over the lines a half-written note
+        covers re-aims that note and keeps what you have typed. Hold <b>alt</b> (option) while
+        dragging to select the text itself instead: nothing is noted, so the highlight stays yours
+        to copy.</p>
     </div>
     <div class="settings-section">
       <h4>Note editor</h4>

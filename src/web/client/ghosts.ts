@@ -1,6 +1,7 @@
 import { placeNote } from './anchor.ts';
 import { load } from './load.ts';
 import { span } from './notes.ts';
+import { capturedLines } from './suggest.ts';
 import { renderBody } from './thread.ts';
 import { SVG, el, esc, mintNoteId, reviewTime, rowKey, state } from './state.ts';
 
@@ -136,14 +137,15 @@ function showPopover(anchor: any,key: string,pin: boolean){
       '<div class="ghbody"></div>'+
       (g.messages.length?'<div class="ghlast"></div>':'')+
       '<div class="ghacts"><button class="primary cont">Continue in this review</button></div>';
-    renderBody(item.querySelector('.ghbody'),g.body,g.file);
+    const base=capturedLines(g.code);
+    renderBody(item.querySelector('.ghbody'),g.body,g.file,base);
     // The thread's last word is the state the conversation was left in, so it rides the preview.
     if(g.messages.length){
       const last=g.messages[g.messages.length-1];
       const host=item.querySelector('.ghlast');
       host.innerHTML='<span class="who">'+(last.role==='agent'?'Agent':'You')+'</span>';
       const body=document.createElement('div'); body.className='mb';
-      renderBody(body,last.body,g.file);
+      renderBody(body,last.body,g.file,base);
       host.append(body);
     }
     (item.querySelector('.cont') as any).onclick=()=>continueHere(entry,item);
