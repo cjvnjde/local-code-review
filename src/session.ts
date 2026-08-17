@@ -13,19 +13,27 @@ export interface SaveResult {
   removed: string[];
 }
 
-/** The context a review is opened in: what is diffed, from where, and against which commit. */
+/** The context a review is opened in: what it is called, what is diffed, from where, and against which commit. */
 export interface ReviewContext {
   range: string;
+  /** Name the run was started under, from `lcr --id`; absent when the diff is the identity. */
+  id?: string;
   branch?: string;
   base?: string;
 }
 
 /**
- * Whether a review file belongs to this invocation's context. The range is the identity and must
- * match; branch and base only rule a file out when both sides know them, so files from before these
- * fields — and a detached HEAD or an unresolvable base — read as belonging rather than foreign.
+ * Whether a review file belongs to this invocation's context.
+ *
+ * A name given with `--id` is the whole identity, and both sides have to agree on it: the same name
+ * continues its review wherever the diff has moved to since, another name is another review, and a run
+ * that names none stays out of every named one. Without a name it is the diff that identifies a
+ * review: the range must match, and branch and base only rule a file out when both sides know them,
+ * so files from before those fields — and a detached HEAD or an unresolvable base — read as belonging
+ * rather than foreign.
  */
 export function matchesContext(doc: ReviewContext, context: ReviewContext): boolean {
+  if (doc.id || context.id) return (doc.id ?? "") === (context.id ?? "");
   if (doc.range !== context.range) return false;
   if (doc.branch && context.branch && doc.branch !== context.branch) return false;
   if (doc.base && context.base && doc.base !== context.base) return false;
@@ -59,8 +67,10 @@ function ownMessage(doc: ReviewDoc, id: string, at: string) {
 /**
  * One review file per conversation, and one conversation per context: a run adopts the newest file
  * written for the same range, branch, and base, so restarting lcr picks that conversation back up
- * while any other diff starts its own. **New review** starts another one by hand, and the picker
- * reopens an earlier one.
+ * while any other diff starts its own. A run started with `--id` is asked for by that name instead —
+ * it continues the review of that name however the diff has moved, and a name nothing has been
+ * written under yet is a review with nothing in it. **New review** starts another one by hand, and
+ * the picker reopens an earlier one.
  *
  * Both sides write this file: lcr renders it whole, the agent appends replies and rewrites status
  * lines. Every mutation here therefore re-reads the file first and keeps what it does not own — the
@@ -78,6 +88,7 @@ export function createSession(repoRoot: string, outDir: string, range: string, c
   /** The doc a conversation opens with: this invocation's context, stamped into the file it mints. */
   function fresh(): ReviewDoc {
     const doc: ReviewDoc = { range, notes: [] };
+    if (context.id) doc.id = context.id;
     if (context.branch) doc.branch = context.branch;
     if (context.base) doc.base = context.base;
     return doc;

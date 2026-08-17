@@ -97,6 +97,11 @@
   /* a long revision spec gives way rather than wrapping the strip onto a second line */
   header .range{color:var(--mark);font-size:var(--fs-sm);min-width:0;overflow:hidden;text-overflow:ellipsis;
     white-space:nowrap}
+  /* the name a run was started under, when it has one: which review this is, ahead of which diff */
+  header .rvid{flex:none;color:var(--mauve);font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.06em;
+    border:1px solid var(--mauve);border-radius:9px;padding:1px 8px;max-width:220px;overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap}
+  header .rvid[hidden]{display:none}
   header .spacer{flex:1}
   main{flex:1;display:flex;min-height:0}
 

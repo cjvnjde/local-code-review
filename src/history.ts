@@ -8,6 +8,8 @@ import type { ReviewNote } from "./thread.ts";
 export interface ReviewInfo {
   file: string;
   range: string;
+  /** Name the review was opened under; empty for one identified by its diff. */
+  id: string;
   branch: string;
   base: string;
   notes: number;
@@ -47,6 +49,7 @@ export async function describeReviews(repoRoot: string, outDir: string): Promise
     out.push({
       file: name,
       range: doc.range,
+      id: doc.id ?? "",
       branch: doc.branch ?? "",
       base: doc.base ?? "",
       notes: doc.notes.length,

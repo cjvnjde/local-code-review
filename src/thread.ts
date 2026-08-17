@@ -83,6 +83,12 @@ export interface ReviewNote {
 
 export interface ReviewDoc {
   range: string;
+  /**
+   * Name the review was opened under, from `lcr --id`; absent for a review identified by its diff.
+   * When it is there it is the whole identity: the file belongs to that name whatever diff, branch, or
+   * base it was written against.
+   */
+  id?: string;
   /** Branch the review was opened on; absent in files older than this field. */
   branch?: string;
   /** Commit the reviewed range was measured against when the review was opened. */
@@ -104,6 +110,7 @@ const H1 = /^#\s/;
 const H2 = /^##\s+(.+?)\s*$/;
 const H3 = /^###\s+(.+?)\s*$/;
 const RANGE = /^Diff under review:\s*`(.*)`\s*$/;
+const REVIEW_ID = /^Review id:\s*`(.*)`\s*$/;
 const BRANCH = /^Branch:\s*`(.*)`\s*$/;
 const BASE = /^Base:\s*`(.*)`\s*$/;
 const MARKER = /<!--\s*lcr:(.+?)\s*-->/;
@@ -240,6 +247,7 @@ interface RawSection {
 
 interface Preamble {
   range: string;
+  id: string;
   branch: string;
   base: string;
 }
@@ -249,7 +257,7 @@ function split(markdown: string): Preamble & { general: string[]; sections: RawS
   const fences = new Fences();
   const sections: RawSection[] = [];
   const general: string[] = [];
-  const head: Preamble = { range: "", branch: "", base: "" };
+  const head: Preamble = { range: "", id: "", branch: "", base: "" };
   let current: RawSection | null = null;
   let inGeneral = false;
   // Whether the section being read has reached its thread. A thread only exists in a file this
@@ -300,6 +308,8 @@ function split(markdown: string): Preamble & { general: string[]; sections: RawS
     if (!current && !inGeneral) {
       const range = RANGE.exec(line);
       if (range) head.range = range[1] as string;
+      const id = REVIEW_ID.exec(line);
+      if (id) head.id = id[1] as string;
       const branch = BRANCH.exec(line);
       if (branch) head.branch = branch[1] as string;
       const base = BASE.exec(line);
@@ -314,7 +324,7 @@ function split(markdown: string): Preamble & { general: string[]; sections: RawS
 
 /** Reads a whole review file back into the notes and threads it holds. */
 export function parseReview(markdown: string): ReviewDoc {
-  const { range, branch, base, general, sections } = split(markdown);
+  const { range, id, branch, base, general, sections } = split(markdown);
   const notes = sections.map(readSection).filter((note): note is ReviewNote => !!note);
   // Prose under `## Overall` is how a single overall note was written before overall notes were
   // notes. It says the same thing, so it is read back as the first of them rather than dropped; the
@@ -322,6 +332,7 @@ export function parseReview(markdown: string): ReviewDoc {
   const legacy = trimBlock(unescapeLines(general));
   if (legacy) notes.unshift(globalNote(LEGACY_GLOBAL_ID, legacy));
   const doc: ReviewDoc = { range, notes };
+  if (id) doc.id = id;
   if (branch) doc.branch = branch;
   if (base) doc.base = base;
   return doc;

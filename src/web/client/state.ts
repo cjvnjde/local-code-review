@@ -20,7 +20,10 @@ export const SVG={
 };
 
 export const state: any={
-  files:[], repo:'', range:'', notes:new Map(), status:new Map(), statusByKey:new Map(), soloKeys:new Set(),
+  /** `reviewId` is the name this run was started under, from `lcr --id`, and empty without one. It is
+   *  what this read is keyed on when it has one: a name never used before starts with nothing stored. */
+  files:[], repo:'', range:'', reviewId:'',
+  notes:new Map(), status:new Map(), statusByKey:new Map(), soloKeys:new Set(),
   hidden:new Set(), shown:new Set(), collapsed:new Set(), folded:new Set(), viewed:new Map(),
   bookmarks:new Map(), bmCur:'',
   /** Reading the notes as a list: which one the pane is stepping from, and the panel that shows them

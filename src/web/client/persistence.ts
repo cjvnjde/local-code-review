@@ -51,12 +51,17 @@ export function saveCfg(){
   return changed;
 }
 /**
- * Which read this is: the repository as the server named it, and the diff being read in it. Every
+ * Which read this is: the repository as the server named it, and what is being read in it. Every
  * run is served from `localhost` and a port one review frees the next one takes, so the origin alone
  * cannot tell two projects apart — without the repository in the key, every project on a machine
  * shares one record and reads back another project's notes.
+ *
+ * A run started with `--id` is keyed on that name rather than on its diff, because the name is what
+ * identifies the review: it comes back to its own notes wherever the diff has moved to since, and a
+ * name nothing has been read under yet starts with nothing stored, which is what makes a new name an
+ * altogether new review rather than the last one's notes under another heading.
  */
-const scope=()=>state.repo+':'+state.range;
+const scope=()=>state.repo+':'+(state.reviewId?'#'+state.reviewId:state.range);
 const store=()=>'gitreview:'+scope();
 /** Said once per session: every save after a full store fails the same way, and one warning is news. */
 let warnedStore=false;

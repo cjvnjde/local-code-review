@@ -23,6 +23,13 @@
 - One review file per conversation. A run adopts the newest one it finds, so restarting lcr continues where it
   stopped; **New review** in settings is the only thing that opens another. Notes always survive a save — they
   are the conversation now, not a batch that was handed off.
+- `--id <name>` names a review, and a name outranks the diff: `matchesContext` compares ids alone as soon as
+  either side carries one, so the same name continues its conversation wherever the range, branch, or base has
+  moved to, another name is another review, and an unnamed run adopts no named file. The name round-trips
+  through the `Review id:` preamble line, which is what a restart matches on, so `normalizeId` keeps out what
+  that line cannot carry back. The page keys its own store on the name rather than the range when there is one
+  — a name never read under before therefore starts with nothing stored, which is what makes a new name an
+  altogether new review rather than the last read's notes under another heading.
 - The review file is round-trippable. Every field a note carries on the page is recoverable from the Markdown,
   which is what lets a restarted server, or a second tab, adopt notes the browser never had. The anchors live in
   the note's own id, so `parseReview` reads them out of `<!-- lcr:<id> -->` rather than out of the heading text.
@@ -142,7 +149,8 @@
   row indices have not moved, so nothing is rebound, but every height it measured under the old fold goes.
   The pane holds the topmost row it was showing still, answered for by the marker standing in its place
   when the fold has just taken that row away.
-- The browser store is keyed on repository and range together. Every run serves from `localhost` and a port one review frees the next one takes, so the origin cannot tell two projects apart; `/api/diff` reports `repo` as `repoId`, a hash of the repository root, and the page keys on `<repo>:<range>`. The path itself never reaches the page, because the store outlives the run.
+- The browser store is keyed on repository and read together — the range, or the `--id` name when the run has
+  one. Every run serves from `localhost` and a port one review frees the next one takes, so the origin cannot tell two projects apart; `/api/diff` reports `repo` as `repoId`, a hash of the repository root, and the page keys on `<repo>:<range>` or `<repo>:#<id>`. The path itself never reaches the page, because the store outlives the run.
 - Bookmarks are navigation, not feedback: they are never submitted, and `Clear all` in the footer leaves them alone. One per row, keyed by `bmKey` on the same row anchor a note uses, so revealed context carries them and `keyIndex` turns them back into a place on screen.
 - Bookmarks last one sitting, not one project. They live in `sessionStorage` under their own key, stamped with the read that made them: the tab that closes takes them, a reload keeps them, and a record whose stamp is another repository or range is dropped rather than restored. **New review** clears them too. Notes are the opposite and stay in the durable per-repository store.
 - The bookmark list sits under the file tree, in the pane the header toggle hides, and shows itself only while something is bookmarked. It reads in diff order, not the order bookmarks were made, so stepping through it walks the review top to bottom; one whose file or line the diff no longer holds sorts to the end as `gone`. `alt+up`/`alt+down` step it from anywhere outside a text field.

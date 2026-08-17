@@ -12,6 +12,11 @@ export interface ServerOptions {
   repoRoot: string;
   outDir: string;
   range: string;
+  /**
+   * Name this review was started under, from `--id`; empty when the diff is the identity. The page
+   * keys its own store on it, so a name it has not seen before starts with nothing stored.
+   */
+  reviewId: string;
   /** `-U` value the diff was produced with; the page needs it to spot a trailing hidden region. */
   context: number;
   getDiff: () => Promise<DiffFile[]>;
@@ -57,6 +62,7 @@ export function startServer(options: ServerOptions) {
     console.log(`\n  port ${options.port} is in use, using ${server.port} instead`);
   }
   console.log(`\n  git review  ->  http://localhost:${server.port}`);
+  if (options.reviewId) console.log(`  id:   ${options.reviewId}`);
   console.log(`  diff: ${options.range}`);
   console.log(`  repo: ${options.repoRoot}`);
   console.log(`  out:  ${options.outDir}/`);
@@ -110,6 +116,7 @@ function serve(options: ServerOptions, port: number) {
           return Response.json({
             repo: repoId(options.repoRoot),
             range: options.range,
+            id: options.reviewId,
             context: options.context,
             files,
             statuses,

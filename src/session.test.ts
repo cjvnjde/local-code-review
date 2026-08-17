@@ -282,9 +282,10 @@ describe("createSession", () => {
 });
 
 /** One review file written with the given context, named so the stamps sort as given. */
-const reviewFile = (stamp: string, range: string, branch?: string, base?: string) =>
+const reviewFile = (stamp: string, range: string, branch?: string, base?: string, id?: string) =>
   [`review-${stamp}.md`, renderMarkdown({
     range,
+    ...(id ? { id } : {}),
     ...(branch ? { branch } : {}),
     ...(base ? { base } : {}),
     notes: [noteFromComment(note("a|n12|n12|#1"))],
@@ -328,6 +329,70 @@ describe("adoptMatching", () => {
     expect(matchesContext({ range: "HEAD" }, { range: "HEAD", branch: "feat", base: "abc" })).toBe(true);
     expect(matchesContext({ range: "HEAD", branch: "feat" }, { range: "HEAD" })).toBe(true);
     expect(matchesContext({ range: "HEAD" }, { range: "HEAD~1" })).toBe(false);
+  });
+
+  test("a name is the whole identity: it outranks the diff, and both sides must agree on it", () => {
+    // The same name continues its review wherever the diff, branch, and base have moved to since.
+    expect(matchesContext(
+      { range: "main..HEAD", id: "auth", branch: "feat", base: "abc" },
+      { range: "HEAD", id: "auth", branch: "other", base: "def" },
+    )).toBe(true);
+    // Another name is another review, and a run that names none stays out of every named one.
+    expect(matchesContext({ range: "HEAD", id: "auth" }, { range: "HEAD", id: "docs" })).toBe(false);
+    expect(matchesContext({ range: "HEAD", id: "auth" }, { range: "HEAD" })).toBe(false);
+    expect(matchesContext({ range: "HEAD" }, { range: "HEAD", id: "auth" })).toBe(false);
+  });
+});
+
+describe("named reviews", () => {
+  const fill = async (...files: (readonly [string, string])[]) => {
+    const dir = await mkdtemp(path.join(tmpdir(), "lcr-session-"));
+    for (const [name, text] of files) await writeFile(path.join(dir, name), text, "utf8");
+    return dir;
+  };
+  const named = (dir: string, id: string, range = "HEAD") =>
+    createSession(dir, ".", range, { range, id, branch: "feat", base: "abc123" });
+
+  test("the same name continues its review, even from another diff", async () => {
+    const dir = await fill(
+      reviewFile("2026-01-01T00-00-00", "main..HEAD", "feat", "abc123", "auth"),
+      reviewFile("2026-01-02T00-00-00", "HEAD", "feat", "abc123"),
+    );
+    expect(await named(dir, "auth").adoptMatching()).toBe("review-2026-01-01T00-00-00.md");
+  });
+
+  test("a name nothing was written under yet starts an altogether new review", async () => {
+    const dir = await fill(
+      reviewFile("2026-01-01T00-00-00", "HEAD", "feat", "abc123", "auth"),
+      reviewFile("2026-01-02T00-00-00", "HEAD", "feat", "abc123"),
+    );
+    const session = named(dir, "docs");
+    expect(await session.adoptMatching()).toBe("");
+
+    const { file } = await session.save({ comments: [note("a|n12|n12|#1")] });
+    const doc = await read(dir, path.basename(file));
+    expect(doc.id).toBe("docs");
+    expect(doc.notes.map((entry) => entry.id)).toEqual(["a|n12|n12|#1"]);
+    // The reviews already on disk are untouched history.
+    expect(await listReviews(dir, ".")).toHaveLength(3);
+  });
+
+  test("an unnamed run leaves a named review alone, however well its diff matches", async () => {
+    const dir = await fill(reviewFile("2026-01-01T00-00-00", "HEAD", "feat", "abc123", "auth"));
+    const session = createSession(dir, ".", "HEAD", { range: "HEAD", branch: "feat", base: "abc123" });
+    expect(await session.adoptMatching()).toBe("");
+  });
+
+  test("a named review keeps its name across saves and replies", async () => {
+    const dir = await fill();
+    const session = named(dir, "auth", "main..HEAD");
+    const { file } = await session.save({ comments: [note("a|n12|n12|#1")] });
+    await session.reply("a|n12|n12|#1", "Also the fixture, please.");
+
+    const doc = await read(dir, path.basename(file));
+    expect(doc).toMatchObject({ id: "auth", range: "main..HEAD", branch: "feat", base: "abc123" });
+    // A restart under that name comes back to this file.
+    expect(await named(dir, "auth", "HEAD").adoptMatching()).toBe(path.basename(file));
   });
 });
 

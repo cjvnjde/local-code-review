@@ -393,8 +393,29 @@ describe("review context", () => {
 
   test("a file from before these fields parses with neither", () => {
     const doc = parseReview(renderMarkdown({ range: "HEAD", notes: [] }));
+    expect(doc.id).toBeUndefined();
     expect(doc.branch).toBeUndefined();
     expect(doc.base).toBeUndefined();
+  });
+
+  test("the name a review was opened under survives the round trip", () => {
+    const markdown = renderMarkdown({
+      range: "HEAD",
+      id: "auth rework",
+      branch: "feature-x",
+      notes: [noteFromComment(comment)],
+    });
+    expect(markdown).toContain("Review id: `auth rework`");
+    expect(parseReview(markdown).id).toBe("auth rework");
+  });
+
+  test("a Review id line in a note's own prose is not read as the review's", () => {
+    const doc = parseReview(renderMarkdown({
+      range: "HEAD",
+      notes: [noteFromComment({ ...comment, body: "Review id: `other`\nis what the log says." })],
+    }));
+    expect(doc.id).toBeUndefined();
+    expect(doc.notes[0]!.body).toBe("Review id: `other`\nis what the log says.");
   });
 
   test("a Branch line in a note's own prose is not read as the review's", () => {

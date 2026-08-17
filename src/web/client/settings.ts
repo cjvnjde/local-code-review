@@ -71,7 +71,8 @@ function renderReviewList(){
   host.hidden=false;
   host.innerHTML=[...reviews].reverse().map(r=>{
     const current=r.file===sessionName;
-    const where=[r.branch,r.range].filter(Boolean).join(' · ');
+    // A named review says its name first: that is what it is asked for by, whatever diff it was opened on.
+    const where=[r.id?'#'+r.id:'',r.branch,r.range].filter(Boolean).join(' · ');
     return '<div class="rvitem'+(current?' cur':'')+'">'+
       '<div class="rvtx"><span class="rvwhen">'+esc(reviewWhen(r.file))+'</span>'+
       (where?'<span class="rvwhere" title="'+esc(where)+'">'+esc(where)+'</span>':'')+

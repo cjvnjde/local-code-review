@@ -27,12 +27,19 @@ const diffSource = {
 };
 
 const [branch, base] = await Promise.all([currentBranch(repoRoot), diffBase(diffSource)]);
-const session = createSession(repoRoot, options.outDir, range, { range, branch, base });
-// A restart on the same diff continues its conversation; any other context starts its own. The
-// files that did not match are history, reachable from the page's review picker.
+const session = createSession(repoRoot, options.outDir, range, {
+  range,
+  branch,
+  base,
+  ...(options.id ? { id: options.id } : {}),
+});
+// A restart on the same diff continues its conversation; any other context starts its own. A run
+// given a name continues the review of that name instead, whatever diff it was opened on. The files
+// that did not match are history, reachable from the page's review picker.
 if (!(await session.adoptMatching())) {
   const others = (await listReviews(repoRoot, options.outDir)).length;
-  if (others) console.log(`\n  ${others} earlier review file${others === 1 ? " is" : "s are"} for other diffs; starting fresh`);
+  if (others && options.id) console.log(`\n  nothing saved under "${options.id}" yet; starting that review`);
+  else if (others) console.log(`\n  ${others} earlier review file${others === 1 ? " is" : "s are"} for other diffs; starting fresh`);
 }
 const hub = createHub();
 
@@ -48,6 +55,7 @@ const server = startServer({
   repoRoot,
   outDir: options.outDir,
   range,
+  reviewId: options.id,
   context: options.context,
   getDiff: () => getDiff(diffSource),
   getContext: (file, start, end) => getFileContext(diffSource, file, start, end),

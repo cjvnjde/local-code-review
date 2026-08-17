@@ -34,6 +34,7 @@ lcr main...HEAD               # Compare current branch with main
 lcr --port 8080               # Start from another port
 lcr --out .feedback           # Store reviews elsewhere
 lcr --context 8               # Show more surrounding lines
+lcr --id auth-rework          # Name this review, and come back to it by that name
 ```
 
 Arguments not recognized by `lcr` are passed to `git diff`.
@@ -69,6 +70,7 @@ The page stays on the diff after you save, and follows the agent while it works.
 - Your own replies stay yours: **Edit** on one rewords it where it stands, **Delete** takes it back out of the file. The agent's messages are read-only — they are its account of what it did.
 - Notes stay attached as the code moves. When the change a note asked for removes the code it pointed at, the note is shown at the closest line left, or — when the file drops out of the diff entirely — at the end of the page, marked as unattached and still carrying the diff it was written against. You can keep replying to it either way.
 - One file holds the whole conversation, and each conversation knows its diff: the file records the range, the branch, and the base commit it was opened against. Restarting `lcr` on the same diff picks that conversation back up; a different range, branch, or base starts a fresh one, and the earlier files stay on disk as history. **Settings → New review** starts fresh by hand.
+- `lcr --id <name>` names the review instead, and the name is then what identifies it. Starting with the same name again continues that review however the diff has moved on — commit, rebase, or switch from `main...HEAD` to the working tree, and its notes and threads are still there. A name you have not used before starts an altogether new review, and a run with no `--id` leaves named reviews alone. The name shows in the header and beside the review in **Settings → Review file**.
 - **Settings → Review file** lists every saved review — when it was opened, its branch and range, and how many notes are still open. **Open** reopens one as the live conversation, with its notes shown against the current diff.
 - Notes from the branch's *other* reviews appear as dim markers on the lines they still match, so a remark made reviewing `main..HEAD` is not lost when you switch to reviewing the working tree. Hover the marker to read the note and its thread; **Continue in this review** carries it, history and all, into the review you are writing now.
 

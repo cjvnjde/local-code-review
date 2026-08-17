@@ -32,6 +32,7 @@ describe("describeReviews", () => {
     const dir = await workspace({
       "review-2026-01-01T00-00-00.md": renderMarkdown({
         range: "main..HEAD",
+        id: "auth-rework",
         branch: "feat",
         base: "abc123",
         notes: [settle(noteFromComment(line("a|n12|n12|#1"))), noteFromComment(line("a|n20|n20|#2"))],
@@ -45,12 +46,13 @@ describe("describeReviews", () => {
       {
         file: "review-2026-01-01T00-00-00.md",
         range: "main..HEAD",
+        id: "auth-rework",
         branch: "feat",
         base: "abc123",
         notes: 2,
         open: 1,
       },
-      { file: "review-2026-01-02T00-00-00.md", range: "HEAD", branch: "", base: "", notes: 0, open: 0 },
+      { file: "review-2026-01-02T00-00-00.md", range: "HEAD", id: "", branch: "", base: "", notes: 0, open: 0 },
     ]);
   });
 });

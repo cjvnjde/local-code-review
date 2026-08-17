@@ -36,7 +36,7 @@ async function loadNow(keep: boolean){
       '<br><br>Restart the server with different arguments.</div>';
     return;
   }
-  state.files=d.files; state.repo=d.repo||''; state.range=d.range;
+  state.files=d.files; state.repo=d.repo||''; state.range=d.range; state.reviewId=d.id||'';
   markTails(d.files,Number(d.context));
   state.byPath=new Map(d.files.map((f,i)=>[f.path,i]));
   // Oldest review file first, so a newer verdict on the same note replaces an older one.
@@ -47,6 +47,11 @@ async function loadNow(keep: boolean){
   });
   state.h.clear(); state.tree=null;
   el('range').textContent=d.range;
+  // The name the run was started under, when it has one: it, and not the diff, is which review this is.
+  const named=el('reviewId');
+  named.hidden=!state.reviewId;
+  named.textContent=state.reviewId;
+  named.title=state.reviewId?'Review id — this review is continued by starting lcr with --id '+state.reviewId:'';
   if(!state.loaded){ restore(); state.loaded=true; }
   if(review.ok) adopt(review.d);
   state.stale=new Set(pruneViewed());

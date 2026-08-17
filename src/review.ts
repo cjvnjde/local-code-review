@@ -21,6 +21,8 @@ export function renderMarkdown(doc: ReviewDoc): string {
     "",
     `Diff under review: \`${doc.range}\``,
   ];
+  // A named review says its name first: that name, not the diff, is what a restart matches it by.
+  if (doc.id) output.push(`Review id: \`${doc.id}\``);
   // The context the review was opened in, written so a restart can tell this conversation is its own.
   if (doc.branch) output.push(`Branch: \`${doc.branch}\``);
   if (doc.base) output.push(`Base: \`${doc.base}\``);

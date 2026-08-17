@@ -10,6 +10,7 @@
 <header>
   <button id="navToggle" type="button" title="Hide the file tree" aria-pressed="false"></button>
   <b>git review</b>
+  <span class="rvid" id="reviewId" hidden></span>
   <span class="range" id="range"></span>
   <span class="spacer"></span>
   <button id="pending" class="pending" type="button" hidden
@@ -63,6 +64,9 @@
         and your follow-ups. Saving again adds to it, and restarting <code>lcr</code> picks back up
         the review of the same diff, branch, and base — any other diff starts fresh. <b>New review</b>
         leaves the current file on disk as it is and opens a fresh one on your next save.</p>
+      <p class="note">Starting <code>lcr --id &lt;name&gt;</code> names the review instead: the same
+        name comes back to the same conversation however the diff has moved on, and a name you have
+        not used before starts an altogether new one.</p>
       <div id="reviewList" class="rvlist" hidden></div>
       <label><input type="checkbox" id="cfgSingle"> Keep only the newest review file</label>
       <button id="deleteReviews" class="danger" type="button" disabled>Delete review files</button>

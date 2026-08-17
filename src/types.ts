@@ -63,5 +63,10 @@ export interface CliOptions {
   context: number;
   /** Open the page in the default browser on start; `--no-open` turns it off. */
   open: boolean;
+  /**
+   * Name this review is asked for by, from `--id`; empty when the run did not name one. A named review
+   * is identified by that name instead of by the diff it was opened on.
+   */
+  id: string;
   diffArgs: string[];
 }
