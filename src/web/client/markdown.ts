@@ -1,5 +1,7 @@
 import { codeHtml, langOf } from './highlight.ts';
-import { esc } from './state.ts';
+import { noteSummary } from './note-list.ts';
+import { REF_SCHEME, noteByRef, refIn, refLabel } from './note-ref.ts';
+import { SVG, clip, esc, noteKey, state } from './state.ts';
 
 /* ---------- markdown ---------- */
 /**
@@ -189,6 +191,23 @@ function safeUrl(raw: string){
 }
 const href=(url: string,body: string)=>
   '<a href="'+esc(url)+'" target="_blank" rel="noreferrer noopener">'+body+'</a>';
+/**
+ * A reference to another note of this review, resolved as it is drawn rather than as it was written:
+ * the chip says where that note is now, and one naming a note the review no longer holds says so
+ * instead of pretending it can go there. `live.ts` reads the id off the button and follows it.
+ */
+function refHtml(ref: string,label: string){
+  const n=noteByRef(ref,state.notes.values());
+  if(!n){
+    const said=label.trim()?inline(label):esc(REF_SCHEME+ref);
+    return '<span class="nref gone" title="This note is not in this review any more">'+SVG.ref+
+      '<span class="t">'+said+'</span></span>';
+  }
+  const summary=noteSummary(n.body);
+  return '<button type="button" class="nref" data-nref="'+esc(n.id)+'" title="'+
+    esc(noteKey(n)+(summary?' — '+clip(summary,72):''))+'">'+SVG.ref+
+    '<span class="t">'+esc(refLabel(n))+'</span></button>';
+}
 /** Plain text, with the line breaks it was typed with kept: a note is read the way it was written. */
 const text=(v: string)=>esc(v).replace(/\n/g,'<br>');
 
@@ -213,11 +232,16 @@ export function inline(src: string): string{
       }
     }else if(tok==='['||tok==='!['){
       const link=LINK.exec(src.slice(from));
-      const url=link?safeUrl(link[3]):'';
-      if(link&&url){
-        // an image is shown as the link it is: this page never reaches out to the network for a note
-        const label=inline(link[2]||url);
-        html=link[1]?href(url,label||esc(url)):href(url,label); to=from+link[0].length;
+      // A note naming another note of this review is a chip that goes there, not a link that leaves.
+      const ref=link&&!link[1]?refIn(link[3]):'';
+      if(ref){ html=refHtml(ref,link[2]); to=from+link[0].length; }
+      else{
+        const url=link?safeUrl(link[3]):'';
+        if(link&&url){
+          // an image is shown as the link it is: this page never reaches out to the network for a note
+          const label=inline(link[2]||url);
+          html=link[1]?href(url,label||esc(url)):href(url,label); to=from+link[0].length;
+        }
       }
     }else if(tok[0]==='<'){
       const url=safeUrl(tok.slice(1,-1));

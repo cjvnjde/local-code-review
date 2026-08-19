@@ -155,6 +155,29 @@ el('pending').onclick=()=>{
   applyDiff();
 };
 
+/**
+ * A note that names another note is the way to it, so the chip in its prose is followed here. Reading
+ * the panel is a read of its own: a reference followed inside it stays inside it whenever the note it
+ * names is listed there, and goes to the diff — closing the panel on the way — when it is not.
+ */
+document.addEventListener('click',(e: any)=>{
+  const chip=e.target&&e.target.closest?e.target.closest('.nref[data-nref]'):null;
+  if(!chip) return;
+  e.preventDefault();
+  const id=chip.dataset.nref;
+  if(!state.notes.has(id)) return; // it left the review between the render and the click
+  const wrap: any=state.reader
+    &&[...el('rdrbody').querySelectorAll('.rdrn')].find((w: any)=>w.dataset.nid===id);
+  if(!wrap){ jumpToNote(id); return; }
+  markCurrentNote(id);
+  wrap.scrollIntoView({block:'start'});
+  const box=wrap.querySelector('.nbox');
+  if(!box) return;
+  box.classList.remove('bump');
+  void box.offsetWidth; // restart the pulse when the same note is asked for twice
+  box.classList.add('bump');
+});
+
 /** Brings one note on screen, opening whatever the reader had put away to get there. */
 export function jumpToNote(id: string){
   const note=state.notes.get(id); if(!note) return;

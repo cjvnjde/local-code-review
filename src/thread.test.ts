@@ -319,6 +319,14 @@ describe("parseReview", () => {
     expect(doc.notes[0]!.snippet).toBe(" foo ");
   });
 
+  test("a note naming another note keeps the link that names it", () => {
+    // The page writes a reference as a Markdown link the agent can follow by its `lcr:` tail, so the
+    // file has to hand it back exactly as written or the note it points at is lost.
+    const body = "Same reason as [src/cli.ts:42](lcr:mk1a) — see there.";
+    const doc = parseReview(write([{ ...comment, body }]));
+    expect(doc.notes[0]!.body).toBe(body);
+  });
+
   test("a whole-file note whose body opens with a diff fence keeps it as prose", () => {
     const body = "```diff\n+this is prose\n```";
     const doc = parseReview(write([{

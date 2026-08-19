@@ -338,6 +338,25 @@
   #ghpop .ghacts{display:flex;justify-content:flex-end;margin-top:9px}
   #ghpop .ghacts button{padding:5px 10px;font-size:var(--fs-xs);min-height:var(--tap)}
 
+  /* the review offered to a note that wants to name one of its own notes */
+  #refpop{position:fixed;z-index:30;display:flex;flex-direction:column;overflow:hidden;
+    background:var(--panel2);border:1px solid var(--edge-hi);border-radius:8px;
+    box-shadow:0 14px 34px rgba(0,0,0,.5);font-family:var(--sans);font-size:var(--fs-ui)}
+  #refpop[hidden]{display:none}
+  #refpop .rq{flex:none;margin:8px;padding:7px 9px;background:var(--crust);color:var(--ink);
+    border:1px solid var(--edge-hi);border-radius:5px;font:var(--fs-ui) var(--sans)}
+  #refpop .rq:focus{outline:none;border-color:var(--accent)}
+  #refpop .rflist{flex:1;overflow-y:auto;overscroll-behavior:contain;padding-bottom:6px}
+  #refpop .rfitem{display:flex;flex-direction:column;align-items:stretch;gap:2px;width:100%;
+    padding:6px 12px;border:none;border-radius:0;background:none;text-align:left;
+    text-transform:none;letter-spacing:0;font:var(--fs-ui) var(--sans);min-height:var(--tap-lg)}
+  #refpop .rfitem:hover,#refpop .rfitem[data-on]{background:var(--s0)}
+  #refpop .rfitem .loc{color:var(--mark);font:var(--fs-sm)/1.5 var(--mono);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #refpop .rfitem .tx{color:var(--ink-faint);font-size:var(--fs-sm);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #refpop .rfnone{padding:12px;color:var(--ink-faint);font-size:var(--fs-sm)}
+
   tr.nrow td{padding:0;background:var(--base)}
   .nbox{margin:8px 10px 10px 28px;border:1px solid var(--edge-hi);border-radius:6px;background:var(--panel2);overflow:hidden}
   /* the file's own note sits between header and table, full width and without the gutter indent */
@@ -362,6 +381,8 @@
   .nhead button{padding:5px 9px;min-height:var(--tap);font-size:var(--fs-xs)}
   .nhead .sug{color:var(--add)}
   .nhead .sug:hover{color:var(--add);border-color:var(--add)}
+  .nhead .refb,.acts .refb{color:var(--lav)}
+  .nhead .refb:hover,.acts .refb:hover{color:var(--lav);border-color:var(--lav)}
   .nbox.done{opacity:.7}
   .nbox.done:hover{opacity:1}
   .nbody{padding:10px 12px;font-family:var(--sans);font-size:var(--fs-code);line-height:1.55}
@@ -489,6 +510,17 @@
   .md hr{border:none;border-top:1px solid var(--edge-hi);margin:11px 0}
   .md a{color:var(--accent);text-decoration:none;border-bottom:1px solid rgba(137,180,250,.4)}
   .md a:hover{border-bottom-color:var(--accent)}
+  /* one note pointing at another: the chip says where that note is now, and clicking it goes there.
+     A reference the review no longer holds keeps the words it was written with and strikes them. */
+  .md .nref{display:inline-block;white-space:nowrap;font:var(--fs-sm)/1.5 var(--mono);letter-spacing:0;
+    text-transform:none;padding:0 7px;min-height:0;border:1px solid var(--edge-hi);border-radius:9px;
+    background:var(--s0);color:var(--mark);cursor:pointer}
+  .md .nref .i{display:inline-block;width:12px;height:12px;vertical-align:-2px;margin-right:4px;
+    color:var(--ink-faint)}
+  .md button.nref:hover{color:var(--mark);border-color:var(--mark);background:var(--s1)}
+  .md button.nref:hover .i{color:var(--mark)}
+  .md .nref.gone{color:var(--ink-faint);cursor:default}
+  .md .nref.gone .t{text-decoration:line-through}
   .md strong{font-weight:600;color:var(--ink)}
   .md del{color:var(--ink-faint)}
   .md code{font:var(--fs-sm)/1.5 var(--mono);background:var(--s0);border-radius:3px;padding:1px 5px;color:var(--ink)}

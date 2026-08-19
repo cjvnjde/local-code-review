@@ -30,6 +30,7 @@ A note section holds, in order: captured `diff` block, optional line-fragment li
 2. If last message is `**Agent**`, that note is already answered—leave it alone unless its `Status:` is `pending`.
 3. If last message is `**Reviewer**`, answer it, whatever the `Status:` line says. A follow-up on an applied note reopens it.
 4. Skip a note whose `Status:` is `applied` or `answered` and whose thread ends with your own reply. Verify current code still satisfies it and report it as already handled.
+5. Reviewer text may point at another note as Markdown link `[<heading>](lcr:<ref>)`. It names note in same file whose `<!-- lcr:... -->` marker ends with `#<ref>`. Read that note before deciding, and keep link exactly as written.
 
 ## Work a note
 

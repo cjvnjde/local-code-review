@@ -6,6 +6,7 @@ import { updateCount } from './footer.ts';
 import { codeHtml, langOf } from './highlight.ts';
 import { editorAction } from './keys.ts';
 import { save, withdrawNotes } from './persistence.ts';
+import { refButton, wireRefButton } from './ref-picker.ts';
 import { clearSel } from './selection.ts';
 import { FILE_ANCHOR, GLOBAL_ANCHOR, SVG, clip, el, esc, isFileNote, isGlobalNote, keyIndex, locKey, markRead, mintGlobalId, mintNoteId, rowKey, saveKeyHint, state, statusOf, unreadOf } from './state.ts';
 import { capturedLines, insertBlock, suggestLines, suggestionBlock } from './suggest.ts';
@@ -226,7 +227,7 @@ function editUI(box,ctx){
   // A note covering no lines has nothing to suggest a replacement for.
   const suggest=whole?'':'<button class="sug" title="Insert these lines as a suggested change">'+
     SVG.plus+' suggest</button>';
-  box.innerHTML=headHtml(f,whole?null:sp.label,whole?null:sp.snippet,suggest,ctx.scope)+
+  box.innerHTML=headHtml(f,whole?null:sp.label,whole?null:sp.snippet,suggest+refButton(id),ctx.scope)+
     '<div class="nedit"><textarea placeholder="'+
       (global?'What should be said about this review as a whole?':
       whole?'What should change in this file?':
@@ -237,6 +238,8 @@ function editUI(box,ctx){
   ta.value=ctx.body||'';
   const fit=autogrow(ta,NOTE_MAX); // after the value, so reopening a long note opens it at full height
   ta.focus();
+  // Pointing at another note is writing in this one, so the picker writes into the box like the rest.
+  wireRefButton(box,ta,id);
   const sug=box.querySelector('.sug');
   // The suggestion is seeded with whole lines even for a note on part of one: it replaces lines.
   if(sug) sug.onclick=()=>{

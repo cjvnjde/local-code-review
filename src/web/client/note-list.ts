@@ -1,3 +1,4 @@
+import { plainRefs } from './note-ref.ts';
 import { bodyParts } from './suggest.ts';
 
 /* ---------- the notes of one review, read as a list rather than as marks on a diff ---------- */
@@ -69,14 +70,15 @@ export function matchesFilter(filter: string,unread: number,status: string|null)
 /**
  * One line of a note, for the places that have room for one line. The prose is what identifies a
  * note; a note that is only a proposed replacement says so instead of showing a line of its code,
- * which would read as the file rather than as the remark.
+ * which would read as the file rather than as the remark. A reference to another note reads here as
+ * the note it names, because a line of text has no room to be a link.
  */
 export function noteSummary(body: string){
   const parts=bodyParts(body||'');
   const text=parts.find(p=>p.t==='text');
   if(text){
     const line=text.v.split('\n').map(l=>l.trim()).find(l=>l.length>0);
-    if(line) return line;
+    if(line) return plainRefs(line);
   }
   return parts.some(p=>p.t==='sug')?'suggested change':'';
 }

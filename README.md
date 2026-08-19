@@ -35,6 +35,7 @@ lcr --port 8080               # Start from another port
 lcr --out .feedback           # Store reviews elsewhere
 lcr --context 8               # Show more surrounding lines
 lcr --id auth-rework          # Name this review, and come back to it by that name
+lcr --version                 # Print which build this is
 ```
 
 Arguments not recognized by `lcr` are passed to `git diff`.
@@ -68,6 +69,7 @@ The page stays on the diff after you save, and follows the agent while it works.
 - The agent answers each note in the review file as it finishes it, and its reply appears under that note on the page. So does the diff it just changed.
 - **Reply** under any note to answer back. Your message goes straight into the same file, where the agent picks it up.
 - Your own replies stay yours: **Edit** on one rewords it where it stands, **Delete** takes it back out of the file. The agent's messages are read-only — they are its account of what it did.
+- **reference** in a note or a reply points at another note of this review: pick it from the list and the note carries a chip that goes there. The link travels in the review file too, so the agent reading it follows the same reference you do.
 - Notes stay attached as the code moves. When the change a note asked for removes the code it pointed at, the note is shown at the closest line left, or — when the file drops out of the diff entirely — at the end of the page, marked as unattached and still carrying the diff it was written against. You can keep replying to it either way.
 - One file holds the whole conversation, and each conversation knows its diff: the file records the range, the branch, and the base commit it was opened against. Restarting `lcr` on the same diff picks that conversation back up; a different range, branch, or base starts a fresh one, and the earlier files stay on disk as history. **Settings → New review** starts fresh by hand.
 - `lcr --id <name>` names the review instead, and the name is then what identifies it. Starting with the same name again continues that review however the diff has moved on — commit, rebase, or switch from `main...HEAD` to the working tree, and its notes and threads are still there. A name you have not used before starts an altogether new review, and a run with no `--id` leaves named reviews alone. The name shows in the header and beside the review in **Settings → Review file**.

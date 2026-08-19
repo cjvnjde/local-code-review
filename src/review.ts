@@ -67,6 +67,10 @@ const FOOTER = [
   "For each note, the last message in its thread is what you are answering. Everything above it is " +
     "history. A note with no thread yet is asking about the code under its `diff` block.",
   "",
+  "A note may point at another note of this review, written as a link like `[src/app.ts:12](lcr:mk1a)`. " +
+    "It names the note in this file whose `<!-- lcr:... -->` marker ends with `#mk1a`: read that one " +
+    "too before you answer, and leave the link exactly as it stands.",
+  "",
   "A note headed `### Overall note`, under `## Overall`, is about the review as a whole rather than " +
     "about one place in it, so it carries no path and no `diff` block. Answer it exactly like the " +
     "rest: it has its own `Status:` line and its own thread.",

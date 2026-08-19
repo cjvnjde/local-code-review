@@ -4,6 +4,7 @@ import { editorAction } from './keys.ts';
 import { mdHtml } from './markdown.ts';
 import { busyEditor } from './notes.ts';
 import { save } from './persistence.ts';
+import { refButton, wireRefButton } from './ref-picker.ts';
 import { SVG, esc, markRead, msgsOf, saveKeyHint, state } from './state.ts';
 import { bodyParts, capturedLines, lineDiff } from './suggest.ts';
 
@@ -114,12 +115,14 @@ function editMessage(box: any,note: any,m: any,done: ()=>void){
   const form: any=document.createElement('div'); form.className='medit';
   form.innerHTML='<textarea></textarea>'+
     '<div class="acts"><button class="primary">Save reply</button><button class="cancel">Cancel</button>'+
+    refButton(note.id)+
     '<span class="spacer"></span><span class="tip">'+saveKeyHint()+' save &middot; esc cancel</span></div>';
   const ta: any=form.querySelector('textarea');
   ta.value=m.body||'';
   ta.dataset.was=m.body||''; // what says the box is untouched and may step aside for the next one
   body.replaceWith(form);
   autogrow(ta,NOTE_MAX); // after the value, so a long message opens at full height
+  wireRefButton(form,ta,note.id);
   ta.focus();
   const shut=()=>form.replaceWith(body);
   form.__shut=shut;
@@ -219,11 +222,13 @@ function startReply(wrap: any,id: string,done: ()=>void){
   box.__done=done;
   box.innerHTML='<textarea placeholder="Reply to the agent"></textarea>'+
     '<div class="acts"><button class="primary">Send reply</button><button class="cancel">Cancel</button>'+
+    refButton(id)+
     '<span class="spacer"></span><span class="tip">'+saveKeyHint()+' send &middot; esc cancel</span></div>';
   const ta: any=box.querySelector('textarea');
   ta.dataset.nid=id;
   wrap.replaceWith(box);
   autogrow(ta,NOTE_MAX);
+  wireRefButton(box,ta,id);
   ta.focus();
   const shut=()=>box.replaceWith(replyButton(id,done));
   // The button disables itself, but enter still reaches the textarea mid-flight: one send at a time,

@@ -68,5 +68,7 @@ export interface CliOptions {
    * is identified by that name instead of by the diff it was opened on.
    */
   id: string;
+  /** `--version` asks what build this is and nothing else: it prints the stamp and never starts. */
+  version: boolean;
   diffArgs: string[];
 }

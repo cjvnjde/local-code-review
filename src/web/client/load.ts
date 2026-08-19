@@ -6,6 +6,7 @@ import { markTails } from './gaps.ts';
 import { setGhosts } from './ghosts.ts';
 import { pruneViewed, restore, save } from './persistence.ts';
 import { el, esc, idxOf, isMinted, reviewTime, state } from './state.ts';
+import { inTreeOrder } from './tree-model.ts';
 import { renderTree } from './tree.ts';
 
 /* ---------- load ---------- */
@@ -36,9 +37,10 @@ async function loadNow(keep: boolean){
       '<br><br>Restart the server with different arguments.</div>';
     return;
   }
-  state.files=d.files; state.repo=d.repo||''; state.range=d.range; state.reviewId=d.id||'';
-  markTails(d.files,Number(d.context));
-  state.byPath=new Map(d.files.map((f,i)=>[f.path,i]));
+  // Everything downstream reads "diff order" off this list, so the one order there is is the tree's.
+  state.files=inTreeOrder(d.files); state.repo=d.repo||''; state.range=d.range; state.reviewId=d.id||'';
+  markTails(state.files,Number(d.context));
+  state.byPath=new Map(state.files.map((f,i)=>[f.path,i]));
   // Oldest review file first, so a newer verdict on the same note replaces an older one.
   state.status=new Map(); state.statusByKey=new Map();
   (d.statuses||[]).forEach(s=>{

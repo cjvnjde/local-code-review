@@ -12,9 +12,15 @@ import { createSession } from "./session.ts";
 import { startServer } from "./server.ts";
 import { collectStatuses } from "./status.ts";
 import { parseReview } from "./thread.ts";
+import { VERSION } from "./version.ts";
 import { isNoise, watchDir, watchTree } from "./watch.ts";
 
 const options = parseArgs(process.argv.slice(2));
+// Asked before anything else: which build this is is answerable outside a repository too.
+if (options.version) {
+  console.log(VERSION);
+  process.exit(0);
+}
 const repoRoot = await findRepoRoot();
 process.chdir(repoRoot);
 

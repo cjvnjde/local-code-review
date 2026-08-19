@@ -2,7 +2,8 @@ import { setHidden, setViewed } from './diff-view.ts';
 import { isHidden } from './filters.ts';
 import { save } from './persistence.ts';
 import { el, idxOf, state } from './state.ts';
-import { dirTree, filesUnder, paintActive, renderTree } from './tree.ts';
+import { dirTree, filesUnder } from './tree-model.ts';
+import { paintActive, renderTree } from './tree.ts';
 
 /* ---------- tree interactions ---------- */
 function toggle(set,key){ set.has(key)?set.delete(key):set.add(key); }

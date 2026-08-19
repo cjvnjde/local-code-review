@@ -1,50 +1,17 @@
 import { filteredCount, filteredOut, isHidden, matchesHide } from './filters.ts';
 import { cardAt, revealShift } from './follow.ts';
-import { SVG, el, esc, idxOf, state } from './state.ts';
+import { SVG, el, esc, state } from './state.ts';
+import { buildTree, dirTree, filesUnder, shownChildren } from './tree-model.ts';
 
 /* ---------- file tree ---------- */
-export function dirTree(){
-  if(!state.tree) state.tree=buildTree(state.files);
-  return state.tree;
-}
-export function buildTree(files: any[]){
-  const root={dir:true,name:'',path:'',children:new Map()};
-  files.forEach(f=>{
-    const parts=f.path.split('/');
-    let node=root;
-    parts.forEach((p,pi)=>{
-      if(pi===parts.length-1){ node.children.set(p,{dir:false,name:p,path:f.path,file:f,idx:idxOf(f.path)}); return; }
-      if(!node.children.has(p)) node.children.set(p,{dir:true,name:p,path:(node.path?node.path+'/':'')+p,children:new Map()});
-      node=node.children.get(p);
-    });
-  });
-  squash(root);
-  return root;
-}
-function squash(node: any){
-  node.children.forEach(c=>{
-    if(!c.dir) return;
-    while(c.children.size===1){
-      const only=[...c.children.values()][0];
-      if(!only.dir) break;
-      c.name=c.name+'/'+only.name; c.path=only.path; c.children=only.children;
-    }
-    squash(c);
-  });
-}
-export function filesUnder(node: any,out?: string[]){
-  out=out||[];
-  node.children.forEach(c=>c.dir?filesUnder(c,out):out.push(c.path));
-  return out;
-}
+/** How many notes are on a path, for the count a tree row carries. */
 export function noteCount(p: string){ let n=0; state.notes.forEach(v=>{ if(v.file===p) n++; }); return n; }
 
 export function renderTree(){
   const root=state.filter?buildTree(state.files.filter(f=>f.path.toLowerCase().includes(state.filter))):dirTree();
   const html=[];
   const walk=(node,depth)=>{
-    [...node.children.values()]
-      .sort((a,b)=>a.dir===b.dir?a.name.localeCompare(b.name):a.dir?-1:1)
+    shownChildren(node)
       .forEach(c=>{
         const pad=10+depth*15;
         if(c.dir){

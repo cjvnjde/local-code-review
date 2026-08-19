@@ -13,6 +13,11 @@
 
 ## Behavior to preserve
 
+- `src/version.ts` holds the build stamp, and **bumping it is part of every change to what lcr serves**:
+  raise `<date>.<n>` — same day, next `n`; a new day, `.1` — in the same commit as the change itself. It is
+  what tells a reviewer whether the binary on their `PATH` is the source they just built, so a stale stamp is
+  worse than none. `lcr --version` (or `-v`) prints it and exits before git or the repository is touched, so
+  it answers outside a repository too, and the startup banner carries it beside the URL.
 - Default diff includes working-tree, staged, and untracked changes versus `HEAD`.
 - Explicit CLI arguments continue to pass through to `git diff`.
 - Review output remains Markdown under `.review/` by default.
@@ -114,6 +119,16 @@
   opens away from the page; an image is shown as a link, because the page fetches nothing from the network. The
   Markdown reaches the review file verbatim — `escapeText` only ever guards a line the parser would read as structure,
   and `unescapeLines` is its exact inverse — so what the file holds is what the page renders.
+- A note may name another note of the same review. The reference travels in the prose as the Markdown
+  link `[<heading>](lcr:<ref>)`, where `<ref>` is the tail `mintNoteId` ends every id with — the same
+  characters that close the target's `<!-- lcr:<id> -->` marker, so the agent reading the file can
+  follow it as well as the page can. That is the whole of what is written down: the chip is drawn from
+  the note as it stands when it is drawn, so it says where that note is now, and a reference no note —
+  or more than one note — answers to reads as a note the review no longer holds rather than as a
+  confident pointer at the wrong one. `refToken` writes it, `refIn` and `noteByRef` read it back, and
+  the editors insert it from the picker rather than by hand, because an id is not something to type.
+  Following one stays inside the all-notes panel while the note it names is listed there, and goes to
+  the diff otherwise.
 - A note's id is minted once by `mintNoteId`, as its location plus a `|#<unique>` suffix, and never re-derived. Statuses match on it, so a note written where a handled one stood is a new note. Stored notes whose id lacks that suffix are re-minted on restore as fresh, unsubmitted notes. Do not make ids derivable from location again.
 - A verdict only reaches a note that was handed over: `markSubmitted` stamps `sentAt` from the saved review file's name at first submission. The `noteKey` heading fallback, for a review file that lost its marker, additionally needs a heading claimed by exactly one submitted note and a file no older than that stamp.
 - A note may instead cover a whole file. It uses `*` for both row anchors, carries `scope:"file"` and no captured code, and renders as `### <path> (whole file)`. One per file, found by that anchor rather than by a predictable id, and mounted under the file header so binary and collapsed files keep it. `noteKey` must keep producing that same heading text.
@@ -127,6 +142,11 @@
   one any more.
 - File hide patterns are a display preference in settings. Manual eye toggles keep overriding them per file.
 - The header toggle collapses the file tree pane, and that state is a settings preference like the rest. Collapsing changes the diff pane's width, so it drops cached block heights and renders the diff again, exactly as a window resize does.
+- The diff pane lists the files in the order the tree lists them. `tree-model.ts` owns both the tree's shape
+  and that order, and `load` puts `state.files` in it once, before `state.byPath` is built from it — so
+  everything downstream that reads "diff order", the pane and the note and bookmark lists and the review
+  file's own sections, reads the one order the reviewer sees. Git sorts a path whole, which files a folder's
+  own files after its subfolders; do not order the pane by the diff's own listing again.
 - The tree follows the diff: the file under the top of the diff pane carries `.tw.sel`, read once per animation frame while scrolling and again after every tree or diff render. A file whose row is folded away marks the deepest folder still shown. The tree only scrolls itself when that row changes, so expanding a folder does not drag the pane back to the file being read.
 - Resetting viewed files goes through `setViewed`, so folds, stale badges, and the automatic-mark tracker unwind together with the marks. Notes and hide marks are not progress and stay. The button label is written by `updateCount`, which is the one place that counts marks.
 - Hunk separators expand the unchanged lines git left out. `/api/context` re-diffs one file with unlimited context and answers an inclusive new-side line range, which keeps every revision spec working without picking a side to read blobs from. The page splices those rows into the file, rebuilds the hunk header from the rows it now covers, and drops a separator once its gap closes. Expansions live only in the page; a reload starts over.

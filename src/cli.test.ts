@@ -9,6 +9,7 @@ describe("parseArgs", () => {
       context: 8,
       open: true,
       id: "",
+      version: false,
       diffArgs: ["HEAD~2", "--staged", "--", "*.ts"],
     });
   });
@@ -28,6 +29,13 @@ describe("parseArgs", () => {
   test("--id with nothing after it leaves the review unnamed", () => {
     expect(parseArgs(["--id"]).id).toBe("");
     expect(parseArgs(["--id", "   "]).id).toBe("");
+  });
+
+  test("--version asks what build this is, and never reaches git diff", () => {
+    expect(parseArgs(["--version"]).version).toBe(true);
+    expect(parseArgs(["-v"]).version).toBe(true);
+    expect(parseArgs(["--version"]).diffArgs).toEqual([]);
+    expect(parseArgs(["HEAD~1"]).version).toBe(false);
   });
 });
 

@@ -6,6 +6,7 @@ import type { GhostGroup, ReviewInfo } from "./history.ts";
 import type { ReviewSession } from "./session.ts";
 import type { ReviewNote } from "./thread.ts";
 import type { DiffFile, DiffRow, NoteStatus, ReviewComment, ReviewSubmission } from "./types.ts";
+import { VERSION } from "./version.ts";
 
 export interface ServerOptions {
   port: number;
@@ -61,7 +62,8 @@ export function startServer(options: ServerOptions) {
   if (options.port !== 0 && server.port !== options.port) {
     console.log(`\n  port ${options.port} is in use, using ${server.port} instead`);
   }
-  console.log(`\n  git review  ->  http://localhost:${server.port}`);
+  // The banner carries the build stamp: this line is the one place that says which lcr is serving.
+  console.log(`\n  git review ${VERSION}  ->  http://localhost:${server.port}`);
   if (options.reviewId) console.log(`  id:   ${options.reviewId}`);
   console.log(`  diff: ${options.range}`);
   console.log(`  repo: ${options.repoRoot}`);

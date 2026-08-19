@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { mdHtml } from "./markdown.ts";
+import { state } from "./state.ts";
 
 describe("mdHtml blocks", () => {
   test("prose is a paragraph and a typed line break stays one", () => {
@@ -164,6 +165,28 @@ describe("mdHtml inline", () => {
     );
     expect(mdHtml("<b>bold?</b>")).toBe("<p>&lt;b&gt;bold?&lt;/b&gt;</p>");
     expect(mdHtml("a < b && c > d")).toBe("<p>a &lt; b &amp;&amp; c &gt; d</p>");
+  });
+
+  test("a note naming another note is a chip that goes there", () => {
+    const note = { id: "src/cli.ts|n42|n42|#mk1a", file: "src/cli.ts", label: "42",
+      a: "n42", b: "n42", start: 42, end: 42, body: "Rename this" };
+    state.notes.set(note.id, note);
+    try{
+      const html = mdHtml("Same reason as [src/cli.ts:42](lcr:mk1a).");
+      expect(html).toContain('<button type="button" class="nref" data-nref="src/cli.ts|n42|n42|#mk1a"');
+      // drawn from the note as it stands now, not from the words the reference was written with
+      expect(html).toContain('<span class="t">cli.ts:42</span>');
+      expect(html).toContain('title="src/cli.ts:42 — Rename this"');
+    }finally{
+      state.notes.delete(note.id);
+    }
+  });
+
+  test("a reference to a note the review no longer holds says so", () => {
+    const html = mdHtml("Same reason as [src/cli.ts:42](lcr:gone).");
+    expect(html).toContain('<span class="nref gone"');
+    expect(html).toContain("<span class=\"t\">src/cli.ts:42</span>");
+    expect(html).not.toContain("<button");
   });
 
   test("a heading and a table cell are inline-rendered too", () => {
