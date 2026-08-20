@@ -1,6 +1,7 @@
 import { globalNotes, looseNotes, replaceIn, strayNotes } from './anchor.ts';
 import { bmKey } from './bookmarks.ts';
 import { delRunAt, delRuns, drawnRows, foldingDeleted, revealRow, toggleFileFold, toggleRun } from './deleted.ts';
+import { imagesHtml } from './images.ts';
 import { expandStep } from './expand.ts';
 import { autoHidden, isHidden } from './filters.ts';
 import { gapOf, gapSize } from './gaps.ts';
@@ -140,9 +141,13 @@ function fileHtml(f,fi){
     '<div class="fnotes" id="fn'+fi+'"></div>';
   // Notes the file can no longer hold on a line sit at the end of its card, still under their file.
   const loose='<div class="loose" id="lo'+fi+'" hidden></div>';
-  if(f.binary) return '<div class="'+cls+'" id="f'+fi+'" data-path="'+esc(f.path)+'">'+head+
-    '<div class="empty">Binary file — not shown.</div>'+loose+'</div>';
-  return '<div class="'+cls+'" id="f'+fi+'" data-path="'+esc(f.path)+'">'+head+
+  // An image is the one binary the page can show, and an SVG is a text diff worth seeing drawn too.
+  const images=imagesHtml(f);
+  if(f.binary){
+    return '<div class="'+cls+'" id="f'+fi+'" data-path="'+esc(f.path)+'">'+head+
+      (images||'<div class="empty">Binary file — not shown.</div>')+loose+'</div>';
+  }
+  return '<div class="'+cls+'" id="f'+fi+'" data-path="'+esc(f.path)+'">'+head+images+
     '<table>'+tableHtml(f,fi)+'</table>'+loose+'</div>';
 }
 function tableHtml(f,fi){

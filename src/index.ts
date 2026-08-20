@@ -1,9 +1,11 @@
 #!/usr/bin/env bun
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { readAttachment, saveAttachment } from "./attach.ts";
+import { readBlob } from "./blob.ts";
 import { openInBrowser } from "./browser.ts";
 import { parseArgs } from "./cli.ts";
-import { diffBase, diffRangeLabel, fingerprint, getDiff, getFileContext } from "./diff.ts";
+import { diffBase, diffRangeLabel, diffSides, fingerprint, getDiff, getFileContext } from "./diff.ts";
 import { createHub } from "./events.ts";
 import { currentBranch, findRepoRoot } from "./git.ts";
 import { collectGhosts, describeReviews } from "./history.ts";
@@ -32,7 +34,13 @@ const diffSource = {
   diffArgs: options.diffArgs,
 };
 
-const [branch, base] = await Promise.all([currentBranch(repoRoot), diffBase(diffSource)]);
+// The revisions the diff is between are fixed by the arguments it was started with, so they are
+// worked out once; what they point at — the working tree, the index — is re-read on every request.
+const [branch, base, sides] = await Promise.all([
+  currentBranch(repoRoot),
+  diffBase(diffSource),
+  diffSides(diffSource),
+]);
 const session = createSession(repoRoot, options.outDir, range, {
   range,
   branch,
@@ -65,6 +73,10 @@ const server = startServer({
   context: options.context,
   getDiff: () => getDiff(diffSource),
   getContext: (file, start, end) => getFileContext(diffSource, file, start, end),
+  readBlob: (side, file) => readBlob(repoRoot, side === "old" ? sides.old : sides.new, file),
+  // Beside the review file, because that is what a note's link to one resolves against.
+  saveAttachment: (bytes, type) => saveAttachment(repoRoot, options.outDir, bytes, type),
+  readAttachment: (name) => readAttachment(repoRoot, options.outDir, name),
   getStatuses: () => collectStatuses(repoRoot, options.outDir),
   listReviews: () => listReviews(repoRoot, options.outDir),
   deleteReviews: () => deleteReviews(repoRoot, options.outDir),

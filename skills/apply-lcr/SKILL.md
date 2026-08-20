@@ -30,7 +30,8 @@ A note section holds, in order: captured `diff` block, optional line-fragment li
 2. If last message is `**Agent**`, that note is already answered—leave it alone unless its `Status:` is `pending`.
 3. If last message is `**Reviewer**`, answer it, whatever the `Status:` line says. A follow-up on an applied note reopens it.
 4. Skip a note whose `Status:` is `applied` or `answered` and whose thread ends with your own reply. Verify current code still satisfies it and report it as already handled.
-5. Reviewer text may point at another note as Markdown link `[<heading>](lcr:<ref>)`. It names note in same file whose `<!-- lcr:... -->` marker ends with `#<ref>`. Read that note before deciding, and keep link exactly as written.
+5. Reviewer text or thread message may attach picture as Markdown image `![<alt>](images/<name>)`. Path is relative to review file, so `images/x.png` in `.review/review-*.md` is `.review/images/x.png` from repository root. Open and look at every attached image before deciding that note. It is evidence the reviewer chose to show rather than describe—broken layout, wrong render, console output, design to match—so treat it as part of the note, not decoration. Describe what you saw in your reply. When you cannot read image files, say so in that note's reply instead of guessing what it shows.
+6. Reviewer text may point at another note as Markdown link `[<heading>](lcr:<ref>)`. It names note in same file whose `<!-- lcr:... -->` marker ends with `#<ref>`. Read that note before deciding, and keep link exactly as written.
 
 ## Work a note
 
@@ -72,10 +73,11 @@ Do this for each note as soon as that note's edit is complete, before starting n
 
    Reply is where full explanation goes: what you changed and why, or evidence behind your answer, or exactly what you need to unblock a `needs-input` note. Ask the reviewer directly when you need something.
 3. Append only. Never insert a message above an existing one, reorder messages, edit a `**Reviewer**` message, or edit an earlier `**Agent**` message.
-4. Change nothing else in file. Keep headings, `<!-- lcr:... -->` markers, `diff` blocks, fragment lines, reviewer text, and generated footer byte-identical.
-5. Update status and reply only after corresponding edits are complete, so file never claims work that does not exist.
-6. Leave notes you have not reached as they are.
-7. If file has no status lines, it predates this format. Leave it unchanged and report outcome in reply only.
+4. You may show something in a reply the same way reviewer does: write image file into `images/` directory beside review file, then link it from your message as `![<alt>](images/<name>)`. Use only when picture answers note better than words—rendered output, generated chart. Never delete or overwrite an image already in that directory; reviewer's notes point at those.
+5. Change nothing else in file. Keep headings, `<!-- lcr:... -->` markers, `diff` blocks, fragment lines, reviewer text, and generated footer byte-identical.
+6. Update status and reply only after corresponding edits are complete, so file never claims work that does not exist.
+7. Leave notes you have not reached as they are.
+8. If file has no status lines, it predates this format. Leave it unchanged and report outcome in reply only.
 
 ## Finish
 

@@ -16,6 +16,9 @@
   <button id="pending" class="pending" type="button" hidden
     title="The working tree changed while you were writing. Refreshes as soon as this note is done.">diff changed</button>
   <span id="live" class="live" title="Not connected"></span>
+  <div class="quick" id="quick">
+    <button id="qFoldDel" type="button" aria-pressed="false"></button>
+  </div>
   <button id="gear" title="Settings"></button>
   <div id="settings" hidden>
     <h4>Automatic viewed</h4>
@@ -47,7 +50,8 @@
     </div>
     <div class="settings-section">
       <h4>Removed lines</h4>
-      <label><input type="checkbox" id="cfgFoldDel"> Fold removed lines into blocks I can open</label>
+      <p class="note"><b>removed</b> in the page header is the switch: it is answered while reading
+        rather than while configuring, so it sits a click away up there instead of down here.</p>
       <p class="note">Reads the diff as the file it is about to be: every run of removed lines becomes
         one line you click to open, and click again to fold away. Nothing is dropped — a run a note is
         attached to stays open, and jumping to a bookmark or a note inside a fold opens it. Which runs
@@ -100,6 +104,15 @@
         covers re-aims that note and keeps what you have typed. Hold <b>alt</b> (option) while
         dragging to select the text itself instead: nothing is noted, so the highlight stays yours
         to copy.</p>
+    </div>
+    <div class="settings-section">
+      <h4>Pictures in notes</h4>
+      <p class="note">Paste a screenshot into any note or reply, drop an image file anywhere on the box, or
+        use <b>image</b> to pick one. It is kept in <code>images/</code> beside the review file and written
+        into your text as ordinary Markdown, so the agent reading the review opens the same picture you
+        attached.</p>
+      <p class="note">The same picture attached twice is kept once. Nothing is ever deleted from that
+        directory automatically — a picture belongs to whichever notes still point at it.</p>
     </div>
     <div class="settings-section">
       <h4>Note editor</h4>

@@ -153,6 +153,25 @@ describe("mdHtml inline", () => {
     expect(mdHtml("![shot](https://example.com/a.png)")).toContain(">shot</a>");
   });
 
+  test("a picture the reviewer attached is drawn, and any other image stays a link", () => {
+    const html = mdHtml("![the header](images/a1b2c3.png)");
+    expect(html).toContain('<img src="/api/attachment?name=a1b2c3.png"');
+    expect(html).toContain('alt="the header"');
+    // The one place the page draws a picture is its own review directory; the network is still a link.
+    expect(mdHtml("![shot](https://example.com/a.png)")).not.toContain("<img");
+    expect(mdHtml("![shot](images/../../etc/passwd.png)")).not.toContain("<img");
+    // Only an image: the same target as an ordinary link is a link to the file it names.
+    expect(mdHtml("[the header](images/a1b2c3.png)")).not.toContain("<img");
+  });
+
+  test("a picture reads in the prose around it rather than instead of it", () => {
+    expect(mdHtml("before\n\n![a](images/a.png)\n\nafter")).toBe(
+      '<p>before</p><p><a class="shot" href="/api/attachment?name=a.png" target="_blank"' +
+        ' rel="noreferrer noopener" title="a"><img src="/api/attachment?name=a.png" alt="a"' +
+        ' loading="lazy" decoding="async"></a></p><p>after</p>',
+    );
+  });
+
   test("a relative link keeps working and a script one does not", () => {
     expect(mdHtml("[file](./src/app.ts)")).toContain('href="./src/app.ts"');
     expect(mdHtml("[x](javascript:alert(1))")).toBe("<p>[x](javascript:alert(1))</p>");

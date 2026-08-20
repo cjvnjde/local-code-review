@@ -1,3 +1,4 @@
+import { attachSrc, shotHtml } from './attach.ts';
 import { codeHtml, langOf } from './highlight.ts';
 import { noteSummary } from './note-list.ts';
 import { REF_SCHEME, noteByRef, refIn, refLabel } from './note-ref.ts';
@@ -237,8 +238,12 @@ export function inline(src: string): string{
       if(ref){ html=refHtml(ref,link[2]); to=from+link[0].length; }
       else{
         const url=link?safeUrl(link[3]):'';
-        if(link&&url){
-          // an image is shown as the link it is: this page never reaches out to the network for a note
+        // A picture the reviewer attached is drawn, because it is the review's own file and the note
+        // is about what is in it. Any other image is shown as the link it is: this page never
+        // reaches out to the network for a note.
+        const shot=link&&link[1]?attachSrc(link[3]):'';
+        if(shot){ html=shotHtml(shot,link[2]); to=from+link[0].length; }
+        else if(link&&url){
           const label=inline(link[2]||url);
           html=link[1]?href(url,label||esc(url)):href(url,label); to=from+link[0].length;
         }

@@ -1,4 +1,5 @@
 import { placeOf } from './anchor.ts';
+import { attachButton, wireAttach } from './attach.ts';
 import { NOTE_MAX, autogrow } from './autogrow.ts';
 import { globalHost, repaintRow, syncGlobals } from './diff-view.ts';
 import { reaims } from './drag.ts';
@@ -227,7 +228,8 @@ function editUI(box,ctx){
   // A note covering no lines has nothing to suggest a replacement for.
   const suggest=whole?'':'<button class="sug" title="Insert these lines as a suggested change">'+
     SVG.plus+' suggest</button>';
-  box.innerHTML=headHtml(f,whole?null:sp.label,whole?null:sp.snippet,suggest+refButton(id),ctx.scope)+
+  box.innerHTML=headHtml(f,whole?null:sp.label,whole?null:sp.snippet,
+      suggest+attachButton()+refButton(id),ctx.scope)+
     '<div class="nedit"><textarea placeholder="'+
       (global?'What should be said about this review as a whole?':
       whole?'What should change in this file?':
@@ -240,6 +242,8 @@ function editUI(box,ctx){
   ta.focus();
   // Pointing at another note is writing in this one, so the picker writes into the box like the rest.
   wireRefButton(box,ta,id);
+  // A picture is written in as well: the link lands in the prose, and the box grows to hold it.
+  wireAttach(box,ta);
   const sug=box.querySelector('.sug');
   // The suggestion is seeded with whole lines even for a note on part of one: it replaces lines.
   if(sug) sug.onclick=()=>{

@@ -1,5 +1,7 @@
 import type { Server } from "bun";
 import page from "./web/shell.html";
+import { ATTACH_MAX_BYTES, attachExtension, attachRef } from "./attach.ts";
+import { imageType } from "./blob.ts";
 import { fingerprint } from "./diff.ts";
 import type { Hub } from "./events.ts";
 import type { GhostGroup, ReviewInfo } from "./history.ts";
@@ -22,6 +24,12 @@ export interface ServerOptions {
   context: number;
   getDiff: () => Promise<DiffFile[]>;
   getContext: (path: string, start: number, end: number) => Promise<DiffRow[]>;
+  /** One side of one file as bytes, for the content a binary diff prints no lines of. */
+  readBlob: (side: "old" | "new", path: string) => Promise<Uint8Array | null>;
+  /** Keeps one picture the reviewer attached to a note; answers the name it is kept under. */
+  saveAttachment: (bytes: Uint8Array, type: string) => Promise<string>;
+  /** One of those pictures back, for the page drawing the note that points at it. */
+  readAttachment: (name: string) => Promise<{ bytes: Uint8Array; type: string } | null>;
   getStatuses: () => Promise<NoteStatus[]>;
   listReviews: () => Promise<string[]>;
   deleteReviews: () => Promise<string[]>;
@@ -133,6 +141,9 @@ function serve(options: ServerOptions, port: number) {
           }
           return Response.json({ rows: await options.getContext(path, start, end) });
         }
+        if (url.pathname === "/api/blob") return blob(options, request, url);
+        if (url.pathname === "/api/attach") return attach(options, request);
+        if (url.pathname === "/api/attachment") return attachment(options, request, url);
         if (url.pathname === "/api/review") {
           if (request.method === "GET") {
             // Statuses ride along: a reply and the verdict it explains are written in the same pass,
@@ -287,6 +298,108 @@ function serve(options: ServerOptions, port: number) {
   });
 
   return server;
+}
+
+/**
+ * One side of one image, straight out of the repository. The diff is what says which files exist to
+ * be asked for — a path it does not list is not served, whatever it points at — and the status of
+ * the file is what says which of its two sides does: the side that added a file has no old blob and
+ * the side that deleted it has no new one, and both answer 404 rather than an empty picture.
+ *
+ * A diff refresh redraws every file, so the same image is asked for again and again; the file's own
+ * hash is its ETag, which turns all but the first of those into a 304 and keeps the picture on
+ * screen from blinking on every repaint.
+ */
+async function blob(options: ServerOptions, request: Request, url: URL): Promise<Response> {
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    return new Response("method not allowed", { status: 405, headers: { allow: "GET, HEAD" } });
+  }
+  const wanted = url.searchParams.get("path") ?? "";
+  const side = url.searchParams.get("side") === "old" ? "old" : "new";
+  const file = (await options.getDiff()).find((entry) => entry.path === wanted);
+  if (!file) return Response.json({ error: "That file is not in this diff." }, { status: 404 });
+  // A rename moved the file, so its old side is still under the name it had then.
+  const from = side === "old" ? file.from ?? file.path : file.path;
+  const type = imageType(from);
+  if (!type) return Response.json({ error: "That file is not an image." }, { status: 415 });
+  if (side === "old" ? file.status === "added" : file.status === "deleted") {
+    return Response.json({ error: `The ${side} side has no such file.` }, { status: 404 });
+  }
+  const tag = `"${file.hash}-${side}"`;
+  if (request.headers.get("if-none-match") === tag) {
+    return new Response(null, { status: 304, headers: { etag: tag, "cache-control": "no-cache" } });
+  }
+  const bytes = await options.readBlob(side, from);
+  if (!bytes) return Response.json({ error: "That file could not be read." }, { status: 404 });
+  return new Response(request.method === "HEAD" ? null : bytes, {
+    headers: {
+      "content-type": type,
+      "content-length": String(bytes.byteLength),
+      etag: tag,
+      "cache-control": "no-cache",
+      // Only ever drawn into an <img>, where nothing runs; this is for the tab that opens one directly.
+      "content-security-policy": "default-src 'none'; sandbox",
+      "x-content-type-options": "nosniff",
+    },
+  });
+}
+
+/**
+ * Takes one picture into the review: the bytes come up as the body, the type as the header, and what
+ * goes back is the name the note is to point at. Nothing about the note is known here — a picture is
+ * kept the moment it is pasted, before the note it belongs to is written, let alone saved — so what
+ * this answers is a name and the reviewer's prose is what makes anything of it.
+ */
+async function attach(options: ServerOptions, request: Request): Promise<Response> {
+  if (request.method !== "POST") {
+    return new Response("method not allowed", { status: 405, headers: { allow: "POST" } });
+  }
+  const type = request.headers.get("content-type") ?? "";
+  if (!attachExtension(type)) {
+    return Response.json({ error: "That is not an image lcr can keep." }, { status: 415 });
+  }
+  const bytes = new Uint8Array(await request.arrayBuffer());
+  if (!bytes.byteLength) return Response.json({ error: "That image is empty." }, { status: 400 });
+  if (bytes.byteLength > ATTACH_MAX_BYTES) {
+    return Response.json(
+      { error: `That image is ${Math.round(bytes.byteLength / 1e6)}MB; the limit is ${Math.round(ATTACH_MAX_BYTES / 1e6)}MB.` },
+      { status: 413 },
+    );
+  }
+  const name = await options.saveAttachment(bytes, type);
+  if (!name) return Response.json({ error: "That image could not be kept." }, { status: 415 });
+  console.log(`\n  attached ${attachRef(name)} in ${options.outDir}/\n`);
+  return Response.json({ name, ref: attachRef(name) });
+}
+
+/**
+ * One attached picture back. The name is the hash of what is in it, so it can never come to mean
+ * another picture: the response is cacheable for good, which is what keeps a note full of screenshots
+ * from refetching them every time a reply repaints it.
+ */
+async function attachment(options: ServerOptions, request: Request, url: URL): Promise<Response> {
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    return new Response("method not allowed", { status: 405, headers: { allow: "GET, HEAD" } });
+  }
+  const name = url.searchParams.get("name") ?? "";
+  const tag = `"${name}"`;
+  // A name is the content, so a revalidation of one is answerable without reading the file at all.
+  if (request.headers.get("if-none-match") === tag) {
+    return new Response(null, { status: 304, headers: { etag: tag } });
+  }
+  const found = await options.readAttachment(name);
+  if (!found) return Response.json({ error: "No such attachment." }, { status: 404 });
+  return new Response(request.method === "HEAD" ? null : found.bytes, {
+    headers: {
+      "content-type": found.type,
+      "content-length": String(found.bytes.byteLength),
+      etag: tag,
+      "cache-control": "public, max-age=31536000, immutable",
+      // Only ever drawn into an <img>, where nothing runs; this is for the tab that opens one directly.
+      "content-security-policy": "default-src 'none'; sandbox",
+      "x-content-type-options": "nosniff",
+    },
+  });
 }
 
 /**

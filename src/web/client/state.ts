@@ -17,6 +17,7 @@ export const SVG={
   bmOn:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 1.8h8v12.4L8 11.1l-4 3.1z"/></svg>',
   x:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.2 3.1 8 6.9l3.8-3.8 1.1 1.1L9.1 8l3.8 3.8-1.1 1.1L8 9.1l-3.8 3.8-1.1-1.1L6.9 8 3.1 4.2z"/></svg>',
   ref:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M9.6 2.2 14 6.5l-4.4 4.3V8.1H6.9a2.4 2.4 0 0 0-2.4 2.4v3.3H2.8v-3.3a4.1 4.1 0 0 1 4.1-4h2.7z"/></svg>',
+  pic:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.2 2.8h11.6v10.4H2.2z" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M5.5 5.9a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6z"/><path d="M3.4 12.1l3.1-3.4 1.9 2.1 2.2-2.5 2.4 3.8z"/></svg>',
   ghost:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.6 2.6h10.8v7.2H7.2l-3 2.6v-2.6H2.6z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>',
 };
 

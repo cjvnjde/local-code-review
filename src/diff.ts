@@ -3,6 +3,7 @@ import type { DiffFile, DiffRow, FileStatus } from "./types.ts";
 
 interface MutableDiffFile {
   path: string;
+  from?: string;
   status: FileStatus;
   rows: DiffRow[];
   added: number;
@@ -50,6 +51,58 @@ const whereDashDash = (args: string[]) => {
   const at = args.indexOf("--");
   return at < 0 ? args.length : at;
 };
+
+/** The new side is the working tree as it stands, which is no revision at all. */
+export const WORKTREE = "";
+/** The new side is what has been staged: `git show :<path>` reads a blob out of the index. */
+export const INDEX = ":";
+
+/** Where each side of the diff is read from, for the content git prints no lines of. */
+export interface DiffSides {
+  old: string;
+  new: string;
+}
+
+/**
+ * The two revisions the diff is between. A text diff never needs them — git has already printed both
+ * sides into it — but a binary one says only that the file differs, so an image can only be shown by
+ * going back for the blobs, and that means picking a side after all.
+ *
+ * The reading matches git's own: a symmetric range takes the merge base, an ordinary range takes its
+ * ends, and anything left over is the working tree, or the index when the diff is `--cached`. A bare
+ * argument is a revision or a pathspec and only git can say which, so one that is not a commit is
+ * left out — a run narrowed to a directory reads its sides exactly as an unnarrowed one does.
+ */
+export async function diffSides(source: DiffSource): Promise<DiffSides> {
+  const args = source.diffArgs.slice(0, whereDashDash(source.diffArgs));
+  const revs = args.filter((arg) => !arg.startsWith("-"));
+  const staged = args.some((arg) => arg === "--cached" || arg === "--staged");
+  const symmetric = revs.find((arg) => arg.includes("..."));
+  if (symmetric) {
+    const [a, b] = symmetric.split("...", 2) as [string, string];
+    const merged = await runGit(["merge-base", a || "HEAD", b || "HEAD"], source.repoRoot)
+      .then((text) => text.trim())
+      .catch(() => "");
+    return { old: merged || a || "HEAD", new: b || "HEAD" };
+  }
+  const range = revs.find((arg) => arg.includes(".."));
+  if (range) {
+    const [a, b] = range.split("..", 2) as [string, string];
+    return { old: a || "HEAD", new: b || "HEAD" };
+  }
+  const named: string[] = [];
+  for (const rev of revs) if (await isCommit(source.repoRoot, rev)) named.push(rev);
+  if (named.length >= 2) return { old: named[0] as string, new: named[1] as string };
+  return { old: named[0] ?? "HEAD", new: staged ? INDEX : WORKTREE };
+}
+
+/** Whether git reads an argument as a commit; a pathspec answers no, and so does anything unresolvable. */
+async function isCommit(repoRoot: string, rev: string): Promise<boolean> {
+  if (!rev) return false;
+  return await runGit(["rev-parse", "--verify", "--quiet", `${rev}^{commit}`], repoRoot)
+    .then((text) => !!text.trim())
+    .catch(() => false);
+}
 
 export async function getDiff(source: DiffSource): Promise<DiffFile[]> {
   const defaultMode = source.diffArgs.length === 0;
@@ -188,6 +241,10 @@ export function parseDiff(raw: string): DiffFile[] {
       }
       if (line.startsWith("deleted file mode")) {
         file.status = "deleted";
+        continue;
+      }
+      if (line.startsWith("rename from ")) {
+        file.from = headerPath(line.slice("rename from ".length));
         continue;
       }
       if (line.startsWith("rename to ")) {

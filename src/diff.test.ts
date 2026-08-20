@@ -73,6 +73,9 @@ describe("parseDiff", () => {
     expect(files.map((file) => file.path)).toEqual(["bin.dat", "new name.txt", "run.sh"]);
     expect(files[0].binary).toBe(true);
     expect(files[1].status).toBe("renamed");
+    // The old side of a rename is still under the name it had then, which is how its blob is found.
+    expect(files[1].from).toBe("old name.txt");
+    expect(files[0].from).toBeUndefined();
   });
 
   test("undoes the tab and quoting git puts around unusual paths", () => {

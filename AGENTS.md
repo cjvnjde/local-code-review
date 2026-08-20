@@ -116,9 +116,31 @@
   links, rules. Nothing else is markup — every run of text is escaped and the only tags in the output are the ones that
   file writes, so a body containing HTML shows the HTML. A fence with no language named is coloured as the file the note
   is on, and its `pre` carries class `c` like every other code container. A link is followed only on a safe scheme and
-  opens away from the page; an image is shown as a link, because the page fetches nothing from the network. The
+  opens away from the page; an image is shown as a link unless it is one of the review's own attachments, because the
+  page fetches nothing from the network. The
   Markdown reaches the review file verbatim — `escapeText` only ever guards a line the parser would read as structure,
   and `unescapeLines` is its exact inverse — so what the file holds is what the page renders.
+- A note may carry a picture. A screenshot is often the shortest way to say what is wrong, so the note
+  editor and every reply box take one from the clipboard, from a drop anywhere on the box, or from the
+  file picker behind **image**; the picture goes to `/api/attach` the moment it arrives, before there is
+  a saved note to hang it on, and what lands in the prose is the ordinary Markdown image
+  `![<alt>](images/<name>)`. That link is the whole of what is written down. It resolves against the
+  review file beside it the way every relative Markdown link does, so the agent reading the file opens
+  the same picture the page draws — which is the point of the feature, and why the target must stay
+  relative rather than becoming a path from the repository root or an lcr-only scheme.
+  `attach.ts` owns the store: names are the sha of the bytes, so one screenshot pasted into three notes
+  is one file and a name never means two pictures, which is what lets `/api/attachment` answer
+  `immutable` and a note full of screenshots survive a repaint without refetching them. A name is
+  checked against one safe file name before it is joined to a path — the attachment directory is the
+  whole of what a note can reach — and it is deliberately wider than what lcr mints, so a picture the
+  agent puts in that directory itself is drawn like any other. `client/attach.ts` owns the page's half:
+  which links are attachments, the markup, and the paste, drop, and pick. The paste belongs to the text
+  box, which is new for every editor; the drop belongs to the box around it, which is not — a note
+  edited twice is one box and two text areas, and a reply box stands inside the note box it answers —
+  so it is bound once per box, reads the document for whichever editor is open in it now, and leaves an
+  event an inner box already took alone. A picture is never deleted:
+  it belongs to whatever notes still point at it, and the page cannot know that a draft, another review
+  file, or the agent does not.
 - A note may name another note of the same review. The reference travels in the prose as the Markdown
   link `[<heading>](lcr:<ref>)`, where `<ref>` is the tail `mintNoteId` ends every id with — the same
   characters that close the target's `<!-- lcr:<id> -->` marker, so the agent reading the file can
@@ -161,6 +183,10 @@
   being drawn is one nobody knows to look for — and a jump opens the fold over the row it lands on.
   `drawnRows` is what an unmounted block's placeholder height is estimated from, and flipping the setting
   drops every measured height with it.
+- The fold setting is toggled from the page header, not from the settings panel: `client/quick.ts` owns
+  that row of toggles, which are ordinary `state.cfg` preferences written through `persistCfg` rather
+  than fields `saveCfg` reads. A setting answered while reading belongs where the reading is; the panel
+  keeps the prose that says what it does, and adding another quick toggle is another entry in `QUICK`.
 - The setting is a default and a file may answer for itself: **removed** in a file's header folds that one
   file's removed lines away, or opens them, whichever way the setting stands, and the answer keeps holding
   when the setting later moves. `state.delFold` holds it by path — a display preference like a hide mark,
@@ -169,6 +195,16 @@
   row indices have not moved, so nothing is rebound, but every height it measured under the old fold goes.
   The pane holds the topmost row it was showing still, answered for by the marker standing in its place
   when the fold has just taken that row away.
+- A file git prints no lines of may still be worth seeing: an image is drawn as its two sides, old
+  before new, and as the single side it has when it was only added or only deleted. `client/images.ts`
+  owns which extensions that covers and the markup; `/api/blob` serves one side of one file, and the
+  diff on screen is the whole of what may be asked for — a path it does not list is not served, an
+  image's old side is looked up under the name a rename moved it from, and the side that added or
+  deleted the file answers 404 rather than an empty picture. The file's own hash is the response's
+  ETag, so the repaints a diff refresh causes revalidate instead of reloading the picture. `diffSides`
+  is what says where each side is read from, because a binary diff is the one thing that cannot be
+  read out of git's own output; a bare argument that is not a commit is a pathspec and is left out of
+  that reading. A text file with an image extension — an SVG — is drawn as well as diffed.
 - The browser store is keyed on repository and read together — the range, or the `--id` name when the run has
   one. Every run serves from `localhost` and a port one review frees the next one takes, so the origin cannot tell two projects apart; `/api/diff` reports `repo` as `repoId`, a hash of the repository root, and the page keys on `<repo>:<range>` or `<repo>:#<id>`. The path itself never reaches the page, because the store outlives the run.
 - Bookmarks are navigation, not feedback: they are never submitted, and `Clear all` in the footer leaves them alone. One per row, keyed by `bmKey` on the same row anchor a note uses, so revealed context carries them and `keyIndex` turns them back into a place on screen.

@@ -12,6 +12,8 @@ export interface DiffRow {
 
 export interface DiffFile {
   path: string;
+  /** Where a renamed file was read from, so its old side can still be found. */
+  from?: string;
   status: FileStatus;
   rows: DiffRow[];
   added: number;

@@ -13,7 +13,6 @@ export function loadCfg(){
   el('cfgExpand').value=String(state.cfg.expand);
   el('cfgHide').value=state.cfg.hide||'';
   el('cfgDeleted').checked=!!state.cfg.hideDeleted;
-  el('cfgFoldDel').checked=!!state.cfg.foldDel;
   el('cfgEnter').checked=state.cfg.enterSaves;
   el('cfgSingle').checked=!!state.cfg.single;
   el('cfgGhosts').checked=state.cfg.ghosts!==false;
@@ -33,14 +32,10 @@ export function saveCfg(){
   state.cfg.enterSaves=el('cfgEnter').checked;
   state.cfg.single=el('cfgSingle').checked;
   const hide=el('cfgHide').value, deleted=el('cfgDeleted').checked;
-  const fold=el('cfgFoldDel').checked;
   const expand=Number(el('cfgExpand').value);
   const ghosts=el('cfgGhosts').checked;
   const changed=hide!==state.cfg.hide||deleted!==!!state.cfg.hideDeleted||
-    fold!==!!state.cfg.foldDel||expand!==state.cfg.expand||ghosts!==(state.cfg.ghosts!==false);
-  // Folding deletions changes how tall every block is, so no measured height survives the switch.
-  if(fold!==!!state.cfg.foldDel) state.h.clear();
-  state.cfg.foldDel=fold;
+    expand!==state.cfg.expand||ghosts!==(state.cfg.ghosts!==false);
   state.cfg.ghosts=ghosts;
   state.cfg.hideDeleted=deleted;
   state.cfg.expand=expand;

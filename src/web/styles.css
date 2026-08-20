@@ -37,6 +37,15 @@
   #gear,#navToggle{border:none;background:none;padding:0;color:var(--ink-faint);display:flex;align-items:center;
     justify-content:center;width:var(--tap-lg);height:var(--tap-lg);flex:none;border-radius:5px}
   #gear:hover,#gear.on,#navToggle:hover,#navToggle.on{color:var(--ink);background:var(--s0)}
+  /* the settings that are answered while reading, worded and coloured exactly as the same switch is
+     in a file's own header, so the two read as one control at two scales */
+  .quick{display:flex;align-items:center;gap:4px;flex:none}
+  .quick button{border:none;background:none;color:var(--ink-faint);padding:4px 8px;display:flex;gap:6px;
+    align-items:center;min-height:var(--tap);flex:none;font-size:var(--fs-xs);text-transform:uppercase;
+    letter-spacing:.05em;border-radius:5px}
+  .quick button:hover{color:var(--ink);background:var(--s0)}
+  .quick button.on{color:var(--del)}
+  .quick button.on:hover{background:var(--s0)}
   /* anchored to the header rather than a fixed offset, so it keeps sitting just below it. The panel is
      taller than most viewports, so it scrolls itself: 100% is the header height it hangs below, and the
      rest of the subtraction is the 6px gap above plus a 12px margin off the bottom of the screen. */
@@ -227,6 +236,39 @@
   .fh .dl.on{color:var(--del)}
   .fh .stale{color:var(--peach);font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.05em}
 
+  /* ---- files shown as pictures ----
+     Two panes for a change and one for a file only added or only deleted, in the diff's own order:
+     what was there on the left, what replaces it on the right. Each pane keeps its own room whatever
+     the other holds, so the two are read against each other rather than against the page. */
+  .imgw{display:grid;grid-template-columns:1fr;gap:1px;background:var(--edge)}
+  .imgw.two{grid-template-columns:1fr 1fr}
+  @media (max-width:800px){ .imgw.two{grid-template-columns:1fr} }
+  #diff .file.fold .imgw{display:none}
+  .imgf{margin:0;background:var(--panel);display:flex;flex-direction:column;min-width:0}
+  .imgf figcaption{display:flex;align-items:center;gap:8px;padding:6px 12px;border-bottom:1px solid var(--edge);
+    font-family:var(--sans);font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.05em}
+  .imgf figcaption .spacer{flex:1}
+  .imgf .side{color:var(--ink-dim);flex:none}
+  .imgf.old .side{color:var(--del)}
+  .imgf.new .side{color:var(--add)}
+  /* the name a rename is the old side of: the change is as much the name as the picture */
+  .imgf .was{color:var(--ink-faint);font-family:var(--mono);text-transform:none;letter-spacing:0;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+  .imgf .dim{color:var(--ink-faint);font-family:var(--mono);text-transform:none;letter-spacing:0;flex:none}
+  /* a checkerboard, so a transparent image is read as transparent rather than as the panel's colour */
+  .imgb{flex:1;display:flex;align-items:center;justify-content:center;padding:16px;min-height:140px;
+    background-color:var(--crust);
+    background-image:linear-gradient(45deg,var(--s0) 25%,transparent 25%),
+      linear-gradient(-45deg,var(--s0) 25%,transparent 25%),
+      linear-gradient(45deg,transparent 75%,var(--s0) 75%),
+      linear-gradient(-45deg,transparent 75%,var(--s0) 75%);
+    background-size:16px 16px;background-position:0 0,0 8px,8px -8px,-8px 0}
+  .imgb img{max-width:100%;max-height:52vh;object-fit:contain;display:block;
+    box-shadow:0 2px 14px rgba(0,0,0,.45)}
+  /* a side that could not be read says so in its caption; an empty frame would read as an empty image */
+  .imgf.gone .imgb img{display:none}
+  .imgf.gone .dim{color:var(--del)}
+
   table{width:100%;border-collapse:collapse;table-layout:fixed}
   #diff .file.fold table{display:none}
   tr.r{height:var(--row)}
@@ -383,6 +425,8 @@
   .nhead .sug:hover{color:var(--add);border-color:var(--add)}
   .nhead .refb,.acts .refb{color:var(--lav)}
   .nhead .refb:hover,.acts .refb:hover{color:var(--lav);border-color:var(--lav)}
+  .nhead .attb,.acts .attb{color:var(--teal)}
+  .nhead .attb:hover,.acts .attb:hover{color:var(--teal);border-color:var(--teal)}
   .nbox.done{opacity:.7}
   .nbox.done:hover{opacity:1}
   .nbody{padding:10px 12px;font-family:var(--sans);font-size:var(--fs-code);line-height:1.55}
@@ -409,6 +453,10 @@
   .acts{display:flex;gap:8px;margin-top:8px;align-items:center}
   .acts .spacer{flex:1}
   .acts .tip{color:var(--ink-faint);font-size:var(--fs-xs);font-family:var(--sans)}
+  /* a picture on its way onto an editor: the whole box says it will take it, because the whole box is
+     what the drop is aimed at rather than the text area inside it */
+  .nbox.dropping,.reply.dropping,.medit.dropping{outline:2px dashed var(--teal);outline-offset:-2px}
+  .nbox.dropping textarea,.reply.dropping textarea,.medit.dropping textarea{border-color:var(--teal)}
 
   button{font:var(--fs-sm)/1 var(--mono);letter-spacing:.05em;text-transform:uppercase;background:transparent;color:var(--ink-dim);
     border:1px solid var(--edge-hi);padding:7px 12px;border-radius:5px;cursor:pointer;min-height:var(--tap-lg);
@@ -510,6 +558,16 @@
   .md hr{border:none;border-top:1px solid var(--edge-hi);margin:11px 0}
   .md a{color:var(--accent);text-decoration:none;border-bottom:1px solid rgba(137,180,250,.4)}
   .md a:hover{border-bottom-color:var(--accent)}
+  /* a picture the reviewer attached: shown at the width the note has, and never so tall that the
+     prose under it is pushed off the screen. Clicking opens it whole, which is what a screenshot
+     of a whole window needs. */
+  .md .shot{display:block;margin:8px 0;border:none;max-width:100%;width:max-content;
+    border-radius:5px;overflow:hidden;line-height:0}
+  .md .shot:first-child{margin-top:0}
+  .md .shot:last-child{margin-bottom:0}
+  .md .shot img{display:block;max-width:100%;max-height:46vh;object-fit:contain;
+    border:1px solid var(--edge-hi);border-radius:5px;background:var(--crust)}
+  .md .shot:hover img{border-color:var(--teal)}
   /* one note pointing at another: the chip says where that note is now, and clicking it goes there.
      A reference the review no longer holds keeps the words it was written with and strikes them. */
   .md .nref{display:inline-block;white-space:nowrap;font:var(--fs-sm)/1.5 var(--mono);letter-spacing:0;
