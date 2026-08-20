@@ -4,6 +4,24 @@ Small standalone web UI for reviewing local Git changes and writing feedback for
 
 ![Local Code Review showing a Git diff with line notes](docs/local-code-review.png)
 
+## Optional agent skill
+
+This repository includes [`apply-lcr`](skills/apply-lcr/SKILL.md), a small skill that finds the newest review, works the notes one at a time, replies to each in the review file as it goes, runs project checks, and picks up any follow-ups you wrote while it worked.
+
+Install it with the [Skills CLI](https://github.com/vercel-labs/skills), then ask your agent:
+
+```sh
+npx skills add cjvnjde/local-code-review --skill apply-lcr
+```
+
+```text
+Apply the newest lcr review.
+```
+
+Or use `/apply-lcr` when your agent supports skill commands. Each note's `Status:` line — applied, answered, skipped, or needs input — shows on the note as soon as the agent writes it.
+
+Reviews remain ordinary Markdown files. You can use them without the skill and with any coding agent.
+
 ## Install
 
 Download the package for your system from the [latest release](https://github.com/cjvnjde/local-code-review/releases/latest), extract it, and put `lcr` (`lcr.exe` on Windows) somewhere on your `PATH`.
@@ -55,6 +73,12 @@ Arguments not recognized by `lcr` are passed to `git diff`.
 5. `lcr` writes `.review/review-<timestamp>.md`. The default `.review/` directory is ignored by Git.
 6. Give that Markdown review to your coding agent.
 
+**Open** beside **Hide** in each file header hands that working-tree file to the configured editor.
+Set its executable name or absolute path under **Settings → Code editor** — for example `code`,
+`cursor`, or `zed` — or leave it blank to use the operating system default. `lcr` passes the file as
+one argument and does not interpret editor arguments or shell commands.
+
+
 When a change rewrites more than it keeps, **removed** in the page header folds every run of deleted lines into one line you can click open again, so the diff reads as the file the change leaves behind. A run a note is attached to stays open, and jumping to a note or bookmark inside a fold opens it. It sits in the header because it is answered while reading rather than while configuring, and it is only the default: **removed** in a file's own header folds or opens that one file, so you can read a single heavy rewrite as what it leaves behind and keep the rest of the diff as it was.
 
 Pictures work in both directions. A screenshot in a note is kept in `.review/images/` and pointed at from the note as `![screenshot](images/<name>.png)` — a plain relative Markdown link, so it renders in any Markdown viewer and the agent can read the file straight off disk. The same picture pasted into several notes is stored once, and an image your agent leaves in that directory and links the same way is drawn on the page too.
@@ -85,24 +109,6 @@ The page stays on the diff after you save, and follows the agent while it works.
 - Notes from the branch's *other* reviews appear as dim markers on the lines they still match, so a remark made reviewing `main..HEAD` is not lost when you switch to reviewing the working tree. Hover the marker to read the note and its thread; **Continue in this review** carries it, history and all, into the review you are writing now.
 
 The page refreshes the diff whenever nothing is being typed. With a note editor open it waits, and shows a `diff changed` pill in the header until you are done.
-
-### Optional agent skill
-
-This repository includes [`apply-lcr`](skills/apply-lcr/SKILL.md), a small skill that finds the newest review, works the notes one at a time, replies to each in the review file as it goes, runs project checks, and picks up any follow-ups you wrote while it worked.
-
-Install it with the [Skills CLI](https://github.com/vercel-labs/skills), then ask your agent:
-
-```sh
-npx skills add cjvnjde/local-code-review --skill apply-lcr
-```
-
-```text
-Apply the newest lcr review.
-```
-
-Or use `/apply-lcr` when your agent supports skill commands. Each note's `Status:` line — applied, answered, skipped, or needs input — shows on the note as soon as the agent writes it.
-
-Reviews remain ordinary Markdown files. You can use them without the skill and with any coding agent.
 
 ## Develop
 

@@ -11,9 +11,10 @@ export class GitError extends Error {
   }
 }
 
-export async function runGit(args: string[], cwd?: string): Promise<string> {
+export async function runGit(args: string[], cwd?: string, input?: string): Promise<string> {
   const process = Bun.spawn(["git", ...args], {
     cwd,
+    stdin: input === undefined ? "ignore" : new Blob([input]),
     stdout: "pipe",
     stderr: "pipe",
   });

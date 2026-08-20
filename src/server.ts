@@ -1,7 +1,7 @@
 import type { Server } from "bun";
 import page from "./web/shell.html";
 import { ATTACH_MAX_BYTES, attachExtension, attachRef } from "./attach.ts";
-import { imageType } from "./blob.ts";
+import { mediaType } from "./blob.ts";
 import { fingerprint } from "./diff.ts";
 import type { Hub } from "./events.ts";
 import type { GhostGroup, ReviewInfo } from "./history.ts";
@@ -24,12 +24,14 @@ export interface ServerOptions {
   context: number;
   getDiff: () => Promise<DiffFile[]>;
   getContext: (path: string, start: number, end: number) => Promise<DiffRow[]>;
-  /** One side of one file as bytes, for the content a binary diff prints no lines of. */
+  /** One side of one file as bytes, for media content a binary diff prints no lines of. */
   readBlob: (side: "old" | "new", path: string) => Promise<Uint8Array | null>;
   /** Keeps one picture the reviewer attached to a note; answers the name it is kept under. */
   saveAttachment: (bytes: Uint8Array, type: string) => Promise<string>;
   /** One of those pictures back, for the page drawing the note that points at it. */
   readAttachment: (name: string) => Promise<{ bytes: Uint8Array; type: string } | null>;
+  /** Opens one current diff file with a configured executable, or the system default when empty. */
+  openFile: (path: string, editor: string) => Promise<boolean>;
   getStatuses: () => Promise<NoteStatus[]>;
   listReviews: () => Promise<string[]>;
   deleteReviews: () => Promise<string[]>;
@@ -144,6 +146,25 @@ function serve(options: ServerOptions, port: number) {
         if (url.pathname === "/api/blob") return blob(options, request, url);
         if (url.pathname === "/api/attach") return attach(options, request);
         if (url.pathname === "/api/attachment") return attachment(options, request, url);
+        if (url.pathname === "/api/open-file") {
+          if (request.method !== "POST") {
+            return new Response("method not allowed", { status: 405, headers: { allow: "POST" } });
+          }
+          // JSON makes this a preflighted cross-origin request: another page cannot turn the
+          // configurable executable into a local launcher, while this loopback page needs no CORS.
+          if (!isJsonRequest(request)) return Response.json({ error: "JSON body required." }, { status: 415 });
+          const payload = await readJson(request) as { path?: unknown; editor?: unknown } | null;
+          const path = typeof payload?.path === "string" ? payload.path : "";
+          const editor = typeof payload?.editor === "string" ? payload.editor.trim() : "";
+          if (!path) return Response.json({ error: "A file path is required." }, { status: 400 });
+          const file = (await options.getDiff()).find((entry) => entry.path === path);
+          if (!file) return Response.json({ error: "That file is not in this diff." }, { status: 404 });
+          if (!(await options.openFile(path, editor))) {
+            return Response.json({ error: "The configured editor could not open that file." }, { status: 500 });
+          }
+          console.log(`\n  opened ${path} with ${editor || "the system default"}\n`);
+          return Response.json({ opened: path });
+        }
         if (url.pathname === "/api/review") {
           if (request.method === "GET") {
             // Statuses ride along: a reply and the verdict it explains are written in the same pass,
@@ -301,14 +322,14 @@ function serve(options: ServerOptions, port: number) {
 }
 
 /**
- * One side of one image, straight out of the repository. The diff is what says which files exist to
- * be asked for — a path it does not list is not served, whatever it points at — and the status of
- * the file is what says which of its two sides does: the side that added a file has no old blob and
- * the side that deleted it has no new one, and both answer 404 rather than an empty picture.
+ * One side of one image or recording, straight out of the repository. The diff is what says which
+ * files exist to be asked for — a path it does not list is not served, whatever it points at — and
+ * file status says which of its two sides exists. A side before an addition or after a deletion
+ * answers 404 rather than an empty media file.
  *
- * A diff refresh redraws every file, so the same image is asked for again and again; the file's own
- * hash is its ETag, which turns all but the first of those into a 304 and keeps the picture on
- * screen from blinking on every repaint.
+ * A diff refresh redraws every file, so the same media is asked for again and again; the file's own
+ * hash is its ETag, which turns all but the first of those into a 304 and keeps media from reloading
+ * on every repaint.
  */
 async function blob(options: ServerOptions, request: Request, url: URL): Promise<Response> {
   if (request.method !== "GET" && request.method !== "HEAD") {
@@ -320,8 +341,8 @@ async function blob(options: ServerOptions, request: Request, url: URL): Promise
   if (!file) return Response.json({ error: "That file is not in this diff." }, { status: 404 });
   // A rename moved the file, so its old side is still under the name it had then.
   const from = side === "old" ? file.from ?? file.path : file.path;
-  const type = imageType(from);
-  if (!type) return Response.json({ error: "That file is not an image." }, { status: 415 });
+  const type = mediaType(from);
+  if (!type) return Response.json({ error: "That file is not supported media." }, { status: 415 });
   if (side === "old" ? file.status === "added" : file.status === "deleted") {
     return Response.json({ error: `The ${side} side has no such file.` }, { status: 404 });
   }
@@ -337,7 +358,7 @@ async function blob(options: ServerOptions, request: Request, url: URL): Promise
       "content-length": String(bytes.byteLength),
       etag: tag,
       "cache-control": "no-cache",
-      // Only ever drawn into an <img>, where nothing runs; this is for the tab that opens one directly.
+      // Only ever rendered as inert media; this policy also protects a file opened in its own tab.
       "content-security-policy": "default-src 'none'; sandbox",
       "x-content-type-options": "nosniff",
     },

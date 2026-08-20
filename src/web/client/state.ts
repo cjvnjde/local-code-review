@@ -4,6 +4,7 @@ export const SVG={
   eye:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3C4.6 3 1.8 5.5 1 8c.8 2.5 3.6 5 7 5s6.2-2.5 7-5c-.8-2.5-3.6-5-7-5Zm0 8.2A3.2 3.2 0 1 1 8 4.8a3.2 3.2 0 0 1 0 6.4Zm0-1.6a1.6 1.6 0 1 0 0-3.2 1.6 1.6 0 0 0 0 3.2Z"/></svg>',
   eyeOff:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3C4.6 3 1.8 5.5 1 8c.8 2.5 3.6 5 7 5s6.2-2.5 7-5c-.8-2.5-3.6-5-7-5Zm0 8.2A3.2 3.2 0 1 1 8 4.8a3.2 3.2 0 0 1 0 6.4Z"/><path d="M2.4 1.1 14.9 13.6l-1.3 1.3L1.1 2.4z"/></svg>',
   plus:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M7.25 3h1.5v4.25H13v1.5H8.75V13h-1.5V8.75H3v-1.5h4.25z"/></svg>',
+  open:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8.8 2.2h5v5h-1.5V4.8L7.1 10 6 8.9l5.2-5.2H8.8z"/><path d="M3.5 3.2h4v1.5H4.7v6.6h6.6V8.5h1.5v4.3H3.2V3.2z"/></svg>',
   box:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.2 2.2h11.6v11.6H2.2z" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>',
   boxOn:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.2 2.2h11.6v11.6H2.2z" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M4.6 8.1l2.3 2.3 4.5-4.7" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>',
   check:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M6.1 12.4 2 8.3l1.3-1.3 2.8 2.8 6.6-6.6L14 4.5z"/></svg>',
@@ -38,7 +39,7 @@ export const state: any={
    *  instead of opening a second note. A draft with no lines under it has no `draftAt`. */
   draftRow:null, draftKey:null, draftAt:null,
   cfg:{auto:true,back:true,limit:900,toast:true,hide:'',hideDeleted:false,foldDel:false,enterSaves:false,
-    expand:20,navHidden:false,ntFold:false,bmFold:false,single:false,clearSaved:false,ghosts:true},
+    expand:20,navHidden:false,ntFold:false,bmFold:false,single:false,clearSaved:false,ghosts:true,editor:''},
   /** Notes from the branch's other review files, shown as dim markers where they still anchor. They
    *  are read-only visitors here: their conversations live in their own files, so none are stored. */
   ghosts:[], ghostAt:null,

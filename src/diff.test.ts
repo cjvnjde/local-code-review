@@ -1,5 +1,29 @@
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, expect, test } from "bun:test";
-import { contextRows, parseDiff } from "./diff.ts";
+import { contextRows, getDiff, parseDiff } from "./diff.ts";
+import { runGit } from "./git.ts";
+
+describe("getDiff", () => {
+  test("default mode reads staged, unstaged, and untracked files before the first commit", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "lcr-unborn-"));
+    await runGit(["init", "-q", "-b", "main"], root);
+    await writeFile(path.join(root, "staged.txt"), "staged\n");
+    await writeFile(path.join(root, "mixed.txt"), "index\n");
+    await runGit(["add", "-A"], root);
+    await writeFile(path.join(root, "mixed.txt"), "working\n");
+    await writeFile(path.join(root, "untracked.txt"), "untracked\n");
+
+    const files = await getDiff({ repoRoot: root, context: 3, diffArgs: [] });
+
+    expect(files.map((file) => [file.path, file.rows.find((row) => row.t === "add")?.text])).toEqual([
+      ["mixed.txt", "working"],
+      ["staged.txt", "staged"],
+      ["untracked.txt", "untracked"],
+    ]);
+  });
+});
 
 describe("parseDiff", () => {
   test("parses line numbers, counts, status, and fingerprint", () => {

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { inTreeOrder, treeOrder } from "./tree-model.ts";
+import { expandedToFile, inTreeOrder, treeOrder } from "./tree-model.ts";
 
 const files = (...paths: string[]) => paths.map((path) => ({ path }));
 
@@ -18,6 +18,16 @@ describe("treeOrder", () => {
   test("every file is listed exactly once, whatever the diff's order was", () => {
     const paths = ["a/b/c.ts", "a/b.ts", "a.ts", "README.md", "a/b/d/e.ts"];
     expect([...treeOrder(files(...paths))].sort()).toEqual([...paths].sort());
+  });
+});
+
+describe("expandedToFile", () => {
+  test("opens only folders containing the current file", () => {
+    const collapsed = new Set(["src", "src/web/client", "src/web/server", "docs"]);
+
+    expect([...expandedToFile(collapsed, "src/web/client/tree.ts")])
+      .toEqual(["src/web/server", "docs"]);
+    expect([...collapsed]).toEqual(["src", "src/web/client", "src/web/server", "docs"]);
   });
 });
 

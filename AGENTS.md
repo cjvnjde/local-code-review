@@ -153,15 +153,19 @@
   the diff otherwise.
 - A note's id is minted once by `mintNoteId`, as its location plus a `|#<unique>` suffix, and never re-derived. Statuses match on it, so a note written where a handled one stood is a new note. Stored notes whose id lacks that suffix are re-minted on restore as fresh, unsubmitted notes. Do not make ids derivable from location again.
 - A verdict only reaches a note that was handed over: `markSubmitted` stamps `sentAt` from the saved review file's name at first submission. The `noteKey` heading fallback, for a review file that lost its marker, additionally needs a heading claimed by exactly one submitted note and a file no older than that stamp.
-- A note may instead cover a whole file. It uses `*` for both row anchors, carries `scope:"file"` and no captured code, and renders as `### <path> (whole file)`. One per file, found by that anchor rather than by a predictable id, and mounted under the file header so binary and collapsed files keep it. `noteKey` must keep producing that same heading text.
+- A note may instead cover a whole file. It uses `*` for both row anchors, carries `scope:"file"` and no
+  captured code, and renders as `### <path> (whole file)`. A file may carry any number; each keeps the id
+  minted when its editor opened, and all mount under the file header so binary and collapsed files keep
+  them. `noteKey` must keep producing that same heading text.
 - A note may belong to no file at all. It uses `@` for both row anchors, carries `scope:"global"` and an empty
   `file`, and renders as `### Overall note` under `## Overall`, ahead of every file section. There is no limit
-  on how many a review has; **Overall note** in the footer writes another. Everything a note has, one has —
-  its own id, thread, verdict, edit and delete — and the one thing it does not have is a place on the diff, so
-  `placeNote` answers `global` for it and it is read in the card above the first file. Prose an earlier lcr
-  wrote directly under `## Overall`, and a `general` field in the browser store, are both read back as one of
-  these; that is the only thing left of the single overall field, and neither the submission nor the page has
-  one any more.
+  on how many a review has; **Overall note** in the permanent page header opens another from anywhere in the
+  diff. Its draft floats below that control without changing the diff's scroll position; saving moves it to
+  the card above the first file and keeps the code being read in place. Everything a note has, one has — its
+  own id, thread, verdict, edit and delete — and the one thing it does not have is a place on the diff, so
+  `placeNote` answers `global` for it and it is read in that top card. Prose an earlier lcr wrote directly
+  under `## Overall`, and a `general` field in the browser store, are both read back as one of these; that is
+  the only thing left of the single overall field, and neither the submission nor the page has one any more.
 - File hide patterns are a display preference in settings. Manual eye toggles keep overriding them per file.
 - The header toggle collapses the file tree pane, and that state is a settings preference like the rest. Collapsing changes the diff pane's width, so it drops cached block heights and renders the diff again, exactly as a window resize does.
 - The diff pane lists the files in the order the tree lists them. `tree-model.ts` owns both the tree's shape

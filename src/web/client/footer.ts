@@ -75,9 +75,11 @@ el('clearAll').onclick=()=>{
   clearNotes(); render();
   withdrawNotes(sent);
 };
-/** A note about the review rather than about a place in it. It is written in the card above the
- *  diff, so the panel covering the diff comes down first — with the usual ask if it is being used. */
-el('addGlobal').onclick=()=>{
+/** A note about the review rather than about a place in it. Its permanent header control opens a
+ *  floating editor there; saving places the note in the review card above the diff. */
+const globalButton=el('addGlobal');
+globalButton.innerHTML=SVG.plus+' comment';
+globalButton.onclick=()=>{
   if(!closeReader()) return;
   openGlobalEditor();
 };

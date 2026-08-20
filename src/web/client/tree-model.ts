@@ -45,6 +45,10 @@ export function filesUnder(node: any,out?: string[]){
   node.children.forEach(c=>c.dir?filesUnder(c,out):out.push(c.path));
   return out;
 }
+/** Opens only the collapsed folders containing `path`, leaving every other folder as it was. */
+export function expandedToFile(collapsed: ReadonlySet<string>,path: string){
+  return new Set([...collapsed].filter(dir=>!path.startsWith(dir+'/')));
+}
 /**
  * Every file's path, in the order the tree shows it. This is the order the whole page reads the diff
  * in, rather than the order git listed the files in: git sorts a path whole, which puts a folder's own

@@ -72,7 +72,9 @@ function dropEmptyDraft(){
   if(!row||!row.isConnected) return;
   const ta=row.querySelector('textarea');
   if(!ta||ta.value.trim()) return;
+  const host=row.parentElement;
   row.remove();
+  if(host&&host.id==='globalDraft') host.hidden=true;
   syncGlobals(); // it may have been the only thing in the card at the top
 }
 /** The text box of the draft standing open on this exact range, if the last one opened is still there. */
@@ -138,44 +140,34 @@ export function openEditor(){
   editUI(box,{f,fi,i,j,ch,id,body:carried?carried.body:''});
   if(carried) box.querySelector('textarea').setSelectionRange(carried.from,carried.to);
 }
-/** A note on the file itself: no line anchor, one per file, mounted under the file header. */
+/** A note on the file itself: no line anchor, as many per file as the review earns, mounted under
+ *  the file header. A second click opens another draft rather than editing an earlier note. */
 export function openFileEditor(fi: number){
   const f=state.files[fi]; if(!f) return;
   const host=el('fn'+fi); if(!host) return;
-  const mounted=host.querySelector('.nrow');
-  const standing=mounted&&mounted.isConnected?mounted.querySelector('textarea'):null;
-  if(standing){ standing.focus(); return; }
+  const key=locKey(f.path,FILE_ANCHOR,FILE_ANCHOR);
+  const open=draftFor(key);
+  if(open){ open.focus(); return; }
   if(busyEditor()) return;
-  const kept=fileNoteOf(f.path);
-  const id=kept?kept.id:mintNoteId(f.path,FILE_ANCHOR,FILE_ANCHOR);
-  const ctx: any={f,fi,i:null,j:null,ch:null,scope:'file',id};
-  if(mounted&&mounted.isConnected){
-    editUI(mounted.querySelector('.nbox'),Object.assign({},ctx,{body:kept?kept.body:''}));
-    return;
-  }
+  const id=mintNoteId(f.path,FILE_ANCHOR,FILE_ANCHOR);
   const box=mountFileBox(host,id);
   // No `draftAt`: a note on the whole file covers no lines, so no selection can re-aim it.
-  state.draftRow=rowOf(box); state.draftKey=locKey(f.path,FILE_ANCHOR,FILE_ANCHOR); state.draftAt=null;
-  editUI(box,ctx);
+  state.draftRow=rowOf(box); state.draftKey=key; state.draftAt=null;
+  editUI(box,{f,fi,i:null,j:null,ch:null,scope:'file',id});
 }
 /**
- * A note about the review as a whole. It is a note like any other — its own thread, its own verdict,
- * as many as the review earns — and the only thing it does not have is somewhere in the diff to sit,
- * so it lives in the card above the first file rather than against a line.
+ * A note about the review as a whole. Its editor hangs from the permanent page header, so starting
+ * one never moves the diff. Saving puts the note in its ordinary card above the first file.
  */
 export function openGlobalEditor(){
-  // Asked before the card is made, so a refused open leaves no empty card standing over the diff.
   if(busyEditor()) return;
-  const host=globalHost(true); if(!host) return;
+  const host=el('globalDraft'); if(!host) return;
+  host.hidden=false;
   const id=mintGlobalId();
   const box=mountFileBox(host,id);
   state.draftRow=rowOf(box); state.draftKey=locKey('',GLOBAL_ANCHOR,GLOBAL_ANCHOR); state.draftAt=null;
-  const card=el('fglobal');
-  if(card) card.scrollIntoView({block:'start'});
   editUI(box,{f:{path:'',rows:[]},fi:-1,i:null,j:null,ch:null,scope:'global',id,body:''});
 }
-/** The file's own note, found by what it is anchored to rather than by a predictable id. */
-const fileNoteOf=(path: string)=>[...state.notes.values()].find((n: any)=>n.file===path&&isFileNote(n))||null;
 /** Several ranges can end on the same row, so each note row is tagged and matched by id. */
 function rowFor(anchor,id){
   let n=anchor.nextElementSibling;
@@ -203,6 +195,14 @@ function mountFileBox(host,id){
 }
 /** The wrapper a box lives in, whether that is a table row or a file-header block. */
 const rowOf=(box: any)=>box.closest('.nrow');
+/** Removes an unsaved editor and closes the header popover used only by overall-note drafts. */
+function removeDraftBox(box: any){
+  const row=rowOf(box);
+  const host=row&&row.parentElement;
+  if(state.draftRow===row) state.draftRow=state.draftKey=state.draftAt=null;
+  if(row) row.remove();
+  if(host&&host.id==='globalDraft') host.hidden=true;
+}
 /** What the agent reported for this note, sourced from the review file it wrote it in. */
 function statusChip(st){
   if(!st) return '';
@@ -269,8 +269,18 @@ function editUI(box,ctx){
     state.place.set(id,global?{fi:-1,i:-1,j:-1,how:'global'}
       :whole?{fi,i:-1,j:-1,how:'file'}:{fi,i,j,how:'exact'});
     save(); clearSel();
-    viewUI(box,note,ctx);
-    repaintNote(id,box); // the same note may be mounted in the all-notes panel as well
+    if(global&&box.closest('#globalDraft')){
+      // The saved note belongs at the top of the diff. Absorb the height inserted above the current
+      // reading position so saving from halfway through a review leaves the same code in view.
+      const pane=el('diff'), at=pane.scrollTop, before=pane.scrollHeight;
+      removeDraftBox(box);
+      const host=globalHost(true);
+      if(host) mountGlobal(host,note);
+      if(at>0) pane.scrollTop=at+(pane.scrollHeight-before);
+    }else{
+      viewUI(box,note,ctx);
+      repaintNote(id,box); // the same note may be mounted in the all-notes panel as well
+    }
     mark(fi,i,j,true);
     if(ch) repaintRow(fi,i);
     renderTree(); updateCount();
@@ -280,16 +290,16 @@ function editUI(box,ctx){
     // too; only a draft that never existed comes down with no more ceremony than cancel.
     const kept=state.notes.get(id);
     if(kept){ clearSel(); removeNote(box,kept,ctx); return; }
-    rowOf(box).remove(); clearSel();
+    removeDraftBox(box); clearSel();
     if(ch) repaintRow(fi,i);
-    syncGlobals(); // the card the draft opened has nothing left to hold
+    syncGlobals();
   };
   box.querySelector('.primary').onclick=commit;
   box.querySelector('.cancel').onclick=()=>{
     const kept=state.notes.get(id);
     clearSel();
     if(kept) viewUI(box,kept,ctx);
-    else{ rowOf(box).remove(); syncGlobals(); }
+    else{ removeDraftBox(box); syncGlobals(); }
   };
   ta.onkeydown=e=>{
     const action=editorAction(e,state.cfg.enterSaves);
@@ -423,12 +433,13 @@ function remark(f,fi,i,j){
     if(tr&&tr.classList.contains('r')) tr.classList.toggle('noted',spans.some(s=>s[0]<=k&&k<=s[1]));
   }
 }
-/** Mounts the file's own note, if it has one, under a freshly rendered file header. */
-export function applyFileNote(f: any,fi: number){
+/** Mounts every note on the file itself under a freshly rendered file header. */
+export function applyFileNotes(f: any,fi: number){
   const host=el('fn'+fi); if(!host) return;
-  const n=fileNoteOf(f.path);
-  if(!n||host.querySelector('.nrow')) return;
-  viewUI(mountFileBox(host,n.id),n,{f,fi,i:null,j:null,ch:null,scope:'file',how:'file'});
+  state.notes.forEach((n: any)=>{
+    if(n.file!==f.path||!isFileNote(n)) return;
+    viewUI(mountFileBox(host,n.id),n,{f,fi,i:null,j:null,ch:null,scope:'file',how:'file'});
+  });
 }
 export function applyNotesIn(f: any,fi: number,from: number,to: number){
   keyIndex(f); // built once here, so every placement below reads the same index

@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "bun:test";
-import { imageType, readBlob } from "./blob.ts";
+import { imageType, mediaType, readBlob } from "./blob.ts";
 import { INDEX, WORKTREE, diffSides } from "./diff.ts";
 import { runGit } from "./git.ts";
 
@@ -31,6 +31,25 @@ describe("imageType", () => {
     expect(imageType("build/app.wasm")).toBe("");
     expect(imageType("Makefile")).toBe("");
     expect(imageType("png")).toBe("");
+  });
+});
+
+describe("mediaType", () => {
+  test("serves browser audio formats with their proper MIME type", () => {
+    expect(mediaType("music/theme.mp3")).toBe("audio/mpeg");
+    expect(mediaType("music/theme.WAV")).toBe("audio/wav");
+    expect(mediaType("music/theme.ogg")).toBe("audio/ogg");
+    expect(mediaType("music/theme.opus")).toBe("audio/ogg");
+    expect(mediaType("music/theme.flac")).toBe("audio/flac");
+    expect(mediaType("music/theme.m4a")).toBe("audio/mp4");
+    expect(mediaType("music/theme.aac")).toBe("audio/aac");
+    expect(mediaType("music/theme.aiff")).toBe("audio/aiff");
+    expect(mediaType("music/theme.weba")).toBe("audio/webm");
+  });
+
+  test("continues serving images but rejects unsupported binary files", () => {
+    expect(mediaType("assets/logo.png")).toBe("image/png");
+    expect(mediaType("build/app.wasm")).toBe("");
   });
 });
 

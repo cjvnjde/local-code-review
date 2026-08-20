@@ -37,15 +37,21 @@
   #gear,#navToggle{border:none;background:none;padding:0;color:var(--ink-faint);display:flex;align-items:center;
     justify-content:center;width:var(--tap-lg);height:var(--tap-lg);flex:none;border-radius:5px}
   #gear:hover,#gear.on,#navToggle:hover,#navToggle.on{color:var(--ink);background:var(--s0)}
-  /* the settings that are answered while reading, worded and coloured exactly as the same switch is
-     in a file's own header, so the two read as one control at two scales */
+  /* Reading-time controls in the permanent page header match those in each sticky file header. */
   .quick{display:flex;align-items:center;gap:4px;flex:none}
-  .quick button{border:none;background:none;color:var(--ink-faint);padding:4px 8px;display:flex;gap:6px;
+  .quick button,header>.cf{border:none;background:none;color:var(--ink-faint);padding:4px 8px;display:flex;gap:6px;
     align-items:center;min-height:var(--tap);flex:none;font-size:var(--fs-xs);text-transform:uppercase;
     letter-spacing:.05em;border-radius:5px}
-  .quick button:hover{color:var(--ink);background:var(--s0)}
+  .quick button:hover,header>.cf:hover{color:var(--ink);background:var(--s0)}
   .quick button.on{color:var(--del)}
   .quick button.on:hover{background:var(--s0)}
+  /* An overall-note draft stays under its permanent control while saved overall notes remain in the
+     card at the top of the diff. It overlays the read instead of moving or scrolling it. */
+  #globalDraft{position:absolute;right:12px;top:calc(100% + 6px);z-index:11;
+    width:min(760px,calc(100vw - 24px));max-height:calc(100dvh - 100% - 18px);overflow-y:auto;
+    border-radius:7px;box-shadow:0 14px 34px rgba(0,0,0,.5)}
+  #globalDraft[hidden]{display:none}
+  #globalDraft .nbox{margin:0;box-shadow:inset 3px 0 0 var(--mark)}
   /* anchored to the header rather than a fixed offset, so it keeps sitting just below it. The panel is
      taller than most viewports, so it scrolls itself: 100% is the header height it hangs below, and the
      rest of the subtraction is the 6px gap above plus a 12px margin off the bottom of the screen. */
@@ -68,6 +74,9 @@
   #settings .note code{color:var(--mark);font-family:var(--mono)}
   #settings .sub label{color:var(--ink-dim);padding-left:25px}
   #settings .settings-section{border-top:1px solid var(--edge);padding-top:11px;display:flex;flex-direction:column;gap:9px}
+  #settings #cfgEditor{margin-left:auto;width:210px;min-width:0;background:var(--crust);color:var(--ink);
+    border:1px solid var(--edge-hi);border-radius:4px;padding:5px 8px;font:var(--fs-ui) var(--mono)}
+  #settings #cfgEditor:focus{outline:none;border-color:var(--accent)}
   #settings .settings-section button{align-self:flex-start}
 
   /* saved reviews, newest first: the history matching adoption leaves behind, each reopenable */
@@ -121,7 +130,7 @@
     padding:7px 10px;font:var(--fs-ui)/1.4 var(--sans)}
   .navtop input:focus{outline:none;border-color:var(--accent)}
   .navbtns{display:flex;gap:5px}
-  .navbtns button{flex:1;padding:6px 4px;font-size:var(--fs-xs);min-height:28px}
+  .navbtns button{flex:1;padding:0;min-height:var(--tap-lg)}
   .fstat{text-align:left;text-transform:none;letter-spacing:0;border-style:dashed;border-color:var(--edge-hi);
     color:var(--mark);padding:5px 8px;font-size:var(--fs-xs);min-height:28px;justify-content:flex-start}
   .fstat[hidden]{display:none}
@@ -227,34 +236,34 @@
   .fh .plus{color:var(--add);font-size:var(--fs-sm)}
   .fh .minus{color:var(--del);font-size:var(--fs-sm)}
   .fh .spacer{flex:1}
-  .fh .eye,.fh .vw,.fh .cf,.fh .dl{border:none;background:none;color:var(--ink-faint);padding:5px 8px;display:flex;gap:6px;
+  .fh .eye,.fh .vw,.fh .cf,.fh .dl,.fh .op{border:none;background:none;color:var(--ink-faint);padding:5px 8px;display:flex;gap:6px;
     align-items:center;min-height:var(--tap);flex:none;font-size:var(--fs-xs);text-transform:uppercase;
     letter-spacing:.05em;border-radius:4px}
-  .fh .eye:hover,.fh .vw:hover,.fh .cf:hover,.fh .dl:hover{color:var(--ink);background:var(--s1)}
+  .fh .eye:hover,.fh .vw:hover,.fh .cf:hover,.fh .dl:hover,.fh .op:hover{color:var(--ink);background:var(--s1)}
   .fh .vw.on{color:var(--green)}
   /* folded away: the header says so in the colour the removed lines themselves are drawn in */
   .fh .dl.on{color:var(--del)}
   .fh .stale{color:var(--peach);font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.05em}
 
-  /* ---- files shown as pictures ----
-     Two panes for a change and one for a file only added or only deleted, in the diff's own order:
+  /* ---- files shown as media ----
+     Two panes for a change and one for a file only added or deleted, in the diff's own order:
      what was there on the left, what replaces it on the right. Each pane keeps its own room whatever
-     the other holds, so the two are read against each other rather than against the page. */
-  .imgw{display:grid;grid-template-columns:1fr;gap:1px;background:var(--edge)}
-  .imgw.two{grid-template-columns:1fr 1fr}
-  @media (max-width:800px){ .imgw.two{grid-template-columns:1fr} }
-  #diff .file.fold .imgw{display:none}
-  .imgf{margin:0;background:var(--panel);display:flex;flex-direction:column;min-width:0}
-  .imgf figcaption{display:flex;align-items:center;gap:8px;padding:6px 12px;border-bottom:1px solid var(--edge);
+     the other holds, so both pictures and recordings can be read against each other. */
+  :is(.imgw,.audw){display:grid;grid-template-columns:1fr;gap:1px;background:var(--edge)}
+  :is(.imgw,.audw).two{grid-template-columns:1fr 1fr}
+  @media (max-width:800px){ :is(.imgw,.audw).two{grid-template-columns:1fr} }
+  #diff .file.fold :is(.imgw,.audw){display:none}
+  :is(.imgf,.audf){margin:0;background:var(--panel);display:flex;flex-direction:column;min-width:0}
+  :is(.imgf,.audf) figcaption{display:flex;align-items:center;gap:8px;padding:6px 12px;border-bottom:1px solid var(--edge);
     font-family:var(--sans);font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.05em}
-  .imgf figcaption .spacer{flex:1}
-  .imgf .side{color:var(--ink-dim);flex:none}
-  .imgf.old .side{color:var(--del)}
-  .imgf.new .side{color:var(--add)}
-  /* the name a rename is the old side of: the change is as much the name as the picture */
-  .imgf .was{color:var(--ink-faint);font-family:var(--mono);text-transform:none;letter-spacing:0;
+  :is(.imgf,.audf) figcaption .spacer{flex:1}
+  :is(.imgf,.audf) .side{color:var(--ink-dim);flex:none}
+  :is(.imgf,.audf).old .side{color:var(--del)}
+  :is(.imgf,.audf).new .side{color:var(--add)}
+  /* the name a rename is the old side of: the change is as much the name as the media */
+  :is(.imgf,.audf) .was{color:var(--ink-faint);font-family:var(--mono);text-transform:none;letter-spacing:0;
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
-  .imgf .dim{color:var(--ink-faint);font-family:var(--mono);text-transform:none;letter-spacing:0;flex:none}
+  :is(.imgf,.audf) .dim{color:var(--ink-faint);font-family:var(--mono);text-transform:none;letter-spacing:0;flex:none}
   /* a checkerboard, so a transparent image is read as transparent rather than as the panel's colour */
   .imgb{flex:1;display:flex;align-items:center;justify-content:center;padding:16px;min-height:140px;
     background-color:var(--crust);
@@ -268,6 +277,12 @@
   /* a side that could not be read says so in its caption; an empty frame would read as an empty image */
   .imgf.gone .imgb img{display:none}
   .imgf.gone .dim{color:var(--del)}
+  /* native controls keep playback and seeking familiar; no bytes are fetched beyond this repository */
+  .audb{flex:1;display:flex;align-items:center;padding:var(--fs-sm);min-height:calc(var(--tap) + var(--tap));
+    background:var(--crust)}
+  .audb audio{display:block;width:100%;min-height:var(--tap);color-scheme:dark}
+  .audf.gone .audb audio{display:none}
+  .audf.gone .dim{color:var(--del)}
 
   table{width:100%;border-collapse:collapse;table-layout:fixed}
   #diff .file.fold table{display:none}

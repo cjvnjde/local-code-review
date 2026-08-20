@@ -4,14 +4,13 @@ import { runGitBytes } from "./git.ts";
 
 /**
  * The content behind a file rather than the lines of it. A text diff carries both sides in itself,
- * so nothing here is needed to read one; an image is the case where git prints that the file differs
- * and stops, and the only way to show the reviewer what changed is to fetch the two blobs and put
- * them side by side. Everything is read out of the repository the run is already in: no path outside
- * it is served, and the diff on screen is what says which files may be asked for at all.
+ * while a binary diff only says that the file differs. Media files are useful only when the
+ * reviewer can see or hear their contents, so both sides are fetched from the repository. The diff
+ * on screen says which files may be asked for, and nothing outside the run's repository is served.
  */
 
-/** Image types the page can draw, by extension. Anything else stays "binary file — not shown". */
-const TYPES: Record<string, string> = {
+/** Media types browsers can render inline. Anything else stays "binary file — not shown". */
+const IMAGE_TYPES = {
   png: "image/png",
   jpg: "image/jpeg",
   jpeg: "image/jpeg",
@@ -23,12 +22,34 @@ const TYPES: Record<string, string> = {
   svg: "image/svg+xml",
   apng: "image/apng",
 };
+const AUDIO_TYPES = {
+  mp3: "audio/mpeg",
+  wav: "audio/wav",
+  ogg: "audio/ogg",
+  oga: "audio/ogg",
+  opus: "audio/ogg",
+  flac: "audio/flac",
+  m4a: "audio/mp4",
+  aac: "audio/aac",
+  aif: "audio/aiff",
+  aiff: "audio/aiff",
+  weba: "audio/webm",
+};
 
-/** The media type of a path lcr will draw as a picture, or empty when it will not. */
-export function imageType(file: string): string {
+function fileType(file: string, types: Record<string, string>) {
   const at = file.lastIndexOf(".");
   if (at < 0) return "";
-  return TYPES[file.slice(at + 1).toLowerCase()] ?? "";
+  return types[file.slice(at + 1).toLowerCase()] ?? "";
+}
+
+/** Media type of a path lcr will draw as a picture, or empty when it will not. */
+export function imageType(file: string): string {
+  return fileType(file, IMAGE_TYPES);
+}
+
+/** Media type of a path lcr can render inline, or empty when it cannot. */
+export function mediaType(file: string): string {
+  return imageType(file) || fileType(file, AUDIO_TYPES);
 }
 
 /**

@@ -16,6 +16,7 @@ export function loadCfg(){
   el('cfgEnter').checked=state.cfg.enterSaves;
   el('cfgSingle').checked=!!state.cfg.single;
   el('cfgGhosts').checked=state.cfg.ghosts!==false;
+  el('cfgEditor').value=state.cfg.editor||'';
   el('cfgBack').disabled=!state.cfg.auto;
   state.hideRx=compileHide(state.cfg.hide);
 }
@@ -31,6 +32,7 @@ export function saveCfg(){
   state.cfg.limit=Number(el('cfgLimit').value);
   state.cfg.enterSaves=el('cfgEnter').checked;
   state.cfg.single=el('cfgSingle').checked;
+  state.cfg.editor=el('cfgEditor').value.trim();
   const hide=el('cfgHide').value, deleted=el('cfgDeleted').checked;
   const expand=Number(el('cfgExpand').value);
   const ghosts=el('cfgGhosts').checked;

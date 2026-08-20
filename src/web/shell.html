@@ -19,7 +19,10 @@
   <div class="quick" id="quick">
     <button id="qFoldDel" type="button" aria-pressed="false"></button>
   </div>
+  <button id="addGlobal" class="cf" type="button"
+    title="Comment on this review as a whole">Comment</button>
   <button id="gear" title="Settings"></button>
+  <div id="globalDraft" hidden></div>
   <div id="settings" hidden>
     <h4>Automatic viewed</h4>
     <label><input type="checkbox" id="cfgAuto"> Mark a file viewed once I scroll past it</label>
@@ -38,6 +41,15 @@
       <button id="resetViewed" type="button">Reset viewed files</button>
       <p class="note">Clears every viewed mark for this diff and expands the files that collapsed with
         their mark. Notes, hidden files, and folder collapse stay as they are.</p>
+    </div>
+    <div class="settings-section">
+      <h4>Code editor</h4>
+      <label>Editor executable
+        <input id="cfgEditor" type="text" placeholder="System default" spellcheck="false" autocomplete="off">
+      </label>
+      <p class="note">Used by <b>open</b> in each file header. Enter one executable name or absolute
+        path, such as <code>code</code>, <code>cursor</code>, or <code>zed</code>. Leave blank to use
+        the operating system default. Arguments and shell commands are not accepted.</p>
     </div>
     <div class="settings-section">
       <h4>Hide files</h4>
@@ -136,10 +148,21 @@
     <div class="navtop">
       <input id="filter" placeholder="Filter files" spellcheck="false">
       <div class="navbtns">
-        <button data-all="expand" title="Expand every folder">Expand</button>
-        <button data-all="collapse" title="Collapse every folder">Collapse</button>
-        <button data-all="show" title="Show every file in the diff">Show all</button>
-        <button data-all="hide" title="Hide every file from the diff">Hide all</button>
+        <button type="button" data-all="expand" title="Expand every folder" aria-label="Expand every folder">
+          <svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="m3.2 3.5 4.8 4 4.8-4 1 1.2L8 9.5 2.2 4.7zm0 4 4.8 4 4.8-4 1 1.2L8 13.5 2.2 8.7z"/></svg>
+        </button>
+        <button type="button" data-all="collapse" title="Collapse every folder" aria-label="Collapse every folder">
+          <svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="m3.2 12.5 4.8-4 4.8 4 1-1.2L8 6.5l-5.8 4.8zm0-4 4.8-4 4.8 4 1-1.2L8 2.5 2.2 7.3z"/></svg>
+        </button>
+        <button type="button" data-all="reveal" title="Reveal current file" aria-label="Reveal current file">
+          <svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M7.3 1h1.4v2.1a5 5 0 0 1 4.2 4.2H15v1.4h-2.1a5 5 0 0 1-4.2 4.2V15H7.3v-2.1a5 5 0 0 1-4.2-4.2H1V7.3h2.1a5 5 0 0 1 4.2-4.2zm.7 3.4a3.6 3.6 0 1 0 0 7.2 3.6 3.6 0 0 0 0-7.2zm0 2.2a1.4 1.4 0 1 1 0 2.8 1.4 1.4 0 0 1 0-2.8z"/></svg>
+        </button>
+        <button type="button" data-all="show" title="Show every file in the diff" aria-label="Show every file in the diff">
+          <svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3C4.6 3 1.8 5.5 1 8c.8 2.5 3.6 5 7 5s6.2-2.5 7-5c-.8-2.5-3.6-5-7-5Zm0 8.2A3.2 3.2 0 1 1 8 4.8a3.2 3.2 0 0 1 0 6.4Zm0-1.6a1.6 1.6 0 1 0 0-3.2 1.6 1.6 0 0 0 0 3.2Z"/></svg>
+        </button>
+        <button type="button" data-all="hide" title="Hide every file from the diff" aria-label="Hide every file from the diff">
+          <svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.6 2.6 14.9 13.9l-1 1-2.2-2.2A7 7 0 0 1 8 13c-3.4 0-6.2-2.5-7-5a9 9 0 0 1 2.2-3.5L2.6 3.6zM4.2 5.5A7 7 0 0 0 2.5 8c.8 2 3 3.6 5.5 3.6q1.35 0 2.6-.6L9.4 9.8A3.2 3.2 0 0 1 6.2 6.6zm3-2.4Q7.6 3 8 3c3.4 0 6.2 2.5 7 5a9 9 0 0 1-1.7 3l-1-1A7 7 0 0 0 13.5 8c-.8-2-3-3.6-5.5-3.6z"/></svg>
+        </button>
       </div>
       <button id="fstat" class="fstat" type="button" title="Edit the hide patterns" hidden></button>
     </div>
@@ -195,8 +218,6 @@
   <button id="allNotes" type="button" hidden
     title="Read every note and reply together, away from the diff (alt+c)">Read notes</button>
   <button class="unread-pill" id="unread" type="button" hidden></button>
-  <button id="addGlobal" type="button"
-    title="Write a note about the review as a whole, rather than about one line">Overall note</button>
   <span class="spacer"></span>
   <button id="clearDone" hidden></button>
   <button id="clearAll" class="danger" type="button">Clear all</button>

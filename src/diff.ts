@@ -16,6 +16,18 @@ export interface DiffSource {
   repoRoot: string;
   context: number;
   diffArgs: string[];
+  worktreeBase?: string;
+}
+
+/** Revision default mode compares against; an unborn branch has only Git's empty tree. */
+export async function resolveWorktreeBase(repoRoot: string): Promise<string> {
+  if (await isCommit(repoRoot, "HEAD")) return "HEAD";
+  return (await runGit(["hash-object", "-t", "tree", "--stdin"], repoRoot, "")).trim();
+}
+
+async function gitDiffArgs(source: DiffSource): Promise<string[]> {
+  if (source.diffArgs.length > 0) return source.diffArgs;
+  return [source.worktreeBase ?? await resolveWorktreeBase(source.repoRoot)];
 }
 
 export function diffRangeLabel(diffArgs: string[]): string {
@@ -65,8 +77,8 @@ export interface DiffSides {
 
 /**
  * The two revisions the diff is between. A text diff never needs them — git has already printed both
- * sides into it — but a binary one says only that the file differs, so an image can only be shown by
- * going back for the blobs, and that means picking a side after all.
+ * sides into it — but a binary one says only that the file differs, so renderable media requires the
+ * blobs themselves, and that means picking a side after all.
  *
  * The reading matches git's own: a symmetric range takes the merge base, an ordinary range takes its
  * ends, and anything left over is the working tree, or the index when the diff is `--cached`. A bare
@@ -74,6 +86,9 @@ export interface DiffSides {
  * left out — a run narrowed to a directory reads its sides exactly as an unnarrowed one does.
  */
 export async function diffSides(source: DiffSource): Promise<DiffSides> {
+  if (source.diffArgs.length === 0) {
+    return { old: source.worktreeBase ?? await resolveWorktreeBase(source.repoRoot), new: WORKTREE };
+  }
   const args = source.diffArgs.slice(0, whereDashDash(source.diffArgs));
   const revs = args.filter((arg) => !arg.startsWith("-"));
   const staged = args.some((arg) => arg === "--cached" || arg === "--staged");
@@ -109,7 +124,7 @@ export async function getDiff(source: DiffSource): Promise<DiffFile[]> {
   if (defaultMode) {
     await runGit(["add", "-N", "--", "."], source.repoRoot).catch(() => {});
   }
-  const args = defaultMode ? ["HEAD"] : source.diffArgs;
+  const args = await gitDiffArgs(source);
   const raw = await runGit(
     [...DIFF_ARGS, `-U${source.context}`, ...args],
     source.repoRoot,
@@ -144,7 +159,7 @@ export async function getFileContext(
 ): Promise<DiffRow[]> {
   if (!path || !Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start) return [];
   const last = Math.min(end, start + MAX_CONTEXT_ROWS - 1);
-  const args = source.diffArgs.length === 0 ? ["HEAD"] : source.diffArgs;
+  const args = await gitDiffArgs(source);
   const whole = [...DIFF_ARGS, `-U${FULL_CONTEXT}`, ...args];
   // Narrowing to one file keeps the re-diff cheap, but arguments already carrying a pathspec can
   // reject a second one, so a rejected narrow run falls back to diffing everything.

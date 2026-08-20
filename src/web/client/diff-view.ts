@@ -1,3 +1,4 @@
+import { audioHtml } from './audio.ts';
 import { globalNotes, looseNotes, replaceIn, strayNotes } from './anchor.ts';
 import { bmKey } from './bookmarks.ts';
 import { delRunAt, delRuns, drawnRows, foldingDeleted, revealRow, toggleFileFold, toggleRun } from './deleted.ts';
@@ -7,7 +8,7 @@ import { autoHidden, isHidden } from './filters.ts';
 import { gapOf, gapSize } from './gaps.ts';
 import { applyGhostsIn, placeGhosts } from './ghosts.ts';
 import { codeHtml, langOf } from './highlight.ts';
-import { applyFileNote, applyNotesIn, charMarks, mountGlobal, mountLoose } from './notes.ts';
+import { applyFileNotes, applyNotesIn, charMarks, mountGlobal, mountLoose } from './notes.ts';
 import { save } from './persistence.ts';
 import { paintSel } from './selection.ts';
 import { SVG, el, esc, idxOf, rowKey, state } from './state.ts';
@@ -45,7 +46,7 @@ export function renderDiff(){
   }
   sec.innerHTML=globalHtml()+shown.map(i=>fileHtml(state.files[i],i)).join('')+strayHtml();
   applyGlobals();
-  shown.forEach(i=>{ applyFileNote(state.files[i],i); applyLoose(i); });
+  shown.forEach(i=>{ applyFileNotes(state.files[i],i); applyLoose(i); });
   applyStray();
   sec.querySelectorAll('tbody.blk').forEach(observeBlock);
   sec.querySelectorAll('.file').forEach(n=>obsPass.observe(n));
@@ -61,8 +62,8 @@ function globalHtml(force?: boolean){
   if(!force&&!globalNotes().length) return '';
   return '<div class="gcard" id="fglobal"><div class="fh">'+
     '<span class="p">Overall</span><span class="s">whole review</span><span class="spacer"></span>'+
-    '<button class="cf" data-gn="1" title="Write another note about the review as a whole">'+
-    SVG.plus+' note</button></div><div class="loose" id="loGlobal"></div></div>';
+    '<button class="cf" data-gn="1" title="Comment on this review as a whole">'+
+    SVG.plus+' comment</button></div><div class="loose" id="loGlobal"></div></div>';
 }
 function applyGlobals(){
   const host=el('loGlobal'); if(!host) return;
@@ -136,18 +137,20 @@ function fileHtml(f,fi){
       (seen?'Mark as not reviewed':'Mark reviewed — collapses until the file changes')+'">'+
       (seen?SVG.boxOn:SVG.box)+' viewed</button>'+
     delBtnHtml(f)+
+    '<button class="op" data-open-file="'+esc(f.path)+'" title="Open in editor">'+
+      SVG.open+' open</button>'+
     '<button class="eye" data-hf="'+esc(f.path)+'" title="Hide from diff">'+SVG.eye+' hide</button></div>'+
-    // Whole-file notes hang off the header, so a binary or folded file can still carry one.
+    // Whole-file notes hang off the header, so a binary or folded file can still carry several.
     '<div class="fnotes" id="fn'+fi+'"></div>';
   // Notes the file can no longer hold on a line sit at the end of its card, still under their file.
   const loose='<div class="loose" id="lo'+fi+'" hidden></div>';
-  // An image is the one binary the page can show, and an SVG is a text diff worth seeing drawn too.
-  const images=imagesHtml(f);
+  // Binary pictures and recordings become their contents; an SVG also keeps its text diff below.
+  const media=imagesHtml(f)||audioHtml(f);
   if(f.binary){
     return '<div class="'+cls+'" id="f'+fi+'" data-path="'+esc(f.path)+'">'+head+
-      (images||'<div class="empty">Binary file — not shown.</div>')+loose+'</div>';
+      (media||'<div class="empty">Binary file — not shown.</div>')+loose+'</div>';
   }
-  return '<div class="'+cls+'" id="f'+fi+'" data-path="'+esc(f.path)+'">'+head+images+
+  return '<div class="'+cls+'" id="f'+fi+'" data-path="'+esc(f.path)+'">'+head+media+
     '<table>'+tableHtml(f,fi)+'</table>'+loose+'</div>';
 }
 function tableHtml(f,fi){

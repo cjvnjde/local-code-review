@@ -5,7 +5,8 @@ import { readAttachment, saveAttachment } from "./attach.ts";
 import { readBlob } from "./blob.ts";
 import { openInBrowser } from "./browser.ts";
 import { parseArgs } from "./cli.ts";
-import { diffBase, diffRangeLabel, diffSides, fingerprint, getDiff, getFileContext } from "./diff.ts";
+import { diffBase, diffRangeLabel, diffSides, fingerprint, getDiff, getFileContext, resolveWorktreeBase } from "./diff.ts";
+import { openInEditor } from "./editor.ts";
 import { createHub } from "./events.ts";
 import { currentBranch, findRepoRoot } from "./git.ts";
 import { collectGhosts, describeReviews } from "./history.ts";
@@ -32,6 +33,7 @@ const diffSource = {
   repoRoot,
   context: options.context,
   diffArgs: options.diffArgs,
+  ...(options.diffArgs.length === 0 ? { worktreeBase: await resolveWorktreeBase(repoRoot) } : {}),
 };
 
 // The revisions the diff is between are fixed by the arguments it was started with, so they are
@@ -77,6 +79,7 @@ const server = startServer({
   // Beside the review file, because that is what a note's link to one resolves against.
   saveAttachment: (bytes, type) => saveAttachment(repoRoot, options.outDir, bytes, type),
   readAttachment: (name) => readAttachment(repoRoot, options.outDir, name),
+  openFile: (file, editor) => openInEditor(repoRoot, file, editor),
   getStatuses: () => collectStatuses(repoRoot, options.outDir),
   listReviews: () => listReviews(repoRoot, options.outDir),
   deleteReviews: () => deleteReviews(repoRoot, options.outDir),

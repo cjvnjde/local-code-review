@@ -2,8 +2,8 @@ import { setHidden, setViewed } from './diff-view.ts';
 import { isHidden } from './filters.ts';
 import { save } from './persistence.ts';
 import { el, idxOf, state } from './state.ts';
-import { dirTree, filesUnder } from './tree-model.ts';
-import { paintActive, renderTree } from './tree.ts';
+import { dirTree, expandedToFile, filesUnder } from './tree-model.ts';
+import { paintActive, renderTree, revealActive } from './tree.ts';
 
 /* ---------- tree interactions ---------- */
 function toggle(set,key){ set.has(key)?set.delete(key):set.add(key); }
@@ -49,6 +49,12 @@ function findDir(node,p){
 }
 document.querySelector('.navbtns').addEventListener('click',e=>{
   const b=e.target.closest('[data-all]'); if(!b) return;
+  if(b.dataset.all==='reveal'){
+    if(!state.active) return;
+    state.collapsed=expandedToFile(state.collapsed,state.active);
+    state.filter=''; el('filter').value='';
+    save(); renderTree(); revealActive(); return;
+  }
   if(b.dataset.all==='collapse'){
     const all=[];
     const walk=n=>n.children.forEach(c=>{ if(c.dir){ all.push(c.path); walk(c); } });
