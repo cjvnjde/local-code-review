@@ -2,8 +2,141 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "bun:test";
-import { contextRows, getDiff, parseDiff } from "./diff.ts";
+import {
+  contextRows,
+  diffBase,
+  diffRangeLabel,
+  fingerprint,
+  getDiff,
+  getFileContext,
+  parseDiff,
+  resolveWorktreeBase,
+} from "./diff.ts";
 import { runGit } from "./git.ts";
+
+async function committedRepo() {
+  const root = await mkdtemp(path.join(tmpdir(), "lcr-diff-"));
+  await runGit(["init", "-q", "-b", "main"], root);
+  await runGit(["config", "user.email", "lcr@example.com"], root);
+  await runGit(["config", "user.name", "lcr"], root);
+  await writeFile(
+    path.join(root, "app.ts"),
+    "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\n",
+  );
+  await runGit(["add", "-A"], root);
+  await runGit(["commit", "-qm", "initial"], root);
+  return root;
+}
+
+const source = (repoRoot: string, diffArgs: string[] = []) => ({
+  repoRoot,
+  context: 1,
+  diffArgs,
+});
+
+describe("diff metadata", () => {
+  test("labels the default working-tree read and preserves explicit arguments", () => {
+    expect(diffRangeLabel([])).toBe(
+      "working tree vs HEAD (incl. untracked)",
+    );
+    expect(diffRangeLabel(["main...HEAD", "--", "src"])).toBe(
+      "main...HEAD -- src",
+    );
+  });
+
+  test("uses Git's empty tree before the first commit and HEAD afterward", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "lcr-base-"));
+    await runGit(["init", "-q", "-b", "main"], root);
+    const emptyTree = (
+      await runGit(["hash-object", "-t", "tree", "--stdin"], root, "")
+    ).trim();
+
+    expect(await resolveWorktreeBase(root)).toBe(emptyTree);
+
+    await runGit(["config", "user.email", "lcr@example.com"], root);
+    await runGit(["config", "user.name", "lcr"], root);
+    await writeFile(path.join(root, "app.ts"), "one\n");
+    await runGit(["add", "-A"], root);
+    await runGit(["commit", "-qm", "initial"], root);
+
+    expect(await resolveWorktreeBase(root)).toBe("HEAD");
+  });
+
+  test("fingerprints are stable and change with the diff content", () => {
+    expect(fingerprint("same diff")).toBe(fingerprint("same diff"));
+    expect(fingerprint("same diff")).not.toBe(fingerprint("changed diff"));
+    expect(fingerprint("same diff")).toMatch(/^[a-z0-9]+$/);
+  });
+});
+
+describe("diffBase", () => {
+  test("an ordinary range records its old revision", async () => {
+    const root = await committedRepo();
+    const expected = (
+      await runGit(["rev-parse", "--short=12", "HEAD"], root)
+    ).trim();
+
+    expect(await diffBase(source(root, ["HEAD..HEAD"]))).toBe(expected);
+  });
+
+  test("a symmetric range records the merge base", async () => {
+    const root = await committedRepo();
+    const expected = (
+      await runGit(["rev-parse", "--short=12", "HEAD"], root)
+    ).trim();
+    await runGit(["checkout", "-qb", "work"], root);
+    await writeFile(path.join(root, "app.ts"), "changed\n");
+    await runGit(["commit", "-qam", "work"], root);
+
+    expect(await diffBase(source(root, ["main...work"]))).toBe(expected);
+  });
+
+  test("options and pathspecs do not become the recorded base", async () => {
+    const root = await committedRepo();
+    const expected = (
+      await runGit(["rev-parse", "--short=12", "HEAD"], root)
+    ).trim();
+
+    expect(await diffBase(source(root, ["--stat", "--", "app.ts"]))).toBe(
+      expected,
+    );
+  });
+
+  test("an unresolvable revision leaves the base unknown", async () => {
+    const root = await committedRepo();
+
+    expect(await diffBase(source(root, ["missing..HEAD"]))).toBe("");
+  });
+});
+
+describe("getFileContext", () => {
+  test("re-diffs one file and returns only unchanged lines in the range", async () => {
+    const root = await committedRepo();
+    await writeFile(
+      path.join(root, "app.ts"),
+      "one\ntwo\nthree\nFOUR\nfive\nsix\nseven\neight\n",
+    );
+
+    expect(await getFileContext(source(root), "app.ts", 2, 6)).toEqual([
+      { t: "ctx", o: 2, n: 2, text: "two" },
+      { t: "ctx", o: 3, n: 3, text: "three" },
+      { t: "ctx", o: 5, n: 5, text: "five" },
+      { t: "ctx", o: 6, n: 6, text: "six" },
+    ]);
+  });
+
+  test("rejects invalid ranges before invoking Git", async () => {
+    expect(
+      await getFileContext(source("/not/a/repository"), "app.ts", 0, 3),
+    ).toEqual([]);
+    expect(
+      await getFileContext(source("/not/a/repository"), "app.ts", 4, 3),
+    ).toEqual([]);
+    expect(
+      await getFileContext(source("/not/a/repository"), "", 1, 3),
+    ).toEqual([]);
+  });
+});
 
 describe("getDiff", () => {
   test("default mode reads staged, unstaged, and untracked files before the first commit", async () => {

@@ -1,14 +1,61 @@
-import { mkdtemp, readdir, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "bun:test";
-import { deleteReviews, listReviews } from "./output.ts";
+import { excludeRelativeOutput, deleteReviews, listReviews } from "./output.ts";
+import { runGit } from "./git.ts";
 
 const workspace = async (...names: string[]) => {
   const dir = await mkdtemp(path.join(tmpdir(), "lcr-output-"));
   for (const name of names) await writeFile(path.join(dir, name), "# Review notes\n", "utf8");
   return dir;
 };
+
+describe("excludeRelativeOutput", () => {
+  test("adds one normalized output-directory entry to Git's local excludes", async () => {
+    const root = await workspace();
+    await runGit(["init", "-q", "-b", "main"], root);
+    const excludeFile = path.join(root, ".git", "info", "exclude");
+    await writeFile(excludeFile, "existing-entry\n", "utf8");
+
+    await excludeRelativeOutput(root, "./review-notes/");
+    await excludeRelativeOutput(root, "review-notes");
+
+    expect(await readFile(excludeFile, "utf8")).toBe(
+      "existing-entry\n/review-notes/\n",
+    );
+  });
+
+  test("keeps an existing final line before appending the entry", async () => {
+    const root = await workspace();
+    await runGit(["init", "-q", "-b", "main"], root);
+    const excludeFile = path.join(root, ".git", "info", "exclude");
+    await writeFile(excludeFile, "existing-entry", "utf8");
+
+    await excludeRelativeOutput(root, ".review");
+
+    expect(await readFile(excludeFile, "utf8")).toBe(
+      "existing-entry\n/.review/\n",
+    );
+  });
+
+  test("does not put an absolute output directory into repository excludes", async () => {
+    const root = await workspace();
+    await runGit(["init", "-q", "-b", "main"], root);
+    const excludeFile = path.join(root, ".git", "info", "exclude");
+    const before = await readFile(excludeFile, "utf8");
+
+    await excludeRelativeOutput(root, path.join(tmpdir(), "lcr-reviews"));
+
+    expect(await readFile(excludeFile, "utf8")).toBe(before);
+  });
+
+  test("is best effort outside a Git repository", async () => {
+    const root = await workspace();
+
+    expect(await excludeRelativeOutput(root, ".review")).toBeUndefined();
+  });
+});
 
 describe("listReviews", () => {
   test("names generated review files oldest first and leaves everything else out", async () => {
