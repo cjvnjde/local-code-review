@@ -4,4 +4,4 @@
  * was built from. A reviewer who cannot tell whether the page in front of them is the one they just
  * built reads the banner and knows; keeping it current is therefore part of changing the source.
  */
-export const VERSION = "2026-08-20.10";
+export const VERSION = "2026-08-22.1";

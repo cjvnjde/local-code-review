@@ -46,6 +46,11 @@ function paintSubmit(){
   const running=!!state.sessionFile;
   button.textContent=running?'Update review':'Save review';
   button.title=running?'Write these notes into '+state.sessionFile:'Start a review file for these notes';
+  const newReview=el('newReview');
+  newReview.disabled=!running;
+  newReview.title=running
+    ?'Leave '+state.sessionFile+' intact and start a fresh review'
+    :'Save this review before starting another';
 }
 /** Notes an agent already applied are finished business; dropping them keeps the next pass clean. */
 el('clearDone').onclick=()=>{
@@ -83,7 +88,10 @@ globalButton.onclick=()=>{
   if(!closeReader()) return;
   openGlobalEditor();
 };
-el('reload').onclick=()=>load(true);
+
+const reloadButton=el('reload');
+reloadButton.innerHTML=SVG.reload;
+reloadButton.onclick=()=>load(true);
 el('submit').onclick=async()=>{
   if(!state.notes.size){ alert('Add at least one note before saving.'); return; }
   const button=el('submit');

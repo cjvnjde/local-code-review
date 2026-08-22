@@ -17,6 +17,7 @@
     title="The working tree changed while you were writing. Refreshes as soon as this note is done.">diff changed</button>
   <span id="live" class="live" title="Not connected"></span>
   <div class="quick" id="quick">
+    <button id="reload" type="button" title="Reload diff" aria-label="Reload diff"></button>
     <button id="qFoldDel" type="button" aria-pressed="false"></button>
   </div>
   <button id="addGlobal" class="cf" type="button"
@@ -75,11 +76,11 @@
     <div class="settings-section">
       <h4>Review file</h4>
       <p class="note" id="sessionInfo">No review file yet — your first save opens one.</p>
-      <button id="newReview" type="button">New review</button>
       <p class="note">One review file holds the whole conversation: your notes, the agent's replies,
         and your follow-ups. Saving again adds to it, and restarting <code>lcr</code> picks back up
         the review of the same diff, branch, and base — any other diff starts fresh. <b>New review</b>
-        leaves the current file on disk as it is and opens a fresh one on your next save.</p>
+        in the footer leaves the current file on disk as it is and opens a fresh one on your next
+        save. The earlier conversation remains available through the other-review markers below.</p>
       <p class="note">Starting <code>lcr --id &lt;name&gt;</code> names the review instead: the same
         name comes back to the same conversation however the diff has moved on, and a name you have
         not used before starts an altogether new one.</p>
@@ -221,7 +222,7 @@
   <span class="spacer"></span>
   <button id="clearDone" hidden></button>
   <button id="clearAll" class="danger" type="button">Clear all</button>
-  <button id="reload">Reload diff</button>
+  <button id="newReview" type="button" disabled>New review</button>
   <button class="primary" id="submit">Save review</button>
 </footer>
 <script type="module" src="./client/index.ts"></script>
