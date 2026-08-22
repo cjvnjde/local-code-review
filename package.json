@@ -1,0 +1,14 @@
+{
+  "name": "local-code-review",
+  "version": "1.5.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.4.0",
+  "scripts": {
+    "start": "bun ./src/index.ts",
+    "dev": "bun --watch ./src/index.ts --no-open",
+    "test": "bun test ./src",
+    "check": "bun test ./src && bun build ./src/index.ts --target=bun --outdir /tmp/lcr-check",
+    "build": "bun build ./src/index.ts --compile --minify --outfile lcr"
+  }
+}
