@@ -50,8 +50,9 @@ Common commands:
 ```sh
 lcr --no-open                 # Do not open the browser automatically
 lcr --staged                  # Staged changes only
-lcr HEAD~3                    # Last three commits
-lcr main...HEAD               # Compare current branch with main
+lcr HEAD~3                    # Changes since three commits ago
+lcr origin/main               # Branch work plus local and untracked changes
+lcr main...HEAD               # Compare committed branch work with main
 lcr --port 8080               # Start from another port
 lcr --out .feedback           # Store reviews elsewhere
 lcr --context 8               # Show more surrounding lines
@@ -60,6 +61,9 @@ lcr --version                 # Print which build this is
 ```
 
 Arguments not recognized by `lcr` are passed to `git diff`.
+
+Working-tree comparisons such as `lcr origin/main` include untracked files, including files created
+after `lcr` starts. Commit-to-commit ranges such as `lcr main...HEAD` remain revision-only.
 
 ## How it works
 

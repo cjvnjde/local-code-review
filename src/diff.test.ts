@@ -156,6 +156,25 @@ describe("getDiff", () => {
       ["untracked.txt", "untracked"],
     ]);
   });
+
+  test("an explicit worktree base includes files not yet added to Git", async () => {
+    const root = await committedRepo();
+    await writeFile(path.join(root, "untracked.txt"), "untracked\n");
+
+    const files = await getDiff(source(root, ["main"]));
+
+    expect(files.map((file) => file.path)).toEqual(["untracked.txt"]);
+  });
+
+  test("a commit range leaves untracked files outside the index", async () => {
+    const root = await committedRepo();
+    await writeFile(path.join(root, "untracked.txt"), "untracked\n");
+
+    expect(await getDiff(source(root, ["main...HEAD"]))).toEqual([]);
+    expect((await runGit(["status", "--porcelain"], root)).trim()).toBe(
+      "?? untracked.txt",
+    );
+  });
 });
 
 describe("parseDiff", () => {

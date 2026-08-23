@@ -120,10 +120,14 @@ async function isCommit(repoRoot: string, rev: string): Promise<boolean> {
 }
 
 export async function getDiff(source: DiffSource): Promise<DiffFile[]> {
-  const defaultMode = source.diffArgs.length === 0;
-  if (defaultMode) {
+  const readsWorktree = source.diffArgs.length === 0
+    || (await diffSides(source)).new === WORKTREE;
+  // An untracked file has no diff until Git knows its path. Include it in every comparison whose
+  // new side is the worktree, including one with an explicit base such as `origin/main`.
+  if (readsWorktree) {
     await runGit(["add", "-N", "--", "."], source.repoRoot).catch(() => {});
   }
+
   const args = await gitDiffArgs(source);
   const raw = await runGit(
     [...DIFF_ARGS, `-U${source.context}`, ...args],
