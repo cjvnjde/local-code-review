@@ -1,30 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { ROW_SLIP, START_SLIP, atStart, charRange, leftRow, pressKind, reaims } from "./drag.ts";
-
-// A code row is 24px tall; the pressed row here spans y 100..124.
-const top = 100, bottom = 124;
-
-describe("leftRow", () => {
-  test("the pressed row itself never counts as left", () => {
-    expect(leftRow(top, top, bottom)).toBe(false);
-    expect(leftRow(110, top, bottom)).toBe(false);
-    expect(leftRow(bottom, top, bottom)).toBe(false);
-  });
-
-  test("brushing the neighbouring row stays within the slack", () => {
-    expect(leftRow(bottom + ROW_SLIP, top, bottom)).toBe(false);
-    expect(leftRow(top - ROW_SLIP, top, bottom)).toBe(false);
-  });
-
-  test("travelling past the slack in either direction means row selection", () => {
-    expect(leftRow(bottom + ROW_SLIP + 1, top, bottom)).toBe(true);
-    expect(leftRow(top - ROW_SLIP - 1, top, bottom)).toBe(true);
-  });
-
-  test("the slack is more than half a row, so a wobble cannot cross it", () => {
-    expect(ROW_SLIP).toBeGreaterThan((bottom - top) / 2);
-  });
-});
+import {
+  START_SLIP,
+  atStart,
+  charRange,
+  pressKind,
+  reaims,
+} from "./drag.ts";
 
 // The drag started at x 200 on the row spanning y 100..124.
 const x0 = 200, y0 = 112;

@@ -1,6 +1,6 @@
 import { toggleBookmark } from './bookmark-pane.ts';
 import { repaintRow, setFolded, setHidden, setViewed, toggleDeleted, toggleFileDeleted } from './diff-view.ts';
-import { atStart, charRange, leftRow, pressKind } from './drag.ts';
+import { atStart, charRange, pressKind } from './drag.ts';
 import { openFileInEditor } from './editor.ts';
 import { expandGap } from './expand.ts';
 import { isHidden } from './filters.ts';
@@ -128,28 +128,23 @@ el('diff').addEventListener('mousedown',e=>{
   const f=state.files[fi], row=f&&f.rows[i];
   // Taken now rather than on the way back: a wheel scroll mid-drag moves the press point out from under x0,y0.
   const off0=cell&&row?offsetAt(cell,e.clientX,e.clientY,row.text.length):null;
-  drag={fi,i,a:state.sel.a,cell,off0,extended,x0:e.clientX,y0:e.clientY,rows:false,wandered:false,away:false};
+  drag={fi,i,a:state.sel.a,cell,off0,extended,x0:e.clientX,y0:e.clientY,
+    rows:false,wandered:false,away:false};
   // Pressing on code may be the start of a fragment on this very row, so the row keeps what it shows
   // until the press says what it meant; the gutter cannot start one and repaints straight away.
   paintSel(cell?{fi,i}:null);
 });
-// Hit-test the pointer: while a text drag is in flight the browser keeps sending events to the press target.
-document.addEventListener('mousemove',e=>{
+/** Updates the live press from the pointer's current row. */
+function moveDrag(x: number,y: number){
   if(!drag) return;
-  if(!atStart(e.clientX,e.clientY,drag.x0,drag.y0)) drag.away=true;
-  const under=document.elementFromPoint(e.clientX,e.clientY);
+  if(!atStart(x,y,drag.x0,drag.y0)) drag.away=true;
+  // Hit-test the pointer: while a text drag is in flight the browser keeps sending events to the
+  // press target.
+  const under=document.elementFromPoint(x,y);
   const tr=under&&under.closest?under.closest('tr.r'):null;
   if(!tr||Number(tr.dataset.fi)!==drag.fi) return;
   const i=Number(tr.dataset.i);
   if(i!==drag.i){
-    // Brushing the next row mid-sentence is a slip, not a range: a text drag must clear the pressed row first.
-    if(drag.cell&&!drag.rows){
-      const from=el('r'+drag.fi+'-'+drag.i);
-      if(from){
-        const {top,bottom}=from.getBoundingClientRect();
-        if(!leftRow(e.clientY,top,bottom)) return;
-      }
-    }
     drag.rows=drag.wandered=true;
     document.body.classList.add('dragging');
     dropTextSel();
@@ -165,12 +160,14 @@ document.addEventListener('mousemove',e=>{
   drag.rows=false;
   if(drag.cell) document.body.classList.remove('dragging'); // a gutter drag keeps its row cursor
   dropTextSel();
-  const ch=pointRange(drag,e.clientX,e.clientY);
-  const next: any={fi:drag.fi,a:drag.a,b:drag.i};
-  if(ch){ next.ca=ch.a; next.cb=ch.b; }
+  const ch=pointRange(drag,x,y);
+  const next=ch
+    ? {fi:drag.fi,a:drag.a,b:drag.i,ca:ch.a,cb:ch.b}
+    : {fi:drag.fi,a:drag.a,b:drag.i};
   if(sameSel(state.sel,next)) return;
   state.sel=next; paintSel();
-});
+}
+document.addEventListener('mousemove',e=>moveDrag(e.clientX,e.clientY));
 document.addEventListener('mouseup',e=>{
   if(!drag) return;
   const d=drag; drag=null;
