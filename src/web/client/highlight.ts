@@ -47,6 +47,41 @@ export function langOf(p: string){
   if('html htm vue svelte xml'.split(' ').includes(e)) return 'html';
   return 'txt';
 }
+function templateEnd(text,start){
+  let depth=1,quote='';
+  for(let i=start;i<text.length;i++){
+    const ch=text[i];
+    if(quote){
+      if(ch==='\\') i++;
+      else if(ch===quote) quote='';
+      continue;
+    }
+    if(ch==="'"||ch==='"'||ch==='\x60'){ quote=ch; continue; }
+    if(ch==='{') depth++;
+    else if(ch==='}'&&--depth===0) return i;
+  }
+  return -1;
+}
+function templateTokens(text,start){
+  const out=[];
+  let literal=0,i=1;
+  while(i<text.length){
+    if(text[i]==='\\'){ i+=2; continue; }
+    if(text[i]!=='$'||text[i+1]!=='{'){ i++; continue; }
+    if(i>literal) out.push({s:start+literal,e:start+i,c:'s'});
+    out.push({s:start+i,e:start+i+2,c:'p'});
+    const close=templateEnd(text,i+2), end=close<0?text.length:close;
+    for(const t of tokens(text.slice(i+2,end),'ts')){
+      out.push({s:start+i+2+t.s,e:start+i+2+t.e,c:t.c});
+    }
+    if(close<0) return out;
+    out.push({s:start+close,e:start+close+1,c:'p'});
+    i=close+1;
+    literal=i;
+  }
+  if(literal<text.length) out.push({s:start+literal,e:start+text.length,c:'s'});
+  return out;
+}
 function tokens(text,lang){
   // A continuation line of a block comment has no opener on this line, so match it by shape.
   if((lang==='ts'||lang==='css')&&/^\s*\*/.test(text)) return [{s:0,e:text.length,c:'m'}];
@@ -58,7 +93,15 @@ function tokens(text,lang){
     if(m.index>last) out.push({s:last,e:m.index,c:''});
     let g=1;
     while(g<m.length&&m[g]===undefined) g++;
-    out.push({s:m.index,e:m.index+m[0].length,c:cls[g-1]||''});
+    const c=cls[g-1]||'';
+    if(lang==='ts'&&c==='s'&&m[0][0]==='\x60'){
+      // The recursive scan shares this cached regexp, so resume where the outer scan left it.
+      const next=re.lastIndex;
+      out.push(...templateTokens(m[0],m.index));
+      re.lastIndex=next;
+    }else{
+      out.push({s:m.index,e:m.index+m[0].length,c});
+    }
     last=re.lastIndex;
   }
   if(last<text.length) out.push({s:last,e:text.length,c:''});
