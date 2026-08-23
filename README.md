@@ -26,7 +26,10 @@ Reviews remain ordinary Markdown files. You can use them without the skill and w
 
 Download the package for your system from the [latest release](https://github.com/cjvnjde/local-code-review/releases/latest), extract it, and put `lcr` (`lcr.exe` on Windows) somewhere on your `PATH`.
 
-`lcr` only needs Git. macOS builds are unsigned, so a downloaded binary may need quarantine removed after you verify its release checksum:
+`lcr` only needs Git.
+
+macOS builds are unsigned, so a downloaded binary may need quarantine removed
+after you verify its release checksum:
 
 ```sh
 xattr -d com.apple.quarantine ./lcr
@@ -134,3 +137,7 @@ bun build ./src/index.ts --compile --minify --outfile lcr
 ```
 
 The compiled executable contains the browser UI and needs only Git at runtime.
+
+## License
+
+MIT
