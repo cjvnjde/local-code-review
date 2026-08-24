@@ -36,7 +36,10 @@ describe("audioHtml", () => {
 
   test("a rename names the old recording and asks the server under the new path", () => {
     const html = audioHtml(file({ status: "renamed", from: "music/intro.mp3" }));
-    expect(html).toContain("music/intro.mp3</span>");
+    // The name is drawn in two boxes so a long one is cut between its folders and its file
+    // name, and the title keeps it whole.
+    expect(html).toContain('title="music/intro.mp3"');
+    expect(html).toContain('<span class="dir">music</span><span class="base">/intro.mp3</span>');
     expect(html).toContain("/api/blob?side=old&amp;path=music%2Ftheme.mp3");
   });
 

@@ -257,6 +257,9 @@
 - Preserve no-install usage.
 - Avoid shell interpolation for Git commands; use argument arrays.
 - Escape user-controlled values rendered into HTML.
+- A path is drawn through `pathHtml` and the `pth` class, never as one run of text. Plain
+  `text-overflow` eats the file name, which is the part of a path a reader needs; the two boxes it
+  writes shrink the folders first, so what a narrow header loses is the middle.
 - Page sizing comes from the `--fs-*`, `--icon`, `--tap`, and `--row` tokens in `src/web/styles.css`; size new UI from them
   rather than from fresh literals, and keep every control at least `--tap` square. `--row` travels with `ROW_H` in
   `client/diff-view.ts`, which estimates unmounted blocks, and with `ROW_SLIP` in `client/drag.ts`, which must stay above

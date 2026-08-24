@@ -60,6 +60,20 @@ export const state: any={
 };
 export const el=(id: string): any=>document.getElementById(id);
 export const esc=(value: unknown)=>String(value).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+/**
+ * A path drawn so that what gets cut out of it is the middle. `text-overflow` only ever eats the end
+ * of a line, and the end of a path is the file name — the one part of it a reader cannot do without.
+ * So the folders and the name are two boxes: the folders shrink first and take the ellipsis wherever
+ * the room happens to run out, giving `apps/web/comp…/Panel.tsx` rather than a name cut in half, and
+ * the name itself only gives way once there are no folders left to give. The `pth` class carries the
+ * flex rules; the caller keeps the title, because the whole path is what a hover should say.
+ */
+export const pathHtml=(path: unknown)=>{
+  const text=String(path), cut=text.lastIndexOf('/');
+  return cut<0
+    ?'<span class="base">'+esc(text)+'</span>'
+    :'<span class="dir">'+esc(text.slice(0,cut))+'</span><span class="base">'+esc(text.slice(cut))+'</span>';
+};
 export const idxOf=(path: string)=>state.byPath.has(path)?state.byPath.get(path):-1;
 export const rowKey=(row: any)=>row.n!=null?'n'+row.n:'o'+row.o;
 /**

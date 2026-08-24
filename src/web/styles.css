@@ -31,6 +31,14 @@
   body{margin:0;background:var(--bg);color:var(--ink);font:var(--fs-code)/1.5 var(--mono);display:flex;flex-direction:column}
   body.dragging{user-select:none;cursor:row-resize}
   .i{width:var(--icon);height:var(--icon);fill:currentColor;flex:none;display:block}
+  /* A path cut through the middle rather than at the end. Everywhere the page shows one it runs out
+     of room sooner or later, and `text-overflow` can only eat the end of a line — which for a path is
+     the file name, the one part of it that has to survive. So the folders are their own box: they
+     shrink first and take the ellipsis wherever the room happened to run out, and the name gives way
+     only once there are no folders left. `pathHtml` in client/state.ts writes the two boxes. */
+  .pth{display:flex;min-width:0;overflow:hidden;white-space:nowrap}
+  .pth .dir{flex:0 1000 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+  .pth .base{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
   /* one row high and no taller: the header is a strip, so nothing in it may wrap the page open */
   header{position:relative;display:flex;align-items:center;gap:12px;padding:3px 12px;border-bottom:1px solid var(--edge);
     background:var(--panel2);flex:none;min-height:calc(var(--tap-lg) + 6px)}

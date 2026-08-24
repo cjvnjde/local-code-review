@@ -1,4 +1,4 @@
-import { el, esc } from './state.ts';
+import { el, esc, pathHtml } from './state.ts';
 
 /* ---------- files git prints no lines of: the picture itself ---------- */
 /**
@@ -38,7 +38,7 @@ export function imagesHtml(f: any){
 function paneHtml(f: any,side: string,label: string,name: string){
   return '<figure class="imgf '+side+'">'+
     '<figcaption><span class="side">'+label+'</span>'+
-    (name?'<span class="was" title="'+esc(name)+'">'+esc(name)+'</span>':'')+
+    (name?'<span class="was pth" title="'+esc(name)+'">'+pathHtml(name)+'</span>':'')+
     '<span class="spacer"></span><span class="dim"></span></figcaption>'+
     // Every file card is drawn, mounted or not, so a diff full of pictures waits for the reader.
     '<div class="imgb"><img alt="'+esc(f.path)+', '+label+'" loading="lazy" decoding="async" src="'+
