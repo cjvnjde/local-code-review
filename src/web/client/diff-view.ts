@@ -11,7 +11,7 @@ import { codeHtml, langOf } from './highlight.ts';
 import { applyFileNotes, applyNotesIn, charMarks, mountDetached, mountGlobal } from './notes.ts';
 import { save } from './persistence.ts';
 import { paintSel } from './selection.ts';
-import { SVG, el, esc, idxOf, pathHtml, rowKey, state } from './state.ts';
+import { SVG, el, esc, filePathHtml, filePathTitle, idxOf, rowKey, state } from './state.ts';
 import { followDiff, renderTree } from './tree.ts';
 import { updateCount } from './footer.ts';
 import { wordDiff } from './word-diff.ts';
@@ -122,7 +122,7 @@ function fileHtml(f,fi){
   const head='<div class="fh">'+
     '<button class="fchev" data-fold="'+esc(f.path)+'" title="'+(folded?'Expand file':'Collapse file')+'">'+
       (folded?SVG.chevR:SVG.chevD)+'</button>'+
-    '<span class="p pth" title="'+esc(f.path)+'">'+pathHtml(f.path)+'</span>'+
+    '<span class="p file-path" title="'+esc(filePathTitle(f))+'">'+filePathHtml(f)+'</span>'+
     '<span class="s">'+f.status+'</span>'+
     '<span class="plus">+'+f.added+'</span><span class="minus">-'+f.removed+'</span>'+
     (state.stale&&state.stale.has(f.path)?'<span class="stale">changed since viewed</span>':'')+

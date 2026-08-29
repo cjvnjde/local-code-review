@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { isMinted, markSubmitted, mintNoteId, pathHtml, reindexNotes, reviewTime, state, statusOf } from "./state.ts";
+import { filePathHtml, filePathTitle, isMinted, markSubmitted, mintNoteId, pathHtml, reindexNotes, reviewTime, state, statusOf } from "./state.ts";
 
 const OLD = ".review/review-2026-01-01T10-00-00.md";
 const NEW = ".review/review-2026-02-02T10-00-00.md";
@@ -55,6 +55,25 @@ describe("pathHtml", () => {
     expect(pathHtml('src/<img>&"/x".ts')).toBe(
       '<span class="dir">src/&lt;img&gt;&amp;&quot;</span><span class="base">/x&quot;.ts</span>',
     );
+  });
+});
+
+describe("filePathHtml", () => {
+  test("a rename shows both its old and new paths", () => {
+    const file = { from: "src/old-name.ts", path: "src/new-name.ts" };
+    expect(filePathHtml(file)).toBe(
+      '<span class="pth from"><span class="dir">src</span><span class="base">/old-name.ts</span></span>'+
+      '<span class="arrow">→</span><span class="pth to"><span class="dir">src</span><span class="base">/new-name.ts</span></span>',
+    );
+    expect(filePathTitle(file)).toBe("src/old-name.ts → src/new-name.ts");
+  });
+
+  test("an ordinary file shows one path", () => {
+    const file = { path: "src/app.ts" };
+    expect(filePathHtml(file)).toBe(
+      '<span class="pth"><span class="dir">src</span><span class="base">/app.ts</span></span>',
+    );
+    expect(filePathTitle(file)).toBe("src/app.ts");
   });
 });
 

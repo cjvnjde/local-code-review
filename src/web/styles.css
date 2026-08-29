@@ -39,6 +39,9 @@
   .pth{display:flex;min-width:0;overflow:hidden;white-space:nowrap}
   .pth .dir{flex:0 1000 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
   .pth .base{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+  .file-path{display:flex;align-items:center;min-width:0}
+  .file-path>.pth{flex:0 1 auto}
+  .file-path>.arrow{color:var(--ink-faint);padding:0 7px;flex:none}
   /* one row high and no taller: the header is a strip, so nothing in it may wrap the page open */
   header{position:relative;display:flex;align-items:center;gap:12px;padding:3px 12px;border-bottom:1px solid var(--edge);
     background:var(--panel2);flex:none;min-height:calc(var(--tap-lg) + 6px)}
@@ -239,7 +242,7 @@
   .fh .fchev{border:none;background:none;color:var(--ink-dim);padding:0;display:flex;align-items:center;
     justify-content:center;width:var(--tap);height:var(--tap);min-height:0;flex:none;border-radius:4px}
   .fh .fchev:hover{background:var(--s1);color:var(--ink)}
-  .fh .p{color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .fh .p{color:var(--ink);overflow:hidden;white-space:nowrap}
   .fh .s{font-size:var(--fs-xs);color:var(--ink-faint);text-transform:uppercase;letter-spacing:.05em}
   .fh .plus{color:var(--add);font-size:var(--fs-sm)}
   .fh .minus{color:var(--del);font-size:var(--fs-sm)}

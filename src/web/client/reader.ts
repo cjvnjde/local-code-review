@@ -5,7 +5,7 @@ import { jumpToNote } from './live.ts';
 import { FILTERS, groupNotes, matchesFilter } from './note-list.ts';
 import { mountNoteIn } from './notes.ts';
 import { save } from './persistence.ts';
-import { el, esc, markRead, pathHtml, state, statusOf, unreadOf } from './state.ts';
+import { el, esc, filePathHtml, filePathTitle, markRead, state, statusOf, unreadOf } from './state.ts';
 
 /* ---------- all notes: the review read as a conversation instead of as marks on a diff ---------- */
 /**
@@ -57,10 +57,11 @@ function paintHead(entries: any[]){
 }
 
 function groupHtml(g: any,count: number){
+  const file=g.fi>=0?state.files[g.fi]:null;
   const head='<div class="gh">'+
     (g.global?'<span class="p">Overall</span><span class="hid">about the review as a whole</span>'
       :g.stray?'<span class="p stray">Not in this diff any more</span>'
-      :'<span class="p pth" title="'+esc(g.path)+'">'+pathHtml(g.path)+'</span>')+
+      :'<span class="p file-path" title="'+esc(filePathTitle(file))+'">'+filePathHtml(file)+'</span>')+
     '<span class="ct">'+count+(count===1?' note':' notes')+'</span>'+
     (!g.stray&&!g.global&&isHidden(g.path)?'<span class="hid">hidden in the diff</span>':'')+
     '</div>';

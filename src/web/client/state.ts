@@ -74,6 +74,14 @@ export const pathHtml=(path: unknown)=>{
     ?'<span class="base">'+esc(text)+'</span>'
     :'<span class="dir">'+esc(text.slice(0,cut))+'</span><span class="base">'+esc(text.slice(cut))+'</span>';
 };
+/** A rename names both sides of the move, while every other file keeps its ordinary path. */
+export const filePathHtml=(file: {path: string,from?: string})=>file.from&&file.from!==file.path
+  ?'<span class="pth from">'+pathHtml(file.from)+'</span><span class="arrow">→</span>'+
+    '<span class="pth to">'+pathHtml(file.path)+'</span>'
+  :'<span class="pth">'+pathHtml(file.path)+'</span>';
+export const filePathTitle=(file: {path: string,from?: string})=>file.from&&file.from!==file.path
+  ?file.from+' → '+file.path
+  :file.path;
 export const idxOf=(path: string)=>state.byPath.has(path)?state.byPath.get(path):-1;
 export const rowKey=(row: any)=>row.n!=null?'n'+row.n:'o'+row.o;
 /**
