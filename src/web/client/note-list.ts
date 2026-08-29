@@ -30,7 +30,7 @@ export function orderNotes(list: any[],at: (n: any)=>NoteAt): NoteEntry[]{
     if(p&&p.how==='global') return {n,fi:-1,rank:0,i:-1,how:'global',gone:false};
     // No file left to sit under: it reads last, in the block at the end of the page.
     if(!p||p.fi<0) return {n,fi:LAST,rank:1,i:LAST,how:'stray',gone:true};
-    const rank=p.how==='file'?0:p.how==='loose'?2:1;
+    const rank=p.how==='file'?0:p.how==='outdated'?2:1;
     return {n,fi:p.fi,rank,i:rank===1?p.i:(rank===0?-1:LAST),how:p.how,gone:false};
   }).sort((x,y)=>(x.fi-y.fi)||(x.rank-y.rank)||(x.i-y.i)||
     String(x.n.file).localeCompare(String(y.n.file))||(x.n.start||0)-(y.n.start||0));

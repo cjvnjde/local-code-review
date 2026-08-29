@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { looseNotes, placeNote, placeNotes, strayNotes } from "./anchor.ts";
+import { outdatedNotes, placeNote, placeNotes, strayNotes } from "./anchor.ts";
 import { state } from "./state.ts";
 
 const ctx = (n: number, o: number, text: string) => ({ t: "ctx", n, o, text });
@@ -120,20 +120,20 @@ describe("placeNote", () => {
     expect(placed?.how).not.toBe("moved");
   });
 
-  test("settles for the nearest surviving line when the captured code is gone", () => {
+  test("marks a note outdated instead of attaching it to a nearby unrelated line", () => {
     diff({
       path: "app.ts",
       rows: [hunk(), ctx(1, 1, "function load() {"), ctx(2, 2, "  let v = 1;"), add(3, "  return v;")],
     });
-    expect(placeNote(note())).toEqual({ fi: 0, i: 3, j: 3, how: "near" });
+    expect(placeNote(note())).toEqual({ fi: 0, i: -1, j: -1, how: "outdated" });
   });
 
-  test("cuts a note loose when nothing in the file is near where it was written", () => {
+  test("marks a note outdated when its captured code has multiple possible locations", () => {
     diff({
       path: "app.ts",
-      rows: [hunk("@@ -400,2 +400,2 @@"), ctx(400, 400, "far away"), add(401, "still far")],
+      rows: [hunk(), ctx(1, 1, 'console.log("debug");'), ctx(2, 2, 'console.log("debug");')],
     });
-    expect(placeNote(note())).toEqual({ fi: 0, i: -1, j: -1, how: "loose" });
+    expect(placeNote(note())).toEqual({ fi: 0, i: -1, j: -1, how: "outdated" });
   });
 
   test("a note on a file the diff no longer shows has no place at all", () => {
@@ -163,10 +163,10 @@ describe("placeNote", () => {
       .toEqual({ fi: 0, i: -1, j: -1, how: "file" });
   });
 
-  test("a binary file can hold a line note only loosely", () => {
+  test("a binary file makes an old line comment outdated", () => {
     state.files = [{ path: "app.ts", rows: [], binary: true, hash: "h" }];
     state.byPath = new Map([["app.ts", 0]]);
-    expect(placeNote(note())).toEqual({ fi: 0, i: -1, j: -1, how: "loose" });
+    expect(placeNote(note())).toEqual({ fi: 0, i: -1, j: -1, how: "outdated" });
   });
 });
 
@@ -182,8 +182,8 @@ describe("placeNotes", () => {
     [stuck, gone, fine].forEach((n) => state.notes.set(n.id, n));
     placeNotes();
 
-    expect(looseNotes(0).map((n: any) => n.id)).toEqual([stuck.id]);
-    expect(looseNotes(1)).toEqual([]);
+    expect(outdatedNotes(0).map((n) => n.id)).toEqual([stuck.id]);
+    expect(outdatedNotes(1)).toEqual([]);
     expect(strayNotes().map((n: any) => n.id)).toEqual([gone.id]);
     expect(state.place.get(fine.id)).toEqual({ fi: 1, i: 1, j: 1, how: "exact" });
   });

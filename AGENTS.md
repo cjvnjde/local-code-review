@@ -241,10 +241,10 @@
   and `j`/`k` step it entry by entry while it is open. `alt` plus the arrows stays the bookmark list's. Letters
   are read off `code` rather than `key`, because alt turns a letter into another character entirely on macOS.
 - Where a note shows is worked out by `client/anchor.ts`, never stored: the agent rewrites the code notes were
-  written against, so an anchor is re-derived from the diff on every load. It degrades in order — the note's own
-  rows while they still hold its captured code, then that code wherever it now reads, then its unchanged lines
-  only, then the nearest line left within `NEAR`. A note is cut loose only when none of that lands: it then
-  shows under its own file, and at the end of the page once the file itself leaves the diff.
+  written against, so an anchor is re-derived from the diff on every load. It stays on its own rows while they
+  still hold its captured code, or follows that code or its surviving unchanged lines only when there is one
+  matching location. Missing or ambiguous code makes the note outdated: it is shown under its original file
+  rather than attached by line proximity, and moves to the end of the page only when the file leaves the diff.
 - Every note carries the lines it was written on, framed like the suggestion block. A note is read a long way
   from where it was made, so it has to be legible on its own; the heading changes to say the code is a record
   rather than the file's current state as soon as the note is not sitting on those lines any more.

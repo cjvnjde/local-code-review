@@ -23,8 +23,7 @@ const rowTitle=(n: any)=>isGlobalNote(n)?'About the review as a whole'
 /** Why a note is not where it was written, for the row's tooltip. */
 const PLACED: Record<string,string>={
   moved:'the code it was written on has moved',
-  near:'its code is gone; shown at the nearest line',
-  loose:'no line left in this file',
+  outdated:'its code is gone or ambiguous; kept under its original file',
   stray:'its file is not in this diff any more',
 };
 

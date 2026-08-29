@@ -10,7 +10,7 @@ describe("orderNotes", () => {
   const PLACES: Record<string, any> = {
     a1: { fi: 0, i: 4, how: "exact" },
     a2: { fi: 0, i: 30, how: "moved" },
-    b1: { fi: 1, i: 1, how: "near" },
+    b1: { fi: 1, i: 1, how: "moved" },
   };
   const at = (n: any) => PLACES[n.id] || null;
 
@@ -25,8 +25,8 @@ describe("orderNotes", () => {
     expect(ids(orderNotes([note("a1", "a.ts"), note("af", "a.ts")], places))).toEqual(["af", "a1"]);
   });
 
-  test("a note with no line left in its file comes after every note that has one", () => {
-    const places = (n: any) => (n.id === "al" ? { fi: 0, i: -1, how: "loose" } : at(n));
+  test("an outdated note comes after every note that still has a line", () => {
+    const places = (n: any) => (n.id === "al" ? { fi: 0, i: -1, how: "outdated" } : at(n));
     const out = orderNotes([note("al", "a.ts"), note("b1", "b.ts"), note("a1", "a.ts")], places);
     expect(ids(out)).toEqual(["a1", "al", "b1"]);
     expect(out.every((e) => !e.gone)).toBe(true);

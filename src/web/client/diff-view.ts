@@ -1,5 +1,5 @@
 import { audioHtml } from './audio.ts';
-import { globalNotes, looseNotes, replaceIn, strayNotes } from './anchor.ts';
+import { globalNotes, outdatedNotes, replaceIn, strayNotes } from './anchor.ts';
 import { bmKey } from './bookmarks.ts';
 import { delRunAt, delRuns, drawnRows, foldingDeleted, revealRow, toggleFileFold, toggleRun } from './deleted.ts';
 import { imagesHtml } from './images.ts';
@@ -8,7 +8,7 @@ import { autoHidden, isHidden } from './filters.ts';
 import { gapOf, gapSize } from './gaps.ts';
 import { applyGhostsIn, placeGhosts } from './ghosts.ts';
 import { codeHtml, langOf } from './highlight.ts';
-import { applyFileNotes, applyNotesIn, charMarks, mountGlobal, mountLoose } from './notes.ts';
+import { applyFileNotes, applyNotesIn, charMarks, mountDetached, mountGlobal } from './notes.ts';
 import { save } from './persistence.ts';
 import { paintSel } from './selection.ts';
 import { SVG, el, esc, idxOf, pathHtml, rowKey, state } from './state.ts';
@@ -46,7 +46,7 @@ export function renderDiff(){
   }
   sec.innerHTML=globalHtml()+shown.map(i=>fileHtml(state.files[i],i)).join('')+strayHtml();
   applyGlobals();
-  shown.forEach(i=>{ applyFileNotes(state.files[i],i); applyLoose(i); });
+  shown.forEach(i=>{ applyFileNotes(state.files[i],i); applyOutdated(i); });
   applyStray();
   sec.querySelectorAll('tbody.blk').forEach(observeBlock);
   sec.querySelectorAll('.file').forEach(n=>obsPass.observe(n));
@@ -87,23 +87,19 @@ export function syncGlobals(){
 }
 
 /**
- * Notes the diff has no room for any more. A note is only ever shown here once it cannot be put on a
- * line, and it stays under its own file for as long as that file is still in the diff, so it is read
- * next to the code it came from. The last resort is the block at the end of the page, for a note
- * whose file left the diff entirely — the agent reverted it, or the change it asked for removed it.
+ * Comments whose subject is gone or ambiguous. They stay under their original file rather than
+ * claiming a nearby line, while the captured code keeps the original subject readable.
  */
-function applyLoose(fi: number){
+function applyOutdated(fi: number){
   const host=el('lo'+fi); if(!host) return;
-  const f=state.files[fi], notes=looseNotes(fi);
+  const f=state.files[fi], notes=outdatedNotes(fi);
   host.textContent='';
   host.hidden=!notes.length;
   if(!notes.length) return;
   const head=document.createElement('div'); head.className='looseh';
-  head.textContent=notes.length===1
-    ?'1 note has no line left in this file'
-    :notes.length+' notes have no line left in this file';
+  head.textContent=notes.length===1?'1 outdated comment':notes.length+' outdated comments';
   host.append(head);
-  notes.forEach((n: any)=>mountLoose(host,n,f,fi,'loose'));
+  notes.forEach((n: any)=>mountDetached(host,n,f,fi,'outdated'));
 }
 function strayHtml(){
   if(!strayNotes().length) return '';
@@ -117,7 +113,7 @@ function strayHtml(){
 function applyStray(){
   const host=el('loStray'); if(!host) return;
   host.textContent='';
-  strayNotes().forEach((n: any)=>mountLoose(host,n,{path:n.file,rows:[]},-1,'stray'));
+  strayNotes().forEach((n: any)=>mountDetached(host,n,{path:n.file,rows:[]},-1,'stray'));
 }
 
 function fileHtml(f,fi){
@@ -142,16 +138,16 @@ function fileHtml(f,fi){
     '<button class="eye" data-hf="'+esc(f.path)+'" title="Hide from diff">'+SVG.eye+' hide</button></div>'+
     // Whole-file notes hang off the header, so a binary or folded file can still carry several.
     '<div class="fnotes" id="fn'+fi+'"></div>';
-  // Notes the file can no longer hold on a line sit at the end of its card, still under their file.
-  const loose='<div class="loose" id="lo'+fi+'" hidden></div>';
+  // Outdated comments sit at the end of the file card instead of claiming an unrelated row.
+  const detached='<div class="loose" id="lo'+fi+'" hidden></div>';
   // Binary pictures and recordings become their contents; an SVG also keeps its text diff below.
   const media=imagesHtml(f)||audioHtml(f);
   if(f.binary){
     return '<div class="'+cls+'" id="f'+fi+'" data-path="'+esc(f.path)+'">'+head+
-      (media||'<div class="empty">Binary file — not shown.</div>')+loose+'</div>';
+      (media||'<div class="empty">Binary file — not shown.</div>')+detached+'</div>';
   }
   return '<div class="'+cls+'" id="f'+fi+'" data-path="'+esc(f.path)+'">'+head+media+
-    '<table>'+tableHtml(f,fi)+'</table>'+loose+'</div>';
+    '<table>'+tableHtml(f,fi)+'</table>'+detached+'</div>';
 }
 function tableHtml(f,fi){
   const blocks=[];

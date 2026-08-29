@@ -3,22 +3,18 @@ import { idxOf, isFileNote, isGlobalNote, keyIndex, rowKey, state } from './stat
 
 /**
  * Where a note is showing. The agent rewrites the code a note was written against, so the row it was
- * anchored to often stops existing part way through a conversation. A note is only ever cut loose
- * once there is nowhere honest left to put it:
+ * anchored to often stops existing part way through a conversation. A note is only put on a row
+ * when the diff still provides an unambiguous subject:
  *
- *   `exact` — its rows are still there, still holding the code it captured
- *   `moved` — that code is now somewhere else in the same file
- *   `near`  — the code is gone, but the file still has a line close to where the note was written
- *   `loose` — the file is still in the diff, but nothing in it is close: shown under the file
- *   `null`  — the file itself left the diff: shown at the end of the page
+ *   `exact`    — its rows are still there, still holding the code it captured
+ *   `moved`    — that code has one matching location elsewhere in the same file
+ *   `outdated` — its code is gone or ambiguous: shown under the file, never on an unrelated line
+ *   `null`     — the file itself left the diff: shown at the end of the page
  *
  * A note about the review as a whole was never anchored to anything, so it is `global` and stays
  * that way whatever the agent does to the code: it is shown in its own card above the first file.
  */
-export type Placing = { fi: number; i: number; j: number; how: 'exact'|'moved'|'near'|'file'|'loose'|'global' } | null;
-
-/** How far a note may be dragged from the line it was written on before that stops being "close by". */
-const NEAR = 60;
+export type Placing = { fi: number; i: number; j: number; how: 'exact'|'moved'|'outdated'|'file'|'global' } | null;
 
 export function placeNotes(){
   const map=new Map();
@@ -37,7 +33,7 @@ export function placeNote(n: any): Placing{
   if(fi<0) return null;
   const f=state.files[fi];
   if(isFileNote(n)) return {fi,i:-1,j:-1,how:'file'};
-  if(f.binary||!f.rows.length) return {fi,i:-1,j:-1,how:'loose'};
+  if(f.binary||!f.rows.length) return {fi,i:-1,j:-1,how:'outdated'};
   const ki=keyIndex(f);
   const i=ki.has(n.a)?ki.get(n.a):-1, j=ki.has(n.b)?ki.get(n.b):-1;
   if(i>=0&&j>=i&&holds(f,i,j,n)) return {fi,i,j,how:'exact'};
@@ -77,20 +73,20 @@ function captured(n: any,side: string,contextOnly: boolean){
 function relocate(f: any,fi: number,n: any): Placing{
   const side=n.side==='old'?'old':'new';
   const rows=sideRows(f,side);
-  if(!rows.length) return {fi,i:-1,j:-1,how:'loose'};
+  if(!rows.length) return {fi,i:-1,j:-1,how:'outdated'};
   // The code as captured first, then only its unchanged lines: an applied note has lost the rest.
   for(const want of [captured(n,side,false),captured(n,side,true)]){
-    const hit=findRun(f,rows,want,n.start,side);
+    const hit=findRun(f,rows,want,side);
+    if(hit==='ambiguous') return {fi,i:-1,j:-1,how:'outdated'};
     if(hit) return {fi,i:hit[0],j:hit[1],how:'moved'};
   }
-  const near=nearest(f,rows,n.start,side);
-  return near>=0?{fi,i:near,j:near,how:'near'}:{fi,i:-1,j:-1,how:'loose'};
+  return {fi,i:-1,j:-1,how:'outdated'};
 }
 
-/** The run of rows reading exactly like `want`, preferring the one nearest where the note was written. */
-function findRun(f: any,rows: number[],want: string[],from: number,side: string){
+/** The only contiguous run reading exactly like `want`; two matches are not a credible anchor. */
+function findRun(f: any,rows: number[],want: string[],side: string): [number,number]|'ambiguous'|null{
   if(!want.length) return null;
-  let best=null, bestGap=Infinity;
+  let hit: [number,number]|null=null;
   for(let p=0;p+want.length<=rows.length;p++){
     const start=lineAt(f,rows[p] as number,side);
     let ok=start!=null;
@@ -102,30 +98,21 @@ function findRun(f: any,rows: number[],want: string[],from: number,side: string)
       else if(lineAt(f,k,side)!==(start as number)+q) ok=false;
     }
     if(!ok) continue;
-    const gap=Math.abs((start as number)-from);
-    if(gap<bestGap){ bestGap=gap; best=[rows[p] as number,rows[p+want.length-1] as number]; }
+    if(hit) return 'ambiguous';
+    hit=[rows[p] as number,rows[p+want.length-1] as number];
   }
-  return best;
+  return hit;
 }
 
-/** The row closest to the line the note was written on, while that is still close enough to mean it. */
-function nearest(f: any,rows: number[],from: number,side: string){
-  let best=-1, bestGap=Infinity;
-  for(const k of rows){
-    const gap=Math.abs((lineAt(f,k,side)||0)-from);
-    if(gap<bestGap){ bestGap=gap; best=k; }
-  }
-  return bestGap<=NEAR?best:-1;
-}
 
 /** The review's own notes, in the order they were written. They belong to no file and never move. */
 export const globalNotes=()=>[...state.notes.values()].filter((n: any)=>isGlobalNote(n));
-/** Notes with no place inside their file, in the order the diff shows those files. */
-export function looseNotes(fi: number){
+/** Outdated notes in one file, kept under that file instead of attached to an unrelated row. */
+export function outdatedNotes(fi: number){
   const f=state.files[fi];
   return [...state.notes.values()].filter((n: any)=>{
     const p=placeOf(n);
-    return !!p&&p.how==='loose'&&n.file===f.path;
+    return !!p&&p.how==='outdated'&&n.file===f.path;
   });
 }
 /**

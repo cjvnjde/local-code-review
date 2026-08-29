@@ -57,7 +57,7 @@ export function charMarks(f: any,fi: number,idx: number){
     if(n.ca==null||n.file!==f.path) return;
     // Where the note is showing, which after an edit need not be the row it was written on.
     const p=placeOf(n);
-    if(!p||p.i!==idx||p.how==='near') return;
+    if(!p||p.i!==idx) return;
     const span=charSpan(n,f.rows[idx].text);
     if(span) out.push({s:span.ca,e:span.cb,c:'cn'});
   });
@@ -308,12 +308,11 @@ function editUI(box,ctx){
   };
 }
 /**
- * What a note's placement has to say for itself. Only the two cases with no anchor left say anything:
- * a note that merely followed its code, or settled for the nearest line, already shows that in the
- * heading over its captured code, and a sentence repeating it is noise on every note the agent touches.
+ * What a note's placement has to say once the diff cannot provide one unambiguous line for it.
+ * Keeping it visibly detached is safer than making a nearby or duplicate line look authoritative.
  */
 const PLACING={
-  loose:['no place in this file','Nothing in this file matches what the note was written on, and no line is near enough. It is kept here, under the file it belongs to.'],
+  outdated:['outdated','The code this comment was attached to is gone or appears in more than one place. It is kept under its original file instead of attaching it to an unrelated line.'],
   stray:['file not in this diff','The file this note was written on has no changes left in the diff, so there is nowhere to attach it.'],
 };
 function placeHtml(how: string){
@@ -347,7 +346,7 @@ function capturedHtml(note: any,how: string){
 export function viewUI(box,note,ctx){
   const st=statusOf(note);
   const how=ctx.how||'exact';
-  const lost=how==='loose'||how==='stray';
+  const lost=how==='outdated'||how==='stray';
   const unread=unreadOf(note);
   // A note read away from the diff needs the way back to it. Read off the DOM rather than passed in,
   // so a note repainted by a reply or a verdict keeps the button wherever it is mounted.
@@ -387,7 +386,7 @@ export function viewUI(box,note,ctx){
   }
   box.querySelector('.edit').onclick=()=>{
     if(busyEditor()) return;
-    if(lost||how==='near'){
+    if(lost){
       alert('This note has no lines to edit against any more. Reply to it instead, or delete it.');
       return;
     }
@@ -452,12 +451,12 @@ export function applyNotesIn(f: any,fi: number,from: number,to: number){
     mark(fi,Math.max(i,from),Math.min(j,to-1),true);
     if(j<from||j>=to) return; // the box belongs to the block holding the last row
     const anchor=el('r'+fi+'-'+j); if(!anchor) return;
-    const ch=n.ca!=null&&p.how!=='near'?charSpan(n,f.rows[i].text):null;
+    const ch=n.ca!=null?charSpan(n,f.rows[i].text):null;
     if(!rowFor(anchor,n.id)) viewUI(mountRow(anchor,n.id),n,{f,fi,i,j,ch,how:p.how});
   });
 }
 /** Mounts a note that has no row of its own, inside whichever holding block it belongs to. */
-export function mountLoose(host: any,note: any,f: any,fi: number,how: string){
+export function mountDetached(host: any,note: any,f: any,fi: number,how: string){
   const box=mountFileBox(host,note.id);
   viewUI(box,note,{f,fi,i:null,j:null,ch:null,how});
 }
@@ -471,7 +470,7 @@ function ctxFor(n: any){
   const p=placeOf(n);
   const f=p?state.files[p.fi]:{path:n.file,rows:[]};
   const how=p?p.how:'stray';
-  const ch=n.ca!=null&&how!=='near'&&p&&p.i>=0&&f.rows[p.i]?charSpan(n,f.rows[p.i].text):null;
+  const ch=n.ca!=null&&p&&p.i>=0&&f.rows[p.i]?charSpan(n,f.rows[p.i].text):null;
   const ctx: any={f,fi:p?p.fi:-1,i:p?p.i:null,j:p?p.j:null,ch,how};
   if(isFileNote(n)) ctx.scope='file';
   return ctx;
