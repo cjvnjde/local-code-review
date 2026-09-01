@@ -1,12 +1,13 @@
 import { orderedNotes } from './anchor.ts';
 import { noteSummary } from './note-list.ts';
 import { insertRef, refLabel, refOf, refToken } from './note-ref.ts';
+import { rankReferenceNotes } from './ref-search.ts';
 import { SVG, clip, esc, noteKey } from './state.ts';
 
 /* ---------- picking the note a note points at ---------- */
 /**
  * Writing a reference by hand would mean copying an id out of the review file, so the editor offers
- * the review instead: every other note, in the order the page reads them, narrowed as you type. What
+ * the review instead: every other note, in the order the page reads them, ranked as you type. What
  * it inserts is the link `note-ref.ts` defines, at the caret, because a reference is a word in the
  * note's own prose rather than a field beside it.
  *
@@ -36,7 +37,8 @@ function popover(){
   pop=document.createElement('div');
   pop.id='refpop';
   pop.hidden=true;
-  pop.innerHTML='<input class="rq" placeholder="Filter notes" spellcheck="false" aria-label="Filter notes">'+
+  pop.innerHTML='<input class="rq" placeholder="Search filename or comment" spellcheck="false" '+
+    'aria-label="Search notes by filename or comment">'+
     '<div class="rflist"></div>';
   document.body.append(pop);
   const query=pop.querySelector('.rq');
@@ -81,16 +83,8 @@ function close(back: boolean){
   if(back&&target&&target.isConnected) target.focus();
 }
 
-/** Every word of the query has to be somewhere in the note, so typing narrows rather than reorders. */
-function matches(n: any,words: string[]){
-  if(!words.length) return true;
-  const hay=(noteKey(n)+' '+noteSummary(n.body)).toLowerCase();
-  return words.every(word=>hay.includes(word));
-}
-
 function paint(query: string){
-  const words=String(query||'').toLowerCase().split(/\s+/).filter(Boolean);
-  shown=refCandidates(self).filter((n: any)=>matches(n,words));
+  shown=rankReferenceNotes(refCandidates(self),query);
   at=shown.length?0:-1;
   pop.querySelector('.rflist').innerHTML=shown.length
     ?shown.map((n: any,k: number)=>'<button class="rfitem" type="button" data-rfi="'+k+'"'+

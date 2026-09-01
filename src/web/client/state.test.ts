@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { filePathHtml, filePathTitle, isMinted, markSubmitted, mintNoteId, pathHtml, reindexNotes, reviewTime, state, statusOf } from "./state.ts";
+import { isMinted, markSubmitted, mintNoteId, reindexNotes, reviewTime, state, statusOf } from "./state.ts";
 
 const OLD = ".review/review-2026-01-01T10-00-00.md";
 const NEW = ".review/review-2026-02-02T10-00-00.md";
@@ -33,47 +33,6 @@ describe("mintNoteId", () => {
 
   test("a character range stays part of the location it was minted from", () => {
     expect(mintNoteId("src/app.ts", "n7", "n7", 4, 9).startsWith("src/app.ts|n7|n7|4-9|#")).toBe(true);
-  });
-});
-
-describe("pathHtml", () => {
-  test("the folders and the file name are separate boxes, so the cut lands between them", () => {
-    expect(pathHtml("apps/web/components/Panel.tsx")).toBe(
-      '<span class="dir">apps/web/components</span><span class="base">/Panel.tsx</span>',
-    );
-  });
-
-  test("a path with no folder is the name alone", () => {
-    expect(pathHtml("README.md")).toBe('<span class="base">README.md</span>');
-  });
-
-  test("the slash stays with the name, so a truncated path still reads as one", () => {
-    expect(pathHtml("a/b.ts")).toContain('<span class="base">/b.ts</span>');
-  });
-
-  test("a path is escaped like anything else drawn into the page", () => {
-    expect(pathHtml('src/<img>&"/x".ts')).toBe(
-      '<span class="dir">src/&lt;img&gt;&amp;&quot;</span><span class="base">/x&quot;.ts</span>',
-    );
-  });
-});
-
-describe("filePathHtml", () => {
-  test("a rename shows both its old and new paths", () => {
-    const file = { from: "src/old-name.ts", path: "src/new-name.ts" };
-    expect(filePathHtml(file)).toBe(
-      '<span class="pth from"><span class="dir">src</span><span class="base">/old-name.ts</span></span>'+
-      '<span class="arrow">→</span><span class="pth to"><span class="dir">src</span><span class="base">/new-name.ts</span></span>',
-    );
-    expect(filePathTitle(file)).toBe("src/old-name.ts → src/new-name.ts");
-  });
-
-  test("an ordinary file shows one path", () => {
-    const file = { path: "src/app.ts" };
-    expect(filePathHtml(file)).toBe(
-      '<span class="pth"><span class="dir">src</span><span class="base">/app.ts</span></span>',
-    );
-    expect(filePathTitle(file)).toBe("src/app.ts");
   });
 });
 

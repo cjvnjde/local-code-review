@@ -1,4 +1,5 @@
-import { el, esc, pathHtml } from './state.ts';
+import { pathHtml } from './path.ts';
+import { el, esc } from './state.ts';
 import type { DiffFile } from '../../types.ts';
 
 /* ---------- files git prints no lines of: listen to the recording itself ---------- */
@@ -24,7 +25,7 @@ function paneHtml(f: AudioFile,side: string,label: string,name: string){
   const source='/api/blob?side='+side+'&path='+encodeURIComponent(f.path);
   return '<figure class="audf '+side+'">'+
     '<figcaption><span class="side">'+label+'</span>'+
-    (name?'<span class="was pth" title="'+esc(name)+'">'+pathHtml(name)+'</span>':'')+
+    (name?pathHtml(name,{className:'was',title:name}):'')+
     '<span class="spacer"></span><span class="dim"></span></figcaption>'+
     '<div class="audb"><audio controls preload="metadata" src="'+esc(source)+'">'+
     'Audio playback is not supported.</audio></div></figure>';

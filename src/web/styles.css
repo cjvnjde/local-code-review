@@ -31,14 +31,11 @@
   body{margin:0;background:var(--bg);color:var(--ink);font:var(--fs-code)/1.5 var(--mono);display:flex;flex-direction:column}
   body.dragging{user-select:none;cursor:row-resize}
   .i{width:var(--icon);height:var(--icon);fill:currentColor;flex:none;display:block}
-  /* A path cut through the middle rather than at the end. Everywhere the page shows one it runs out
-     of room sooner or later, and `text-overflow` can only eat the end of a line — which for a path is
-     the file name, the one part of it that has to survive. So the folders are their own box: they
-     shrink first and take the ellipsis wherever the room happened to run out, and the name gives way
-     only once there are no folders left. `pathHtml` in client/state.ts writes the two boxes. */
-  .pth{display:flex;min-width:0;overflow:hidden;white-space:nowrap}
-  .pth .dir{flex:0 1000 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
-  .pth .base{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+  /* The invisible full path supplies the flex box's natural width; the measured label over it removes
+     one run from its middle when that box shrinks. Its minimum is the beginning plus the whole name. */
+  .pth{position:relative;display:block;overflow:hidden;white-space:nowrap}
+  .pth::after{content:attr(data-path);visibility:hidden}
+  .pth .ptx{position:absolute;inset:0;white-space:nowrap}
   .file-path{display:flex;align-items:center;min-width:0}
   .file-path>.pth{flex:0 1 auto}
   .file-path>.arrow{color:var(--ink-faint);padding:0 7px;flex:none}
@@ -273,7 +270,7 @@
   :is(.imgf,.audf).new .side{color:var(--add)}
   /* the name a rename is the old side of: the change is as much the name as the media */
   :is(.imgf,.audf) .was{color:var(--ink-faint);font-family:var(--mono);text-transform:none;letter-spacing:0;
-    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+    overflow:hidden;white-space:nowrap;min-width:0}
   :is(.imgf,.audf) .dim{color:var(--ink-faint);font-family:var(--mono);text-transform:none;letter-spacing:0;flex:none}
   /* a checkerboard, so a transparent image is read as transparent rather than as the panel's colour */
   .imgb{flex:1;display:flex;align-items:center;justify-content:center;padding:16px;min-height:140px;
@@ -679,7 +676,7 @@
   /* the file a run of notes was written on stays put while they are read */
   .rdrg .gh{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:10px;padding:7px 12px;
     background:var(--panel2);border:1px solid var(--edge);border-radius:6px 6px 0 0;box-shadow:0 1px 0 var(--crust)}
-  .rdrg .gh .p{color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .rdrg .gh .p{color:var(--ink);overflow:hidden;white-space:nowrap}
   .rdrg .gh .p.stray{color:var(--peach)}
   .rdrg .gh .ct,.rdrg .gh .hid{font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.05em;flex:none}
   .rdrg .gh .ct{color:var(--ink-faint)}

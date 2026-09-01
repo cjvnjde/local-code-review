@@ -36,7 +36,7 @@ describe("imagesHtml", () => {
   test("a rename says which name the old side is, and still asks under the new one", () => {
     const html = imagesHtml(file({ status: "renamed", from: "assets/mark.png" }));
     expect(html).toContain('title="assets/mark.png"');
-    expect(html).toContain('<span class="dir">assets</span><span class="base">/mark.png</span>');
+    expect(html).toContain('<span class="ptx">assets/mark.png</span>');
     // The server maps the rename, so both sides are asked for by the name the diff lists.
     expect(html).toContain("/api/blob?side=old&amp;path=assets%2Flogo.png");
   });

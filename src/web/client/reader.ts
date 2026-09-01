@@ -5,7 +5,8 @@ import { jumpToNote } from './live.ts';
 import { FILTERS, groupNotes, matchesFilter } from './note-list.ts';
 import { mountNoteIn } from './notes.ts';
 import { save } from './persistence.ts';
-import { el, esc, filePathHtml, filePathTitle, markRead, state, statusOf, unreadOf } from './state.ts';
+import { filePathHtml, filePathTitle } from './path.ts';
+import { el, esc, markRead, state, statusOf, unreadOf } from './state.ts';
 
 /* ---------- all notes: the review read as a conversation instead of as marks on a diff ---------- */
 /**
