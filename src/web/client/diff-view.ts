@@ -130,10 +130,10 @@ function fileHtml(f,fi){
     '<span class="spacer"></span>'+
     '<button class="cf" data-cf="'+esc(f.path)+'" title="Comment on this file as a whole">'+
       SVG.plus+' comment</button>'+
+    delBtnHtml(f)+
     '<button class="vw'+(seen?' on':'')+'" data-vw="'+esc(f.path)+'" title="'+
       (seen?'Mark as not reviewed':'Mark reviewed — collapses until the file changes')+'">'+
       (seen?SVG.boxOn:SVG.box)+' viewed</button>'+
-    delBtnHtml(f)+
     '<button class="op" data-open-file="'+esc(f.path)+'" title="Open in editor">'+
       SVG.open+' open</button>'+
     '<button class="eye" data-hf="'+esc(f.path)+'" title="Hide from diff">'+SVG.eye+' hide</button></div>'+
