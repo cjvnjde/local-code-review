@@ -1,4 +1,4 @@
-import { hiddenCount } from './filters.ts';
+import { hiddenCount, revealedCount } from './filters.ts';
 import { load, render } from './load.ts';
 import { renderNotePane } from './note-pane.ts';
 import { openGlobalEditor } from './notes.ts';
@@ -26,6 +26,9 @@ export function updateCount(){
   rv.disabled=!seen;
   rv.textContent=seen?'Reset '+seen+' viewed file'+(seen===1?'':'s'):'Reset viewed files';
   rv.title=seen?'Mark every file in this diff as not viewed':'No file is marked viewed yet';
+  const reveals=revealedCount(), reapply=el('reapplyHide');
+  reapply.disabled=!reveals;
+  reapply.textContent='Reapply hide rules'+(reveals?' ('+reveals+' revealed)':'');
   /** Always on show, so starting over is findable; disabled is the honest state when nothing is stored. */
   const all=el('clearAll');
   all.disabled=!n;

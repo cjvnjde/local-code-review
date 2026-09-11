@@ -7,6 +7,7 @@ import {
   isDeleted,
   isHidden,
   matchesHide,
+  revealedCount,
 } from "./filters.ts";
 import { state } from "./state.ts";
 
@@ -68,6 +69,25 @@ describe("globRx", () => {
 });
 
 describe("hide patterns", () => {
+  test("counts only visible exceptions to current rules, including deleted files", () => {
+    loadFiles([
+      { path: "src/nested/a.test.ts", status: "modified" },
+      { path: "src/b.test.ts", status: "added" },
+      { path: "src/gone.ts", status: "deleted" },
+      { path: "src/kept.ts", status: "modified" },
+    ]);
+    state.hideRx = compileHide("*.test.*");
+    state.cfg.hideDeleted = true;
+    state.shown = new Set([...state.files.map(f => f.path), "no-longer-in-diff.test.ts"]);
+    state.hidden.add("src/b.test.ts");
+    expect(revealedCount()).toBe(2);
+    state.shown.clear();
+    expect(revealedCount()).toBe(0);
+    expect(isHidden("src/nested/a.test.ts")).toBe(true);
+    expect(isHidden("src/gone.ts")).toBe(true);
+    expect(isHidden("src/kept.ts")).toBe(false);
+  });
+
   test("splits patterns on newlines and commas", () => {
     expect(hides("*.test.*\ndist/", "dist/app.js")).toBe(true);
     expect(hides("*.test.*, *.snap", "src/a.snap")).toBe(true);

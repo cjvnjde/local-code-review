@@ -59,7 +59,10 @@
       <p class="note">One glob per line or comma separated. <code>*</code> stops at <code>/</code>,
         <code>**</code> crosses it, <code>?</code> is one character. A pattern without <code>/</code> matches
         the file name at any depth, a trailing <code>/</code> hides everything below it, and <code>#</code>
-        starts a comment. Files you reveal with the eye icon stay visible.</p>
+        starts a comment. Files you reveal with the eye icon, by jumping to them, or with
+        <b>Show every file</b> stay visible even when they match a rule.</p>
+      <button id="reapplyHide" type="button" disabled>Reapply hide rules</button>
+      <p class="note">Clears saved reveal overrides so matching files are hidden again.</p>
     </div>
     <div class="settings-section">
       <h4>Removed lines</h4>

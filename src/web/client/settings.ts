@@ -1,6 +1,6 @@
 import { renderDiff, setViewed } from './diff-view.ts';
 import { load, render } from './load.ts';
-import { clearBookmarks, clearNotes, saveCfg } from './persistence.ts';
+import { clearBookmarks, clearNotes, save, saveCfg } from './persistence.ts';
 import { SVG, el, esc, reviewTime, state } from './state.ts';
 
 /* ---------- settings ---------- */
@@ -22,6 +22,13 @@ let hideT=null;
 el('cfgHide').oninput=()=>{
   clearTimeout(hideT);
   hideT=setTimeout(()=>{ if(saveCfg()) render(); },300);
+};
+el('reapplyHide').onclick=()=>{
+  clearTimeout(hideT);
+  saveCfg();
+  state.shown.clear();
+  save();
+  render();
 };
 el('fstat').onclick=e=>{ e.stopPropagation(); openSettings(true); el('cfgHide').focus(); };
 document.addEventListener('click',()=>{
@@ -124,7 +131,7 @@ el('newReview').onclick=async()=>{
   const current=state.sessionFile;
   if(!current) return;
   if(!confirm('Start a new review?\n\n'+current+' stays on disk with everything said in it. '+
-    'The notes and replies on this page are cleared, and your next save opens a fresh file.')) return;
+    'The notes and replies on this page are cleared, viewed files are reset, and your next save opens a fresh file.')) return;
   try{
     const response=await fetch('/api/review',{method:'DELETE'});
     const data=await response.json();
@@ -136,6 +143,7 @@ el('newReview').onclick=async()=>{
   state.sessionFile='';
   clearNotes();
   clearBookmarks(); // the read that made them is the one being closed
+  setViewed([...state.viewed.keys()],false);
   await load();
   await refreshReviews();
 };

@@ -43,6 +43,10 @@ export const autoHidden=(path: string)=>matchesHide(path)||(!!state.cfg.hideDele
 /** An automatic hide is only a default: revealing one file by hand keeps it visible. */
 export const filteredOut=(path: string)=>autoHidden(path)&&!state.shown.has(path);
 export const isHidden=(path: string)=>state.hidden.has(path)||filteredOut(path);
+/** Files kept visible by a saved exception to the current hide rules. */
+export function revealedCount(){
+  return state.files.filter(f=>autoHidden(f.path)&&state.shown.has(f.path)&&!state.hidden.has(f.path)).length;
+}
 export function hiddenCount(){
   let n=0;
   state.files.forEach((f: any)=>{ if(isHidden(f.path)) n++; });
