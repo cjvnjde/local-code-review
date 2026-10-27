@@ -70,6 +70,9 @@ export const PORT_ATTEMPTS = 10;
  */
 export const repoId = (repoRoot: string) => fingerprint(repoRoot);
 
+const activeChannel = (options: ServerOptions) =>
+  options.channel && (options.channel.available?.() ?? true) ? options.channel : undefined;
+
 export function startServer(options: ServerOptions) {
   const server = listen(options.port, (port) => serve(options, port));
 
@@ -136,7 +139,7 @@ function serve(options: ServerOptions, port: number) {
             context: options.context,
             files,
             statuses,
-            ...(options.channel ? { agent: options.channel.agent } : {}),
+            ...(activeChannel(options) ? { agent: options.channel!.agent } : {}),
           });
         }
         if (url.pathname === "/api/context") {
@@ -179,6 +182,7 @@ function serve(options: ServerOptions, port: number) {
               file: options.session.shownFile,
               notes: doc.notes,
               statuses,
+              ...(activeChannel(options) ? { agent: options.channel!.agent } : {}),
             });
           }
           // Starting fresh only forgets which file we were in; the old one stays on disk as history.
@@ -227,7 +231,7 @@ function serve(options: ServerOptions, port: number) {
               `\n  ${request.method === "POST" ? "replied" : "reworded a reply"} on ${note.key} in ${options.session.shownFile}\n`,
             );
             options.hub.emit({ type: "review", file: options.session.file });
-            const channel = await options.channel?.publish(options.session.file, [note]);
+            const channel = await activeChannel(options)?.publish(options.session.file, [note]);
             return Response.json({ file: options.session.shownFile, note, ...(channel ? { channel } : {}) });
           }
           if (request.method === "DELETE") {
@@ -263,9 +267,9 @@ function serve(options: ServerOptions, port: number) {
           );
           console.log(`\n  saved ${file}  (${submission.comments.length} notes)`);
           if (removed.length) console.log(`  replaced ${plural(removed.length, "earlier review file")}`);
-          if (!options.channel) console.log(`  next: ask the agent to "address the notes in ${file}"\n`);
+          if (!activeChannel(options)) console.log(`  next: ask the agent to "address the notes in ${file}"\n`);
           options.hub.emit({ type: "review", file: options.session.file });
-          const channel = await options.channel?.publish(path.basename(file), changed);
+          const channel = await activeChannel(options)?.publish(path.basename(file), changed);
           return Response.json({ file, count: submission.comments.length, removed, ...(channel ? { channel } : {}) });
         }
         if (url.pathname === "/api/ghosts") {

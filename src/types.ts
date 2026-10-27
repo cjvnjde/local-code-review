@@ -72,7 +72,7 @@ export interface CliOptions {
   id: string;
   /** `--version` asks what build this is and nothing else: it prints the stamp and never starts. */
   version: boolean;
-  /** Serve the local web UI as a Claude Code stdio channel. */
+  /** Run the lightweight Claude Code stdio bridge; the review page is started separately. */
   claudeChannel: boolean;
   /** Existing Codex session to notify through its installed CLI; empty without an adapter. */
   codexThread: string;

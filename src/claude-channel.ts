@@ -42,7 +42,7 @@ const tools = [
  * Claude Code owns authentication, inference, permissions, and its existing conversation.
  */
 export function createClaudeChannel(
-  session: ReviewSession,
+  session: Pick<ReviewSession, "readNote" | "answer">,
   hub: Hub,
   write: (packet: Packet) => void,
   url: () => string = () => "",
@@ -63,6 +63,7 @@ export function createClaudeChannel(
 
   return {
     agent: "claude" as const,
+    get ready() { return ready; },
     publish(review: string, notes: ReviewNote[]): ChannelDelivery {
       if (!notes.length) return { state: "unchanged", count: 0 };
       for (const note of notes) {
@@ -147,7 +148,7 @@ export function createClaudeChannel(
 export type ClaudeChannel = ReturnType<typeof createClaudeChannel>;
 
 /** Claude Code owns this process: closing its stdio connection also closes the web server. */
-export async function runClaudeChannel(channel: ClaudeChannel): Promise<void> {
+export async function runClaudeChannel(channel: Pick<ClaudeChannel, "receive">): Promise<void> {
   const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
   for await (const line of lines) {
     if (line.trim()) await channel.receive(line);

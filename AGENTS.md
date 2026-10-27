@@ -74,6 +74,10 @@
   snippet in the reviewer's own note, which the format keeps verbatim on disk.
 - Default `.review/` output remains ignored. Custom relative output directories remain locally excluded through `.git/info/exclude`.
 - Start opens the page in the default browser unless `--no-open` is passed. Launch stays best-effort: failure prints a hint and never blocks the server.
+- Global `--claude-channel` registration is a lightweight bridge only: it never starts the review web
+  server or opens a browser. The reviewer starts `lcr` with their chosen Git diff arguments, and the
+  bridge attaches through a private per-repository local link. The manual run owns the range, port,
+  output directory and page lifecycle; closing Claude must leave that run serving.
 - A taken port is not a failure: start walks up from the requested port over a bounded range and reports the one it
   landed on. Everything downstream, the printed URL and the browser launch included, reads `server.port` rather than the
   requested one. Port 0 is left to the OS and never walked.

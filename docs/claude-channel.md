@@ -1,86 +1,96 @@
 # Interactive Claude Code channel
 
-This MVP connects the local review page to one running Claude Code session. Claude Code launches
-lcr as an MCP stdio channel, and that same lcr process serves the web UI. It uses your existing
-Claude Code login, including a subscription login; lcr has no API key, model client, or remote service.
+The globally registered MCP process is a lightweight bridge. It waits for a review you start
+explicitly and never opens a browser or starts the review web server when Claude starts.
+You choose the diff through the usual lcr command.
 
-## Setup
+## Register once, globally
 
-Build this branch, or use a binary built from it:
-
-```sh
-bun build ./src/index.ts --compile --minify --outfile /tmp/lcr
-```
-
-In the repository you want to review, register the binary with Claude Code. Replace the path below
-with its absolute path (`/tmp/lcr` if you used the command above):
+Build or install a current binary, then register its absolute path:
 
 ```sh
-claude mcp add --transport stdio --scope local lcr -- /absolute/path/to/lcr --claude-channel --no-open --id interactive
+claude mcp add --transport stdio --scope user lcr -- /absolute/path/to/lcr --claude-channel
 ```
 
-Then start Claude Code with the custom channel enabled:
+This makes the bridge available across repositories. If an earlier local registration exists in
+a repository, it overrides the global one; remove that local entry there with:
+
+```sh
+claude mcp remove lcr --scope local
+```
+
+An existing global entry pointing to the same binary with `--claude-channel` keeps working after
+updating the binary. Extra lcr review settings in that old entry do not choose the review any more;
+the manually started lcr owns those settings. Restart Claude Code once after upgrading.
+
+For source development, register `bun /absolute/path/to/src/index.ts --claude-channel` instead.
+
+## Start each review with its diff
+
+In one terminal, start lcr in the repository with whichever arguments you need:
+
+```sh
+lcr origin/main
+```
+
+Other examples work the same way:
+
+```sh
+lcr HEAD~3
+lcr main...HEAD --id auth-review
+lcr --staged --out .feedback --port 8080
+```
+
+In another terminal in the same repository, launch Claude Code with the bridge enabled:
 
 ```sh
 claude --dangerously-load-development-channels server:lcr
 ```
 
-Accept Claude Code's local-development channel warning and MCP server consent. This flag is Claude
-Code's documented way to test custom channels during the research preview; it does not skip tool
-permissions. On Team or Enterprise, an organization owner must first enable channels. An administrator
-can also package this integration as an approved channel plugin under the organization's policy.
+Accept Claude Code's local-development channel warning and MCP consent. This is Claude Code's
+documented preview flag for a custom channel; it does not bypass tool permissions. Team and
+Enterprise organizations must enable channels through their organization settings first.
 
-Open `http://localhost:7777`. If that port was occupied, lcr uses the next available one. The exact
-URL is in its startup diagnostics and in the MCP instructions Claude receives, so you can ask Claude
-for the lcr URL. `--no-open` keeps MCP startup from opening a browser; leave it out to use lcr's usual
-automatic browser launch.
+You can start Claude or lcr first. The bridge connects when both are running. It uses
+`CLAUDE_PROJECT_DIR` to find Claude's repository and a private local IPC connection to find its
+review. The web port, diff range and review output directory come from your lcr command.
 
-For development without compiling, register Bun with the absolute source path instead:
+The page opens when you start lcr, unless you use `--no-open`. After the bridge connects, its save
+button becomes **Save & ask Claude**. Write a note and click it; Claude reads the latest thread
+and writes its answer under that note. **Reply → Send reply** continues the conversation.
 
-```sh
-claude mcp add --transport stdio --scope local lcr -- bun /absolute/path/to/local-code-review/src/index.ts --claude-channel --no-open --id interactive
-```
+## Conversations and lifecycle
 
-Run Claude Code from the repository being reviewed. Channel mode honors Claude Code's
-`CLAUDE_PROJECT_DIR` when set, and otherwise uses its working directory. Normal lcr options still apply: add a different
-`--id`, `--out`, `--port`, or explicit Git diff arguments to the registered command when needed.
-
-## Use
-
-1. Write a line, file, or overall note in the review page.
-2. Click **Save & ask Claude**. New and changed notes are saved to Markdown and forwarded to Claude.
-3. Read Claude's answer under the note. Follow up with **Reply → Send reply** to continue immediately.
-
-Rewording a saved reviewer reply forwards it too. Saving an unchanged review forwards nothing;
-send a follow-up to ask again. Deleting a note or message does not ask Claude another question.
-
-Claude receives the exact review filename and stable note id. The `read_note` tool gives it the
-latest note, captured code, verdict and conversation. The `reply` tool appends its Markdown answer
-and optionally updates the verdict. Questions use `answered`; a requested edit uses `applied` only
-after the code has been changed. Answers still go to their original review if you switch reviews
-while Claude is working. A deleted note is never recreated by a late answer.
-
-The Markdown file stays the conversation: attachments, note references, statuses, ordinary agent
-file edits, and the existing live updates keep their usual behavior. Closing Claude Code's connection
-stops the lcr web server; saved reviews remain on disk. Do not start a second lcr process for this
-same conversation while using the channel.
+- New or changed notes and sent or reworded reviewer replies are forwarded. Saving unchanged notes,
+  agent answers, diff refreshes and deletions do not wake Claude again.
+- Claude receives the exact review filename and stable note id. `read_note` reads the current note
+  and full thread; `reply` appends the answer and optionally updates its verdict. Answers remain
+  in their original review if you switch reviews while Claude is working.
+- Questions use `answered`; requested edits use `applied` after the code changes. Deleted notes
+  are not recreated by late answers. Attachments and note references keep their Markdown format.
+- Closing Claude disconnects the bridge but leaves lcr and its page running. Closing lcr leaves
+  Claude running; the bridge waits and reconnects when you start another review in that repository.
+- Only one lcr review and one Claude bridge can be linked per repository at a time. Another lcr
+  instance still serves its own diff independently and does not take over the linked review.
+  Close the earlier lcr and restart the one you want to link when switching between instances.
+- Different repositories have independent links and review files. No repository path or IPC
+  endpoint is used as a public network service.
 
 ## MVP limits
 
-- Claude Code must remain open with this server enabled as a channel. Registering an ordinary MCP
-  server alone does not enable incoming events.
-- Events are forwarded promptly. Claude Code queues events while busy and handles them on its next
-  turn, so an answer is not guaranteed to start at the instant you click.
-- A “Forwarded” message confirms transport forwarding, not model receipt. Claude Code can silently
-  drop events when channel opt-in or organization policy is missing; check its startup channel notice
-  if no answer arrives. “Queued” means lcr is waiting for the MCP initialization handshake.
-- Tool permissions are answered in the Claude Code terminal. This MVP does not relay permission
-  prompts into lcr or bypass approvals.
-- Answers appear when Claude calls `reply`; this MVP does not stream individual output tokens.
-- Notifications are held in memory until MCP initialization; there is no persistent delivery queue.
-  Saved notes remain in Markdown even if the process stops before handling them.
-- This adapter targets Claude Code. For an existing Codex session, use the separate
-  [Codex adapter](codex-channel.md). The Markdown workflow still works with other agents.
+- Claude Code must run with the channel enabled. Ordinary MCP registration alone does not opt in
+  to incoming messages. “Forwarded” confirms transport forwarding, not model receipt; Claude Code
+  can silently drop events when channel opt-in or organization policy is missing.
+- A busy Claude session handles queued events on its next turn. Answers appear when it calls
+  `reply`; individual output tokens are not streamed into lcr.
+- Tool permission prompts stay in Claude Code's terminal. The bridge does not relay or bypass them.
+- Feedback saved before a bridge connects remains ordinary Markdown and is not sent retroactively.
+  Once connected, send a follow-up to ask about an already saved note.
+- Connection loss during a tool call can be ambiguous. Check the note before retrying an answer
+  that may already have reached disk. There is no persistent notification queue.
 
-Protocol and preview details: [Claude Code channels](https://code.claude.com/docs/en/channels) and
-[building a custom channel](https://code.claude.com/docs/en/channels-reference).
+For an existing Codex session, use the separate [Codex adapter](codex-channel.md). The optional
+vendor-neutral skill and ordinary Markdown workflow work as before.
+
+Protocol details: [Claude Code channels](https://code.claude.com/docs/en/channels) and
+[custom channels](https://code.claude.com/docs/en/channels-reference).

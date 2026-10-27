@@ -73,6 +73,7 @@ async function loadNow(keep: boolean){
  * the whole conversation whichever side of it they come from.
  */
 export function adopt(review: any){
+  state.agent=review.agent==='claude'?'Claude':review.agent==='codex'?'Codex':'';
   state.sessionFile=review.file||'';
   const at=reviewTime(review.file||'')||Date.now();
   const held=new Set();
