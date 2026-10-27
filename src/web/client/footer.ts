@@ -47,8 +47,8 @@ export function updateCount(){
 function paintSubmit(){
   const button=el('submit');
   const running=!!state.sessionFile;
-  button.textContent=state.claudeChannel?'Save & ask Claude':running?'Update review':'Save review';
-  button.title=state.claudeChannel?'Save these notes and forward new or changed notes to Claude Code':
+  button.textContent=state.agent?'Save & ask '+state.agent:running?'Update review':'Save review';
+  button.title=state.agent?'Save these notes and forward new or changed notes to '+state.agent:
     running?'Write these notes into '+state.sessionFile:'Start a review file for these notes';
   const newReview=el('newReview');
   newReview.disabled=!running;
@@ -128,9 +128,12 @@ function handover(d: any){
   const gone=(d.removed||[]).length;
   const toast=document.createElement('div');
   const channel=d.channel;
+  const agent=state.agent||'the agent';
   const hint=channel
-    ?channel.state==='forwarded'?'Forwarded '+channel.count+' note'+(channel.count===1?'':'s')+' to Claude Code. Answers appear in their threads.'
-      :channel.state==='queued'?'Queued for Claude Code to connect.':'No new or changed notes to forward.'
+    ?channel.state==='forwarded'?'Forwarded '+channel.count+' note'+(channel.count===1?'':'s')+' to '+esc(agent)+'. Answers appear in their threads.'
+      :channel.state==='queued'?'Queued for '+esc(agent)+' to connect.'
+      :channel.state==='failed'?'Saved, but forwarding failed: '+esc(channel.error||'Check the agent session.')+' Click Save & ask '+esc(agent)+' to retry.'
+      :'No new or changed notes to forward.'
     :'Ask the agent: <code>Address the notes in '+esc(d.file)+'</code>';
   toast.className='toast saved';
   toast.innerHTML='<span class="ic">'+SVG.check+'</span>'+

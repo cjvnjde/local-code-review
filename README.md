@@ -33,6 +33,19 @@ See [Claude channel setup](docs/claude-channel.md) for registration and launch c
 a Claude Code research preview; Team and Enterprise organizations must enable them. The ordinary
 `lcr` command and the optional vendor-neutral skill keep working as before.
 
+## Interactive Codex session (MVP)
+
+Point lcr at an existing Codex session:
+
+```sh
+lcr --codex-thread <session-uuid> --id interactive
+```
+
+**Save & ask Codex** forwards new or changed notes with the installed CLI's `codex queue` command.
+Sending or rewording a reply notifies the same session. Codex reads the current thread from Markdown
+and writes its answer there, where the page picks it up live. The session keeps its own login,
+model, and tool permissions. See [Codex setup and delivery behavior](docs/codex-channel.md).
+
 ## Install
 
 Download the package for your system from the [latest release](https://github.com/cjvnjde/local-code-review/releases/latest), extract it, and put `lcr` (`lcr.exe` on Windows) somewhere on your `PATH`.
@@ -68,6 +81,7 @@ lcr --port 8080               # Start from another port
 lcr --out .feedback           # Store reviews elsewhere
 lcr --context 8               # Show more surrounding lines
 lcr --id auth-rework          # Name this review, and come back to it by that name
+lcr --codex-thread <uuid>     # Forward saved feedback to an existing Codex session
 lcr --version                 # Print which build this is
 ```
 

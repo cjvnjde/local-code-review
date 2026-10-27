@@ -4,12 +4,9 @@ import type { ReviewSession } from "./session.ts";
 import type { ReviewNote } from "./thread.ts";
 import type { NoteStatusKind } from "./types.ts";
 import { VERSION } from "./version.ts";
+import type { ChannelDelivery } from "./agent-channel.ts";
 
 type Packet = Record<string, unknown>;
-export interface ChannelDelivery {
-  state: "forwarded" | "queued" | "unchanged";
-  count: number;
-}
 
 const PROTOCOLS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 const STATUSES = ["applied", "answered", "skipped", "needs-input", "pending", "unknown"];
@@ -65,6 +62,7 @@ export function createClaudeChannel(
   const error = (id: unknown, code: number, message: string) => write({ jsonrpc: "2.0", id, error: { code, message } });
 
   return {
+    agent: "claude" as const,
     publish(review: string, notes: ReviewNote[]): ChannelDelivery {
       if (!notes.length) return { state: "unchanged", count: 0 };
       for (const note of notes) {

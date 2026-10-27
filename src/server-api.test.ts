@@ -12,6 +12,7 @@ import {
 } from "bun:test";
 import { createHub } from "./events.ts";
 import { createClaudeChannel } from "./claude-channel.ts";
+import { createCodexChannel } from "./codex-channel.ts";
 import type { Hub } from "./events.ts";
 import { createSession } from "./session.ts";
 import { repoId, startServer } from "./server.ts";
@@ -589,6 +590,36 @@ describe("attachment APIs", () => {
 });
 
 describe("review conversation APIs", () => {
+  test("Codex receives saved notes and follow-ups, and delivery failures keep the saved work", async () => {
+    const started = await startTestServer();
+    let attempts = 0, available = false;
+    started.options.channel = createCodexChannel({
+      repoRoot: started.options.repoRoot, outDir: started.options.outDir,
+      thread: "existing-session", session: started.options.session,
+    }, async () => { attempts++; return { ok: available, error: "Session not found" }; });
+    const post = async (route: string, body: object) => {
+      const response = await request(started, route, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+      });
+      expect(response.status).toBe(200);
+      return response.json();
+    };
+    expect((await (await request(started, "/api/diff")).json()).agent).toBe("codex");
+    const saved = await post("/api/submit", { comments: [comment] });
+    expect(saved.channel).toEqual({ state: "failed", count: 0, error: "Session not found" });
+    expect((await started.options.session.read()).notes[0]!.body).toBe(comment.body);
+    available = true;
+    expect((await post("/api/submit", { comments: [comment] })).channel.state).toBe("forwarded");
+    expect((await post("/api/submit", { comments: [comment] })).channel.state).toBe("unchanged");
+    expect((await post("/api/reply", { id: comment.id, body: "Why that fallback?" })).channel.state).toBe("forwarded");
+    expect(attempts).toBe(3);
+    await started.options.session.answer(started.options.session.file, comment.id!, "It handles missing values.", "answered");
+    const doc = await (await request(started, "/api/review")).json();
+    expect(doc.notes[0].messages.at(-1)).toMatchObject({ role: "agent", body: "It handles missing values." });
+    expect((await post("/api/submit", { comments: [comment] })).channel.state).toBe("unchanged");
+    expect(attempts).toBe(3);
+  });
+
   test("channel mode forwards submitted notes and reviewer replies, but never agent answers", async () => {
     const started = await startTestServer();
     const packets: any[] = [];
@@ -600,7 +631,7 @@ describe("review conversation APIs", () => {
     const post = (route: string, body: object, method = "POST") => request(started, route, {
       method, headers: { "content-type": "application/json" }, body: JSON.stringify(body),
     });
-    expect((await (await request(started, "/api/diff")).json()).claudeChannel).toBe(true);
+    expect((await (await request(started, "/api/diff")).json()).agent).toBe("claude");
     const saved = await (await post("/api/submit", { comments: [comment] })).json();
     expect(saved.channel).toEqual({ state: "forwarded", count: 1 });
     const unchanged = await (await post("/api/submit", { comments: [comment] })).json();

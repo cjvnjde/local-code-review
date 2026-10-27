@@ -79,7 +79,8 @@ same conversation while using the channel.
 - Answers appear when Claude calls `reply`; this MVP does not stream individual output tokens.
 - Notifications are held in memory until MCP initialization; there is no persistent delivery queue.
   Saved notes remain in Markdown even if the process stops before handling them.
-- The adapter currently supports Claude Code only. The Markdown workflow still works with other agents.
+- This adapter targets Claude Code. For an existing Codex session, use the separate
+  [Codex adapter](codex-channel.md). The Markdown workflow still works with other agents.
 
 Protocol and preview details: [Claude Code channels](https://code.claude.com/docs/en/channels) and
 [building a custom channel](https://code.claude.com/docs/en/channels-reference).

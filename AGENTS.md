@@ -1,5 +1,9 @@
 # Agent Instructions
 
+## Workflow
+
+- After completing requested changes and validation, commit them and push the working branch to `origin`.
+
 ## Project shape
 
 - `src/index.ts` is composition root. Keep CLI, Git, diff parsing, review output, server, and browser concerns in focused modules under `src/`.

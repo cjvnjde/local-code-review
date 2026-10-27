@@ -11,6 +11,7 @@ describe("parseArgs", () => {
       id: "",
       version: false,
       claudeChannel: false,
+      codexThread: "",
       diffArgs: ["HEAD~2", "--staged", "--", "*.ts"],
     });
   });
@@ -33,6 +34,16 @@ describe("parseArgs", () => {
     const options = parseArgs(["--id", "auth rework", "main...HEAD"]);
     expect(options.id).toBe("auth rework");
     expect(options.diffArgs).toEqual(["main...HEAD"]);
+  });
+
+  test("--codex-thread targets an existing session without changing the Git range", () => {
+    const options = parseArgs(["--codex-thread", "session-123", "--id", "chat", "main...HEAD"]);
+    expect(options.codexThread).toBe("session-123");
+    expect(options.diffArgs).toEqual(["main...HEAD"]);
+    expect(parseArgs([]).codexThread).toBe("");
+    expect(() => parseArgs(["--codex-thread"])).toThrow("requires a Codex session");
+    expect(() => parseArgs(["--codex-thread", "--staged"])).toThrow("requires a Codex session");
+    expect(() => parseArgs(["--codex-thread", "x", "--claude-channel"])).toThrow("Choose either");
   });
 
   test("--id with nothing after it leaves the review unnamed", () => {

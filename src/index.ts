@@ -6,6 +6,7 @@ import { readBlob } from "./blob.ts";
 import { openInBrowser } from "./browser.ts";
 import { parseArgs } from "./cli.ts";
 import { createClaudeChannel, runClaudeChannel } from "./claude-channel.ts";
+import { createCodexChannel } from "./codex-channel.ts";
 import { diffBase, diffRangeLabel, diffSides, fingerprint, getDiff, getFileContext, resolveWorktreeBase } from "./diff.ts";
 import { openInEditor } from "./editor.ts";
 import { createHub } from "./events.ts";
@@ -64,9 +65,12 @@ if (!(await session.adoptMatching())) {
 }
 const hub = createHub();
 let webUrl = "";
-const channel = options.claudeChannel
+const claudeChannel = options.claudeChannel
   ? createClaudeChannel(session, hub, (packet) => { process.stdout.write(JSON.stringify(packet) + "\n"); }, () => webUrl)
   : undefined;
+const channel = claudeChannel ?? (options.codexThread
+  ? createCodexChannel({ repoRoot, outDir: options.outDir, thread: options.codexThread, session })
+  : undefined);
 
 /** One saved review parsed back, for reading a ghost note's thread out of its own file. */
 async function readReview(name: string) {
@@ -178,8 +182,9 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, shutdown
 if (options.open && !openInBrowser(`http://localhost:${server.port}`)) {
   console.log("  could not open browser; open the URL above manually\n");
 }
-if (channel) {
+if (options.codexThread) console.log(`  Codex feedback target: ${options.codexThread}\n`);
+if (claudeChannel) {
   console.error("  Claude channel enabled; enable server:lcr in Claude Code to receive saved notes.\n");
-  await runClaudeChannel(channel);
+  await runClaudeChannel(claudeChannel);
   shutdown();
 }

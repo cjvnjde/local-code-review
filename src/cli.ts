@@ -21,6 +21,7 @@ export function parseArgs(argv: string[]): CliOptions {
   let id = "";
   let version = false;
   let claudeChannel = false;
+  let codexThread = "";
   const diffArgs: string[] = [];
 
   for (let i = 0; i < argv.length; i++) {
@@ -33,8 +34,15 @@ export function parseArgs(argv: string[]): CliOptions {
     else if (arg === "--open") open = true;
     else if (arg === "--version" || arg === "-v") version = true;
     else if (arg === "--claude-channel") claudeChannel = true;
+    else if (arg === "--codex-thread") {
+      codexThread = argv[++i]?.trim() ?? "";
+      if (!codexThread || codexThread.startsWith("-") || /[\x00-\x1f]/.test(codexThread)) {
+        throw new Error("--codex-thread requires a Codex session UUID or exact name.");
+      }
+    }
     else diffArgs.push(arg);
   }
 
-  return { port, outDir, context, open, id, version, claudeChannel, diffArgs };
+  if (claudeChannel && codexThread) throw new Error("Choose either --claude-channel or --codex-thread for this run.");
+  return { port, outDir, context, open, id, version, claudeChannel, codexThread, diffArgs };
 }

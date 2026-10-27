@@ -74,5 +74,7 @@ export interface CliOptions {
   version: boolean;
   /** Serve the local web UI as a Claude Code stdio channel. */
   claudeChannel: boolean;
+  /** Existing Codex session to notify through its installed CLI; empty without an adapter. */
+  codexThread: string;
   diffArgs: string[];
 }
