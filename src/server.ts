@@ -1,4 +1,5 @@
 import type { Server } from "bun";
+import path from "node:path";
 import page from "./web/shell.html";
 import { ATTACH_MAX_BYTES, attachExtension, attachRef } from "./attach.ts";
 import { mediaType } from "./blob.ts";
@@ -9,6 +10,7 @@ import type { ReviewSession } from "./session.ts";
 import type { ReviewNote } from "./thread.ts";
 import type { DiffFile, DiffRow, NoteStatus, ReviewComment, ReviewSubmission } from "./types.ts";
 import { VERSION } from "./version.ts";
+import type { ClaudeChannel } from "./claude-channel.ts";
 
 export interface ServerOptions {
   port: number;
@@ -45,6 +47,8 @@ export interface ServerOptions {
   session: ReviewSession;
   /** Open pages, told whenever the review file or the diff moved. */
   hub: Hub;
+  /** Present only when Claude Code launched lcr as an opted-in stdio channel. */
+  channel?: ClaudeChannel;
 }
 
 /**
@@ -132,6 +136,7 @@ function serve(options: ServerOptions, port: number) {
             context: options.context,
             files,
             statuses,
+            ...(options.channel ? { claudeChannel: true } : {}),
           });
         }
         if (url.pathname === "/api/context") {
@@ -222,7 +227,8 @@ function serve(options: ServerOptions, port: number) {
               `\n  ${request.method === "POST" ? "replied" : "reworded a reply"} on ${note.key} in ${options.session.shownFile}\n`,
             );
             options.hub.emit({ type: "review", file: options.session.file });
-            return Response.json({ file: options.session.shownFile, note });
+            const channel = options.channel?.publish(options.session.file, [note]);
+            return Response.json({ file: options.session.shownFile, note, ...(channel ? { channel } : {}) });
           }
           if (request.method === "DELETE") {
             const id = url.searchParams.get("id") ?? "";
@@ -251,15 +257,16 @@ function serve(options: ServerOptions, port: number) {
           const payload = await readJson(request) as Partial<ReviewSubmission> | null;
           if (!payload) return Response.json({ error: "A JSON body is required." }, { status: 400 });
           const submission = { comments: Array.isArray(payload.comments) ? payload.comments : [] };
-          const { file, removed } = await options.session.save(
+          const { file, removed, changed } = await options.session.save(
             submission,
             (payload as { replace?: unknown }).replace === true,
           );
           console.log(`\n  saved ${file}  (${submission.comments.length} notes)`);
           if (removed.length) console.log(`  replaced ${plural(removed.length, "earlier review file")}`);
-          console.log(`  next: ask the agent to "address the notes in ${file}"\n`);
+          if (!options.channel) console.log(`  next: ask the agent to "address the notes in ${file}"\n`);
           options.hub.emit({ type: "review", file: options.session.file });
-          return Response.json({ file, count: submission.comments.length, removed });
+          const channel = options.channel?.publish(path.basename(file), changed);
+          return Response.json({ file, count: submission.comments.length, removed, ...(channel ? { channel } : {}) });
         }
         if (url.pathname === "/api/ghosts") {
           return Response.json({ ghosts: await options.getGhosts() });

@@ -5,6 +5,7 @@ import { readAttachment, saveAttachment } from "./attach.ts";
 import { readBlob } from "./blob.ts";
 import { openInBrowser } from "./browser.ts";
 import { parseArgs } from "./cli.ts";
+import { createClaudeChannel, runClaudeChannel } from "./claude-channel.ts";
 import { diffBase, diffRangeLabel, diffSides, fingerprint, getDiff, getFileContext, resolveWorktreeBase } from "./diff.ts";
 import { openInEditor } from "./editor.ts";
 import { createHub } from "./events.ts";
@@ -24,6 +25,10 @@ if (options.version) {
   console.log(VERSION);
   process.exit(0);
 }
+// stdout belongs exclusively to MCP in channel mode; startup and save messages remain on stderr.
+if (options.claudeChannel) console.log = console.error;
+// MCP servers can start from another directory; Claude Code supplies its stable project root.
+if (options.claudeChannel && process.env.CLAUDE_PROJECT_DIR) process.chdir(process.env.CLAUDE_PROJECT_DIR);
 const repoRoot = await findRepoRoot();
 process.chdir(repoRoot);
 
@@ -58,6 +63,10 @@ if (!(await session.adoptMatching())) {
   else if (others) console.log(`\n  ${others} earlier review file${others === 1 ? " is" : "s are"} for other diffs; starting fresh`);
 }
 const hub = createHub();
+let webUrl = "";
+const channel = options.claudeChannel
+  ? createClaudeChannel(session, hub, (packet) => { process.stdout.write(JSON.stringify(packet) + "\n"); }, () => webUrl)
+  : undefined;
 
 /** One saved review parsed back, for reading a ghost note's thread out of its own file. */
 async function readReview(name: string) {
@@ -103,7 +112,9 @@ const server = startServer({
   },
   session,
   hub,
+  channel,
 });
+webUrl = `http://localhost:${server.port}`;
 
 /* ---------- following the agent ---------- */
 
@@ -156,15 +167,19 @@ const watchers = [
 ];
 const heartbeat = setInterval(() => hub.ping(), 25_000);
 
-for (const signal of ["SIGINT", "SIGTERM"] as const) {
-  process.on(signal, () => {
-    clearInterval(heartbeat);
-    for (const watcher of watchers) watcher.close();
-    server.stop(true);
-    process.exit(0);
-  });
+function shutdown() {
+  clearInterval(heartbeat);
+  for (const watcher of watchers) watcher.close();
+  server.stop(true);
+  process.exit(0);
 }
+for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, shutdown);
 
 if (options.open && !openInBrowser(`http://localhost:${server.port}`)) {
   console.log("  could not open browser; open the URL above manually\n");
+}
+if (channel) {
+  console.error("  Claude channel enabled; enable server:lcr in Claude Code to receive saved notes.\n");
+  await runClaudeChannel(channel);
+  shutdown();
 }

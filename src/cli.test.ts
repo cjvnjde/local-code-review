@@ -10,6 +10,7 @@ describe("parseArgs", () => {
       open: true,
       id: "",
       version: false,
+      claudeChannel: false,
       diffArgs: ["HEAD~2", "--staged", "--", "*.ts"],
     });
   });
@@ -18,6 +19,14 @@ describe("parseArgs", () => {
     const options = parseArgs(["--no-open", "HEAD~1"]);
     expect(options.open).toBe(false);
     expect(options.diffArgs).toEqual(["HEAD~1"]);
+  });
+
+  test("channel mode is opt-in and preserves the diff arguments", () => {
+    const options = parseArgs(["--claude-channel", "--id", "chat", "main...HEAD"]);
+    expect(options.claudeChannel).toBe(true);
+    expect(options.id).toBe("chat");
+    expect(options.diffArgs).toEqual(["main...HEAD"]);
+    expect(parseArgs([]).claudeChannel).toBe(false);
   });
 
   test("--id names the review and stays out of the git arguments", () => {

@@ -4,13 +4,15 @@ import { deleteReviews, listReviews } from "./output.ts";
 import { renderMarkdown } from "./review.ts";
 import { applyComment, noteFromComment, parseReview } from "./thread.ts";
 import type { ReviewDoc, ReviewMessage, ReviewNote } from "./thread.ts";
-import type { ReviewComment, ReviewSubmission } from "./types.ts";
+import type { NoteStatusKind, ReviewComment, ReviewSubmission } from "./types.ts";
 
 export interface SaveResult {
   /** Path of the session file, relative to the repository unless the output directory is absolute. */
   file: string;
   /** Names of the earlier review files pruned by `replace`. */
   removed: string[];
+  /** New or reworded notes, for an optional agent channel to announce after the write. */
+  changed: ReviewNote[];
 }
 
 /** The context a review is opened in: what it is called, what is diffed, from where, and against which commit. */
@@ -64,6 +66,12 @@ function ownMessage(doc: ReviewDoc, id: string, at: string) {
   return note && message ? { note, message } : null;
 }
 
+/** Only reviewer-owned fields: an agent reply or verdict must never wake the agent again. */
+function reviewerFields(note: ReviewNote): string {
+  return JSON.stringify([note.body, note.file, note.label, note.start, note.end,
+    note.code ?? "", note.scope ?? "", note.side ?? "new", note.ca, note.cb, note.snippet ?? ""]);
+}
+
 /**
  * One review file per conversation, and one conversation per context: a run adopts the newest file
  * written for the same range, branch, and base, so restarting lcr picks that conversation back up
@@ -98,6 +106,13 @@ export function createSession(repoRoot: string, outDir: string, range: string, c
     if (!name) return fresh();
     const text = await readFile(path.join(dir(), name), "utf8").catch(() => "");
     return text ? parseReview(text) : fresh();
+  }
+
+  /** Channel calls name their original file, even after the page has opened another conversation. */
+  async function readNamed(file: string): Promise<ReviewDoc | null> {
+    if (!(await listReviews(repoRoot, outDir)).includes(file)) return null;
+    const text = await readFile(path.join(dir(), file), "utf8").catch(() => "");
+    return text ? parseReview(text) : null;
   }
 
   /**
@@ -181,6 +196,23 @@ export function createSession(repoRoot: string, outDir: string, range: string, c
     },
     read: () => serialise(read),
 
+    readNote(file: string, id: string): Promise<ReviewNote | null> {
+      return serialise(async () => (await readNamed(file))?.notes.find((note) => note.id === id) ?? null);
+    },
+
+    /** The channel's agent side; never changes which conversation the page is reading. */
+    answer(file: string, id: string, body: string, status?: NoteStatusKind): Promise<ReviewNote | null> {
+      return serialise(async () => {
+        const doc = await readNamed(file);
+        const note = doc?.notes.find((entry) => entry.id === id);
+        if (!doc || !note) return null;
+        note.messages.push({ role: "agent", at: freeStamp(note), body });
+        if (status) { note.status = status; note.detail = ""; }
+        await writeFile(path.join(dir(), file), renderMarkdown(doc), "utf8");
+        return note;
+      });
+    },
+
     /**
      * Folds the page's notes into the conversation. Notes already in the file keep the agent's thread
      * and verdict and take the reviewer's current wording; notes the page no longer holds are left
@@ -190,19 +222,30 @@ export function createSession(repoRoot: string, outDir: string, range: string, c
       return serialise(async () => {
         const doc = await read();
         const known = new Map(doc.notes.map((note) => [note.id, note]));
+        const changed: ReviewNote[] = [];
         for (const comment of submission.comments) {
           if (!comment.id) {
-            doc.notes.push(noteFromComment(comment));
+            const note = noteFromComment(comment);
+            doc.notes.push(note);
+            changed.push(note);
             continue;
           }
           const kept = known.get(comment.id);
-          if (kept) Object.assign(kept, applyComment(kept, comment));
-          else doc.notes.push(noteFromComment(comment));
+          if (kept) {
+            const next = applyComment(kept, comment);
+            if (reviewerFields(kept) !== reviewerFields(next)) changed.push(next);
+            Object.assign(kept, next);
+          } else {
+            const note = noteFromComment(comment);
+            doc.notes.push(note);
+            changed.push(note);
+          }
         }
         const file = await write(doc);
         return {
           file: shown(file),
           removed: replace ? await deleteReviews(repoRoot, outDir, file) : [],
+          changed,
         };
       });
     },

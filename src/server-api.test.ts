@@ -11,6 +11,7 @@ import {
   test,
 } from "bun:test";
 import { createHub } from "./events.ts";
+import { createClaudeChannel } from "./claude-channel.ts";
 import type { Hub } from "./events.ts";
 import { createSession } from "./session.ts";
 import { repoId, startServer } from "./server.ts";
@@ -588,6 +589,36 @@ describe("attachment APIs", () => {
 });
 
 describe("review conversation APIs", () => {
+  test("channel mode forwards submitted notes and reviewer replies, but never agent answers", async () => {
+    const started = await startTestServer();
+    const packets: any[] = [];
+    const channel = createClaudeChannel(started.options.session, started.hub, (packet) => packets.push(packet));
+    started.options.channel = channel;
+    const send = (packet: object) => channel.receive(JSON.stringify({ jsonrpc: "2.0", ...packet }));
+    await send({ id: 1, method: "initialize", params: { protocolVersion: "2025-03-26" } });
+    await send({ method: "notifications/initialized" });
+    const post = (route: string, body: object, method = "POST") => request(started, route, {
+      method, headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+    });
+    expect((await (await request(started, "/api/diff")).json()).claudeChannel).toBe(true);
+    const saved = await (await post("/api/submit", { comments: [comment] })).json();
+    expect(saved.channel).toEqual({ state: "forwarded", count: 1 });
+    const unchanged = await (await post("/api/submit", { comments: [comment] })).json();
+    expect(unchanged.channel).toEqual({ state: "unchanged", count: 0 });
+    const followup = await (await post("/api/reply", { id: comment.id, body: "And why?" })).json();
+    expect(followup.channel.state).toBe("forwarded");
+    await post("/api/reply", { id: comment.id, at: followup.note.messages[0].at, body: "Actually, explain the fallback." }, "PUT");
+    const notifications = () => packets.filter((packet) => packet.method === "notifications/claude/channel");
+    expect(notifications()).toHaveLength(3);
+    await send({ id: 8, method: "tools/call", params: { name: "reply", arguments: {
+      review: started.options.session.file, note_id: comment.id, body: "The fallback handles missing values.", status: "answered",
+    } } });
+    expect(notifications()).toHaveLength(3);
+    const doc = await (await request(started, "/api/review")).json();
+    expect(doc.notes[0].messages.at(-1)).toMatchObject({ role: "agent", body: "The fallback handles missing values." });
+    expect(doc.notes[0].status).toBe("answered");
+  });
+
   test("review GET returns the current file, notes, and statuses", async () => {
     const started = await startTestServer();
 

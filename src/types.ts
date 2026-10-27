@@ -72,5 +72,7 @@ export interface CliOptions {
   id: string;
   /** `--version` asks what build this is and nothing else: it prints the stamp and never starts. */
   version: boolean;
+  /** Serve the local web UI as a Claude Code stdio channel. */
+  claudeChannel: boolean;
   diffArgs: string[];
 }

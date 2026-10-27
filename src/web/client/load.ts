@@ -39,6 +39,7 @@ async function loadNow(keep: boolean){
   }
   // Everything downstream reads "diff order" off this list, so the one order there is is the tree's.
   state.files=inTreeOrder(d.files); state.repo=d.repo||''; state.range=d.range; state.reviewId=d.id||'';
+  state.claudeChannel=!!d.claudeChannel;
   markTails(state.files,Number(d.context));
   state.byPath=new Map(state.files.map((f,i)=>[f.path,i]));
   // Oldest review file first, so a newer verdict on the same note replaces an older one.

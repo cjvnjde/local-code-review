@@ -20,6 +20,7 @@ export function parseArgs(argv: string[]): CliOptions {
   let open = true;
   let id = "";
   let version = false;
+  let claudeChannel = false;
   const diffArgs: string[] = [];
 
   for (let i = 0; i < argv.length; i++) {
@@ -31,8 +32,9 @@ export function parseArgs(argv: string[]): CliOptions {
     else if (arg === "--no-open") open = false;
     else if (arg === "--open") open = true;
     else if (arg === "--version" || arg === "-v") version = true;
+    else if (arg === "--claude-channel") claudeChannel = true;
     else diffArgs.push(arg);
   }
 
-  return { port, outDir, context, open, id, version, diffArgs };
+  return { port, outDir, context, open, id, version, claudeChannel, diffArgs };
 }

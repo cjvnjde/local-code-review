@@ -47,8 +47,9 @@ export function updateCount(){
 function paintSubmit(){
   const button=el('submit');
   const running=!!state.sessionFile;
-  button.textContent=running?'Update review':'Save review';
-  button.title=running?'Write these notes into '+state.sessionFile:'Start a review file for these notes';
+  button.textContent=state.claudeChannel?'Save & ask Claude':running?'Update review':'Save review';
+  button.title=state.claudeChannel?'Save these notes and forward new or changed notes to Claude Code':
+    running?'Write these notes into '+state.sessionFile:'Start a review file for these notes';
   const newReview=el('newReview');
   newReview.disabled=!running;
   newReview.title=running
@@ -126,13 +127,19 @@ function handover(d: any){
   const host=el('toasts');
   const gone=(d.removed||[]).length;
   const toast=document.createElement('div');
+  const channel=d.channel;
+  const hint=channel
+    ?channel.state==='forwarded'?'Forwarded '+channel.count+' note'+(channel.count===1?'':'s')+' to Claude Code. Answers appear in their threads.'
+      :channel.state==='queued'?'Queued for Claude Code to connect.':'No new or changed notes to forward.'
+    :'Ask the agent: <code>Address the notes in '+esc(d.file)+'</code>';
   toast.className='toast saved';
   toast.innerHTML='<span class="ic">'+SVG.check+'</span>'+
     '<span class="tx">Saved <code>'+esc(d.file)+'</code> — '+d.count+
     (d.count===1?' note':' notes')+(gone?', replaced '+gone+' earlier file'+(gone===1?'':'s'):'')+
-    '<br><span class="sub">Ask the agent: <code>Address the notes in '+esc(d.file)+'</code></span></span>'+
-    '<button class="undo" title="Copy the prompt">copy</button>';
+    '<br><span class="sub">'+hint+'</span></span>'+
+    '<button class="undo" title="'+(channel?'Dismiss':'Copy the prompt')+'">'+(channel?'close':'copy')+'</button>';
   toast.querySelector('.undo').onclick=async()=>{
+    if(channel){ toast.remove(); return; }
     try{ await navigator.clipboard.writeText('Address the notes in '+d.file); }catch{}
     toast.remove();
   };

@@ -22,6 +22,17 @@ Or use `/apply-lcr` when your agent supports skill commands. Each note's `Status
 
 Reviews remain ordinary Markdown files. You can use them without the skill and with any coding agent.
 
+## Interactive Claude Code channel (MVP)
+
+Claude Code can launch lcr as a local channel. **Save & ask Claude** forwards new or changed notes
+to that running session, and sending or rewording a reply forwards the follow-up. Claude reads the
+latest thread and answers directly under the note. This uses Claude Code's own login and permissions;
+lcr does not call a model API or automate the Claude app.
+
+See [Claude channel setup](docs/claude-channel.md) for registration and launch commands. Channels are
+a Claude Code research preview; Team and Enterprise organizations must enable them. The ordinary
+`lcr` command and the optional vendor-neutral skill keep working as before.
+
 ## Install
 
 Download the package for your system from the [latest release](https://github.com/cjvnjde/local-code-review/releases/latest), extract it, and put `lcr` (`lcr.exe` on Windows) somewhere on your `PATH`.
