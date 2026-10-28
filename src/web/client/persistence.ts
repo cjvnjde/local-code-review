@@ -2,6 +2,7 @@ import { bookmarksIn } from './bookmarks.ts';
 import { compileHide } from './filters.ts';
 import { GLOBAL_ANCHOR, el, idxOf, isMinted, markSubmitted, mintGlobalId, mintNoteId, reindexNotes, state } from './state.ts';
 import { adoptAgent } from './agent.ts';
+import { rememberPage } from './history.ts';
 
 // A delete waits for in-flight single-note writes, so it cannot be resurrected by a late save.
 let noteWrites: Promise<unknown>=Promise.resolve();
@@ -106,6 +107,7 @@ function warnStore(){
 }
 export function save(){
   reindexNotes();
+  rememberPage();
   try{
     localStorage.setItem(store(),JSON.stringify({
       notes:[...state.notes.values()],

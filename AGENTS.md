@@ -265,6 +265,19 @@
 - Generated review files carry `<!-- lcr:<note-id> -->` on each note heading and a `Status:` line per note. `collectStatuses` reads them back on start so handled notes can be cleared. Keep both sides of that contract in step.
 - Status kinds are `applied`, `answered`, `skipped`, `needs-input`, `pending`, and `unknown`. `answered` is for a note that only asked a question and needed no edit; it keeps full opacity and stays out of **Remove N applied**. Adding a kind means touching `readStatus` synonyms, `NoteStatusKind`, the `renderMarkdown` footer, and the `.stat` badge styles together.
 
+- Browser history is an independent append-only IndexedDB journal, scoped by repository and read.
+  `history-model.ts` normalizes semantic snapshots, `history-store.ts` atomically commits a source's
+  baseline and revision, and `history.ts` captures page changes and raw file observations before
+  adoption. Do not clear it when notes, replies or review files are removed, or when starting a new
+  review. Captures must detach values before asynchronous storage; read marks, delivery state and
+  display preferences are not revisions. Page and file baselines stay separate so a local draft is
+  never reported as a file deletion; identical consecutive observations share one revision. History
+  is read-only, has export/copy actions, and never writes old snapshots back to Markdown. Storage
+  failures must remain visible without blocking note editing. It records observed states, not file
+  changes made while no page was listening. Browser origin and port limit its reach.
+- Agent action buttons say **Save & ask AI**, **Ask AI**, and **Retry AI**. Keep the actual adapter
+  name in connection diagnostics rather than making the action depend on its vendor.
+
 ## Change guidance
 
 - Prefer focused edits within existing module boundaries over unrelated restructuring.

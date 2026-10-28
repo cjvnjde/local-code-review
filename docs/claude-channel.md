@@ -61,10 +61,10 @@ This one-time acknowledgement can require a model turn and normal tool permissio
 terminal. It proves the pushed event reached Claude; a plain MCP connection cannot establish that.
 
 After confirmation, the header shows **Claude ready** and the note editor's own button becomes
-**Save & ask Claude**. Write a note and save it there: that note is immediately written to Markdown
+**Save & ask AI**. Write a note and save it there: that note is immediately written to Markdown
 and forwarded, without clicking the review-wide footer. An open editor updates its button when
 connection status changes. **Reply → Send reply** continues the conversation. Saved notes also have
-an **Ask Claude** action for explicitly sending them again.
+an **Ask AI** action for explicitly sending them again.
 
 If the probe is not acknowledged, the header stays checking and then reports unavailable. Claude
 may be busy, waiting for permission, missing the channel flag, or blocked by organization policy;

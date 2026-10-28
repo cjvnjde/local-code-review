@@ -1,5 +1,6 @@
 import { placeNotes } from './anchor.ts';
 import { adoptAgent } from './agent.ts';
+import { rememberPage, rememberReview } from './history.ts';
 import { renderBookmarks } from './bookmark-pane.ts';
 import { renderDiff } from './diff-view.ts';
 import { updateCount } from './footer.ts';
@@ -56,7 +57,13 @@ async function loadNow(keep: boolean){
   named.hidden=!state.reviewId;
   named.textContent=state.reviewId;
   named.title=state.reviewId?'Review id — this review is continued by starting lcr with --id '+state.reviewId:'';
-  if(!state.loaded){ restore(); state.loaded=true; }
+  if(!state.loaded){
+    restore();
+    // Use the observed file before taking the cached snapshot: a reload did not close the review.
+    if(review.ok) state.sessionFile=review.d.file||'';
+    rememberPage('Existing notes preserved');
+    state.loaded=true;
+  }
   if(review.ok) adopt(review.d);
   state.stale=new Set(pruneViewed());
   save();
@@ -74,6 +81,7 @@ async function loadNow(keep: boolean){
  * the whole conversation whichever side of it they come from.
  */
 export function adopt(review: any){
+  rememberReview(review);
   adoptAgent(review);
   state.sessionFile=review.file||'';
   const at=reviewTime(review.file||'')||Date.now();
