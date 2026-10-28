@@ -79,9 +79,9 @@ describe("individual note sending",()=>{
     expect(noteSaveLabel()).toBe("Save note");
     expect(button.textContent).toBe("Save note");
     adoptAgent({connection:{agent:"claude",state:"ready",detail:"Confirmed"}});
-    expect(button.textContent).toBe("Save & ask Claude");
+    expect(button.textContent).toBe("Save & ask AI");
     adoptAgent({connection:{agent:"codex",state:"ready",detail:"Session found"}});
-    expect(button.textContent).toBe("Save & ask Codex");
+    expect(button.textContent).toBe("Save & ask AI");
     adoptAgent({connection:{agent:"claude",state:"unavailable",detail:"No confirmation; policy may block it"}});
     expect(button.textContent).toBe("Save note");
     expect(status.textContent).toBe("Claude unavailable");

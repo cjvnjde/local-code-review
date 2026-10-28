@@ -23,6 +23,8 @@
   </div>
   <button id="addGlobal" class="cf" type="button"
     title="Comment on this review as a whole">Comment</button>
+  <button id="showHistory" class="cf" type="button" aria-expanded="false" aria-controls="historyPanel">History</button>
+  <span id="historyWarning" class="history-warning" hidden>History not saved</span>
   <button id="gear" title="Settings"></button>
   <div id="globalDraft" hidden></div>
   <div id="settings" hidden>
@@ -215,6 +217,33 @@
       </div>
       <div class="rdrb" id="rdrbody"></div>
     </div>
+    <section id="historyPanel" aria-label="Review history" hidden>
+      <div class="history-head">
+        <b>History</b><span id="historyCount">0</span><span class="spacer"></span>
+        <button id="historyExport" type="button" disabled>Export</button>
+        <button id="historyClose" type="button">Close</button>
+      </div>
+      <p class="history-help">Changes seen while this page is open stay here when notes, replies or review files are removed.
+        Kept in this browser at this localhost port. Export a copy to keep elsewhere.</p>
+      <p id="historyMessage" role="status" hidden></p>
+      <div class="history-tools">
+        <input id="historySearch" type="search" placeholder="Search questions, answers or files" aria-label="Search history">
+        <select id="historyScope" aria-label="Reviews in history">
+          <option value="current">This review</option><option value="repo">All reviews</option>
+        </select>
+        <select id="historySource" aria-label="History source">
+          <option value="">All changes</option><option value="page">On this page</option><option value="file">Review file</option>
+        </select>
+        <button id="historyAll" type="button" hidden>All notes</button>
+        <span class="spacer"></span>
+        <button id="historyMode" type="button" disabled>Show full review</button>
+        <button id="historyCopy" type="button" disabled>Copy text</button>
+      </div>
+      <div class="history-content">
+        <div class="history-timeline"><div id="historyList"></div><button id="historyMore" type="button" hidden>Show more</button></div>
+        <div id="historyDetail"></div>
+      </div>
+    </section>
   </div>
 </main>
 <div id="toasts"></div>

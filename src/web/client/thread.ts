@@ -5,6 +5,7 @@ import { editorAction } from './keys.ts';
 import { mdHtml } from './markdown.ts';
 import { busyEditor } from './notes.ts';
 import { save } from './persistence.ts';
+import { rememberPage } from './history.ts';
 import { refButton, wireRefButton } from './ref-picker.ts';
 import { SVG, esc, markRead, msgsOf, saveKeyHint, state } from './state.ts';
 import { bodyParts, capturedLines, lineDiff } from './suggest.ts';
@@ -296,4 +297,5 @@ async function tell(id: string,url: string,init: any,what: string){
 /** Replaces one note's thread with what the review file now holds. */
 export function setThread(id: string,messages: any){
   state.msgs.set(id,Array.isArray(messages)?messages:[]);
+  rememberPage();
 }

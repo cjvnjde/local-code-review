@@ -1,5 +1,6 @@
 import { placeOf } from './anchor.ts';
 import { noteSaveLabel } from './agent.ts';
+import { openHistory } from './history-ui.ts';
 import { attachButton, wireAttach } from './attach.ts';
 import { NOTE_MAX, autogrow } from './autogrow.ts';
 import { globalHost, repaintRow, syncGlobals } from './diff-view.ts';
@@ -330,7 +331,7 @@ async function sendNote(note: any,retry=false){
 function deliveryHtml(note: any){
   const delivery=state.noteDelivery.get(note.id);
   if(!delivery) return '';
-  const label=state.noteSending.has(note.id)?'sending…':delivery.state==='forwarded'?'sent to '+delivery.agent:
+  const label=state.noteSending.has(note.id)?'sending…':delivery.state==='forwarded'?'sent to AI':
     delivery.state==='queued'?'queued':delivery.state==='unchanged'?'saved':delivery.error?'not sent':'saved';
   return '<span class="stat" title="'+esc(delivery.error||'This note’s delivery to the agent')+'">'+esc(label)+'</span>';
 }
@@ -389,7 +390,8 @@ export function viewUI(box,note,ctx){
         '" title="Show this note where it sits in the diff">'+
         (ctx.scope==='global'?'show':'in diff')+'</button>':'')+
       (state.agent?'<button class="ask"'+(state.noteSending.has(note.id)?' disabled':'')+'>'+
-        (state.noteDelivery.get(note.id)?.error?'Retry ':'Ask ')+esc(state.agent)+'</button>':'')+
+        (state.noteDelivery.get(note.id)?.error?'Retry AI':'Ask AI')+'</button>':'')+
+      '<button class="history" title="See earlier versions of this note">History</button>'+
       '<button class="edit">Edit</button><button class="danger del">Delete</button>',ctx.scope)+
     placeHtml(how==='exact'||how==='file'||how==='global'?'':how)+
     capturedHtml(note,how)+
@@ -401,6 +403,7 @@ export function viewUI(box,note,ctx){
   mountReply(box.querySelector('.replyhost'),note,()=>repaintNote(note.id));
   const ask=box.querySelector('.ask');
   if(ask) ask.onclick=()=>{ void sendNote(state.notes.get(note.id)||note,true); };
+  box.querySelector('.history').onclick=()=>openHistory(note.id);
   // Looking at a note is what reads its thread; the count in the footer follows from that. The box
   // outlives its contents, so the listener is attached once and finds the note again when it fires.
   if(!box.__read){

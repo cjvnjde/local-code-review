@@ -37,7 +37,7 @@ combined. Switching the agent means restarting lcr with the appropriate option.
 ## Use
 
 1. Write a line, file or overall note in the review page.
-2. Once the header reports **Codex ready**, click **Save & ask Codex** in that note's editor.
+2. Once the header reports **Codex ready**, click **Save & ask AI** in that note's editor.
    lcr writes that one note to Markdown and immediately queues a message naming its exact file
    and id. There is no review-wide send step.
 3. Codex reads the latest note and full conversation, answers questions, or makes requested changes.
@@ -59,7 +59,7 @@ page refreshes and deletions do not generate more notifications.
 - “Forwarded” means the CLI accepted the queue command. It does not confirm that the model has
   answered. Codex controls when queued input runs, and busy sessions can take longer.
 - A queue failure does not undo the save. The page reports that the notes or reply were saved but
-  could not be forwarded. Check the target session and use that note's **Retry Codex** action once
+  could not be forwarded. Check the target session and use that note's **Retry AI** action once
   the connection is ready. Unsent
   note pointers remain in memory, including pointers to an earlier review if you switched files.
 - There is no persistent delivery queue. Restarting lcr keeps saved Markdown but loses retry state;

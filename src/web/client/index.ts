@@ -4,6 +4,7 @@ import { startAgentStatus } from './agent.ts';
 import { updateCount } from './footer.ts';
 import { repaintNote } from './notes.ts';
 import { state } from './state.ts';
+import { startHistory } from './history-ui.ts';
 import { watchAudio } from "./audio.ts";
 import { startLive } from "./live.ts";
 import { watchImages } from "./images.ts";
@@ -14,6 +15,7 @@ import { applyQuick } from "./quick.ts";
 import { applyNav, applySections } from "./sidebar.ts";
 
 loadCfg();
+startHistory();
 watchAudio();
 watchImages();
 watchPaths();

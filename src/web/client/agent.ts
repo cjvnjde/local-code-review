@@ -1,6 +1,6 @@
 import { el, state } from './state.ts';
 
-export const noteSaveLabel=()=>state.agent?'Save & ask '+state.agent:'Save note';
+export const noteSaveLabel=()=>state.agent?'Save & ask AI':'Save note';
 
 /** Only a confirmed/checked adapter is offered as an automatic destination. */
 export function adoptAgent(data: any){
