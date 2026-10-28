@@ -590,13 +590,62 @@ describe("attachment APIs", () => {
 });
 
 describe("review conversation APIs", () => {
+  test("one note is persisted and forwarded immediately, without submitting other notes or clicking the footer", async () => {
+    const started=await startTestServer();
+    const forwarded:string[][]=[];
+    started.options.channel={agent:"claude",publish:async(review,notes)=>{
+      for(const note of notes) expect((await started.options.session.readNote(review,note.id))!.body).toBe(note.body);
+      forwarded.push(notes.map((note)=>note.id));
+      return {state:"forwarded",count:notes.length};
+    }};
+    const post=async(value:object)=>{
+      const response=await request(started,"/api/note",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(value)});
+      expect(response.status).toBe(200);
+      return response.json();
+    };
+    const saved=await post({comment});
+    expect(saved.channel).toEqual({state:"forwarded",count:1});
+    expect(forwarded).toEqual([[comment.id!]]);
+    expect((await started.options.session.read()).notes).toHaveLength(1);
+    await post({comment});
+    expect(forwarded.at(-1)).toEqual([]);
+    await post({comment:{...comment,body:"Why is this fallback needed?"}});
+    expect(forwarded.at(-1)).toEqual([comment.id!]);
+    await post({comment,retry:true});
+    expect(forwarded.at(-1)).toEqual([comment.id!]);
+  });
+
+  test("an unconfirmed channel does not advertise automatic sending or receive a note", async () => {
+    const started=await startTestServer();
+    let sends=0;
+    started.options.channel={agent:"claude",available:()=>false,
+      status:()=>({agent:"claude",state:"checking",detail:"No delivery confirmation"}),
+      publish:()=>{sends++;return {state:"forwarded",count:1};}};
+    const status=await (await request(started,"/api/agent")).json();
+    expect(status.agent).toBeUndefined();
+    expect(status.connection.state).toBe("checking");
+    const response=await request(started,"/api/note",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({comment})});
+    expect(response.status).toBe(200);
+    expect((await response.json()).channel).toBeUndefined();
+    expect(sends).toBe(0);
+    expect((await started.options.session.read()).notes[0]!.body).toBe(comment.body);
+  });
+
+  test("single-note writes require JSON and complete note data", async () => {
+    const started=await startTestServer();
+    expect((await request(started,"/api/note",{method:"POST",body:"{}"})).status).toBe(415);
+    expect((await request(started,"/api/note",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({comment:{body:"incomplete"}})})).status).toBe(400);
+    expect((await started.options.session.read()).notes).toEqual([]);
+  });
+
   test("Codex receives saved notes and follow-ups, and delivery failures keep the saved work", async () => {
     const started = await startTestServer();
     let attempts = 0, available = false;
     started.options.channel = createCodexChannel({
       repoRoot: started.options.repoRoot, outDir: started.options.outDir,
       thread: "existing-session", session: started.options.session,
-    }, async () => { attempts++; return { ok: available, error: "Session not found" }; });
+    }, async () => { attempts++; return { ok: available, error: "Session not found" }; }, async()=>({ok:true}));
+    await started.options.channel.check?.();
     const post = async (route: string, body: object) => {
       const response = await request(started, route, {
         method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
@@ -609,6 +658,7 @@ describe("review conversation APIs", () => {
     expect(saved.channel).toEqual({ state: "failed", count: 0, error: "Session not found" });
     expect((await started.options.session.read()).notes[0]!.body).toBe(comment.body);
     available = true;
+    await started.options.channel.check?.(true);
     expect((await post("/api/submit", { comments: [comment] })).channel.state).toBe("forwarded");
     expect((await post("/api/submit", { comments: [comment] })).channel.state).toBe("unchanged");
     expect((await post("/api/reply", { id: comment.id, body: "Why that fallback?" })).channel.state).toBe("forwarded");

@@ -27,8 +27,9 @@ Reviews remain ordinary Markdown files. You can use them without the skill and w
 Register the lightweight Claude bridge once, globally. Start your review yourself with its usual
 arguments, such as `lcr origin/main`, then start Claude Code with the channel enabled. The bridge
 connects to the review in that repository; starting Claude alone opens no page or review server.
-**Save & ask Claude** forwards new or changed notes, and sending or rewording a reply forwards the
-follow-up. Claude reads the latest thread and answers directly under the note. This uses Claude
+Each note editor becomes **Save & ask Claude** after Claude acknowledges a connection probe. Saving
+the note immediately writes and forwards that note; the footer is not a send step. Sending or
+rewording a reply forwards the follow-up. Claude reads the latest thread and answers under the note. This uses Claude
 Code's own login and permissions; lcr does not call a model API or automate the Claude app.
 
 See [Claude channel setup](docs/claude-channel.md) for registration and launch commands. Channels are
@@ -43,10 +44,14 @@ Point lcr at an existing Codex session:
 lcr --codex-thread <session-uuid> --id interactive
 ```
 
-**Save & ask Codex** forwards new or changed notes with the installed CLI's `codex queue` command.
+After the selected session passes a local health check, each note editor becomes **Save & ask Codex**.
+Saving it immediately forwards that note with the installed CLI's `codex queue` command.
 Sending or rewording a reply notifies the same session. Codex reads the current thread from Markdown
 and writes its answer there, where the page picks it up live. The session keeps its own login,
 model, and tool permissions. See [Codex setup and delivery behavior](docs/codex-channel.md).
+
+The header reports the detected agent as checking, ready, or unavailable. Without a confirmed working
+connection, editors say **Save note** and keep the ordinary manual review workflow.
 
 ## Install
 

@@ -85,6 +85,12 @@
   the diff moved; the page fetches what it needs itself, so a dropped or repeated event costs a fetch rather
   than correctness. Watchers stay idle while no page is listening, and a tree change is only announced once the
   diff's own fingerprint actually differs.
+- With a verified agent connection, saving in an individual note editor persists and forwards only that
+  note immediately. The review-wide footer is never a required send step. An unconfirmed or unavailable
+  adapter leaves the editor at **Save note**. Claude readiness requires acknowledging a pushed probe;
+  MCP initialization alone does not prove channel delivery. Codex health checks read session metadata
+  without creating a model turn. Partial saves stamp only the note actually submitted, and deletion
+  waits for in-flight note writes so a late save cannot resurrect a withdrawn note.
 - A live update must never discard what is being written. Replies repaint one note in place and skip a box with
   an open editor. A diff refresh rebuilds the pane, so it waits for the last editor to close; the pill in the
   header is what says so, and taking the refresh early is the reader's choice and asks first. The pane goes back

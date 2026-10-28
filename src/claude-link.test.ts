@@ -28,21 +28,62 @@ async function fixture() {
   const send = (packet: object) => bridge.receive(JSON.stringify({ jsonrpc: "2.0", ...packet }));
   await send({ id: 1, method: "initialize", params: { protocolVersion: "2025-03-26" } });
   await send({ method: "notifications/initialized" });
-  const start = async () => {
+  const start = async (confirm=true) => {
+    const before=packets.length;
     const broker = await startClaudeLink(session, hub, () => "http://localhost:7778", endpoint);
     closing.push(() => broker.close());
-    await until(() => !!broker.available?.());
+    await until(() => packets.slice(before).some((packet) => packet.params?.meta?.kind === "probe"));
+    const probe=packets.filter((packet) => packet.params?.meta?.kind === "probe").at(-1);
+    if(confirm){
+      await send({id:50,method:"tools/call",params:{name:"channel_ready",arguments:{token:probe.params.meta.token}}});
+      await until(() => !!broker.available?.());
+    }
     return broker;
   };
   return { root, endpoint, session, hub, packets, bridge, send, start };
 }
 
 describe("separate Claude bridge and review", () => {
+  test("a connected MCP bridge stays unconfirmed until a delivered probe is acknowledged", async () => {
+    const f=await fixture();
+    const broker=await f.start(false);
+    expect(broker.available?.()).toBe(false);
+    expect(broker.status?.().state).toBe("checking");
+    await f.send({id:61,method:"tools/call",params:{name:"channel_ready",arguments:{token:"not-the-probe"}}});
+    await until(()=>f.packets.some((packet)=>packet.id===61));
+    expect(f.packets.find((packet)=>packet.id===61).result.isError).toBe(true);
+    expect(broker.available?.()).toBe(false);
+    const probe=f.packets.find((packet)=>packet.params?.meta?.kind==="probe");
+    await f.send({id:62,method:"tools/call",params:{name:"channel_ready",arguments:{token:probe.params.meta.token}}});
+    await until(()=>!!broker.available?.());
+    expect(broker.status?.().state).toBe("ready");
+  });
+
+  test("an unconfirmed session cannot occupy the review ahead of a working channel", async () => {
+    const f=await fixture();
+    const broker=await f.start(false);
+    const packets:any[]=[];
+    const second=createClaudeBridge(f.endpoint,(packet)=>packets.push(packet));
+    closing.push(()=>second.close());
+    const send=(packet:object)=>second.receive(JSON.stringify({jsonrpc:"2.0",...packet}));
+    await send({id:1,method:"initialize",params:{protocolVersion:"2025-03-26"}});
+    await send({method:"notifications/initialized"});
+    await until(()=>packets.some((packet)=>packet.params?.meta?.kind==="probe"));
+    const probe=packets.find((packet)=>packet.params?.meta?.kind==="probe");
+    await send({id:2,method:"tools/call",params:{name:"channel_ready",arguments:{token:probe.params.meta.token}}});
+    await until(()=>!!broker.available?.());
+    const saved=await f.session.save({comments:[comment]});
+    broker.publish(path.basename(saved.file),saved.changed);
+    await until(()=>packets.some((packet)=>packet.params?.meta?.note_id));
+    expect(f.packets.some((packet)=>packet.params?.meta?.note_id)).toBe(false);
+    expect(packets.find((packet)=>packet.params?.meta?.note_id).params.meta.note_id).toBe(comment.id);
+  });
+
   test("initializes and reports offline tools before any review is started", async () => {
     const f = await fixture();
     expect(f.packets[0].result.capabilities.experimental).toEqual({ "claude/channel": {} });
     await f.send({ id: 2, method: "tools/list" });
-    expect(f.packets.at(-1).result.tools.map((tool: any) => tool.name)).toEqual(["read_note", "reply"]);
+    expect(f.packets.at(-1).result.tools.map((tool: any) => tool.name)).toEqual(["channel_ready", "read_note", "reply"]);
     await f.send({ id: 3, method: "tools/call", params: { name: "read_note", arguments: { review: "review-x.md", note_id: comment.id } } });
     expect(f.packets.at(-1).result.isError).toBe(true);
     expect(f.packets.at(-1).result.content[0].text).toContain("lcr origin/main");
@@ -55,8 +96,8 @@ describe("separate Claude bridge and review", () => {
     const saved = await f.session.save({ comments: [comment] });
     const review = path.basename(saved.file);
     expect(broker.publish(review, saved.changed)).toEqual({ state: "forwarded", count: 1 });
-    await until(() => f.packets.some((packet) => packet.method === "notifications/claude/channel"));
-    const notice = f.packets.find((packet) => packet.method === "notifications/claude/channel");
+    await until(() => f.packets.some((packet) => packet.params?.meta?.note_id));
+    const notice = f.packets.find((packet) => packet.params?.meta?.note_id);
     expect(notice.params.meta).toEqual({ review, note_id: comment.id });
     await f.send({ id: 4, method: "tools/call", params: { name: "read_note", arguments: notice.params.meta } });
     await until(() => f.packets.some((packet) => packet.id === 4));

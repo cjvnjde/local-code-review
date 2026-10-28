@@ -43,26 +43,43 @@ export async function startClaudeLink(
 ): Promise<AgentChannel & { close: () => void }> {
   let peer: Socket | null = null;
   let channel: ClaudeChannel | null = null;
+  const candidates = new Map<Socket, ClaudeChannel>();
+  let checkingSince = 0;
   let closed = false;
   const server = createServer((socket) => {
-    // One agent per live review: a second Claude session must not answer the same notes twice.
-    if (peer) { socket.end(); return; }
-    peer = socket;
     let booting = true;
-    channel = createClaudeChannel(session, hub, (packet) => {
+    const owned = () => {
+      if (peer !== socket) throw new Error("This Claude session has not confirmed the review channel.");
+    };
+    const attached = createClaudeChannel({
+      readNote: (...args) => { owned(); return session.readNote(...args); },
+      answer: (...args) => { owned(); return session.answer(...args); },
+    }, hub, (packet) => {
       if (!booting) socket.write(JSON.stringify(packet) + "\n");
-    }, url);
-    const attached = channel;
+    }, url, () => {
+      if (peer && peer !== socket) return false;
+      peer = socket; channel = attached;
+      hub.emit({ type: "review", file: session.file });
+      return true;
+    });
+    candidates.set(socket, attached);
+    if (!checkingSince) checkingSince = Date.now();
     socket.on("error", () => {});
     socket.once("close", () => {
-      if (peer !== socket) return;
-      peer = null; channel = null;
+      candidates.delete(socket);
+      if (peer === socket) {
+        peer = null; channel = null;
+        checkingSince = Date.now();
+        if (!closed) for (const candidate of candidates.values()) candidate.probe();
+      }
+      if (!candidates.size) checkingSince = 0;
       hub.emit({ type: "review", file: session.file });
     });
     void (async () => {
       await attached.receive(JSON.stringify({ jsonrpc: "2.0", id: "lcr-link-init", method: "initialize", params: { protocolVersion: "2025-03-26" } }));
       await attached.receive(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }));
       booting = false;
+      attached.probe();
       hub.emit({ type: "review", file: session.file });
       const lines = createInterface({ input: socket, crlfDelay: Infinity });
       for await (const line of lines) if (line.trim()) await attached.receive(line);
@@ -91,10 +108,17 @@ export async function startClaudeLink(
   return {
     agent: "claude",
     available: () => !!channel,
+    status: () => ({
+      agent: "claude",
+      state: channel ? "ready" : candidates.size && Date.now() - checkingSince < 15_000 ? "checking" : "unavailable",
+      detail: channel ? "Claude confirmed that channel messages reach this session."
+        : candidates.size ? "No channel delivery confirmation yet. Claude may be busy, missing channel opt-in, or blocked by organization policy."
+        : "No Claude bridge is connected to this repository.",
+    }),
     publish(review, notes): ChannelDelivery {
       return channel?.publish(review, notes) ?? { state: "failed", count: 0, error: "Claude disconnected. Reconnect it and send a follow-up." };
     },
-    close() { if (closed) return; closed = true; peer?.destroy(); server.close(); },
+    close() { if (closed) return; closed = true; for (const socket of candidates.keys()) socket.destroy(); server.close(); },
   };
 }
 

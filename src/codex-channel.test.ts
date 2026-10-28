@@ -20,6 +20,30 @@ async function fixture() {
 }
 
 describe("Codex feedback adapter", () => {
+  test("only offers a checked Codex session and resolves its name to an exact id", async () => {
+    const f=await fixture();
+    let command:string[]=[];
+    const channel=createCodexChannel(f.options,async(args)=>{command=args;return {ok:true};},
+      async()=>({ok:true,thread:"resolved-session-id"}));
+    expect(channel.available?.()).toBe(false);
+    expect(channel.status?.().state).toBe("checking");
+    await channel.check?.();
+    expect(channel.available?.()).toBe(true);
+    await channel.publish(f.review,f.first.changed);
+    expect(command[3]).toBe("resolved-session-id");
+  });
+
+  test("reports failed health checks without making a model request", async () => {
+    const f=await fixture();
+    let sends=0;
+    const channel=createCodexChannel(f.options,async()=>{sends++;return {ok:true};},
+      async()=>({ok:false,error:"Session unavailable"}));
+    await channel.check?.();
+    expect(channel.available?.()).toBe(false);
+    expect(channel.status?.()).toMatchObject({state:"unavailable",detail:"Session unavailable"});
+    expect(sends).toBe(0);
+  });
+
   test("queues one explicit session and exact saved note through argument arrays", async () => {
     const f = await fixture();
     const calls: { command: string[]; cwd: string }[] = [];

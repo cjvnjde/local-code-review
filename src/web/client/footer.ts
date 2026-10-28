@@ -47,11 +47,10 @@ export function updateCount(){
 function paintSubmit(){
   const button=el('submit');
   const running=!!state.sessionFile;
-  button.textContent=state.agent?'Save & ask '+state.agent:running?'Update review':'Save review';
-  button.title=state.agent?'Save these notes and forward new or changed notes to '+state.agent:
-    running?'Write these notes into '+state.sessionFile:'Start a review file for these notes';
+  button.textContent=running?'Update review':'Save review';
+  button.title=running?'Write these notes into '+state.sessionFile:'Start a review file for these notes';
   const newReview=el('newReview');
-  newReview.disabled=!running;
+  newReview.disabled=!running||!!state.noteSending.size;
   newReview.title=running
     ?'Leave '+state.sessionFile+' intact and start a fresh review'
     :'Save this review before starting another';
@@ -68,7 +67,7 @@ el('clearDone').onclick=()=>{
     state.place.delete(n.id);
   });
   save(); render();
-  withdrawNotes(done.filter((n: any)=>n.sentAt).map((n: any)=>n.id));
+  withdrawNotes(done.map((n: any)=>n.id));
 };
 /** Starting over: everything typed for this diff goes, so ask before dropping work that cannot be undone. */
 el('clearAll').onclick=()=>{
@@ -80,7 +79,7 @@ el('clearAll').onclick=()=>{
     (state.sessionFile?'\n\n'+state.sessionFile+' stays on disk, but what is cleared here goes out of it, '+
       'threads and all — otherwise the file would put it straight back.':''))) return;
   // Read before the clear, and withdrawn after it: a note left in the file is fetched back.
-  const sent=[...state.notes.values()].filter((note: any)=>note.sentAt).map((note: any)=>note.id);
+  const sent=[...state.notes.keys()];
   clearNotes(); render();
   withdrawNotes(sent);
 };
@@ -132,7 +131,7 @@ function handover(d: any){
   const hint=channel
     ?channel.state==='forwarded'?'Forwarded '+channel.count+' note'+(channel.count===1?'':'s')+' to '+esc(agent)+'. Answers appear in their threads.'
       :channel.state==='queued'?'Queued for '+esc(agent)+' to connect.'
-      :channel.state==='failed'?'Saved, but forwarding failed: '+esc(channel.error||'Check the agent session.')+' Click Save & ask '+esc(agent)+' to retry.'
+      :channel.state==='failed'?'Saved, but forwarding failed: '+esc(channel.error||'Check the agent session.')+' Retry from the note once the agent is ready.'
       :'No new or changed notes to forward.'
     :'Ask the agent: <code>Address the notes in '+esc(d.file)+'</code>';
   toast.className='toast saved';

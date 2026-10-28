@@ -37,8 +37,9 @@ combined. Switching the agent means restarting lcr with the appropriate option.
 ## Use
 
 1. Write a line, file or overall note in the review page.
-2. Click **Save & ask Codex**. lcr writes Markdown first, then queues a message naming the exact
-   review file and the new or changed note ids.
+2. Once the header reports **Codex ready**, click **Save & ask Codex** in that note's editor.
+   lcr writes that one note to Markdown and immediately queues a message naming its exact file
+   and id. There is no review-wide send step.
 3. Codex reads the latest note and full conversation, answers questions, or makes requested changes.
    It updates the note's `Status:` and appends an `**Agent**` message in that note's section.
 4. The page shows the answer through the existing live file updates. **Reply → Send reply** queues
@@ -58,7 +59,8 @@ page refreshes and deletions do not generate more notifications.
 - “Forwarded” means the CLI accepted the queue command. It does not confirm that the model has
   answered. Codex controls when queued input runs, and busy sessions can take longer.
 - A queue failure does not undo the save. The page reports that the notes or reply were saved but
-  could not be forwarded. Check the target session and click **Save & ask Codex** to retry. Unsent
+  could not be forwarded. Check the target session and use that note's **Retry Codex** action once
+  the connection is ready. Unsent
   note pointers remain in memory, including pointers to an earlier review if you switched files.
 - There is no persistent delivery queue. Restarting lcr keeps saved Markdown but loses retry state;
   send a new follow-up for a note that still needs an answer. A timeout can also be ambiguous: check
@@ -72,3 +74,9 @@ page refreshes and deletions do not generate more notifications.
 
 The installed command contract is documented in the official
 [Codex CLI reference](https://learn.chatgpt.com/docs/developer-commands#codex-queue).
+
+lcr checks for `codex queue` support and reads the selected session's metadata from the existing local
+app server, without starting a model turn. It verifies the repository and resolves a unique session
+name to its exact id. A missing, ambiguous, inaccessible or mismatched session is shown as unavailable,
+and note editors fall back to **Save note**. Health checks are cached briefly and refreshed while the
+page is open. Finding a session means input can be queued; a busy session may still answer later.

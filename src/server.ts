@@ -72,6 +72,11 @@ export const repoId = (repoRoot: string) => fingerprint(repoRoot);
 
 const activeChannel = (options: ServerOptions) =>
   options.channel && (options.channel.available?.() ?? true) ? options.channel : undefined;
+const channelState = (options: ServerOptions) => options.channel ? {
+  connection: options.channel.status?.() ?? { agent: options.channel.agent,
+    state: activeChannel(options) ? "ready" : "unavailable", detail: "Agent connection status." },
+  ...(activeChannel(options) ? { agent: options.channel.agent } : {}),
+} : {};
 
 export function startServer(options: ServerOptions) {
   const server = listen(options.port, (port) => serve(options, port));
@@ -130,6 +135,10 @@ function serve(options: ServerOptions, port: number) {
       try {
         const url = new URL(request.url);
         if (url.pathname === "/api/events") return events(options, request, server);
+        if (url.pathname === "/api/agent" && request.method === "GET") {
+          await options.channel?.check?.();
+          return Response.json(channelState(options));
+        }
         if (url.pathname === "/api/diff") {
           const [files, statuses] = await Promise.all([options.getDiff(), options.getStatuses()]);
           return Response.json({
@@ -139,7 +148,7 @@ function serve(options: ServerOptions, port: number) {
             context: options.context,
             files,
             statuses,
-            ...(activeChannel(options) ? { agent: options.channel!.agent } : {}),
+            ...channelState(options),
           });
         }
         if (url.pathname === "/api/context") {
@@ -182,7 +191,7 @@ function serve(options: ServerOptions, port: number) {
               file: options.session.shownFile,
               notes: doc.notes,
               statuses,
-              ...(activeChannel(options) ? { agent: options.channel!.agent } : {}),
+              ...channelState(options),
             });
           }
           // Starting fresh only forgets which file we were in; the old one stays on disk as history.
@@ -247,6 +256,23 @@ function serve(options: ServerOptions, port: number) {
             return Response.json({ file: options.session.shownFile, note });
           }
           return new Response("method not allowed", { status: 405, headers: { allow: "POST, PUT, DELETE" } });
+        }
+        if (url.pathname === "/api/note" && request.method === "POST") {
+          if (!isJsonRequest(request)) return Response.json({ error: "JSON body required." }, { status: 415 });
+          const payload = await readJson(request) as { comment?: ReviewComment; retry?: boolean; replace?: boolean } | null;
+          const comment = payload?.comment;
+          if (!comment || typeof comment.id !== "string" || !comment.id ||
+              typeof comment.file !== "string" || typeof comment.body !== "string" || !comment.body.trim() ||
+              !Number.isInteger(comment.start) || !Number.isInteger(comment.end) || comment.start < 0 || comment.end < comment.start) {
+            return Response.json({ error: "A complete note with an id, body, file and line range is required." }, { status: 400 });
+          }
+          const { file, changed } = await options.session.save({ comments: [comment] }, payload?.replace === true);
+          const review = path.basename(file);
+          const notify = changed.length ? changed : payload?.retry ? [await options.session.readNote(review, comment.id)].filter((note): note is ReviewNote => !!note) : [];
+          const channel = activeChannel(options);
+          const delivery = channel ? await channel.publish(review, notify) : undefined;
+          options.hub.emit({ type: "review", file: review });
+          return Response.json({ file, id: comment.id, ...channelState(options), ...(delivery ? { channel: delivery } : {}) });
         }
         if (url.pathname === "/api/note" && request.method === "DELETE") {
           // Many ids in one request: clearing the page is one withdrawal, not one per note.

@@ -51,7 +51,7 @@ describe("Claude Code channel", () => {
     await f.send({ method: "notifications/initialized" });
     expect(f.packets).toHaveLength(2);
     await f.send({ id: 2, method: "tools/list" });
-    expect(f.packets.at(-1).result.tools.map((tool: any) => tool.name)).toEqual(["read_note", "reply"]);
+    expect(f.packets.at(-1).result.tools.map((tool: any) => tool.name)).toEqual(["channel_ready", "read_note", "reply"]);
   });
 
   test("rejects malformed calls, requires initialization, and negotiates a known protocol", async () => {

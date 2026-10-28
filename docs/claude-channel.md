@@ -55,9 +55,21 @@ You can start Claude or lcr first. The bridge connects when both are running. It
 `CLAUDE_PROJECT_DIR` to find Claude's repository and a private local IPC connection to find its
 review. The web port, diff range and review output directory come from your lcr command.
 
-The page opens when you start lcr, unless you use `--no-open`. After the bridge connects, its save
-button becomes **Save & ask Claude**. Write a note and click it; Claude reads the latest thread
-and writes its answer under that note. **Reply → Send reply** continues the conversation.
+The page opens when you start lcr, unless you use `--no-open`. The header first shows **Claude
+checking**. lcr pushes a connection probe and Claude calls `channel_ready` with the token it received.
+This one-time acknowledgement can require a model turn and normal tool permission in Claude's
+terminal. It proves the pushed event reached Claude; a plain MCP connection cannot establish that.
+
+After confirmation, the header shows **Claude ready** and the note editor's own button becomes
+**Save & ask Claude**. Write a note and save it there: that note is immediately written to Markdown
+and forwarded, without clicking the review-wide footer. An open editor updates its button when
+connection status changes. **Reply → Send reply** continues the conversation. Saved notes also have
+an **Ask Claude** action for explicitly sending them again.
+
+If the probe is not acknowledged, the header stays checking and then reports unavailable. Claude
+may be busy, waiting for permission, missing the channel flag, or blocked by organization policy;
+lcr cannot distinguish those causes from silent event dropping. The editor says **Save note** and
+does not claim automatic delivery. Notes remain available through the ordinary manual workflow.
 
 ## Conversations and lifecycle
 
@@ -70,7 +82,9 @@ and writes its answer under that note. **Reply → Send reply** continues the co
   are not recreated by late answers. Attachments and note references keep their Markdown format.
 - Closing Claude disconnects the bridge but leaves lcr and its page running. Closing lcr leaves
   Claude running; the bridge waits and reconnects when you start another review in that repository.
-- Only one lcr review and one Claude bridge can be linked per repository at a time. Another lcr
+- Only one lcr review and one confirmed Claude session can be linked per repository at a time. An
+  unconfirmed bridge cannot claim the review ahead of a session that acknowledges its probe. The
+  first session to confirm owns the link; this still is not an explicit session picker. Another lcr
   instance still serves its own diff independently and does not take over the linked review.
   Close the earlier lcr and restart the one you want to link when switching between instances.
 - Different repositories have independent links and review files. No repository path or IPC
@@ -79,7 +93,8 @@ and writes its answer under that note. **Reply → Send reply** continues the co
 ## MVP limits
 
 - Claude Code must run with the channel enabled. Ordinary MCP registration alone does not opt in
-  to incoming messages. “Forwarded” confirms transport forwarding, not model receipt; Claude Code
+  to incoming messages. Probe acknowledgement verifies the connection at that moment; it is not a
+  continuous guarantee that every later message is processed. “Forwarded” confirms transport forwarding; Claude Code
   can silently drop events when channel opt-in or organization policy is missing.
 - A busy Claude session handles queued events on its next turn. Answers appear when it calls
   `reply`; individual output tokens are not streamed into lcr.

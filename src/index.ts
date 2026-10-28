@@ -78,7 +78,8 @@ const claudeLink = options.codexThread ? undefined
     return undefined;
   });
 const channel = options.codexThread
-  ? createCodexChannel({ repoRoot, outDir: options.outDir, thread: options.codexThread, session })
+  ? createCodexChannel({ repoRoot, outDir: options.outDir, thread: options.codexThread, session,
+    notify: () => hub.emit({ type: "review", file: session.file }) })
   : claudeLink;
 
 /** One saved review parsed back, for reading a ghost note's thread out of its own file. */
@@ -128,6 +129,7 @@ const server = startServer({
   channel,
 });
 webUrl = `http://localhost:${server.port}`;
+void channel?.check?.();
 
 /* ---------- following the agent ---------- */
 

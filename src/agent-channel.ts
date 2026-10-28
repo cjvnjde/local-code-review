@@ -6,9 +6,17 @@ export interface ChannelDelivery {
   error?: string;
 }
 
+export interface AgentConnection {
+  agent: "claude" | "codex";
+  state: "checking" | "ready" | "unavailable";
+  detail: string;
+}
+
 /** A saved reviewer action can wake an agent; file-watch events never do. */
 export interface AgentChannel {
   agent: "claude" | "codex";
   available?: () => boolean;
+  status?: () => AgentConnection;
+  check?: (force?: boolean) => Promise<void>;
   publish(review: string, notes: ReviewNote[]): ChannelDelivery | Promise<ChannelDelivery>;
 }

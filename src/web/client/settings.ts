@@ -58,7 +58,7 @@ function renderReviews(){
   info.textContent=state.sessionFile
     ?'This conversation is in '+state.sessionFile+'.'
     :'No review file yet — your first save opens one.';
-  el('newReview').disabled=!state.sessionFile;
+  el('newReview').disabled=!state.sessionFile||!!state.noteSending.size;
   renderReviewList();
 }
 /** When a review was opened, from the stamp its file name carries. */
@@ -105,6 +105,7 @@ async function refreshReviews(){
 el('reviewList').onclick=async(e: any)=>{
   const button=e.target.closest('[data-rv]');
   if(!button) return;
+  if(state.noteSending.size){ alert('A note is still being saved. Wait for it before changing reviews.'); return; }
   const file=button.dataset.rv;
   if(!confirm('Reopen '+file+'?\n\nThe notes and replies on this page are replaced with that '+
     'review’s. Notes you have not saved into a review are lost.')) return;
@@ -128,6 +129,7 @@ el('reviewList').onclick=async(e: any)=>{
  * straight back into the new file as though nothing had been answered.
  */
 el('newReview').onclick=async()=>{
+  if(state.noteSending.size) return;
   const current=state.sessionFile;
   if(!current) return;
   if(!confirm('Start a new review?\n\n'+current+' stays on disk with everything said in it. '+

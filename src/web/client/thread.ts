@@ -284,7 +284,7 @@ async function tell(id: string,url: string,init: any,what: string){
     save();
     if(data.channel?.state==='failed'){
       alert('Your reply was saved, but could not reach '+(state.agent||'the agent')+': '+
-        (data.channel.error||'Check the agent session.')+'\n\nClick Save & ask '+(state.agent||'the agent')+' to retry.');
+        (data.channel.error||'Check the agent session.')+'\n\nRetry from this note once the agent is ready.');
     }
     return true;
   }catch(error){

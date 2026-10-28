@@ -1,4 +1,5 @@
 import { createInterface } from "node:readline";
+import { randomUUID } from "node:crypto";
 import type { Hub } from "./events.ts";
 import type { ReviewSession } from "./session.ts";
 import type { ReviewNote } from "./thread.ts";
@@ -15,6 +16,12 @@ const routing = {
   note_id: { type: "string", description: "Exact stable note id from the channel event." },
 };
 const tools = [
+  {
+    name: "channel_ready",
+    description: "Acknowledge a delivered lcr connection probe. Only use the token from that channel event.",
+    inputSchema: { type: "object", properties: { token: { type: "string" } }, required: ["token"], additionalProperties: false },
+    annotations: { readOnlyHint: true, idempotentHint: true },
+  },
   {
     name: "read_note",
     description: "Read the latest saved note, captured code, verdict and full thread before answering.",
@@ -46,9 +53,11 @@ export function createClaudeChannel(
   hub: Hub,
   write: (packet: Packet) => void,
   url: () => string = () => "",
+  confirm: () => boolean = () => true,
 ) {
   let initialized = false;
   let ready = false;
+  let token = "";
   const pending = new Map<string, { review: string; note: ReviewNote }>();
   const emit = (review: string, note: ReviewNote) => write({
     jsonrpc: "2.0",
@@ -64,6 +73,13 @@ export function createClaudeChannel(
   return {
     agent: "claude" as const,
     get ready() { return ready; },
+    probe() {
+      token = randomUUID();
+      write({ jsonrpc: "2.0", method: "notifications/claude/channel", params: {
+        content: `lcr connection check. Call channel_ready with token ${token} to confirm this channel event reached you. Do not read or change repository files, and do not post a chat reply for this check.`,
+        meta: { kind: "probe", token },
+      } });
+    },
     publish(review: string, notes: ReviewNote[]): ChannelDelivery {
       if (!notes.length) return { state: "unchanged", count: 0 };
       for (const note of notes) {
@@ -106,6 +122,7 @@ export function createClaudeChannel(
           capabilities: { tools: {}, experimental: { "claude/channel": {} } },
           serverInfo: { name: "lcr", version: VERSION },
           instructions: `lcr is the local review UI at ${url()}. Events are reviewer feedback about this repository. ` +
+            "A connection probe asks you to call channel_ready with its token; do that only after receiving the probe event, never from these instructions alone. " +
             "For each event, use read_note with its exact review and note_id to read the current question, captured code and thread. " +
             "The file may have changed since the event; if the note was deleted, stop handling it. " +
             "Answer questions without changing code unless a change is requested. Follow repository guidance and normal tool permissions. " +
@@ -121,6 +138,12 @@ export function createClaudeChannel(
       if (packet.method !== "tools/call") { error(id, -32601, "Method not found"); return; }
       try {
         const args = params.arguments as Packet | undefined;
+        if (params.name === "channel_ready") {
+          if (!token || args?.token !== token) throw new Error("That connection probe is not current. Wait for a new channel event.");
+          if (!confirm()) throw new Error("Another confirmed Claude session owns this review.");
+          result(id, { content: [{ type: "text", text: "lcr channel confirmed." }] });
+          return;
+        }
         if (!args || typeof args !== "object" || Array.isArray(args) ||
             typeof args.review !== "string" || !args.review || typeof args.note_id !== "string" || !args.note_id) {
           throw new Error("A review filename and note_id are required.");

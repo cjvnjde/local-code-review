@@ -1,4 +1,5 @@
 import { placeOf } from './anchor.ts';
+import { noteSaveLabel } from './agent.ts';
 import { attachButton, wireAttach } from './attach.ts';
 import { NOTE_MAX, autogrow } from './autogrow.ts';
 import { globalHost, repaintRow, syncGlobals } from './diff-view.ts';
@@ -6,7 +7,7 @@ import { reaims } from './drag.ts';
 import { updateCount } from './footer.ts';
 import { codeHtml, langOf } from './highlight.ts';
 import { editorAction } from './keys.ts';
-import { save, withdrawNotes } from './persistence.ts';
+import { save, submitNote, withdrawNotes } from './persistence.ts';
 import { refButton, wireRefButton } from './ref-picker.ts';
 import { clearSel } from './selection.ts';
 import { FILE_ANCHOR, GLOBAL_ANCHOR, SVG, clip, el, esc, isFileNote, isGlobalNote, keyIndex, locKey, markRead, mintGlobalId, mintNoteId, rowKey, saveKeyHint, state, statusOf, unreadOf } from './state.ts';
@@ -234,7 +235,7 @@ function editUI(box,ctx){
       (global?'What should be said about this review as a whole?':
       whole?'What should change in this file?':
       ch?'What should change in this part of the line?':'What should change here?')+'"></textarea>'+
-    '<div class="acts"><button class="primary">Save note</button><button class="cancel">Cancel</button>'+
+    '<div class="acts"><button class="primary" data-save-note>'+esc(noteSaveLabel())+'</button><button class="cancel">Cancel</button>'+
     '<span class="spacer"></span><span class="tip">'+saveKeyHint()+' save &middot; esc cancel</span></div></div>';
   const ta=box.querySelector('textarea');
   ta.value=ctx.body||'';
@@ -263,6 +264,8 @@ function editUI(box,ctx){
       :{id,file:f.path,body,a:rowKey(f.rows[i]),b:rowKey(f.rows[j]),
         side:sp.side,start:sp.start,end:sp.end,label:sp.label,code:sp.code};
     if(ch){ note.ca=ch.ca; note.cb=ch.cb; note.snippet=sp.snippet; }
+    // Start this note's write now; another browser-only note must not be submitted with it.
+    const ask=!!state.agent;
     // Editing a note that is already in the review file leaves it in the same conversation.
     if(kept&&kept.sentAt) note.sentAt=kept.sentAt;
     state.notes.set(id,note);
@@ -284,6 +287,7 @@ function editUI(box,ctx){
     mark(fi,i,j,true);
     if(ch) repaintRow(fi,i);
     renderTree(); updateCount();
+    if(ask) void sendNote(note);
   };
   const drop=()=>{
     // Emptying a saved note is deleting it, and deleting is what takes it out of the review file
@@ -306,6 +310,29 @@ function editUI(box,ctx){
     if(action==='save'){ e.preventDefault(); commit(); }
     if(action==='cancel'){ e.preventDefault(); box.querySelector('.cancel').click(); }
   };
+}
+
+/** Keep the editor's save gesture local to this note, and repaint only its existing copies. */
+async function sendNote(note: any,retry=false){
+  state.noteDelivery.set(note.id,{state:'sending',agent:state.agent});
+  const agent=state.agent;
+  const sending=submitNote(note,retry);
+  repaintNote(note.id); updateCount();
+  try{
+    const data=await sending;
+    if(state.notes.has(note.id)) state.noteDelivery.set(note.id,
+      {...(data?.channel||{state:'saved'}),agent,error:data?.channel?.error||(!data?.channel?'Saved, but no working agent connection was confirmed.':'')});
+  }catch(error){
+    if(state.notes.has(note.id)) state.noteDelivery.set(note.id,{state:'failed',agent,error:'Could not save this note: '+(error instanceof Error?error.message:String(error))});
+  }finally{ if(state.notes.has(note.id)){ repaintNote(note.id); updateCount(); } }
+}
+
+function deliveryHtml(note: any){
+  const delivery=state.noteDelivery.get(note.id);
+  if(!delivery) return '';
+  const label=state.noteSending.has(note.id)?'sending…':delivery.state==='forwarded'?'sent to '+delivery.agent:
+    delivery.state==='queued'?'queued':delivery.state==='unchanged'?'saved':delivery.error?'not sent':'saved';
+  return '<span class="stat" title="'+esc(delivery.error||'This note’s delivery to the agent')+'">'+esc(label)+'</span>';
 }
 /**
  * What a note's placement has to say once the diff cannot provide one unambiguous line for it.
@@ -357,9 +384,12 @@ export function viewUI(box,note,ctx){
   box.innerHTML=headHtml(ctx.f,note.label,note.snippet,
       '<span class="unread"'+(unread?'':' hidden')+'>'+(unread?unread+' new':'')+'</span>'+
       statusChip(st)+
+      deliveryHtml(note)+
       (away?'<button class="jmp" data-goto="'+esc(note.id)+
         '" title="Show this note where it sits in the diff">'+
         (ctx.scope==='global'?'show':'in diff')+'</button>':'')+
+      (state.agent?'<button class="ask"'+(state.noteSending.has(note.id)?' disabled':'')+'>'+
+        (state.noteDelivery.get(note.id)?.error?'Retry ':'Ask ')+esc(state.agent)+'</button>':'')+
       '<button class="edit">Edit</button><button class="danger del">Delete</button>',ctx.scope)+
     placeHtml(how==='exact'||how==='file'||how==='global'?'':how)+
     capturedHtml(note,how)+
@@ -369,6 +399,8 @@ export function viewUI(box,note,ctx){
   if(st&&st.detail) box.querySelector('.nstat').textContent=st.status.replace('-',' ')+' — '+st.detail;
   renderThread(box.querySelector('.thread'),note,()=>repaintNote(note.id));
   mountReply(box.querySelector('.replyhost'),note,()=>repaintNote(note.id));
+  const ask=box.querySelector('.ask');
+  if(ask) ask.onclick=()=>{ void sendNote(state.notes.get(note.id)||note,true); };
   // Looking at a note is what reads its thread; the count in the footer follows from that. The box
   // outlives its contents, so the listener is attached once and finds the note again when it fires.
   if(!box.__read){
@@ -409,7 +441,7 @@ function removeNote(box,note,ctx){
   if(note.ca!=null&&ctx.i!=null&&ctx.i>=0) repaintRow(ctx.fi,ctx.i);
   syncGlobals(); // the card at the top goes with the last note in it
   renderTree(); updateCount();
-  if(note.sentAt) withdrawNotes([note.id]);
+  withdrawNotes([note.id]);
 }
 function mark(fi,i,j,on){
   if(i==null||i<0) return; // a file note, or one with no rows left, marks no lines
