@@ -282,6 +282,10 @@ async function tell(id: string,url: string,init: any,what: string){
     const note=state.notes.get(id);
     if(note) markRead(note); // your own message is not news to you
     save();
+    if(data.channel?.state==='failed'){
+      alert('Your reply was saved, but could not reach '+(state.agent||'the agent')+': '+
+        (data.channel.error||'Check the agent session.')+'\n\nRetry from this note once the agent is ready.');
+    }
     return true;
   }catch(error){
     alert('Could not '+what+': '+(error instanceof Error?error.message:String(error)));

@@ -22,6 +22,37 @@ Or use `/apply-lcr` when your agent supports skill commands. Each note's `Status
 
 Reviews remain ordinary Markdown files. You can use them without the skill and with any coding agent.
 
+## Interactive Claude Code channel (MVP)
+
+Register the lightweight Claude bridge once, globally. Start your review yourself with its usual
+arguments, such as `lcr origin/main`, then start Claude Code with the channel enabled. The bridge
+connects to the review in that repository; starting Claude alone opens no page or review server.
+Each note editor becomes **Save & ask Claude** after Claude acknowledges a connection probe. Saving
+the note immediately writes and forwards that note; the footer is not a send step. Sending or
+rewording a reply forwards the follow-up. Claude reads the latest thread and answers under the note. This uses Claude
+Code's own login and permissions; lcr does not call a model API or automate the Claude app.
+
+See [Claude channel setup](docs/claude-channel.md) for registration and launch commands. Channels are
+a Claude Code research preview; Team and Enterprise organizations must enable them. The ordinary
+`lcr` command and the optional vendor-neutral skill keep working as before.
+
+## Interactive Codex session (MVP)
+
+Point lcr at an existing Codex session:
+
+```sh
+lcr --codex-thread <session-uuid> --id interactive
+```
+
+After the selected session passes a local health check, each note editor becomes **Save & ask Codex**.
+Saving it immediately forwards that note with the installed CLI's `codex queue` command.
+Sending or rewording a reply notifies the same session. Codex reads the current thread from Markdown
+and writes its answer there, where the page picks it up live. The session keeps its own login,
+model, and tool permissions. See [Codex setup and delivery behavior](docs/codex-channel.md).
+
+The header reports the detected agent as checking, ready, or unavailable. Without a confirmed working
+connection, editors say **Save note** and keep the ordinary manual review workflow.
+
 ## Install
 
 Download the package for your system from the [latest release](https://github.com/cjvnjde/local-code-review/releases/latest), extract it, and put `lcr` (`lcr.exe` on Windows) somewhere on your `PATH`.
@@ -57,6 +88,7 @@ lcr --port 8080               # Start from another port
 lcr --out .feedback           # Store reviews elsewhere
 lcr --context 8               # Show more surrounding lines
 lcr --id auth-rework          # Name this review, and come back to it by that name
+lcr --codex-thread <uuid>     # Forward saved feedback to an existing Codex session
 lcr --version                 # Print which build this is
 ```
 

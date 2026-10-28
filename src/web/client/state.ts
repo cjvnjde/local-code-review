@@ -54,7 +54,8 @@ export const state: any={
   delFold:new Map(),
   scrolled:false, jumpUntil:0, autoNow:new Set(), lastUndo:0,
   /** Threads as the review file holds them, by note id. The file is their only writer. */
-  msgs:new Map(), seen:new Map(), sessionFile:'', live:false, pendingDiff:false, pendingNotes:false,
+  msgs:new Map(), seen:new Map(), sessionFile:'', live:false, pendingDiff:false, pendingNotes:false, agent:'', connection:null,
+  noteSending:new Map(), noteDelivery:new Map(),
   /** Where each note is showing right now; recomputed from the diff, never stored. */
   place:new Map(),
 };
@@ -144,9 +145,9 @@ export function reindexNotes(){
  * Records that every current note now sits in `file`, so verdicts from that review on can reach them.
  * The first handover is the one kept: a note carried into a later review was already reportable.
  */
-export function markSubmitted(file: string){
+export function markSubmitted(file: string, ids?: string[]){
   const at=reviewTime(file)||Date.now();
-  state.notes.forEach((n: any)=>{ if(!n.sentAt) n.sentAt=at; });
+  state.notes.forEach((n: any)=>{ if(!n.sentAt&&(!ids||ids.includes(n.id))) n.sentAt=at; });
   reindexNotes(); // it is what the index counts
 }
 /** The conversation on one note, oldest first. Owned by the review file, so it is read-only here. */

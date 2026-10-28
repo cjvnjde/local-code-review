@@ -1,5 +1,9 @@
 import "./settings.ts";
 import "./tree-controls.ts";
+import { startAgentStatus } from './agent.ts';
+import { updateCount } from './footer.ts';
+import { repaintNote } from './notes.ts';
+import { state } from './state.ts';
 import { watchAudio } from "./audio.ts";
 import { startLive } from "./live.ts";
 import { watchImages } from "./images.ts";
@@ -16,4 +20,7 @@ watchPaths();
 applyQuick();
 applyNav();
 applySections();
-void load().then(startLive);
+void load().then(()=>{
+  startLive();
+  startAgentStatus(()=>{ state.notes.forEach((note: any)=>repaintNote(note.id)); updateCount(); });
+});

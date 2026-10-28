@@ -50,7 +50,7 @@ function paintSubmit(){
   button.textContent=running?'Update review':'Save review';
   button.title=running?'Write these notes into '+state.sessionFile:'Start a review file for these notes';
   const newReview=el('newReview');
-  newReview.disabled=!running;
+  newReview.disabled=!running||!!state.noteSending.size;
   newReview.title=running
     ?'Leave '+state.sessionFile+' intact and start a fresh review'
     :'Save this review before starting another';
@@ -67,7 +67,7 @@ el('clearDone').onclick=()=>{
     state.place.delete(n.id);
   });
   save(); render();
-  withdrawNotes(done.filter((n: any)=>n.sentAt).map((n: any)=>n.id));
+  withdrawNotes(done.map((n: any)=>n.id));
 };
 /** Starting over: everything typed for this diff goes, so ask before dropping work that cannot be undone. */
 el('clearAll').onclick=()=>{
@@ -79,7 +79,7 @@ el('clearAll').onclick=()=>{
     (state.sessionFile?'\n\n'+state.sessionFile+' stays on disk, but what is cleared here goes out of it, '+
       'threads and all — otherwise the file would put it straight back.':''))) return;
   // Read before the clear, and withdrawn after it: a note left in the file is fetched back.
-  const sent=[...state.notes.values()].filter((note: any)=>note.sentAt).map((note: any)=>note.id);
+  const sent=[...state.notes.keys()];
   clearNotes(); render();
   withdrawNotes(sent);
 };
@@ -126,13 +126,22 @@ function handover(d: any){
   const host=el('toasts');
   const gone=(d.removed||[]).length;
   const toast=document.createElement('div');
+  const channel=d.channel;
+  const agent=state.agent||'the agent';
+  const hint=channel
+    ?channel.state==='forwarded'?'Forwarded '+channel.count+' note'+(channel.count===1?'':'s')+' to '+esc(agent)+'. Answers appear in their threads.'
+      :channel.state==='queued'?'Queued for '+esc(agent)+' to connect.'
+      :channel.state==='failed'?'Saved, but forwarding failed: '+esc(channel.error||'Check the agent session.')+' Retry from the note once the agent is ready.'
+      :'No new or changed notes to forward.'
+    :'Ask the agent: <code>Address the notes in '+esc(d.file)+'</code>';
   toast.className='toast saved';
   toast.innerHTML='<span class="ic">'+SVG.check+'</span>'+
     '<span class="tx">Saved <code>'+esc(d.file)+'</code> — '+d.count+
     (d.count===1?' note':' notes')+(gone?', replaced '+gone+' earlier file'+(gone===1?'':'s'):'')+
-    '<br><span class="sub">Ask the agent: <code>Address the notes in '+esc(d.file)+'</code></span></span>'+
-    '<button class="undo" title="Copy the prompt">copy</button>';
+    '<br><span class="sub">'+hint+'</span></span>'+
+    '<button class="undo" title="'+(channel?'Dismiss':'Copy the prompt')+'">'+(channel?'close':'copy')+'</button>';
   toast.querySelector('.undo').onclick=async()=>{
+    if(channel){ toast.remove(); return; }
     try{ await navigator.clipboard.writeText('Address the notes in '+d.file); }catch{}
     toast.remove();
   };

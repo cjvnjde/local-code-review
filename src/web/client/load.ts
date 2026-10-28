@@ -1,4 +1,5 @@
 import { placeNotes } from './anchor.ts';
+import { adoptAgent } from './agent.ts';
 import { renderBookmarks } from './bookmark-pane.ts';
 import { renderDiff } from './diff-view.ts';
 import { updateCount } from './footer.ts';
@@ -39,6 +40,7 @@ async function loadNow(keep: boolean){
   }
   // Everything downstream reads "diff order" off this list, so the one order there is is the tree's.
   state.files=inTreeOrder(d.files); state.repo=d.repo||''; state.range=d.range; state.reviewId=d.id||'';
+  adoptAgent(d);
   markTails(state.files,Number(d.context));
   state.byPath=new Map(state.files.map((f,i)=>[f.path,i]));
   // Oldest review file first, so a newer verdict on the same note replaces an older one.
@@ -72,6 +74,7 @@ async function loadNow(keep: boolean){
  * the whole conversation whichever side of it they come from.
  */
 export function adopt(review: any){
+  adoptAgent(review);
   state.sessionFile=review.file||'';
   const at=reviewTime(review.file||'')||Date.now();
   const held=new Set();

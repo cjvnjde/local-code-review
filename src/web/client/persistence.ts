@@ -1,6 +1,36 @@
 import { bookmarksIn } from './bookmarks.ts';
 import { compileHide } from './filters.ts';
-import { GLOBAL_ANCHOR, el, idxOf, isMinted, mintGlobalId, mintNoteId, reindexNotes, state } from './state.ts';
+import { GLOBAL_ANCHOR, el, idxOf, isMinted, markSubmitted, mintGlobalId, mintNoteId, reindexNotes, state } from './state.ts';
+import { adoptAgent } from './agent.ts';
+
+// A delete waits for in-flight single-note writes, so it cannot be resurrected by a late save.
+let noteWrites: Promise<unknown>=Promise.resolve();
+function writeNotes<T>(work: ()=>Promise<T>): Promise<T>{
+  const next=noteWrites.then(work,work);
+  noteWrites=next.catch(()=>{});
+  return next;
+}
+
+export function submitNote(note: any,retry=false){
+  state.noteSending.set(note.id,(state.noteSending.get(note.id)||0)+1);
+  return writeNotes(async()=>{
+    if(!state.notes.has(note.id)) return null;
+    const response=await fetch('/api/note',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({comment:note,retry,replace:!!state.cfg.single})});
+    const data=await response.json();
+    if(!response.ok) throw new Error(data.error||'Could not save this note.');
+    if(state.notes.has(note.id)){
+      state.sessionFile=data.file;
+      markSubmitted(data.file,[note.id]);
+      adoptAgent(data);
+      save();
+    }
+    return data;
+  }).finally(()=>{
+    const left=(state.noteSending.get(note.id)||1)-1;
+    if(left) state.noteSending.set(note.id,left); else state.noteSending.delete(note.id);
+  });
+}
 
 /* ---------- persistence ---------- */
 const CFG_KEY='gitreview:settings';
@@ -165,7 +195,7 @@ export function withdrawNotes(ids: string[]){
   const query=ids.map(id=>'id='+encodeURIComponent(id));
   if(!query.length) return Promise.resolve();
   // The page has already let them go; the file catches up, and a failed delete costs a stale entry.
-  return fetch('/api/note?'+query.join('&'),{method:'DELETE'}).then(()=>{},()=>{});
+  return writeNotes(()=>fetch('/api/note?'+query.join('&'),{method:'DELETE'}).then(()=>{},()=>{}));
 }
 /** Wipes the notes stored for this range, threads and all. Hidden and collapsed marks are not
  *  comments, so they stay. The review file itself is left on disk: it is the record of what was said,

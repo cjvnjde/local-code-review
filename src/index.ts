@@ -5,6 +5,8 @@ import { readAttachment, saveAttachment } from "./attach.ts";
 import { readBlob } from "./blob.ts";
 import { openInBrowser } from "./browser.ts";
 import { parseArgs } from "./cli.ts";
+import { claudeEndpoint, runClaudeBridge, startClaudeLink } from "./claude-link.ts";
+import { createCodexChannel } from "./codex-channel.ts";
 import { diffBase, diffRangeLabel, diffSides, fingerprint, getDiff, getFileContext, resolveWorktreeBase } from "./diff.ts";
 import { openInEditor } from "./editor.ts";
 import { createHub } from "./events.ts";
@@ -24,8 +26,19 @@ if (options.version) {
   console.log(VERSION);
   process.exit(0);
 }
-const repoRoot = await findRepoRoot();
+// stdout belongs exclusively to MCP in channel mode; startup and save messages remain on stderr.
+if (options.claudeChannel) console.log = console.error;
+// MCP servers can start from another directory; Claude Code supplies its stable project root.
+if (options.claudeChannel && process.env.CLAUDE_PROJECT_DIR) process.chdir(process.env.CLAUDE_PROJECT_DIR);
+const repoRoot = options.claudeChannel
+  ? await findRepoRoot().catch(() => process.cwd())
+  : await findRepoRoot();
 process.chdir(repoRoot);
+// Global MCP registration is only a bridge. It never starts a page, writes excludes or watches Git.
+if (options.claudeChannel) {
+  await runClaudeBridge(repoRoot);
+  process.exit(0);
+}
 
 await excludeRelativeOutput(repoRoot, options.outDir);
 const range = diffRangeLabel(options.diffArgs);
@@ -58,6 +71,16 @@ if (!(await session.adoptMatching())) {
   else if (others) console.log(`\n  ${others} earlier review file${others === 1 ? " is" : "s are"} for other diffs; starting fresh`);
 }
 const hub = createHub();
+let webUrl = "";
+const claudeLink = options.codexThread ? undefined
+  : await startClaudeLink(session, hub, () => webUrl, await claudeEndpoint(repoRoot)).catch((error) => {
+    console.error(`  Claude link unavailable: ${error instanceof Error ? error.message : error}`);
+    return undefined;
+  });
+const channel = options.codexThread
+  ? createCodexChannel({ repoRoot, outDir: options.outDir, thread: options.codexThread, session,
+    notify: () => hub.emit({ type: "review", file: session.file }) })
+  : claudeLink;
 
 /** One saved review parsed back, for reading a ghost note's thread out of its own file. */
 async function readReview(name: string) {
@@ -103,7 +126,10 @@ const server = startServer({
   },
   session,
   hub,
+  channel,
 });
+webUrl = `http://localhost:${server.port}`;
+void channel?.check?.();
 
 /* ---------- following the agent ---------- */
 
@@ -156,15 +182,16 @@ const watchers = [
 ];
 const heartbeat = setInterval(() => hub.ping(), 25_000);
 
-for (const signal of ["SIGINT", "SIGTERM"] as const) {
-  process.on(signal, () => {
-    clearInterval(heartbeat);
-    for (const watcher of watchers) watcher.close();
-    server.stop(true);
-    process.exit(0);
-  });
+function shutdown() {
+  clearInterval(heartbeat);
+  for (const watcher of watchers) watcher.close();
+  claudeLink?.close();
+  server.stop(true);
+  process.exit(0);
 }
+for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, shutdown);
 
 if (options.open && !openInBrowser(`http://localhost:${server.port}`)) {
   console.log("  could not open browser; open the URL above manually\n");
 }
+if (options.codexThread) console.log(`  Codex feedback target: ${options.codexThread}\n`);

@@ -1,4 +1,5 @@
 import type { Server } from "bun";
+import path from "node:path";
 import page from "./web/shell.html";
 import { ATTACH_MAX_BYTES, attachExtension, attachRef } from "./attach.ts";
 import { mediaType } from "./blob.ts";
@@ -9,6 +10,7 @@ import type { ReviewSession } from "./session.ts";
 import type { ReviewNote } from "./thread.ts";
 import type { DiffFile, DiffRow, NoteStatus, ReviewComment, ReviewSubmission } from "./types.ts";
 import { VERSION } from "./version.ts";
+import type { AgentChannel } from "./agent-channel.ts";
 
 export interface ServerOptions {
   port: number;
@@ -45,6 +47,8 @@ export interface ServerOptions {
   session: ReviewSession;
   /** Open pages, told whenever the review file or the diff moved. */
   hub: Hub;
+  /** Optional adapter that forwards saved reviewer feedback into an agent session. */
+  channel?: AgentChannel;
 }
 
 /**
@@ -65,6 +69,14 @@ export const PORT_ATTEMPTS = 10;
  * whole, because the store outlives the run and a working-copy path is not the page's to keep.
  */
 export const repoId = (repoRoot: string) => fingerprint(repoRoot);
+
+const activeChannel = (options: ServerOptions) =>
+  options.channel && (options.channel.available?.() ?? true) ? options.channel : undefined;
+const channelState = (options: ServerOptions) => options.channel ? {
+  connection: options.channel.status?.() ?? { agent: options.channel.agent,
+    state: activeChannel(options) ? "ready" : "unavailable", detail: "Agent connection status." },
+  ...(activeChannel(options) ? { agent: options.channel.agent } : {}),
+} : {};
 
 export function startServer(options: ServerOptions) {
   const server = listen(options.port, (port) => serve(options, port));
@@ -123,6 +135,10 @@ function serve(options: ServerOptions, port: number) {
       try {
         const url = new URL(request.url);
         if (url.pathname === "/api/events") return events(options, request, server);
+        if (url.pathname === "/api/agent" && request.method === "GET") {
+          await options.channel?.check?.();
+          return Response.json(channelState(options));
+        }
         if (url.pathname === "/api/diff") {
           const [files, statuses] = await Promise.all([options.getDiff(), options.getStatuses()]);
           return Response.json({
@@ -132,6 +148,7 @@ function serve(options: ServerOptions, port: number) {
             context: options.context,
             files,
             statuses,
+            ...channelState(options),
           });
         }
         if (url.pathname === "/api/context") {
@@ -174,6 +191,7 @@ function serve(options: ServerOptions, port: number) {
               file: options.session.shownFile,
               notes: doc.notes,
               statuses,
+              ...channelState(options),
             });
           }
           // Starting fresh only forgets which file we were in; the old one stays on disk as history.
@@ -222,7 +240,8 @@ function serve(options: ServerOptions, port: number) {
               `\n  ${request.method === "POST" ? "replied" : "reworded a reply"} on ${note.key} in ${options.session.shownFile}\n`,
             );
             options.hub.emit({ type: "review", file: options.session.file });
-            return Response.json({ file: options.session.shownFile, note });
+            const channel = await activeChannel(options)?.publish(options.session.file, [note]);
+            return Response.json({ file: options.session.shownFile, note, ...(channel ? { channel } : {}) });
           }
           if (request.method === "DELETE") {
             const id = url.searchParams.get("id") ?? "";
@@ -238,6 +257,23 @@ function serve(options: ServerOptions, port: number) {
           }
           return new Response("method not allowed", { status: 405, headers: { allow: "POST, PUT, DELETE" } });
         }
+        if (url.pathname === "/api/note" && request.method === "POST") {
+          if (!isJsonRequest(request)) return Response.json({ error: "JSON body required." }, { status: 415 });
+          const payload = await readJson(request) as { comment?: ReviewComment; retry?: boolean; replace?: boolean } | null;
+          const comment = payload?.comment;
+          if (!comment || typeof comment.id !== "string" || !comment.id ||
+              typeof comment.file !== "string" || typeof comment.body !== "string" || !comment.body.trim() ||
+              !Number.isInteger(comment.start) || !Number.isInteger(comment.end) || comment.start < 0 || comment.end < comment.start) {
+            return Response.json({ error: "A complete note with an id, body, file and line range is required." }, { status: 400 });
+          }
+          const { file, changed } = await options.session.save({ comments: [comment] }, payload?.replace === true);
+          const review = path.basename(file);
+          const notify = changed.length ? changed : payload?.retry ? [await options.session.readNote(review, comment.id)].filter((note): note is ReviewNote => !!note) : [];
+          const channel = activeChannel(options);
+          const delivery = channel ? await channel.publish(review, notify) : undefined;
+          options.hub.emit({ type: "review", file: review });
+          return Response.json({ file, id: comment.id, ...channelState(options), ...(delivery ? { channel: delivery } : {}) });
+        }
         if (url.pathname === "/api/note" && request.method === "DELETE") {
           // Many ids in one request: clearing the page is one withdrawal, not one per note.
           const ids = url.searchParams.getAll("id").filter((id) => id);
@@ -251,15 +287,16 @@ function serve(options: ServerOptions, port: number) {
           const payload = await readJson(request) as Partial<ReviewSubmission> | null;
           if (!payload) return Response.json({ error: "A JSON body is required." }, { status: 400 });
           const submission = { comments: Array.isArray(payload.comments) ? payload.comments : [] };
-          const { file, removed } = await options.session.save(
+          const { file, removed, changed } = await options.session.save(
             submission,
             (payload as { replace?: unknown }).replace === true,
           );
           console.log(`\n  saved ${file}  (${submission.comments.length} notes)`);
           if (removed.length) console.log(`  replaced ${plural(removed.length, "earlier review file")}`);
-          console.log(`  next: ask the agent to "address the notes in ${file}"\n`);
+          if (!activeChannel(options)) console.log(`  next: ask the agent to "address the notes in ${file}"\n`);
           options.hub.emit({ type: "review", file: options.session.file });
-          return Response.json({ file, count: submission.comments.length, removed });
+          const channel = await activeChannel(options)?.publish(path.basename(file), changed);
+          return Response.json({ file, count: submission.comments.length, removed, ...(channel ? { channel } : {}) });
         }
         if (url.pathname === "/api/ghosts") {
           return Response.json({ ghosts: await options.getGhosts() });
