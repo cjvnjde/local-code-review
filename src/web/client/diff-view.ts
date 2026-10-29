@@ -16,7 +16,7 @@ import { SVG, el, esc, idxOf, rowKey, state } from './state.ts';
 import { followDiff, renderTree } from './tree.ts';
 import { updateCount } from './footer.ts';
 import { wordDiff } from './word-diff.ts';
-import { pauseReadingPosition } from './reading-position.ts';
+import { paintReadingPosition, pauseReadingPosition } from './reading-position.ts';
 
 /* ---------- diff: rows live in lazily mounted blocks so huge diffs stay cheap ---------- */
 // ROW_H is the height an unmounted row is assumed to have; keep it equal to --row in styles.css.
@@ -312,6 +312,13 @@ function mountBlock(tb){
   state.h.set(f.path+'|'+b,after);
   if(above&&after!==before) el('diff').scrollTop+=after-before;
   if(state.sel&&state.sel.fi===fi) paintSel();
+  queueReadingPaint();
+}
+let readingPaint=false;
+function queueReadingPaint(){
+  if(readingPaint) return;
+  readingPaint=true;
+  requestAnimationFrame(()=>{ readingPaint=false; paintReadingPosition(); });
 }
 /**
  * Mounts the block one row lives in and hands the row back, so a jump can land on a line the pane

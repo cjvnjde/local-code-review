@@ -18,7 +18,6 @@ import { applyQuick } from "./quick.ts";
 import { applyNav, applySections } from "./sidebar.ts";
 
 loadCfg();
-startHistory();
 watchAudio();
 watchImages();
 watchPaths();
@@ -27,6 +26,7 @@ applyQuick();
 applyNav();
 applySections();
 void load().then(()=>{
+  startHistory();
   startReadingPosition();
   followNoteLink();
   startLive();

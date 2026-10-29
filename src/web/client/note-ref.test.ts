@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { insertRef, noteByRef, plainRefs, refIn, refLabel, refLink, refOf, refToken } from "./note-ref.ts";
+import { insertRef, noteByRef, plainRefs, refIn, refLabel, refOf, refToken } from "./note-ref.ts";
 
 // Notes as the page holds them: the anchors say which kind of note it is, the id carries its tail.
 const line = (tail: string, file = "src/cli.ts", label = "42") =>
@@ -37,7 +37,6 @@ describe("refIn", () => {
   });
   test("short references and copied local comment links name the same stable id", () => {
     expect(refIn("#mk1a")).toBe("mk1a");
-    expect(refIn(refLink(line("mk1a"),"http://localhost:4321/"))).toBe("mk1a");
     expect(refIn("http://localhost:4321/#note=mk1a")).toBe("mk1a");
     expect(refIn("#note=mk1a")).toBe("mk1a");
     expect(refIn("https://example.com/#note=mk1a")).toBe("");

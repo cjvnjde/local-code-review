@@ -2,10 +2,11 @@ import { mountRowAt, setFolded, setHidden } from './diff-view.ts';
 import { isHidden } from './filters.ts';
 import { closeReader } from './reader.ts';
 import { pathHtml } from './path.ts';
-import { ReadingPlace, readingPlace, readingRow, scrollVelocity, settleDelay } from './reading-model.ts';
+import { ReadingPlace, readingAt, readingPlace, readingRow, resumeOffset } from './reading-model.ts';
+import { readingTracker } from './reading-tracker.ts';
 import { el, esc, idxOf, state } from './state.ts';
 
-let stopped: ReadingPlace|null=null, timer: any=null,blockedUntil=0;
+let stopped: ReadingPlace|null=null,tracker: ReturnType<typeof readingTracker>|null=null;
 let currentLabel='',resumeLabel='';
 const resolved=new WeakMap<object,{place: ReadingPlace,rows: any,count: number,index: number}>();
 function rowOf(file: any,place: ReadingPlace){
@@ -19,16 +20,10 @@ const storeKey=()=>'gitreview:position:'+state.repo+':'+(state.reviewId?'#'+stat
 
 /** The first code row below the sticky file header is the conservative place to resume. */
 function current(){
-  const fi=idxOf(state.active), file=state.files[fi], card=el('f'+fi);
-  if(!file||!card) return null;
-  const pane=el('diff').getBoundingClientRect();
-  const head=card.querySelector('.fh')?.getBoundingClientRect();
-  const top=Math.max(pane.top,head?.bottom||pane.top);
-  const row=[...card.querySelectorAll('tr.r')].find((row: any)=>{
-    const rect=row.getBoundingClientRect();
-    return rect.bottom>top&&rect.top<pane.bottom;
-  }) as any;
-  return {fi,file,index:row?Number(row.dataset.i):-1};
+  return readingAt(el('diff').getBoundingClientRect(),el('diff').children,path=>{
+    const fi=idxOf(path),file=state.files[fi];
+    return file?{fi,file}:null;
+  });
 }
 
 export function paintReadingPosition(){
@@ -62,15 +57,14 @@ export function paintReadingPosition(){
 }
 
 export function resetReadingPosition(){
-  clearTimeout(timer); stopped=null;
+  tracker?.cancel(); stopped=null;
   try{ localStorage.removeItem(storeKey()); }catch{}
   paintReadingPosition();
 }
 
 /** A layout rebuild and its scroll correction are not a new reading pause. */
 export function pauseReadingPosition(){
-  clearTimeout(timer);
-  blockedUntil=performance.now()+1000;
+  tracker?.pause(performance.now()+1000);
 }
 
 /** Position is a display preference, separate from notes, viewed marks and the history journal. */
@@ -82,8 +76,8 @@ export function startReadingPosition(){
   }catch{}
   paintReadingPosition();
   const pane=el('diff');
-  let lastY=pane.scrollTop,lastAt=performance.now(),speed=0,manualUntil=0;
-  const input=()=>{ manualUntil=performance.now()+3500; };
+  // Fresh input always wins over layout/jump suppression; scrollbar drags have no short expiry.
+  const input=()=>tracker?.input(state.jumpUntil);
   pane.addEventListener('wheel',input,{passive:true});
   pane.addEventListener('touchmove',input,{passive:true});
   pane.addEventListener('pointerdown',input,{passive:true});
@@ -91,20 +85,23 @@ export function startReadingPosition(){
   document.addEventListener('keydown',(e: any)=>{
     if(!e.target.closest('textarea,input')&&['ArrowDown','ArrowUp','PageDown','PageUp','Home','End',' '].includes(e.key)) input();
   });
+  const remember=()=>{
+    if(state.reader) return;
+    const at=current(); if(!at||state.folded.has(at.file.path)) return;
+    // Lazy mounting is temporary, and must never replace a real line with a file-only marker.
+    if(at.index<0&&at.file.rows.length) return;
+    stopped=readingPlace(at.file,at.index,at.offset);
+    try{ localStorage.setItem(storeKey(),JSON.stringify(stopped)); }catch{}
+    paintReadingPosition();
+  };
+  tracker=readingTracker(pane.scrollTop,performance.now(),remember);
   pane.addEventListener('scroll',()=>{
-    const now=performance.now(),dt=now-lastAt;
-    speed=scrollVelocity(pane.scrollTop-lastY,dt);
-    lastY=pane.scrollTop; lastAt=now;
-    clearTimeout(timer);
-    if(now<Math.max(state.jumpUntil,blockedUntil)||now>manualUntil||state.reader) return;
-    timer=setTimeout(()=>{
-      if(document.hidden||state.reader||document.querySelector('.nbox textarea')) return;
-      const at=current(); if(!at||state.folded.has(at.file.path)) return;
-      stopped=readingPlace(at.file,at.index);
-      try{ localStorage.setItem(storeKey(),JSON.stringify(stopped)); }catch{}
-      paintReadingPosition();
-    },settleDelay(speed,Number(state.cfg.limit)));
+    tracker.scroll(pane.scrollTop,performance.now(),Number(state.cfg.limit),state.jumpUntil,
+      state.reader||document.hidden);
   },{passive:true});
+  const flush=()=>tracker.flush();
+  window.addEventListener('pagehide',flush);
+  document.addEventListener('visibilitychange',()=>{ if(document.hidden) flush(); });
   el('resumeReading').onclick=()=>{
     if(!stopped||!closeReader()) return;
     const fi=idxOf(stopped.path),file=state.files[fi]; if(!file) return;
@@ -116,7 +113,13 @@ export function startReadingPosition(){
     if(state.folded.has(file.path)) setFolded(file.path,false);
     const index=rowOf(file,stopped);
     const row=index>=0?mountRowAt(fi,index):null;
-    (row||el('f'+fi))?.scrollIntoView({block:'center'});
+    const target=row||el('f'+fi);
+    if(target){
+      const bounds=pane.getBoundingClientRect();
+      const header=el('f'+fi)?.querySelector('.fh')?.getBoundingClientRect().height||0;
+      const offset=row?resumeOffset(stopped.offset,header,bounds.height):0;
+      pane.scrollTop+=target.getBoundingClientRect().top-bounds.top-offset;
+    }
     paintReadingPosition();
   };
 }

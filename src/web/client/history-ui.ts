@@ -3,25 +3,46 @@ import { historyError, onHistoryChange, readHistory } from './history.ts';
 import { mdHtml } from './markdown.ts';
 import { pathHtml } from './path.ts';
 import { el, esc } from './state.ts';
+import { historyNavigation, type HistoryView } from './history-navigation.ts';
 
 let entries: HistoryEntry[]=[], selected='', noteId='', mode:'changes'|'snapshot'='changes', limit=60;
 let opened=false, request=0, returnFocus: HTMLElement|null=null;
+let navigation: ReturnType<typeof historyNavigation>|null=null;
+let painted='';
+const detailKey=()=>JSON.stringify([selected,mode,noteId,!!entries.find(e=>e.id===selected)]);
 const when=(at: number)=>new Date(at).toLocaleString([],{dateStyle:'medium',timeStyle:'medium'});
 const visible=()=>entries.filter(e=>historyMatches(e,el('historySearch').value,noteId)&&
   (!el('historySource').value||e.source===el('historySource').value));
 
 /** This overlay never unmounts a note editor or changes the working conversation. */
 export function openHistory(id=''){
+  const view: HistoryView={note:id,selected:'',mode,query:'',source:'',scope:el('historyScope').value,limit:60};
+  if(navigation) navigation.open(view); else showHistory(view);
+}
+function viewState(): HistoryView{
+  return {note:noteId,selected,mode,query:el('historySearch').value,source:el('historySource').value,
+    scope:el('historyScope').value,limit};
+}
+function rememberView(){ if(opened) navigation?.update(viewState()); }
+function showHistory(view: HistoryView|null){
+  if(!view){ hideHistory(); return; }
   if(!opened) returnFocus=document.activeElement as HTMLElement;
-  opened=true; noteId=id; selected=''; limit=60;
+  opened=true; noteId=view.note; selected=view.selected; limit=view.limit; mode=view.mode;
   el('historyPanel').hidden=false;
   el('showHistory').setAttribute('aria-expanded','true');
-  el('historySearch').value=''; el('historySource').value='';
+  el('historySearch').value=view.query; el('historySource').value=view.source;
+  el('historyScope').value=view.scope;
   el('historyAll').hidden=!noteId;
   el('historySearch').focus();
+  painted='';
+  el('historyDetail').textContent='Loading history…';
   void refresh();
 }
 function closeHistory(){
+  if(navigation) navigation.close(); else hideHistory();
+}
+function hideHistory(){
+  if(!opened) return;
   opened=false; ++request;
   el('historyPanel').hidden=true;
   el('showHistory').setAttribute('aria-expanded','false');
@@ -46,7 +67,9 @@ async function refresh(){
 }
 function paintList(){
   const list=visible();
-  if(!list.some(e=>e.id===selected)){ selected=list[0]?.id||''; paintDetail(); }
+  if(!list.some(e=>e.id===selected)) selected=list[0]?.id||'';
+  if(painted!==detailKey()) paintDetail();
+  rememberView();
   el('historyCount').textContent=String(list.length);
   const host=el('historyList'), top=host.scrollTop;
   host.innerHTML=list.slice(0,limit).map(e=>'<button type="button" class="revision'+(e.id===selected?' on':'')+
@@ -77,6 +100,7 @@ function noteHeading(n: HistoryNote){
     (n.scope==='file'?'<span>whole file</span>':n.label?'<span>'+esc(n.label)+'</span>':'');
 }
 function paintDetail(){
+  painted=detailKey();
   const entry=entries.find(e=>e.id===selected), host=el('historyDetail');
   el('historyMode').textContent=mode==='changes'?'Show full review':'Show changes';
   el('historyMode').disabled=!entry;
@@ -102,14 +126,18 @@ function exportHistory(){
   link.click(); setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 export function startHistory(){
+  navigation=historyNavigation(window.history,showHistory);
+  window.addEventListener('popstate',()=>navigation?.restore());
+  // Starting after /api/diff has supplied the read's identity lets a reload reopen the same view.
+  navigation.restore();
   el('showHistory').onclick=()=>opened?closeHistory():openHistory();
   el('historyClose').onclick=closeHistory;
   el('historyAll').onclick=()=>{ noteId=''; el('historyAll').hidden=true; selected=''; paintList(); };
   el('historySearch').oninput=()=>{ limit=60; paintList(); };
   el('historySource').onchange=()=>{ limit=60; paintList(); };
-  el('historyScope').onchange=()=>{ limit=60; selected=''; void refresh(); };
+  el('historyScope').onchange=()=>{ limit=60; selected=''; rememberView(); void refresh(); };
   el('historyMore').onclick=()=>{ limit+=60; paintList(); };
-  el('historyMode').onclick=()=>{ mode=mode==='changes'?'snapshot':'changes'; paintDetail(); };
+  el('historyMode').onclick=()=>{ mode=mode==='changes'?'snapshot':'changes'; paintDetail(); rememberView(); };
   el('historyExport').onclick=exportHistory;
   el('historyCopy').onclick=async()=>{
     const entry=entries.find(e=>e.id===selected); if(!entry) return;
@@ -119,7 +147,7 @@ export function startHistory(){
   };
   el('historyList').onclick=(event: any)=>{
     const button=event.target.closest('[data-revision]'); if(!button) return;
-    selected=button.dataset.revision; paintList(); paintDetail();
+    selected=button.dataset.revision; paintList();
   };
   // Escape belongs to this overlay before the underlying reader/editor can handle it.
   document.addEventListener('keydown',event=>{

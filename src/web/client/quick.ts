@@ -35,7 +35,7 @@ export function applyQuick(){
     btn.classList.toggle('on',on);
     btn.title=on?q.on:q.off;
     btn.setAttribute('aria-pressed',String(on));
-    btn.innerHTML=(on?SVG.chevR:SVG.chevD)+'<span>'+q.label+'</span>';
+    btn.innerHTML=(on?SVG.eyeOff:SVG.eye)+'<span>'+q.label+'</span>';
   });
 }
 QUICK.forEach(q=>{

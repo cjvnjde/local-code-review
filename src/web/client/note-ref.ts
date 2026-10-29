@@ -52,7 +52,6 @@ export const refLabel=(n: any)=>isGlobalNote(n)?noteKey(n)
   :String(n.file).split('/').pop()+(isFileNote(n)?' (whole file)':':'+(n.label||n.start||''));
 /** A stable short token survives reordering, deletion and restarting without renumbering notes. */
 export const refToken=(n: any)=>'#'+refOf(n.id);
-export const refLink=(n: any,base: string)=>new URL('/#note='+refOf(n.id),base).href;
 /**
  * A reference written in at the caret, one space clear of the words around it, and where the caret
  * lands after it: the sentence carries on behind the chip rather than in front of it. Pure, because

@@ -621,7 +621,7 @@
   #readingNow[hidden],#resumeReading[hidden]{display:none}
   .reading-position .pth{flex:1;min-width:0;font-family:var(--mono)}
   #resumeReading{padding:calc(var(--tap) / 4);color:var(--teal);font-size:var(--fs-xs)}
-  .r.reading-stop td{border-top:2px solid var(--teal)}
+  .r.reading-stop td{box-shadow:inset 0 2px var(--teal)}
   .hide-rules label{min-height:var(--tap);overflow-wrap:anywhere}
   .hide-rules code{white-space:pre-wrap}
   .md strong{font-weight:600;color:var(--ink)}

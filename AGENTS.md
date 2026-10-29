@@ -168,7 +168,8 @@
   the note as it stands when it is drawn, so it says where that note is now, and a reference no note —
   or more than one note — answers to reads as a note the review no longer holds rather than as a
   confident pointer at the wrong one. `refToken` writes it, `refIn` and `noteByRef` read it back.
-  Each note offers its short id and a direct link to copy; both can be pasted into another note.
+  Each note offers only its short `#id` tag to copy and paste into another note. Previously copied
+  URLs remain readable for compatibility; do not add a separate link-copy action.
   A reference shows the full note and captured code, with all replies expandable in place. Nested
   references stay navigable without recursively embedding previews. Replies must answer their own
   note fully; references add context and never replace the answer.
@@ -289,6 +290,9 @@
   is read-only, has export/copy actions, and never writes old snapshots back to Markdown. Storage
   failures must remain visible without blocking note editing. It records observed states, not file
   changes made while no page was listening. Browser origin and port limit its reach.
+  Opening the history overlay adds one browser navigation entry. Back closes it; Forward restores
+  its note filter, selected revision and controls. Changes inside it replace that entry, and explicit
+  Close or Escape goes back through it without discarding an editor underneath.
 - Agent action buttons say **Save & ask AI**, **Ask AI**, and **Retry AI**. Keep the actual adapter
   name in connection diagnostics rather than making the action depend on its vendor.
 
