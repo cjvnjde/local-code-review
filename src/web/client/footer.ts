@@ -50,10 +50,10 @@ function paintSubmit(){
   button.textContent=running?'Update review':'Save review';
   button.title=running?'Write these notes into '+state.sessionFile:'Start a review file for these notes';
   const newReview=el('newReview');
-  newReview.disabled=!running||!!state.noteSending.size;
+  newReview.disabled=(!running&&!state.notes.size)||!!state.noteSending.size;
   newReview.title=running
     ?'Leave '+state.sessionFile+' intact and start a fresh review'
-    :'Save this review before starting another';
+    :state.notes.size?'Clear these notes and start a fresh review':'No review to start over yet';
 }
 /** Notes an agent already applied are finished business; dropping them keeps the next pass clean. */
 el('clearDone').onclick=()=>{

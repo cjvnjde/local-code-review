@@ -79,7 +79,7 @@ function renderReviews(){
   info.textContent=state.sessionFile
     ?'This conversation is in '+state.sessionFile+'.'
     :'No review file yet — your first save opens one.';
-  el('newReview').disabled=!state.sessionFile||!!state.noteSending.size;
+  el('newReview').disabled=(!state.sessionFile&&!state.notes.size)||!!state.noteSending.size;
   renderReviewList();
 }
 /** When a review was opened, from the stamp its file name carries. */
@@ -152,8 +152,9 @@ el('reviewList').onclick=async(e: any)=>{
 el('newReview').onclick=async()=>{
   if(state.noteSending.size) return;
   const current=state.sessionFile;
-  if(!current) return;
-  if(!confirm('Start a new review?\n\n'+current+' stays on disk with everything said in it. '+
+  if(!current&&!state.notes.size) return;
+  if(!confirm('Start a new review?\n\n'+(current?current+' stays on disk with everything said in it. '
+    :'Notes you have not saved into a review are lost. ')+
     'The notes and replies on this page are cleared, viewed files are reset, and your next save opens a fresh file.')) return;
   try{
     const response=await fetch('/api/review',{method:'DELETE'});
