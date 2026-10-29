@@ -72,6 +72,8 @@ export interface CliOptions {
   id: string;
   /** `--version` asks what build this is and nothing else: it prints the stamp and never starts. */
   version: boolean;
+  /** Print usage without touching Git or starting a server. */
+  help: boolean;
   /** Run the lightweight Claude Code stdio bridge; the review page is started separately. */
   claudeChannel: boolean;
   /** Existing Codex session to notify through its installed CLI; empty without an adapter. */

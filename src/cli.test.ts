@@ -10,6 +10,7 @@ describe("parseArgs", () => {
       open: true,
       id: "",
       version: false,
+      help: false,
       claudeChannel: false,
       codexThread: "",
       diffArgs: ["HEAD~2", "--staged", "--", "*.ts"],
@@ -49,6 +50,23 @@ describe("parseArgs", () => {
   test("--id with nothing after it leaves the review unnamed", () => {
     expect(parseArgs(["--id"]).id).toBe("");
     expect(parseArgs(["--id", "   "]).id).toBe("");
+  });
+
+  test("help is handled locally, except after the path separator", () => {
+    expect(parseArgs(["--help"]).help).toBe(true);
+    expect(parseArgs(["-h"]).help).toBe(true);
+    expect(parseArgs(["--help"]).diffArgs).toEqual([]);
+    const paths = ["--", "--help", "--version", "--port", "--no-open"];
+    expect(parseArgs(paths).diffArgs).toEqual(paths);
+    expect(parseArgs(paths).help).toBe(false);
+  });
+
+  test("invalid server options fail before startup", () => {
+    for (const args of [["--port"], ["--port", "abc"], ["--port", "-1"], ["--port", "65536"],
+      ["--context"], ["--context", "1.5"], ["--context", "-1"], ["--out"], ["--out", "--staged"]]) {
+      expect(() => parseArgs(args)).toThrow();
+    }
+    expect(parseArgs(["--port", "0", "--context", "0"]).port).toBe(0);
   });
 
   test("--version asks what build this is, and never reaches git diff", () => {

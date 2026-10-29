@@ -128,12 +128,17 @@ export async function getDiff(source: DiffSource): Promise<DiffFile[]> {
     await runGit(["add", "-N", "--", "."], source.repoRoot).catch(() => {});
   }
 
+  return parseDiff(await readDiff(source));
+}
+
+/** Check Git's arguments without staging untracked files or opening review resources. */
+export async function validateDiff(source: DiffSource): Promise<void> {
+  await readDiff(source);
+}
+
+async function readDiff(source: DiffSource): Promise<string> {
   const args = await gitDiffArgs(source);
-  const raw = await runGit(
-    [...DIFF_ARGS, `-U${source.context}`, ...args],
-    source.repoRoot,
-  );
-  return parseDiff(raw);
+  return runGit([...DIFF_ARGS, `-U${source.context}`, ...args], source.repoRoot);
 }
 
 /**

@@ -112,10 +112,11 @@ lcr --out .feedback           # Store reviews elsewhere
 lcr --context 8               # Show more surrounding lines
 lcr --id auth-rework          # Name this review, and come back to it by that name
 lcr --codex-thread <uuid>     # Forward saved feedback to an existing Codex session
+lcr --help                    # Show usage and options
 lcr --version                 # Print which build this is
 ```
 
-Arguments not recognized by `lcr` are passed to `git diff`.
+Arguments not recognized by `lcr` are passed to `git diff`. Invalid options, revisions, or paths exit with an error before the server or browser starts. Use `--` before paths that could otherwise be read as options.
 
 Working-tree comparisons such as `lcr origin/main` include untracked files, including files created
 after `lcr` starts. Commit-to-commit ranges such as `lcr main...HEAD` remain revision-only.
