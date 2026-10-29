@@ -67,9 +67,19 @@ const FOOTER = [
   "For each note, the last message in its thread is what you are answering. Everything above it is " +
     "history. A note with no thread yet is asking about the code under its `diff` block.",
   "",
-  "A note may point at another note of this review, written as a link like `[src/app.ts:12](lcr:mk1a)`. " +
+  "A note may point at another note of this review using `#mk1a`, a local comment URL ending in " +
+    "`#note=mk1a`, or the older link `[src/app.ts:12](lcr:mk1a)`. " +
     "It names the note in this file whose `<!-- lcr:... -->` marker ends with `#mk1a`: read that one " +
     "too before you answer, and leave the link exactly as it stands.",
+  "Every reply must answer its own note fully. Never replace an explanation with 'see above', " +
+    "'same as another answer', or a reference alone. You may add `#<ref>` as supporting context, " +
+    "using the exact suffix of the target note's marker; the page previews that note and its replies.",
+  "To attach visual evidence, write a uniquely named image in `assets/` beside this review file, " +
+    "then include `![What the image shows](assets/<name>.png)` in your appended reply. " +
+    "`images/<name>.png` or a filename directly beside this review also works. Use a path relative " +
+    "to this file, without a `.review/` prefix, and letters, digits, dots, underscores or hyphens " +
+    "in the filename. Create and inspect the image first, explain it in the reply, and never " +
+    "overwrite or delete existing pictures.",
   "",
   "A note headed `### Overall note`, under `## Overall`, is about the review as a whole rather than " +
     "about one place in it, so it carries no path and no `diff` block. Answer it exactly like the " +

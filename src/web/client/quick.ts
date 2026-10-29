@@ -1,4 +1,6 @@
 import { renderDiff } from './diff-view.ts';
+import { render } from './load.ts';
+import { busyEditor } from './notes.ts';
 import { persistCfg } from './persistence.ts';
 import { SVG, el, state } from './state.ts';
 
@@ -13,6 +15,11 @@ import { SVG, el, state } from './state.ts';
  * and leaves those files exactly where they stand.
  */
 const QUICK=[
+  {
+    btn:'qHide',cfg:'hideEnabled',label:'hide patterns',
+    on:'Disable hide patterns temporarily; keep the patterns and per-file overrides',
+    off:'Enable saved hide patterns',redraw:false,
+  },
   {
     btn:'qFoldDel', cfg:'foldDel', label:'removed',
     on:'Show removed lines again in the files that have not answered for themselves',
@@ -33,9 +40,11 @@ export function applyQuick(){
 }
 QUICK.forEach(q=>{
   el(q.btn).onclick=()=>{
+    if(busyEditor()) return;
     state.cfg[q.cfg]=!state.cfg[q.cfg];
     persistCfg();
     applyQuick();
     if(q.redraw){ state.h.clear(); renderDiff(); }
+    else render();
   };
 });

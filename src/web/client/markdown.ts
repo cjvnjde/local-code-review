@@ -170,7 +170,7 @@ function tableAt(lines: string[],from: number){
 
 /* ---------- inline ---------- */
 /** Everything that can start something inside a line. Text between two of these is plain text. */
-const NEXT=/\\[^\n]|`+|\*{1,3}|_{1,3}|~~|!?\[|<[^\s<>]+>|https?:\/\/[^\s<>]+/g;
+const NEXT=/\\[^\n]|`+|\*{1,3}|_{1,3}|~~|!?\[|<[^\s<>]+>|https?:\/\/[^\s<>]+|#[0-9a-z]+\b/g;
 const EMPH: [RegExp,string,string][]=[
   [/^(\*\*\*|___)(?=\S)([\s\S]*?\S)\1/,'<strong><em>','</em></strong>'],
   [/^(\*\*|__)(?=\S)([\s\S]*?\S)\1/,'<strong>','</strong>'],
@@ -200,7 +200,8 @@ const href=(url: string,body: string)=>
 function refHtml(ref: string,label: string){
   const n=noteByRef(ref,state.notes.values());
   if(!n){
-    const said=label.trim()?inline(label):esc(REF_SCHEME+ref);
+    // A missing #id is itself a label: feeding it back into inline would resolve it forever.
+    const said=label.trim()?esc(label.replace(/\\(.)/g,'$1')):esc(REF_SCHEME+ref);
     return '<span class="nref gone" title="This note is not in this review any more">'+SVG.ref+
       '<span class="t">'+said+'</span></span>';
   }
@@ -234,7 +235,9 @@ export function inline(src: string): string{
     }else if(tok==='['||tok==='!['){
       const link=LINK.exec(src.slice(from));
       // A note naming another note of this review is a chip that goes there, not a link that leaves.
-      const ref=link&&!link[1]?refIn(link[3]):'';
+      let ref=link&&!link[1]?refIn(link[3]):'';
+      // An ordinary Markdown section anchor remains one unless a note actually owns that id.
+      if(link&&/^#[0-9a-z]+$/.test(link[3])&&!noteByRef(ref,state.notes.values())) ref='';
       if(ref){ html=refHtml(ref,link[2]); to=from+link[0].length; }
       else{
         const url=link?safeUrl(link[3]):'';
@@ -248,13 +251,21 @@ export function inline(src: string): string{
           html=link[1]?href(url,label||esc(url)):href(url,label); to=from+link[0].length;
         }
       }
+    }else if(tok[0]==='#'){
+      const ref=tok.slice(1);
+      if(!/[\w/#]/.test(src[from-1]||'')&&(noteByRef(ref,state.notes.values())||ref.length>=8)){
+        html=refHtml(ref,tok); to=from+tok.length;
+      }
     }else if(tok[0]==='<'){
       const url=safeUrl(tok.slice(1,-1));
-      if(url&&/^(https?:|mailto:)/i.test(url)){ html=href(url,esc(tok.slice(1,-1))); to=from+tok.length; }
+      const ref=refIn(tok.slice(1,-1));
+      if(ref){ html=refHtml(ref,tok.slice(1,-1)); to=from+tok.length; }
+      else if(url&&/^(https?:|mailto:)/i.test(url)){ html=href(url,esc(tok.slice(1,-1))); to=from+tok.length; }
     }else if(tok[0]==='h'){
       // a bare address is a link, minus the punctuation that ends the sentence around it
       const url=tok.replace(/[.,;:!?)\]}'"]+$/,'');
-      html=href(url,esc(url)); to=from+url.length;
+      const ref=refIn(url);
+      html=ref?refHtml(ref,url):href(url,esc(url)); to=from+url.length;
     }else if(!(tok[0]==='_'&&/[\w]/.test(src[from-1]||''))){ // snake_case is a name, not emphasis
       for(const [rx,open,shut] of EMPH){
         const em=rx.exec(src.slice(from));

@@ -3,6 +3,8 @@ import { noteSaveLabel } from './agent.ts';
 import { openHistory } from './history-ui.ts';
 import { attachButton, wireAttach } from './attach.ts';
 import { NOTE_MAX, autogrow } from './autogrow.ts';
+import { copyText } from './clipboard.ts';
+import { refLink, refToken } from './note-ref.ts';
 import { globalHost, repaintRow, syncGlobals } from './diff-view.ts';
 import { reaims } from './drag.ts';
 import { updateCount } from './footer.ts';
@@ -386,6 +388,8 @@ export function viewUI(box,note,ctx){
       '<span class="unread"'+(unread?'':' hidden')+'>'+(unread?unread+' new':'')+'</span>'+
       statusChip(st)+
       deliveryHtml(note)+
+      '<button class="copyref" title="Copy this short reference to paste into another note">'+esc(refToken(note))+'</button>'+
+      '<button class="copylink" title="Copy a link to this note">Copy link</button>'+
       (away?'<button class="jmp" data-goto="'+esc(note.id)+
         '" title="Show this note where it sits in the diff">'+
         (ctx.scope==='global'?'show':'in diff')+'</button>':'')+
@@ -404,6 +408,8 @@ export function viewUI(box,note,ctx){
   const ask=box.querySelector('.ask');
   if(ask) ask.onclick=()=>{ void sendNote(state.notes.get(note.id)||note,true); };
   box.querySelector('.history').onclick=()=>openHistory(note.id);
+  box.querySelector('.copyref').onclick=(e: any)=>copyText(e.currentTarget,refToken(note));
+  box.querySelector('.copylink').onclick=(e: any)=>copyText(e.currentTarget,refLink(note,location.href));
   // Looking at a note is what reads its thread; the count in the footer follows from that. The box
   // outlives its contents, so the listener is attached once and finds the note again when it fires.
   if(!box.__read){

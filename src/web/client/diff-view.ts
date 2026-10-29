@@ -16,6 +16,7 @@ import { SVG, el, esc, idxOf, rowKey, state } from './state.ts';
 import { followDiff, renderTree } from './tree.ts';
 import { updateCount } from './footer.ts';
 import { wordDiff } from './word-diff.ts';
+import { pauseReadingPosition } from './reading-position.ts';
 
 /* ---------- diff: rows live in lazily mounted blocks so huge diffs stay cheap ---------- */
 // ROW_H is the height an unmounted row is assumed to have; keep it equal to --row in styles.css.
@@ -30,6 +31,7 @@ function blockH(f,b){
 const phHtml=h=>'<tr class="ph"><td colspan="4" style="height:'+h+'px"></td></tr>';
 
 export function renderDiff(){
+  pauseReadingPosition();
   const sec=el('diff');
   obsMount.disconnect(); obsDrop.disconnect();
   // An empty diff is where a finished review ends up, and its notes are exactly what is left to read.

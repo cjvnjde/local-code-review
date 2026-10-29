@@ -28,10 +28,12 @@ const NAME=/^[A-Za-z0-9][A-Za-z0-9._-]*$/;
  * loopback, and the second is a page this one does not fetch from.
  */
 export function attachSrc(url: string){
-  const raw=String(url||'').replace(/^<|>$/g,'').trim();
-  if(raw.slice(0,DIR.length).toLowerCase()!==DIR) return '';
-  const name=raw.slice(DIR.length);
-  return NAME.test(name)&&isImage(name)?'/api/attachment?name='+encodeURIComponent(name):'';
+  const raw=String(url||'').replace(/^<|>$/g,'').trim().replace(/^\.\//,'');
+  const inImages=raw.slice(0,DIR.length).toLowerCase()===DIR;
+  const inAssets=raw.startsWith('assets/');
+  const name=inImages?raw.slice(DIR.length):inAssets?raw.slice(7):raw;
+  if(!NAME.test(name)||!isImage(name)) return '';
+  return '/api/attachment?'+(inImages?'name='+encodeURIComponent(name):'ref='+encodeURIComponent(raw));
 }
 
 /** Types the clipboard and the desktop hand over that the server will keep. */

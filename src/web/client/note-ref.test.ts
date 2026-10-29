@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { insertRef, noteByRef, plainRefs, refIn, refLabel, refOf, refToken } from "./note-ref.ts";
+import { insertRef, noteByRef, plainRefs, refIn, refLabel, refLink, refOf, refToken } from "./note-ref.ts";
 
 // Notes as the page holds them: the anchors say which kind of note it is, the id carries its tail.
 const line = (tail: string, file = "src/cli.ts", label = "42") =>
@@ -35,6 +35,15 @@ describe("refIn", () => {
     expect(refIn("./src/cli.ts")).toBe("");
     expect(refIn("")).toBe("");
   });
+  test("short references and copied local comment links name the same stable id", () => {
+    expect(refIn("#mk1a")).toBe("mk1a");
+    expect(refIn(refLink(line("mk1a"),"http://localhost:4321/"))).toBe("mk1a");
+    expect(refIn("http://localhost:4321/#note=mk1a")).toBe("mk1a");
+    expect(refIn("#note=mk1a")).toBe("mk1a");
+    expect(refIn("https://example.com/#note=mk1a")).toBe("");
+    expect(refIn("http://localhost:4321/other#note=mk1a")).toBe("");
+    expect(refIn("lcr:mk1a\" onclick=evil")).toBe("");
+  });
 });
 
 describe("noteByRef", () => {
@@ -64,14 +73,14 @@ describe("refLabel", () => {
 });
 
 describe("refToken", () => {
-  test("it writes the heading of the note it points at, and that note's tail", () => {
-    expect(refToken(line("mk1a"))).toBe("[src/cli.ts:42](lcr:mk1a)");
-    expect(refToken(whole("mk1b"))).toBe("[src/cli.ts (whole file)](lcr:mk1b)");
-    expect(refToken(overall("mk1c"))).toBe("[Overall note](lcr:mk1c)");
+  test("it writes the same short token for every note scope", () => {
+    expect(refToken(line("mk1a"))).toBe("#mk1a");
+    expect(refToken(whole("mk1b"))).toBe("#mk1b");
+    expect(refToken(overall("mk1c"))).toBe("#mk1c");
   });
 
-  test("a bracket in the heading is kept out of the link syntax", () => {
-    expect(refToken(line("mk1a", "src/[id]/page.ts"))).toBe("[src/\\[id\\]/page.ts:42](lcr:mk1a)");
+  test("moving or renaming the note leaves its reference unchanged", () => {
+    expect(refToken(line("mk1a", "src/[id]/page.ts"))).toBe("#mk1a");
   });
 });
 

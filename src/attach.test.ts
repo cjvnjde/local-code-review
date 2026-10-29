@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "bun:test";
@@ -75,6 +75,26 @@ describe("saveAttachment", () => {
 });
 
 describe("readAttachment", () => {
+  test("agent pictures resolve beside the review or in assets, including custom output directories",async()=>{
+    const root=await dir();
+    await mkdir(path.join(root,'custom','assets'),{recursive:true});
+    const name='review-2026-10-29T12-26-26-package-not-ready.png';
+    await writeFile(path.join(root,'custom',name),'sibling picture');
+    await writeFile(path.join(root,'custom','assets','missing-spec-secret.png'),'asset picture');
+    expect(new TextDecoder().decode((await readAttachment(root,'custom','./'+name))!.bytes)).toBe('sibling picture');
+    expect(new TextDecoder().decode((await readAttachment(root,'custom','assets/missing-spec-secret.png'))!.bytes)).toBe('asset picture');
+    expect(await readAttachment(root,'custom','./../secret.png')).toBeNull();
+    expect(await readAttachment(root,'custom','assets/../secret.png')).toBeNull();
+    expect(await readAttachment(root,'custom','./review.md')).toBeNull();
+  });
+
+  test("an image symlink cannot expose a file outside the review directory",async()=>{
+    const root=await dir();
+    await mkdir(path.join(root,'.review','assets'),{recursive:true});
+    await writeFile(path.join(root,'private.png'),'private');
+    await symlink(path.join(root,'private.png'),path.join(root,'.review','assets','escape.png'));
+    expect(await readAttachment(root,'.review','assets/escape.png')).toBeNull();
+  });
   test("a name nothing was kept under is an absence rather than a failure", async () => {
     const root = await dir();
     expect(await readAttachment(root, ".review", "nothing.png")).toBeNull();

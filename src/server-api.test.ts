@@ -535,14 +535,14 @@ describe("attachment APIs", () => {
 
     const response = await request(
       started,
-      "/api/attachment?name=image-hash.png",
+      "/api/attachment?name=0123456789abcdef.png",
     );
 
     expect(response.status).toBe(200);
     expect(await response.text()).toBe("attachment");
     expect(response.headers.get("content-type")).toBe("image/png");
     expect(response.headers.get("content-length")).toBe("10");
-    expect(response.headers.get("etag")).toBe('"image-hash.png"');
+    expect(response.headers.get("etag")).toBe('"0123456789abcdef.png"');
     expect(response.headers.get("cache-control")).toBe(
       "public, max-age=31536000, immutable",
     );
@@ -560,12 +560,33 @@ describe("attachment APIs", () => {
 
     const response = await request(
       started,
-      "/api/attachment?name=image-hash.png",
-      { headers: { "if-none-match": '"image-hash.png"' } },
+      "/api/attachment?name=0123456789abcdef.png",
+      { headers: { "if-none-match": '"0123456789abcdef.png"' } },
     );
 
     expect(response.status).toBe(304);
     expect(reads).toBe(0);
+  });
+
+  test("named agent images are revalidated by content, so updates do not show stale pixels",async()=>{
+    const names:string[]=[];
+    let body='first';
+    const started=await startTestServer({readAttachment:async name=>{
+      names.push(name);return {type:'image/png',bytes:new TextEncoder().encode(body)};
+    }});
+    const url='/api/attachment?ref=review-2026-10-29T12-26-26-package-not-ready.png';
+    const first=await request(started,url);
+    expect(names[0]).toBe('./review-2026-10-29T12-26-26-package-not-ready.png');
+    expect(first.headers.get('cache-control')).toBe('no-cache');
+    const tag=first.headers.get('etag')!;
+    expect((await request(started,url,{headers:{'if-none-match':tag}})).status).toBe(304);
+    body='updated';
+    const updated=await request(started,url,{headers:{'if-none-match':tag}});
+    expect(updated.status).toBe(200);
+    expect(updated.headers.get('etag')).not.toBe(tag);
+    expect(await updated.text()).toBe('updated');
+    await request(started,'/api/attachment?ref=assets%2Fafter.png',{method:'HEAD'});
+    expect(names.at(-1)).toBe('assets/after.png');
   });
 
   test("attachment reports a missing name and rejects mutation", async () => {

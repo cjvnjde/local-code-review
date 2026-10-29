@@ -171,6 +171,13 @@ describe("mdHtml inline", () => {
         ' loading="lazy" decoding="async"></a></p><p>after</p>',
     );
   });
+  test("agent screenshots beside a review and in assets are rendered as local pictures",()=>{
+    expect(mdHtml('![Package not ready](review-2026-10-29T12-26-26-package-not-ready.png)'))
+      .toContain('<img src="/api/attachment?ref=review-2026-10-29T12-26-26-package-not-ready.png"');
+    expect(mdHtml('![Missing spec](assets/missing-spec-secret.png)'))
+      .toContain('<img src="/api/attachment?ref=assets%2Fmissing-spec-secret.png"');
+    expect(mdHtml('![Outside](../outside.png)')).not.toContain('<img');
+  });
 
   test("a relative link keeps working and a script one does not", () => {
     expect(mdHtml("[file](./src/app.ts)")).toContain('href="./src/app.ts"');
@@ -196,6 +203,13 @@ describe("mdHtml inline", () => {
       // drawn from the note as it stands now, not from the words the reference was written with
       expect(html).toContain('<span class="t">cli.ts:42</span>');
       expect(html).toContain('title="src/cli.ts:42 — Rename this"');
+      for(const source of ['See #mk1a.','See http://localhost:4321/#note=mk1a.',
+        'See [comment](http://localhost:4321/#note=mk1a).']){
+        expect(mdHtml(source)).toContain('data-nref="'+note.id+'"');
+      }
+      expect(mdHtml('`#mk1a`')).not.toContain('data-nref');
+      expect(mdHtml('```\n#mk1a\n```')).not.toContain('data-nref');
+      expect(mdHtml('word#mk1a')).not.toContain('data-nref');
     }finally{
       state.notes.delete(note.id);
     }
@@ -206,6 +220,9 @@ describe("mdHtml inline", () => {
     expect(html).toContain('<span class="nref gone"');
     expect(html).toContain("<span class=\"t\">src/cli.ts:42</span>");
     expect(html).not.toContain("<button");
+    expect(mdHtml('Missing #missing1234.')).toContain('<span class="nref gone"');
+    expect(mdHtml('Missing #missing1234.')).toContain('#missing1234');
+    expect(mdHtml('[Section](#intro)')).toContain('href="#intro"');
   });
 
   test("a heading and a table cell are inline-rendered too", () => {

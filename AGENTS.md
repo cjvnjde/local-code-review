@@ -142,10 +142,10 @@
   review file beside it the way every relative Markdown link does, so the agent reading the file opens
   the same picture the page draws — which is the point of the feature, and why the target must stay
   relative rather than becoming a path from the repository root or an lcr-only scheme.
-  `attach.ts` owns the store: names are the sha of the bytes, so one screenshot pasted into three notes
+  `attach.ts` owns the store: uploaded names are the sha of the bytes, so one screenshot pasted into three notes
   is one file and a name never means two pictures, which is what lets `/api/attachment` answer
   `immutable` and a note full of screenshots survive a repaint without refetching them. A name is
-  checked against one safe file name before it is joined to a path — the attachment directory is the
+  checked against one safe file name before it is joined to a path — the review output directory is the
   whole of what a note can reach — and it is deliberately wider than what lcr mints, so a picture the
   agent puts in that directory itself is drawn like any other. `client/attach.ts` owns the page's half:
   which links are attachments, the markup, and the paste, drop, and pick. The paste belongs to the text
@@ -155,14 +155,23 @@
   event an inner box already took alone. A picture is never deleted:
   it belongs to whatever notes still point at it, and the page cannot know that a draft, another review
   file, or the agent does not.
-- A note may name another note of the same review. The reference travels in the prose as the Markdown
-  link `[<heading>](lcr:<ref>)`, where `<ref>` is the tail `mintNoteId` ends every id with — the same
+  Agent replies may also link `assets/<name>` or a filename directly beside the review, always relative
+  to the Markdown file. Only those locations and `images/` are served; traversal and symlinks outside
+  the output directory are rejected. Uploaded hash names stay immutable, while named agent images
+  revalidate against their content. Agents create and inspect uniquely named pictures before linking
+  them and never delete or overwrite an existing attachment.
+- A note may name another note of the same review. The reference travels in the prose as `#<ref>`;
+  copied local comment URLs ending in `#note=<ref>` and older `[<heading>](lcr:<ref>)` links also work.
+  `<ref>` is the stable tail `mintNoteId` ends every id with — the same
   characters that close the target's `<!-- lcr:<id> -->` marker, so the agent reading the file can
-  follow it as well as the page can. That is the whole of what is written down: the chip is drawn from
+  follow it as well as the page can. That is the whole of what is written down: the preview is drawn from
   the note as it stands when it is drawn, so it says where that note is now, and a reference no note —
   or more than one note — answers to reads as a note the review no longer holds rather than as a
-  confident pointer at the wrong one. `refToken` writes it, `refIn` and `noteByRef` read it back, and
-  the editors insert it from the picker rather than by hand, because an id is not something to type.
+  confident pointer at the wrong one. `refToken` writes it, `refIn` and `noteByRef` read it back.
+  Each note offers its short id and a direct link to copy; both can be pasted into another note.
+  A reference shows the full note and captured code, with all replies expandable in place. Nested
+  references stay navigable without recursively embedding previews. Replies must answer their own
+  note fully; references add context and never replace the answer.
   Following one stays inside the all-notes panel while the note it names is listed there, and goes to
   the diff otherwise.
 - A note's id is minted once by `mintNoteId`, as its location plus a `|#<unique>` suffix, and never re-derived. Statuses match on it, so a note written where a handled one stood is a new note. Stored notes whose id lacks that suffix are re-minted on restore as fresh, unsubmitted notes. Do not make ids derivable from location again.
@@ -181,6 +190,11 @@
   under `## Overall`, and a `general` field in the browser store, are both read back as one of these; that is
   the only thing left of the single overall field, and neither the submission nor the page has one any more.
 - File hide patterns are a display preference in settings. Manual eye toggles keep overriding them per file.
+  The header can disable all patterns without erasing them, and each pattern has an independent switch.
+- The reading-position marker is an estimate from a settled manual scroll, separate from viewed marks,
+  notes, bookmarks and history. Fast scrolling requires a longer pause and programmatic jumps never
+  move it. Store it by repository and read, follow captured code only when it is unambiguous, and fall
+  back to the file header when the line is unavailable. New review resets the marker.
 - The header toggle collapses the file tree pane, and that state is a settings preference like the rest. Collapsing changes the diff pane's width, so it drops cached block heights and renders the diff again, exactly as a window resize does.
 - The diff pane lists the files in the order the tree lists them. `tree-model.ts` owns both the tree's shape
   and that order, and `load` puts `state.files` in it once, before `state.byPath` is built from it — so

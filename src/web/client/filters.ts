@@ -29,10 +29,13 @@ export function globRx(pattern: string){
   cache.set(pattern,rx);
   return rx;
 }
-export function compileHide(text: string){
-  return String(text||'').split(/[\n,]/).map(globRx).filter(Boolean) as RegExp[];
+export const hidePatterns=(text: string)=>[...new Set(String(text||'').split(/[\n,]/)
+  .map(p=>p.trim()).filter(p=>p&&!p.startsWith('#')))];
+export function compileHide(text: string,disabled: string[]=[]){
+  const off=new Set(Array.isArray(disabled)?disabled:[]);
+  return hidePatterns(text).filter(p=>!off.has(p)).map(globRx).filter(Boolean) as RegExp[];
 }
-export const matchesHide=(path: string)=>state.hideRx.some((rx: RegExp)=>rx.test(path));
+export const matchesHide=(path: string)=>state.cfg.hideEnabled!==false&&state.hideRx.some((rx: RegExp)=>rx.test(path));
 /** A file the diff removed entirely: nothing of it is left to read, only the lines it took away. */
 export function isDeleted(path: string){
   const i=idxOf(path);

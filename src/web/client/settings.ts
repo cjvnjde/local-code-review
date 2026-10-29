@@ -2,6 +2,10 @@ import { renderDiff, setViewed } from './diff-view.ts';
 import { load, render } from './load.ts';
 import { clearBookmarks, clearNotes, save, saveCfg } from './persistence.ts';
 import { SVG, el, esc, reviewTime, state } from './state.ts';
+import { compileHide, hidePatterns } from './filters.ts';
+import { persistCfg } from './persistence.ts';
+import { resetReadingPosition } from './reading-position.ts';
+import { busyEditor } from './notes.ts';
 
 /* ---------- settings ---------- */
 el('gear').innerHTML=SVG.sliders;
@@ -9,19 +13,36 @@ const openSettings=(on: boolean)=>{
   el('settings').hidden=!on;
   el('gear').classList.toggle('on',on);
   // The directory is written to from outside the page, so the count is only true while it is on show.
-  if(on) refreshReviews();
+  if(on){ refreshReviews(); paintHideRules(); }
 };
 el('gear').onclick=e=>{
   e.stopPropagation();
   openSettings(el('settings').hidden);
 };
 el('settings').addEventListener('click',e=>e.stopPropagation());
-el('settings').addEventListener('change',()=>{ if(saveCfg()) render(); });
+el('settings').addEventListener('change',(e: any)=>{
+  if(e.target.dataset.pattern!=null){
+    const off=new Set<string>(state.cfg.disabledHide||[]);
+    if(busyEditor()){ e.target.checked=!off.has(e.target.dataset.pattern); return; }
+    if(e.target.checked) off.delete(e.target.dataset.pattern); else off.add(e.target.dataset.pattern);
+    state.cfg.disabledHide=[...off];
+    state.hideRx=compileHide(state.cfg.hide,state.cfg.disabledHide);
+    persistCfg(); render(); return;
+  }
+  if(saveCfg()) render();
+  paintHideRules();
+});
+function paintHideRules(){
+  const off=new Set(state.cfg.disabledHide||[]);
+  el('hideRules').innerHTML=hidePatterns(state.cfg.hide).map(pattern=>
+    '<label><input type="checkbox" data-pattern="'+esc(pattern)+'"'+(off.has(pattern)?'':' checked')+'>'+
+    '<code>'+esc(pattern)+'</code></label>').join('');
+}
 /** Patterns are typed, not toggled, so apply them as they settle instead of on blur. */
 let hideT=null;
 el('cfgHide').oninput=()=>{
   clearTimeout(hideT);
-  hideT=setTimeout(()=>{ if(saveCfg()) render(); },300);
+  hideT=setTimeout(()=>{ if(saveCfg()) render(); paintHideRules(); },300);
 };
 el('reapplyHide').onclick=()=>{
   clearTimeout(hideT);
@@ -145,6 +166,7 @@ el('newReview').onclick=async()=>{
   state.sessionFile='';
   clearNotes();
   clearBookmarks(); // the read that made them is the one being closed
+  resetReadingPosition();
   setViewed([...state.viewed.keys()],false);
   await load();
   await refreshReviews();

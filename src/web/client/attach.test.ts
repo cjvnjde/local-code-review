@@ -2,6 +2,14 @@ import { describe, expect, test } from "bun:test";
 import { attachSrc, filesFrom, insertShot, labelFor, plainShots, shotHtml, shotToken, swapShot } from "./attach.ts";
 
 describe("attachSrc", () => {
+  test("agent reply pictures can live beside the review or in its assets folder",()=>{
+    const name='review-2026-10-29T12-26-26-package-not-ready.png';
+    expect(attachSrc(name)).toBe('/api/attachment?ref='+name);
+    expect(attachSrc('./'+name)).toBe('/api/attachment?ref='+name);
+    expect(attachSrc('assets/missing-spec-secret.png')).toBe('/api/attachment?ref=assets%2Fmissing-spec-secret.png');
+    expect(attachSrc('.review/'+name)).toBe('');
+    expect(attachSrc('assets/../../outside.png')).toBe('');
+  });
   test("a picture of this review is drawn from the review's own directory", () => {
     expect(attachSrc("images/a1b2c3.png")).toBe("/api/attachment?name=a1b2c3.png");
     expect(attachSrc("images/after-fix.PNG")).toBe("/api/attachment?name=after-fix.PNG");

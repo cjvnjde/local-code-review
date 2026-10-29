@@ -4,11 +4,11 @@ import { isFileNote, isGlobalNote, noteKey } from './state.ts';
 /**
  * A review talks about itself. "Same reason as over here" is a sentence a reviewer writes, and it is
  * only worth writing if the reader can follow it, so a note may name another note of the same review
- * and the page turns that into a chip which goes there.
+ * and the page shows the referenced note and its replies beside that prose.
  *
- * The reference travels in the note's own prose, as the ordinary Markdown link
- * `[<heading>](lcr:<ref>)`, because the review file is read by the agent as well as by the page: the
- * text is the heading of the section it points at, and `<ref>` is the tail of that note's id, which
+ * The reference travels in the note's own prose as `#<ref>` (older `[<heading>](lcr:<ref>)` links
+ * still work), because the review file is read by the agent as well as by the page.
+ * `<ref>` is the tail of that note's id, which
  * is what the `<!-- lcr:... -->` marker on that heading ends with. Nothing else is written down.
  * Where the note it names is now, and whether it is still in the review at all, are re-read every
  * time the prose is drawn, exactly as the note's own place on the diff is.
@@ -21,7 +21,15 @@ export const refOf=(id: unknown)=>(/\|#([0-9a-z]+)$/.exec(String(id==null?'':id)
 /** The reference a link destination carries, or empty when it is an ordinary link. */
 export function refIn(url: string){
   const raw=String(url||'').replace(/^<|>$/g,'').trim();
-  return raw.slice(0,REF_SCHEME.length).toLowerCase()===REF_SCHEME?raw.slice(REF_SCHEME.length).trim():'';
+  if(/^lcr:[0-9a-z]+$/i.test(raw)) return raw.slice(REF_SCHEME.length);
+  if(/^#[0-9a-z]+$/.test(raw)) return raw.slice(1);
+  if(/^#note=[0-9a-z]+$/.test(raw)) return raw.slice(6);
+  try{
+    const url=new URL(raw);
+    if(/^https?:$/.test(url.protocol)&&['localhost','127.0.0.1','[::1]'].includes(url.hostname)
+      &&url.pathname==='/'&&/^#note=[0-9a-z]+$/.test(url.hash)) return url.hash.slice(6);
+  }catch{}
+  return '';
 }
 /**
  * The one note a reference names. A tail is minted from the clock and a counter, so two of them can
@@ -42,10 +50,9 @@ export function noteByRef(ref: string,notes: Iterable<any>){
 /** What a reference reads as in prose: beside the note it stands in, the file's own name is enough. */
 export const refLabel=(n: any)=>isGlobalNote(n)?noteKey(n)
   :String(n.file).split('/').pop()+(isFileNote(n)?' (whole file)':':'+(n.label||n.start||''));
-/** Markdown link text is bracketed, so a heading holding a bracket needs it kept out of the syntax. */
-const escLabel=(text: string)=>text.replace(/[\\[\]]/g,'\\$&');
-/** How a reference is written into a note: the heading of the note it points at, and its id tail. */
-export const refToken=(n: any)=>'['+escLabel(noteKey(n))+']('+REF_SCHEME+refOf(n.id)+')';
+/** A stable short token survives reordering, deletion and restarting without renumbering notes. */
+export const refToken=(n: any)=>'#'+refOf(n.id);
+export const refLink=(n: any,base: string)=>new URL('/#note='+refOf(n.id),base).href;
 /**
  * A reference written in at the caret, one space clear of the words around it, and where the caret
  * lands after it: the sentence carries on behind the chip rather than in front of it. Pure, because

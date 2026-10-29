@@ -9,6 +9,7 @@ import { repaintNote } from './notes.ts';
 import { closeReader, syncReader } from './reader.ts';
 import { SVG, el, esc, idxOf, msgsOf, state } from './state.ts';
 import { paintActive } from './tree.ts';
+import { noteByRef, refIn } from './note-ref.ts';
 
 /* ---------- following the agent ---------- */
 /**
@@ -199,3 +200,12 @@ export function jumpToNote(id: string){
   if(target) (target as any).scrollIntoView({block:row?'center':'start'});
   if(row) (row as any).querySelector('.nbox')?.click();
 }
+
+/** A copied comment link also works when opened directly or after the page has loaded. */
+export function followNoteLink(){
+  if(!location.hash.startsWith('#note=')) return;
+  const note=noteByRef(refIn(location.hash),state.notes.values());
+  if(note) jumpToNote(note.id);
+  else alert('This note is not in the current review. Open the review that contains it.');
+}
+window.addEventListener('hashchange',followNoteLink);

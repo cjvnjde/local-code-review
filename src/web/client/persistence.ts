@@ -49,7 +49,7 @@ export function loadCfg(){
   el('cfgGhosts').checked=state.cfg.ghosts!==false;
   el('cfgEditor').value=state.cfg.editor||'';
   el('cfgBack').disabled=!state.cfg.auto;
-  state.hideRx=compileHide(state.cfg.hide);
+  state.hideRx=compileHide(state.cfg.hide,state.cfg.disabledHide);
 }
 /** Writes `state.cfg` out as it stands, for the preferences that are not fields in the settings panel. */
 export function persistCfg(){
@@ -72,7 +72,7 @@ export function saveCfg(){
   state.cfg.ghosts=ghosts;
   state.cfg.hideDeleted=deleted;
   state.cfg.expand=expand;
-  if(hide!==state.cfg.hide) state.hideRx=compileHide(hide);
+  if(hide!==state.cfg.hide) state.hideRx=compileHide(hide,state.cfg.disabledHide);
   state.cfg.hide=hide;
   el('cfgBack').disabled=!state.cfg.auto;
   persistCfg();
@@ -108,6 +108,7 @@ function warnStore(){
 export function save(){
   reindexNotes();
   rememberPage();
+  if(typeof document.dispatchEvent==='function') document.dispatchEvent(new Event('lcr:notes'));
   try{
     localStorage.setItem(store(),JSON.stringify({
       notes:[...state.notes.values()],

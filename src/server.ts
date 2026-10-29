@@ -431,28 +431,34 @@ async function attach(options: ServerOptions, request: Request): Promise<Respons
 }
 
 /**
- * One attached picture back. The name is the hash of what is in it, so it can never come to mean
- * another picture: the response is cacheable for good, which is what keeps a note full of screenshots
- * from refetching them every time a reply repaints it.
+ * Uploaded hash names are immutable. Agent pictures have descriptive names and may change, so their
+ * ETags come from their bytes and each request revalidates rather than keeping stale pixels forever.
  */
 async function attachment(options: ServerOptions, request: Request, url: URL): Promise<Response> {
   if (request.method !== "GET" && request.method !== "HEAD") {
     return new Response("method not allowed", { status: 405, headers: { allow: "GET, HEAD" } });
   }
-  const name = url.searchParams.get("name") ?? "";
-  const tag = `"${name}"`;
-  // A name is the content, so a revalidation of one is answerable without reading the file at all.
-  if (request.headers.get("if-none-match") === tag) {
+  const ref = url.searchParams.get("ref");
+  const name = ref == null ? url.searchParams.get("name") ?? "" :
+    /^(?:images\/|assets\/)/.test(ref) ? ref : `./${ref}`;
+  const immutable = ref == null && /^[a-f0-9]{16}\.(?:png|jpg|gif|webp|avif|bmp|svg|apng)$/.test(name);
+  let tag = `"${name}"`;
+  // Only uploaded, content-addressed pictures can answer without re-reading their bytes.
+  if (immutable && request.headers.get("if-none-match") === tag) {
     return new Response(null, { status: 304, headers: { etag: tag } });
   }
   const found = await options.readAttachment(name);
   if (!found) return Response.json({ error: "No such attachment." }, { status: 404 });
+  if (!immutable) tag = `"${new Bun.CryptoHasher("sha256").update(found.bytes).digest("hex")}"`;
+  if (request.headers.get("if-none-match") === tag) {
+    return new Response(null, { status: 304, headers: { etag: tag, "cache-control": "no-cache" } });
+  }
   return new Response(request.method === "HEAD" ? null : found.bytes, {
     headers: {
       "content-type": found.type,
       "content-length": String(found.bytes.byteLength),
       etag: tag,
-      "cache-control": "public, max-age=31536000, immutable",
+      "cache-control": immutable ? "public, max-age=31536000, immutable" : "no-cache",
       // Only ever drawn into an <img>, where nothing runs; this is for the tab that opens one directly.
       "content-security-policy": "default-src 'none'; sandbox",
       "x-content-type-options": "nosniff",

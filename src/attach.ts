@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { imageType } from "./blob.ts";
 
@@ -84,18 +84,26 @@ export async function saveAttachment(
 }
 
 /**
- * One picture back, for the page that has to draw the note it is in. The name is checked before it is
- * ever joined to a path, so the one directory is the whole of what a note can reach, whatever the link
- * in it says; a name nothing was kept under is an absence rather than a failure.
+ * One picture back, from images/, assets/, or directly beside the review. Safe names and a realpath
+ * containment check bound the read to the output directory, including when a link crosses a symlink.
+ * A missing picture is an absence rather than a failure.
  */
 export async function readAttachment(
   repoRoot: string,
   outDir: string,
   name: string,
 ): Promise<{ bytes: Uint8Array; type: string } | null> {
-  if (!NAME.test(name)) return null;
-  const type = imageType(name);
+  // Bare names are the original images/ API. Explicit paths are relative to the review file.
+  const match = /^(images\/|assets\/|\.\/)?([A-Za-z0-9][A-Za-z0-9._-]*)$/.exec(name);
+  if (!match || !NAME.test(match[2]!)) return null;
+  const type = imageType(match[2]!);
   if (!type) return null;
-  const bytes = await readFile(path.join(dirOf(repoRoot, outDir), name)).catch(() => null);
+  const root = await realpath(path.resolve(repoRoot, outDir)).catch(() => "");
+  if (!root) return null;
+  const directory = match[1] === "./" ? "" : match[1] ?? `${ATTACH_DIR}/`;
+  const target = await realpath(path.join(root, directory, match[2]!)).catch(() => "");
+  const relative = target ? path.relative(root, target) : "..";
+  if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) return null;
+  const bytes = await readFile(target).catch(() => null);
   return bytes ? { bytes: new Uint8Array(bytes), type } : null;
 }

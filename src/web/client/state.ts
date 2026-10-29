@@ -39,7 +39,7 @@ export const state: any={
    *  and where on the diff that range sits — which is what a selection over the same lines re-aims
    *  instead of opening a second note. A draft with no lines under it has no `draftAt`. */
   draftRow:null, draftKey:null, draftAt:null,
-  cfg:{auto:true,back:true,limit:900,toast:true,hide:'',hideDeleted:false,foldDel:false,enterSaves:false,
+  cfg:{auto:true,back:true,limit:900,toast:true,hide:'',hideEnabled:true,disabledHide:[],hideDeleted:false,foldDel:false,enterSaves:false,
     expand:20,navHidden:false,ntFold:false,bmFold:false,single:false,clearSaved:false,ghosts:true,editor:''},
   /** Notes from the branch's other review files, shown as dim markers where they still anchor. They
    *  are read-only visitors here: their conversations live in their own files, so none are stored. */

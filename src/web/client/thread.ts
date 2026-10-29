@@ -7,6 +7,7 @@ import { busyEditor } from './notes.ts';
 import { save } from './persistence.ts';
 import { rememberPage } from './history.ts';
 import { refButton, wireRefButton } from './ref-picker.ts';
+import { appendPreviews } from './ref-preview.ts';
 import { SVG, esc, markRead, msgsOf, saveKeyHint, state } from './state.ts';
 import { bodyParts, capturedLines, lineDiff } from './suggest.ts';
 
@@ -35,7 +36,7 @@ import { bodyParts, capturedLines, lineDiff } from './suggest.ts';
  * replacement alone, which is what an agent applies. A note that captured no lines has nothing to
  * read against, so its suggestion is shown as the code it is.
  */
-export function renderBody(host: any,body: string,path: string,base?: string[]){
+export function renderBody(host: any,body: string,path: string,base?: string[],previews=true){
   host.textContent='';
   const lang=langOf(path);
   bodyParts(body||'').forEach(part=>{
@@ -61,6 +62,7 @@ export function renderBody(host: any,body: string,path: string,base?: string[]){
       '<span class="c">'+codeHtml(line.v,lang)+'</span></div>').join('');
     wrap.append(head,code); host.append(wrap);
   });
+  if(previews) appendPreviews(host,renderBody);
 }
 /** The gutter mark each kind of line carries, exactly as a note's captured code carries it. */
 const MARK={ctx:' ',del:'-',add:'+'};

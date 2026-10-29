@@ -2,6 +2,7 @@ import { filteredCount, filteredOut, isHidden, matchesHide } from './filters.ts'
 import { cardAt, revealShift } from './follow.ts';
 import { SVG, el, esc, state } from './state.ts';
 import { buildTree, dirTree, filesUnder, shownChildren } from './tree-model.ts';
+import { paintReadingPosition } from './reading-position.ts';
 
 /* ---------- file tree ---------- */
 /** How many notes are on a path, for the count a tree row carries. */
@@ -105,6 +106,7 @@ export function followDiff(){
   // A pane showing a placeholder instead of cards has no file to point at, so the last one stands.
   if(at>=0&&cards[at].dataset.path) state.active=cards[at].dataset.path;
   paintActive();
+  paintReadingPosition();
 }
 /** One reading per frame: scrolling fires far more often than the tree can usefully change. */
 let queued=false;
