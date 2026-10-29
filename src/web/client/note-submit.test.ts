@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { submitNote, withdrawNotes } from "./persistence.ts";
+import { submitNote, submitReview, withdrawNotes } from "./persistence.ts";
 import { state } from "./state.ts";
 import { adoptAgent, noteSaveLabel } from "./agent.ts";
 
@@ -85,5 +85,49 @@ describe("individual note sending",()=>{
     adoptAgent({connection:{agent:"claude",state:"unavailable",detail:"No confirmation; policy may block it"}});
     expect(button.textContent).toBe("Save note");
     expect(status.textContent).toBe("Claude unavailable");
+  });
+});
+
+describe("whole review saving",()=>{
+  test("queues behind single-note saves and before deletion, stamping only submitted notes",async()=>{
+    let release:(response:Response)=>void=()=>{};
+    let began:()=>void=()=>{};
+    const started=new Promise<void>((resolve)=>{began=resolve;});
+    const requests:any[]=[];
+    globalThis.fetch=(async(url,init)=>{
+      requests.push({url,body:init!.body?JSON.parse(init!.body as string):null});
+      if(url==="/api/note"){ began(); return new Promise<Response>((resolve)=>{release=resolve;}); }
+      return Response.json({file});
+    }) as any;
+    const sending=submitNote(state.notes.get(first.id));
+    await started;
+    const saving=submitReview();
+    // A later edit must not alter the snapshot already requested for this save.
+    state.notes.get(second.id).body="Changed while waiting";
+    const later={...first,id:"a.ts|n3|n3|#later"};
+    state.notes.set(later.id,later);
+    state.notes.delete(first.id);
+    const deleting=withdrawNotes([first.id]);
+    expect(requests).toHaveLength(1);
+    expect(state.noteSending.has(second.id)).toBe(true);
+    release(Response.json({file}));
+    await Promise.all([sending,saving,deleting]);
+    expect(requests.map(r=>r.url.split('?')[0])).toEqual(["/api/note","/api/submit","/api/note"]);
+    expect(requests[1].body.comments).toEqual([second]);
+    expect(state.notes.get(first.id)).toBeUndefined();
+    expect(state.notes.get(second.id).sentAt).toBeGreaterThan(0);
+    expect(state.notes.get(later.id).sentAt).toBeUndefined();
+    expect(state.noteSending.size).toBe(0);
+  });
+
+  test("reports failed saves without stamping or losing local notes",async()=>{
+    globalThis.fetch=(async()=>Response.json({error:"Disk full"},{status:500})) as any;
+    await expect(submitReview()).rejects.toThrow("Disk full");
+    expect(state.notes.get(first.id).body).toBe(first.body);
+    expect(state.notes.get(first.id).sentAt).toBeUndefined();
+    expect(state.noteSending.size).toBe(0);
+    globalThis.fetch=(async()=>{throw new Error("Offline");}) as any;
+    await expect(submitReview()).rejects.toThrow("Offline");
+    expect(state.noteSending.size).toBe(0);
   });
 });

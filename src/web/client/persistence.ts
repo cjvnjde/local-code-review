@@ -4,12 +4,37 @@ import { GLOBAL_ANCHOR, el, idxOf, isMinted, markSubmitted, mintGlobalId, mintNo
 import { adoptAgent } from './agent.ts';
 import { rememberPage } from './history.ts';
 
-// A delete waits for in-flight single-note writes, so it cannot be resurrected by a late save.
+// All saves and deletes share a queue, so a late review-wide save cannot resurrect a deleted note.
 let noteWrites: Promise<unknown>=Promise.resolve();
 function writeNotes<T>(work: ()=>Promise<T>): Promise<T>{
   const next=noteWrites.then(work,work);
   noteWrites=next.catch(()=>{});
   return next;
+}
+
+/** Save the notes present at the click, even if another edit arrives while a write is in flight. */
+export function submitReview(){
+  const snapshot=structuredClone([...state.notes.values()]);
+  const replace=!!state.cfg.single;
+  snapshot.forEach(note=>state.noteSending.set(note.id,(state.noteSending.get(note.id)||0)+1));
+  return writeNotes(async()=>{
+    const comments=snapshot.filter(note=>state.notes.has(note.id));
+    if(!comments.length) return null;
+    const response=await fetch('/api/submit',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({comments,replace})});
+    const data=await response.json();
+    if(!response.ok) throw new Error(data.error||'Could not save this review.');
+    state.sessionFile=data.file;
+    markSubmitted(data.file,comments.map(note=>note.id));
+    adoptAgent(data);
+    save();
+    return data;
+  }).finally(()=>snapshot.forEach(note=>finishSending(note.id)));
+}
+
+function finishSending(id: string){
+  const left=(state.noteSending.get(id)||1)-1;
+  if(left) state.noteSending.set(id,left); else state.noteSending.delete(id);
 }
 
 export function submitNote(note: any,retry=false){
@@ -27,10 +52,7 @@ export function submitNote(note: any,retry=false){
       save();
     }
     return data;
-  }).finally(()=>{
-    const left=(state.noteSending.get(note.id)||1)-1;
-    if(left) state.noteSending.set(note.id,left); else state.noteSending.delete(note.id);
-  });
+  }).finally(()=>finishSending(note.id));
 }
 
 /* ---------- persistence ---------- */

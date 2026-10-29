@@ -102,7 +102,7 @@ export function startServer(options: ServerOptions) {
  * never walked.
  */
 export function listen<T>(port: number, open: (port: number) => T): T {
-  const last = port === 0 ? port : port + PORT_ATTEMPTS - 1;
+  const last = port === 0 ? port : Math.min(65535, port + PORT_ATTEMPTS - 1);
   for (let candidate = port; candidate <= last; candidate++) {
     try {
       return open(candidate);

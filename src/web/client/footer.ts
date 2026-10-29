@@ -1,10 +1,10 @@
 import { hiddenCount, revealedCount } from './filters.ts';
 import { load, render } from './load.ts';
 import { renderNotePane } from './note-pane.ts';
-import { openGlobalEditor } from './notes.ts';
-import { clearNotes, save, withdrawNotes } from './persistence.ts';
+import { openGlobalEditor, repaintNote } from './notes.ts';
+import { clearNotes, save, submitReview, withdrawNotes } from './persistence.ts';
 import { closeReader, syncReader } from './reader.ts';
-import { SVG, appliedNotes, el, esc, markSubmitted, state, unreadTotal } from './state.ts';
+import { SVG, appliedNotes, el, esc, state, unreadTotal } from './state.ts';
 
 /* ---------- footer ---------- */
 export function updateCount(){
@@ -100,22 +100,19 @@ el('submit').onclick=async()=>{
   const button=el('submit');
   button.disabled=true;
   try{
-    const r=await fetch('/api/submit',{method:'POST',headers:{'content-type':'application/json'},
-      body:JSON.stringify({comments:[...state.notes.values()],replace:!!state.cfg.single})});
-    const d=await r.json();
-    if(!r.ok){ alert('Could not save: '+(d.error||r.status)); return; }
-    /** Notes are stamped so verdicts and replies can find their way back to them. */
-    state.sessionFile=d.file;
-    markSubmitted(d.file);
-    save();
-    // The review stays on screen: the agent works against this same page from here on. Every note
-    // now has a thread to reply in, so the boxes are redrawn — from where the reader was standing.
-    const pane=el('diff'), at=pane.scrollTop;
-    render();
-    pane.scrollTop=at;
+    const saving=submitReview();
+    paintSubmit();
+    const d=await saving;
+    if(!d) return;
+    // A save may finish after the reader has opened another editor. Repaint saved boxes in place;
+    // repaintNote leaves open editors intact, including a reply being typed in the all-notes panel.
+    state.notes.forEach(note=>repaintNote(note.id));
     handover(d);
+  }catch(error){
+    alert('Could not save: '+(error instanceof Error?error.message:String(error)));
   }finally{
     button.disabled=false;
+    updateCount();
   }
 };
 /**

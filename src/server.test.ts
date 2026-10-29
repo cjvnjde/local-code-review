@@ -48,6 +48,15 @@ describe("listen", () => {
     expect(tried).toEqual([0]);
   });
 
+  test("stops at the highest valid port", () => {
+    const tried: number[] = [];
+    expect(() => listen(65534, (port) => {
+      tried.push(port);
+      throw inUse();
+    })).toThrow("ports 65534-65535 are all in use");
+    expect(tried).toEqual([65534, 65535]);
+  });
+
   test("rethrows failures that are not a taken port", () => {
     expect(() =>
       listen(7777, () => {

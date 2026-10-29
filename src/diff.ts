@@ -108,7 +108,9 @@ export async function diffSides(source: DiffSource): Promise<DiffSides> {
   const named: string[] = [];
   for (const rev of revs) if (await isCommit(source.repoRoot, rev)) named.push(rev);
   if (named.length >= 2) return { old: named[0] as string, new: named[1] as string };
-  return { old: named[0] ?? "HEAD", new: staged ? INDEX : WORKTREE };
+  // With explicit arguments Git's ordinary diff compares the index, not HEAD, to the worktree.
+  // Only our argument-less default injects HEAD to include staged changes as well.
+  return { old: named[0] ?? (staged ? "HEAD" : INDEX), new: staged ? INDEX : WORKTREE };
 }
 
 /** Whether git reads an argument as a commit; a pathspec answers no, and so does anything unresolvable. */

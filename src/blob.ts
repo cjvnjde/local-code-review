@@ -1,4 +1,5 @@
 import path from "node:path";
+import { realpath } from "node:fs/promises";
 import { INDEX, WORKTREE } from "./diff.ts";
 import { runGitBytes } from "./git.ts";
 
@@ -65,7 +66,11 @@ export async function readBlob(repoRoot: string, side: string, file: string): Pr
       const full = path.resolve(repoRoot, file);
       // The caller only ever passes a path out of the diff, and this keeps it that way.
       if (full !== repoRoot && !full.startsWith(repoRoot + path.sep)) return null;
-      const handle = Bun.file(full);
+      const [root, resolved] = await Promise.all([realpath(repoRoot), realpath(full)]);
+      // A tracked symlink (or directory symlink) is still a path from the diff; its target need not
+      // belong to this repository. Check the resolved path before reading any media bytes.
+      if (!resolved.startsWith(root + path.sep)) return null;
+      const handle = Bun.file(resolved);
       return (await handle.exists()) ? new Uint8Array(await handle.arrayBuffer()) : null;
     }
     return await runGitBytes(["show", `${side === INDEX ? "" : side}:${file}`], repoRoot);

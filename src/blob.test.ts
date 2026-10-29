@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "bun:test";
@@ -84,10 +84,22 @@ describe("diffSides", () => {
     expect(await diffSides(source(root, ["main", "later"]))).toEqual({ old: "main", new: "later" });
   });
 
-  test("a pathspec is not a revision, so narrowing a run leaves its sides alone", async () => {
+  test("a pathspec without a revision compares the index to the working tree", async () => {
     const root = await repo();
     await mkdir(path.join(root, "assets"), { recursive: true });
-    expect(await diffSides(source(root, ["assets"]))).toEqual({ old: "HEAD", new: WORKTREE });
+    expect(await diffSides(source(root, ["assets"]))).toEqual({ old: INDEX, new: WORKTREE });
+  });
+
+  test("an option-only diff previews the staged version as its old side", async () => {
+    const root = await repo();
+    await writeFile(path.join(root, "logo.png"), "staged");
+    await runGit(["add", "logo.png"], root);
+    await writeFile(path.join(root, "logo.png"), "working");
+    for (const args of [["--", "logo.png"], ["--ignore-space-change"]]) {
+      const sides = await diffSides(source(root, args));
+      expect(text(await readBlob(root, sides.old, "logo.png"))).toBe("staged");
+      expect(text(await readBlob(root, sides.new, "logo.png"))).toBe("working");
+    }
   });
 });
 
@@ -116,5 +128,25 @@ describe("readBlob", () => {
     await writeFile(path.join(root, "..", "outside.png"), "secret", "utf8");
     expect(await readBlob(root, WORKTREE, "../outside.png")).toBeNull();
     expect(await readBlob(root, WORKTREE, "assets/../../outside.png")).toBeNull();
+  });
+
+  test("symlinks cannot expose media outside the repository", async () => {
+    const root = await repo();
+    const outside = await mkdtemp(path.join(tmpdir(), "lcr-outside-"));
+    await writeFile(path.join(outside, "private.png"), "private");
+    await symlink(path.join(outside, "private.png"), path.join(root, "escape.png"));
+    await symlink(outside, path.join(root, "assets"));
+    expect(await readBlob(root, WORKTREE, "escape.png")).toBeNull();
+    expect(await readBlob(root, WORKTREE, "assets/private.png")).toBeNull();
+  });
+
+  test("in-repository symlinks and a symlinked repository root still work", async () => {
+    const root = await repo();
+    await symlink("logo.png", path.join(root, "alias.png"));
+    const parent = await mkdtemp(path.join(tmpdir(), "lcr-alias-"));
+    const alias = path.join(parent, "repo");
+    await symlink(root, alias);
+    expect(text(await readBlob(root, WORKTREE, "alias.png"))).toBe("first");
+    expect(text(await readBlob(alias, WORKTREE, "logo.png"))).toBe("first");
   });
 });
