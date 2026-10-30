@@ -63,6 +63,17 @@ Click a marked region's short reference to read its note. Hold Alt to use the im
 File-header actions have immediate hover tooltips. Comment, Viewed and fold removed keep text labels;
 **Copy file path** beside the filename copies the repository-relative path.
 
+## Search
+
+Use the header search (or **Cmd/Ctrl+K**) to find code, filenames, notes, captured code, statuses
+and both sides of a conversation. Typing opens highlighted previews; click one to jump to it, or
+press **Enter** to see detailed results with filters for files, code, notes and replies. Arrow keys
+select a preview and Enter opens it. Matches stay highlighted in the diff after a jump.
+
+Search covers the current diff and its surrounding context, including context you have expanded
+and files you have hidden or folded. It does not search the rest of the project. Terms are literal
+and case insensitive; combine a filename and words to narrow results to that file.
+
 ## Browser history
 
 **History** in the header opens a searchable timeline of saved notes, question edits, replies,

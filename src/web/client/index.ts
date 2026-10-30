@@ -18,6 +18,7 @@ import { watchPaths } from "./path.ts";
 import { applyQuick } from "./quick.ts";
 import { applyNav, applySections } from "./sidebar.ts";
 import { watchTooltips } from './tooltip.ts';
+import { startSearch } from './search.ts';
 
 loadCfg();
 watchAudio();
@@ -30,6 +31,7 @@ applyQuick();
 applyNav();
 applySections();
 void load().then(()=>{
+  startSearch();
   startHistory();
   startReadingPosition();
   followNoteLink();

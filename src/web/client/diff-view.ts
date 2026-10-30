@@ -186,9 +186,10 @@ export function refreshRows(fi: number,from: number){
   table.innerHTML=tableHtml(f,fi);
   table.querySelectorAll('tbody.blk').forEach(observeBlock);
   // A revealed line can be the anchor a loose note was waiting for, so its old box must come down.
-  applyLoose(fi);
+  applyOutdated(fi);
   // Show the revealed lines now rather than a frame later, once the mount observer catches up.
   for(let b=first;b<=first+1;b++){ const tb=el('b'+fi+'-'+b); if(tb) mountBlock(tb); }
+  document.dispatchEvent(new Event('lcr:search-change'));
 }
 
 /**
@@ -487,8 +488,8 @@ function insertCard(fi){
   // The unattached-notes card is always last, so a file card goes in front of it.
   if(!next) next=el('fstray');
   next?sec.insertBefore(node,next):sec.append(node);
-  applyFileNote(state.files[fi],fi);
-  applyLoose(fi);
+  applyFileNotes(state.files[fi],fi);
+  applyOutdated(fi);
   node.querySelectorAll('tbody.blk').forEach(observeBlock);
   obsPass.observe(node);
 }

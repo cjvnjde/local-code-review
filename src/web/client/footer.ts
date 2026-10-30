@@ -42,6 +42,7 @@ export function updateCount(){
    *  whether anything actually moved, because a rebuild would eat a reply being written in it. */
   renderNotePane();
   syncReader();
+  document.dispatchEvent(new Event('lcr:search-change'));
 }
 /** The button says whether this save opens the conversation or adds to the one already running. */
 function paintSubmit(){

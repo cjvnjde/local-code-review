@@ -228,7 +228,7 @@
   .pane{flex:1;min-width:0;position:relative;display:flex}
   /* we compensate scrollTop by hand when content above the fold resizes; the browser's own
      scroll anchoring would apply the same correction a second time */
-  section{flex:1;overflow:auto;overflow-anchor:none;padding:0 0 40vh;scroll-behavior:auto}
+  #diff{flex:1;min-width:0;overflow:auto;overflow-anchor:none;padding:0 0 40vh;scroll-behavior:auto}
   /* clip, not hidden: overflow hidden would make each card its own scrollport and kill the sticky header */
   #diff .file{border:1px solid var(--edge);border-radius:6px;margin:12px 14px;overflow:clip;background:var(--panel)}
   #diff .file.seen{opacity:.72}
@@ -791,6 +791,45 @@
   .history-reply time{display:block;font-size:var(--fs-xs);color:var(--ink-faint)}
   .history-capture summary{cursor:pointer;min-height:var(--tap);color:var(--ink-faint)}
   .history-empty{padding:calc(var(--tap) / 2);color:var(--ink-faint);font:var(--fs-ui)/1.6 var(--sans)}
+
+  /* One search over the current read, with a quick picker and a detailed overlay. */
+  #reviewSearchBox{position:relative;flex:0 1 calc(var(--tap) * 13);min-width:calc(var(--tap) * 5)}
+  #reviewSearch{width:100%;min-height:var(--tap-lg);border:1px solid var(--edge-hi);border-radius:5px;
+    padding:calc(var(--tap) / 5) calc(var(--tap) / 3);background:var(--crust);color:var(--ink);font:var(--fs-sm) var(--sans)}
+  #reviewSearch:focus{outline:1px solid var(--accent);border-color:var(--accent)}
+  #searchPopup{position:absolute;top:calc(100% + var(--tap) / 3);right:0;z-index:15;
+    width:min(calc(var(--tap) * 23),calc(100vw - var(--tap)));background:var(--panel2);
+    border:1px solid var(--edge-hi);border-radius:6px;box-shadow:0 calc(var(--tap) / 2) var(--tap) #0006;overflow:hidden}
+  #searchPopup[hidden],#searchPanel[hidden]{display:none}
+  #searchSuggestions{max-height:55dvh;overflow:auto}
+  #searchSeeAll{width:100%;border:0;border-top:1px solid var(--edge-hi);border-radius:0;min-height:var(--tap-lg);color:var(--accent)}
+  #searchPanel{position:absolute;inset:0;z-index:9;display:flex;flex-direction:column;min-width:0;background:var(--bg)}
+  .search-head{display:flex;align-items:center;gap:calc(var(--tap) / 3);padding:calc(var(--tap) / 2);
+    border-bottom:1px solid var(--edge);background:var(--panel2);flex:none}
+  .search-head h2{margin:0;font-size:var(--fs-ui);overflow-wrap:anywhere;min-width:0}
+  #searchCount,.search-kind,#searchFilters span{font-size:var(--fs-xs);color:var(--ink-dim)}
+  .search-help{margin:0;padding:calc(var(--tap) / 3) calc(var(--tap) / 2);font:var(--fs-sm)/1.5 var(--sans);color:var(--ink-dim)}
+  #searchFilters{display:flex;flex-wrap:wrap;gap:calc(var(--tap) / 3);padding:calc(var(--tap) / 3) calc(var(--tap) / 2);border-bottom:1px solid var(--edge)}
+  #searchFilters button,#searchClose,#searchMore{min-height:var(--tap);font-size:var(--fs-sm)}
+  #searchFilters button[aria-pressed=true]{color:var(--accent);border-color:var(--accent);background:var(--sel)}
+  #searchResults{flex:1;min-height:0;overflow:auto;padding:calc(var(--tap) / 2)}
+  .search-result{display:block;text-align:left;width:100%;min-height:var(--tap);border:0;border-bottom:1px solid var(--edge);
+    border-radius:0;padding:calc(var(--tap) / 2);color:var(--ink);background:var(--panel);font:var(--fs-sm)/1.6 var(--sans);
+    text-transform:none;letter-spacing:normal}
+  #searchResults .search-result{border:1px solid var(--edge-hi);border-radius:5px;margin-bottom:calc(var(--tap) / 2)}
+  .search-result:hover,.search-result:focus-visible,.search-result[aria-selected=true]{background:var(--sel);outline:1px solid var(--accent);outline-offset:-1px}
+  .search-location{display:flex;align-items:center;gap:calc(var(--tap) / 3);margin-bottom:calc(var(--tap) / 4)}
+  .search-location .pth{flex:1;min-width:0;font-family:var(--mono)}
+  .search-kind{flex:none}
+  .search-preview{display:block;white-space:pre-wrap;overflow-wrap:anywhere}
+  #searchPopup .search-preview{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .search-preview.code{font-family:var(--mono)}
+  .search-result mark{background:var(--mark);color:var(--crust);border-radius:2px}
+  ::highlight(review-search){background:var(--mark);color:var(--crust)}
+  .search-empty{padding:calc(var(--tap) / 2);color:var(--ink-dim);font:var(--fs-ui)/1.6 var(--sans)}
+  @media(max-width:1100px){header{gap:calc(var(--tap) / 4)}header>b{display:none}header>.range{max-width:calc(var(--tap) * 5)}}
+  @media(max-width:760px){header>b,header>#range,header>#agentState{display:none}.search-location{flex-wrap:wrap}
+    #reviewSearchBox{flex:1}.search-head{flex-wrap:wrap}#searchPopup{position:fixed;top:calc(var(--tap-lg) + var(--tap) / 2);right:calc(var(--tap) / 2)}}
   @media(max-width:850px){
     .history-compare{grid-template-columns:minmax(0,1fr)}
     .history-compare .before{border-right:0;border-bottom:1px solid var(--edge)}
