@@ -1,4 +1,4 @@
-/** File-header tooltips appear on hover or keyboard focus, without the browser's native delay. */
+/** Action tooltips appear on hover or keyboard focus, without the browser's native delay. */
 export function watchTooltips(){
   const tip=document.createElement('div');
   tip.id='fileTooltip'; tip.className='tooltip'; tip.role='tooltip'; tip.hidden=true;
@@ -26,7 +26,7 @@ export function watchTooltips(){
       Math.max(gap,box.top-size.height-gap))+'px';
   };
   const enter=(e: Event)=>{
-    const target=(e.target as Element).closest<HTMLElement>('.fh [data-tooltip]');
+    const target=(e.target as Element).closest<HTMLElement>('[data-tooltip]');
     if(target) show(target);
   };
   const leave=(e: Event)=>{

@@ -16,7 +16,7 @@ import { editorAction } from './keys.ts';
 import { save, submitNote, withdrawNotes } from './persistence.ts';
 import { refButton, wireRefButton } from './ref-picker.ts';
 import { clearSel } from './selection.ts';
-import { FILE_ANCHOR, GLOBAL_ANCHOR, SVG, clip, el, esc, isFileNote, isGlobalNote, keyIndex, locKey, markRead, mintGlobalId, mintNoteId, rowKey, saveKeyHint, state, statusOf, unreadOf } from './state.ts';
+import { FILE_ANCHOR, GLOBAL_ANCHOR, SVG, clip, el, esc, isFileNote, isGlobalNote, keyIndex, locKey, markRead, mintGlobalId, mintNoteId, rowKey, saveKeyHint, state, statusOf, unreadOf, noteVisible, canResolve, isResolved } from './state.ts';
 import { capturedLines, insertBlock, suggestLines, suggestionBlock } from './suggest.ts';
 import { dropCleanEdit, dropEmptyReply, mountReply, renderBody, renderThread } from './thread.ts';
 import { renderTree } from './tree.ts';
@@ -61,6 +61,7 @@ function charSpan(n: any,text: string){
 export function charMarks(f: any,fi: number,idx: number){
   const out: any[]=[];
   state.notes.forEach(n=>{
+    if(!noteVisible(n)) return;
     if(n.ca==null||n.file!==f.path) return;
     // Where the note is showing, which after an edit need not be the row it was written on.
     const p=placeOf(n);
@@ -458,6 +459,7 @@ export function viewUI(box,note,ctx){
         (ctx.scope==='global'?'show':'in diff')+'</button>':'')+
       (state.agent?'<button class="ask"'+(state.noteSending.has(note.id)?' disabled':'')+'>'+
         (state.noteDelivery.get(note.id)?.error?'Retry AI':'Ask AI')+'</button>':'')+
+      (isResolved(note)||canResolve(note)?'<button class="resolve" data-resolve="'+esc(note.id)+'" title="'+(isResolved(note)?'Show this conversation again':'Hide from the page; keep the conversation in Markdown')+'">'+SVG.check+' '+(isResolved(note)?'Reopen':'Resolve')+'</button>':'')+
       '<button class="history" title="See earlier versions of this note">History</button>'+
       '<button class="edit">Edit</button><button class="danger del">Delete</button>',ctx.scope,note.image)+
     placeHtml(how==='exact'||how==='file'||how==='global'?'':how)+
@@ -528,6 +530,7 @@ function remark(f,fi,i,j){
   if(i==null||i<0) return; // a file note marks no lines
   const spans=[];
   state.notes.forEach((n: any)=>{
+    if(!noteVisible(n)) return;
     if(n.file!==f.path||isFileNote(n)) return;
     const p=placeOf(n);
     if(p&&p.i>=0) spans.push([p.i,p.j]);
@@ -541,6 +544,7 @@ function remark(f,fi,i,j){
 export function applyFileNotes(f: any,fi: number){
   const host=el('fn'+fi); if(!host) return;
   state.notes.forEach((n: any)=>{
+    if(!noteVisible(n)) return;
     if(n.file!==f.path||!isFileNote(n)) return;
     viewUI(mountFileBox(host,n.id),n,{f,fi,i:null,j:null,ch:null,scope:'file',how:'file'});
   });
@@ -548,6 +552,7 @@ export function applyFileNotes(f: any,fi: number){
 export function applyNotesIn(f: any,fi: number,from: number,to: number){
   keyIndex(f); // built once here, so every placement below reads the same index
   state.notes.forEach(n=>{
+    if(!noteVisible(n)) return;
     if(n.file!==f.path) return;
     const p=placeOf(n);
     if(!p||p.i<0) return;

@@ -1,5 +1,5 @@
 import { orderNotes } from './note-list.ts';
-import { idxOf, isFileNote, isGlobalNote, keyIndex, rowKey, state } from './state.ts';
+import { idxOf, isFileNote, isGlobalNote, keyIndex, rowKey, state, visibleNotes } from './state.ts';
 
 /**
  * Where a note is showing. The agent rewrites the code a note was written against, so the row it was
@@ -106,11 +106,11 @@ function findRun(f: any,rows: number[],want: string[],side: string): [number,num
 
 
 /** The review's own notes, in the order they were written. They belong to no file and never move. */
-export const globalNotes=()=>[...state.notes.values()].filter((n: any)=>isGlobalNote(n));
+export const globalNotes=()=>visibleNotes().filter((n: any)=>isGlobalNote(n));
 /** Outdated notes in one file, kept under that file instead of attached to an unrelated row. */
 export function outdatedNotes(fi: number){
   const f=state.files[fi];
-  return [...state.notes.values()].filter((n: any)=>{
+  return visibleNotes().filter((n: any)=>{
     const p=placeOf(n);
     return !!p&&p.how==='outdated'&&n.file===f.path;
   });
@@ -120,10 +120,10 @@ export function outdatedNotes(fi: number){
  * moves as the agent works, so the list is derived here rather than kept: the pane under the tree and
  * the all-notes panel both ask for it, and both get the order the diff itself is showing.
  */
-export const orderedNotes=()=>orderNotes([...state.notes.values()],(n: any)=>placeOf(n));
+export const orderedNotes=()=>orderNotes(visibleNotes(),(n: any)=>placeOf(n));
 /** Notes whose file left the diff altogether. */
 export function strayNotes(){
-  return [...state.notes.values()].filter((n: any)=>placeOf(n)===null)
+  return visibleNotes().filter((n: any)=>placeOf(n)===null)
     .sort((a: any,b: any)=>a.file.localeCompare(b.file)||a.start-b.start);
 }
 /** The row a note is anchored to, or -1 when it is not on a row at all. */

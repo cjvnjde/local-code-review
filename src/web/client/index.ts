@@ -18,9 +18,14 @@ import { watchPaths } from "./path.ts";
 import { applyQuick } from "./quick.ts";
 import { applyNav, applySections } from "./sidebar.ts";
 import { watchTooltips } from './tooltip.ts';
+import { startResolution } from './resolution.ts';
+import { watchActions } from './actions.ts';
+import { watchNoteHeaders } from './sticky-notes.ts';
 import { startSearch } from './search.ts';
 
 loadCfg();
+watchActions();
+watchNoteHeaders();
 watchAudio();
 watchImages();
 watchImageComments({busy:busyEditor,open:openImageEditor,jump:jumpToNote});
@@ -31,6 +36,7 @@ applyQuick();
 applyNav();
 applySections();
 void load().then(()=>{
+  startResolution();
   startSearch();
   startHistory();
   startReadingPosition();

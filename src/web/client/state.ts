@@ -1,4 +1,8 @@
 export const SVG={
+  edit:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="m10.5 2 3.5 3.5-8.5 8.5H2v-3.5zM9 3.5 12.5 7" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>',
+  history:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 7a6 6 0 1 1 1 4M2 2v5h5M8 4v4l2.5 1.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  trash:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h12M6 4V2h4v2M4 4l.7 10h6.6L12 4M6.5 6v6M9.5 6v6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  download:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v8M5 7l3 3 3-3M3 10v4h10v-4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   chevD:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6h9l-4.5 5z"/></svg>',
   chevR:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5l5 4.5-5 4.5z"/></svg>',
   eye:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3C4.6 3 1.8 5.5 1 8c.8 2.5 3.6 5 7 5s6.2-2.5 7-5c-.8-2.5-3.6-5-7-5Zm0 8.2A3.2 3.2 0 1 1 8 4.8a3.2 3.2 0 0 1 0 6.4Zm0-1.6a1.6 1.6 0 1 0 0-3.2 1.6 1.6 0 0 0 0 3.2Z"/></svg>',
@@ -29,6 +33,8 @@ export const state: any={
    *  what this read is keyed on when it has one: a name never used before starts with nothing stored. */
   files:[], repo:'', range:'', reviewId:'',
   notes:new Map(), status:new Map(), statusByKey:new Map(), soloKeys:new Set(),
+  /** Acknowledged conversations stay in the file and store. Only their current version is hidden. */
+  resolved:new Map(), showResolved:false,
   hidden:new Set(), shown:new Set(), collapsed:new Set(), folded:new Set(), viewed:new Map(),
   bookmarks:new Map(), bmCur:'',
   /** Reading the notes as a list: which one the pane is stepping from, and the panel that shows them
@@ -153,6 +159,11 @@ export function markSubmitted(file: string, ids?: string[]){
 }
 /** The conversation on one note, oldest first. Owned by the review file, so it is read-only here. */
 export const msgsOf=(n: any)=>state.msgs.get(n.id)||[];
+export const resolutionKey=(n: any)=>JSON.stringify([n.body,msgsOf(n),statusOf(n)?.status,statusOf(n)?.detail]);
+export const isResolved=(n: any)=>state.resolved.has(n.id)&&state.resolved.get(n.id)===resolutionKey(n);
+export const noteVisible=(n: any)=>state.showResolved||!isResolved(n);
+export const visibleNotes=()=>[...state.notes.values()].filter(noteVisible);
+export const canResolve=(n: any)=>['answered','applied','skipped'].includes(statusOf(n)?.status)||msgsOf(n).at(-1)?.role==='agent';
 /** Messages that arrived since this note was last looked at. */
 export const unreadOf=(n: any)=>Math.max(0,msgsOf(n).length-(state.seen.get(n.id)||0));
 /** Marks a note's thread as read; returns true when that changed anything. */
@@ -164,10 +175,10 @@ export function markRead(n: any){
 }
 export const unreadTotal=()=>{
   let total=0;
-  state.notes.forEach((n: any)=>{ total+=unreadOf(n); });
+  visibleNotes().forEach((n: any)=>{ total+=unreadOf(n); });
   return total;
 };
-export const appliedNotes=()=>[...state.notes.values()].filter((n: any)=>{
+export const appliedNotes=()=>visibleNotes().filter((n: any)=>{
   const s=statusOf(n);
   return !!s&&s.status==='applied';
 });

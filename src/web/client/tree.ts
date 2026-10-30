@@ -1,12 +1,12 @@
 import { filteredCount, filteredOut, isHidden, matchesHide } from './filters.ts';
 import { cardAt, revealShift } from './follow.ts';
-import { SVG, el, esc, state } from './state.ts';
+import { SVG, el, esc, state, noteVisible } from './state.ts';
 import { buildTree, dirTree, filesUnder, shownChildren } from './tree-model.ts';
 import { paintReadingPosition } from './reading-position.ts';
 
 /* ---------- file tree ---------- */
 /** How many notes are on a path, for the count a tree row carries. */
-export function noteCount(p: string){ let n=0; state.notes.forEach(v=>{ if(v.file===p) n++; }); return n; }
+export function noteCount(p: string){ let n=0; state.notes.forEach(v=>{ if(noteVisible(v)&&v.file===p) n++; }); return n; }
 
 export function renderTree(){
   const root=state.filter?buildTree(state.files.filter(f=>f.path.toLowerCase().includes(state.filter))):dirTree();

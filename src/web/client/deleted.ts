@@ -1,5 +1,5 @@
 import { placeOf } from './anchor.ts';
-import { rowKey, state } from './state.ts';
+import { rowKey, state, noteVisible } from './state.ts';
 
 /* ---------- folded deletions: the diff read as the file it is about to be ---------- */
 /**
@@ -45,6 +45,7 @@ export interface DelRun{ start: number; end: number; count: number; key: string;
 function notedSpans(f: any){
   const spans: number[][]=[];
   state.notes.forEach((n: any)=>{
+      if(!noteVisible(n)) return;
     if(n.file!==f.path) return;
     const p=placeOf(n);
     if(p&&p.i>=0) spans.push([p.i,p.j]);

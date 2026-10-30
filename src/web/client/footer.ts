@@ -4,16 +4,21 @@ import { renderNotePane } from './note-pane.ts';
 import { openGlobalEditor, repaintNote } from './notes.ts';
 import { clearNotes, save, submitReview, withdrawNotes } from './persistence.ts';
 import { closeReader, syncReader } from './reader.ts';
-import { SVG, appliedNotes, el, esc, state, unreadTotal } from './state.ts';
+import { SVG, appliedNotes, el, esc, state, unreadTotal, visibleNotes, isResolved } from './state.ts';
 
 /* ---------- footer ---------- */
 export function updateCount(){
-  const n=state.notes.size, hid=hiddenCount(), seen=state.viewed.size, done=appliedNotes().length;
+  const n=visibleNotes().length, hid=hiddenCount(), seen=state.viewed.size, done=appliedNotes().length;
   const news=unreadTotal();
   el('count').textContent=n+(n===1?' note':' notes')+
     (state.files.length?' · '+seen+'/'+state.files.length+' viewed':'')+
     (hid?' · '+hid+' hidden':'')+
     (done?' · '+done+' applied':'');
+  const resolved=[...state.notes.values()].filter(isResolved).length;
+  if(!resolved) state.showResolved=false;
+  el('showResolved').hidden=!resolved;
+  el('showResolved').textContent=(state.showResolved?'Hide ':'Show ')+resolved+' resolved';
+  el('showResolved').setAttribute('aria-pressed',String(state.showResolved));
   const inbox=el('unread');
   inbox.hidden=!news;
   inbox.textContent=news+(news===1?' new reply':' new replies');
@@ -32,7 +37,7 @@ export function updateCount(){
   /** Always on show, so starting over is findable; disabled is the honest state when nothing is stored. */
   const all=el('clearAll');
   all.disabled=!n;
-  all.title=n?'Delete every note saved for this diff, overall notes included — '+
+  all.title=n?'Delete every visible note, overall notes included — '+
       'files that had notes go back to not viewed, the rest keep their mark'
     :'Nothing to clear yet';
   el('allNotes').hidden=!n;
@@ -72,16 +77,16 @@ el('clearDone').onclick=()=>{
 };
 /** Starting over: everything typed for this diff goes, so ask before dropping work that cannot be undone. */
 el('clearAll').onclick=()=>{
-  const n=state.notes.size;
+  const notes=visibleNotes(), n=notes.length;
   if(!n) return;
-  const files=new Set([...state.notes.values()].map((note: any)=>note.file).filter(Boolean)).size;
+  const files=new Set(notes.map((note: any)=>note.file).filter(Boolean)).size;
   if(!confirm('Delete '+n+' note'+(n===1?'':'s')+' and start from scratch?'+
     (files?'\n\n'+files+(files===1?' file goes':' files go')+' back to not viewed. Files without notes keep their mark.':'')+
     (state.sessionFile?'\n\n'+state.sessionFile+' stays on disk, but what is cleared here goes out of it, '+
       'threads and all — otherwise the file would put it straight back.':''))) return;
   // Read before the clear, and withdrawn after it: a note left in the file is fetched back.
-  const sent=[...state.notes.keys()];
-  clearNotes(); render();
+  const sent=notes.map((n:any)=>n.id);
+  clearNotes(sent); render();
   withdrawNotes(sent);
 };
 /** A note about the review rather than about a place in it. Its permanent header control opens a

@@ -1,7 +1,7 @@
 import { imageRegion, regionRect } from '../../image-region.ts';
 import { upload } from './attach.ts';
 import { refToken } from './note-ref.ts';
-import { el, idxOf, state } from './state.ts';
+import { el, idxOf, state, noteVisible } from './state.ts';
 
 let jumpToNote=(id: string)=>{};
 type Actions={busy: ()=>boolean;open: (fi: number,region: any,stage: any,rect: any,capture: ()=>Promise<string>)=>void;
@@ -19,6 +19,7 @@ export function paintImageNotes(){
     const path=stage.closest('.file').dataset.path, fi=idxOf(path), f=state.files[fi];
     if(!f||!img.naturalWidth) return;
     state.notes.forEach((n: any)=>{
+      if(!noteVisible(n)) return;
       const r=imageRegion(n.image);
       if(n.file!==path||!r||r.side!==stage.dataset.side||r.source!==f.hash||
         r.imageWidth!==img.naturalWidth||r.imageHeight!==img.naturalHeight) return;

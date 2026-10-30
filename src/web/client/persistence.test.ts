@@ -12,7 +12,7 @@ import {
   saveCfg,
   unviewCommented,
 } from "./persistence.ts";
-import { isMinted, state } from "./state.ts";
+import { isMinted, isResolved, resolutionKey, state } from "./state.ts";
 
 class MemoryStorage {
   private values = new Map<string, string>();
@@ -62,6 +62,8 @@ const savedState = {
   files: state.files,
   byPath: state.byPath,
   notes: state.notes,
+  resolved: state.resolved,
+  showResolved: state.showResolved,
   hidden: state.hidden,
   shown: state.shown,
   collapsed: state.collapsed,
@@ -134,6 +136,8 @@ beforeEach(() => {
   state.files = [];
   state.byPath = new Map();
   state.notes = new Map();
+  state.resolved = new Map();
+  state.showResolved = false;
   state.hidden = new Set();
   state.shown = new Set();
   state.collapsed = new Set();
@@ -290,6 +294,26 @@ describe("settings persistence", () => {
 });
 
 describe("note persistence", () => {
+  test("resolved visibility survives reload without taking the conversation out of the store", () => {
+    const savedNote=note('a.ts');
+    state.notes.set(savedNote.id,savedNote);
+    state.resolved.set(savedNote.id,resolutionKey(savedNote));
+    save();
+    state.notes=new Map(); state.resolved=new Map();
+    restore();
+    expect(state.notes.get(savedNote.id)).toEqual(savedNote);
+    expect(isResolved(state.notes.get(savedNote.id))).toBe(true);
+  });
+  test("clearing only visible ids preserves resolved notes and their replies", () => {
+    const hidden=note('a.ts'), visible=note('b.ts');
+    state.notes=new Map([[hidden.id,hidden],[visible.id,visible]]);
+    state.msgs.set(hidden.id,[{role:'agent',body:'Kept answer'}]);
+    state.resolved.set(hidden.id,resolutionKey(hidden));
+    clearNotes([visible.id]);
+    expect([...state.notes.keys()]).toEqual([hidden.id]);
+    expect(state.msgs.get(hidden.id)[0].body).toBe('Kept answer');
+    expect(isResolved(hidden)).toBe(true);
+  });
   test("saves the durable review state under the repository and range", () => {
     const savedNote = note("src/app.ts");
     state.notes = new Map([[savedNote.id, savedNote]]);
@@ -318,6 +342,7 @@ describe("note persistence", () => {
       delFold: [["src/app.ts", true]],
       msgs: [[savedNote.id, [{ role: "agent", body: "Done." }]]],
       seen: [[savedNote.id, 1]],
+      resolved: [],
     });
   });
 

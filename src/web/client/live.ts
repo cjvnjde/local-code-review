@@ -5,9 +5,9 @@ import { updateCount } from './footer.ts';
 import { adopt, load, render } from './load.ts';
 import { markCurrentNote } from './note-pane.ts';
 import { save } from './persistence.ts';
-import { repaintNote } from './notes.ts';
+import { busyEditor, repaintNote } from './notes.ts';
 import { closeReader, syncReader } from './reader.ts';
-import { SVG, el, esc, idxOf, msgsOf, state } from './state.ts';
+import { SVG, el, esc, idxOf, msgsOf, state, visibleNotes, noteVisible } from './state.ts';
 import { paintActive } from './tree.ts';
 import { noteByRef, refIn } from './note-ref.ts';
 
@@ -100,6 +100,7 @@ async function refreshReview(){
     const response=await fetch('/api/review');
     const data=await response.json();
     if(!response.ok) return;
+    const beforeVisible=new Set(visibleNotes().map((n:any)=>n.id));
     const before=new Map([...state.notes.keys()].map((id: any)=>[id,(state.msgs.get(id)||[]).length]));
     (data.statuses||[]).forEach((s: any)=>{
       if(s.id) state.status.set(s.id,s);
@@ -109,7 +110,7 @@ async function refreshReview(){
     save();
     // A note that arrived from the file has no box yet, so the pane is rebuilt for it — but a
     // rebuild eats an open editor, so it waits for the last one to close, exactly as a diff does.
-    const fresh=[...state.notes.keys()].filter((id: any)=>!before.has(id));
+    const fresh=visibleNotes().filter((n:any)=>!beforeVisible.has(n.id));
     if(fresh.length&&!editing()){ placeNotes(); render(); }
     else{
       if(fresh.length) state.pendingNotes=true;
@@ -185,6 +186,10 @@ export function jumpToNote(id: string){
   // Going to a note means going to its code, so the panel over the diff comes down first. A reader
   // who would rather keep writing in it keeps the panel, and the jump waits for them.
   if(!closeReader()) return;
+  if(!noteVisible(note)){
+    if(busyEditor()) return;
+    state.showResolved=true; render();
+  }
   markCurrentNote(id); // however the jump started, this is the note the pane steps on from
   const place=placeOf(note);
   if(place&&place.how!=='global'){

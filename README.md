@@ -63,6 +63,17 @@ Click a marked region's short reference to read its note. Hold Alt to use the im
 File-header actions have immediate hover tooltips. Comment, Viewed and fold removed keep text labels;
 **Copy file path** beside the filename copies the repository-relative path.
 
+Answered notes offer **Resolve**. Resolving hides the note and its thread from the diff, note lists,
+and search, while keeping the complete conversation in Markdown for the agent to read later.
+**Show resolved** in the footer brings them back; **Reopen** returns one to the active review.
+This visibility choice is saved in this browser for the repository and review. A new reply or changed
+verdict brings the conversation back automatically. Clearing visible notes leaves hidden resolved
+conversations intact. Delete remains the action that removes a note from Markdown.
+
+Note headers stay visible while scrolling through long conversations, below the file header in the
+diff or the group header in the all-notes view. Familiar actions use icons with hover tooltips and
+accessible names throughout the page.
+
 ## Search
 
 Use the header search (or **Cmd/Ctrl+K**) to find code, filenames, notes, captured code, statuses

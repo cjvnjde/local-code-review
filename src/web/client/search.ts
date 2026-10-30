@@ -2,7 +2,7 @@ import { mountRowAt, setFolded, setHidden } from './diff-view.ts';
 import { jumpToNote } from './live.ts';
 import { closeReader } from './reader.ts';
 import { pathHtml } from './path.ts';
-import { el, esc, idxOf, keyIndex, state, statusOf } from './state.ts';
+import { el, esc, idxOf, keyIndex, state, statusOf, visibleNotes } from './state.ts';
 import { paintActive } from './tree.ts';
 import { searchDocuments, searchExcerpt, searchHtml, searchReview, searchSegments,
   type SearchKind, type SearchResult } from './search-model.ts';
@@ -16,7 +16,7 @@ const input=()=>el('reviewSearch') as HTMLInputElement;
 
 function collect(){
   if(documents) return documents;
-  const notes=[...state.notes.values()];
+  const notes=visibleNotes();
   const statuses=new Map(notes.map(n=>[n.id,statusOf(n)]));
   return documents=searchDocuments(state.files,notes,state.msgs,statuses);
 }

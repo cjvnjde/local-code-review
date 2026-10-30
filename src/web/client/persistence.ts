@@ -139,6 +139,7 @@ export function save(){
       viewed:[...state.viewed], delFold:[...state.delFold],
       // The review file owns the threads; this copy is only so a reload has them before it answers.
       msgs:[...state.msgs], seen:[...state.seen],
+      resolved:[...state.resolved],
     }));
   }catch(e){
     warnStore(); // usually the quota: the page still works, but a reload would forget
@@ -174,6 +175,7 @@ export function restore(){
     state.viewed=new Map((d.viewed||[]).map(e=>[e[0],typeof e[1]==='string'?{h:e[1],auto:false}:e[1]]));
     state.msgs=new Map((d.msgs||[]).filter(e=>e&&e[0]&&Array.isArray(e[1])));
     state.seen=new Map((d.seen||[]).filter(e=>e&&e[0]));
+    state.resolved=new Map((d.resolved||[]).filter(e=>e&&typeof e[0]==='string'&&typeof e[1]==='string'));
   }catch(e){}
 }
 /**
@@ -204,9 +206,9 @@ export function clearBookmarks(){
 }
 /** A file whose notes are gone was reviewed for feedback that no longer exists, so it needs another
  *  pass; a file nobody commented on keeps its mark, which pruneViewed drops if the file changed. */
-export function unviewCommented(){
+export function unviewCommented(notes=[...state.notes.values()]){
   // A note about the review as a whole names no file, so it puts none of them back either.
-  const commented=new Set([...state.notes.values()].map((n: any)=>n.file).filter(Boolean));
+  const commented=new Set(notes.map((n: any)=>n.file).filter(Boolean));
   commented.forEach(p=>{ state.viewed.delete(p); state.folded.delete(p); });
   return commented;
 }
@@ -222,15 +224,15 @@ export function withdrawNotes(ids: string[]){
   // The page has already let them go; the file catches up, and a failed delete costs a stale entry.
   return writeNotes(()=>fetch('/api/note?'+query.join('&'),{method:'DELETE'}).then(()=>{},()=>{}));
 }
-/** Wipes the notes stored for this range, threads and all. Hidden and collapsed marks are not
- *  comments, so they stay. The review file itself is left on disk: it is the record of what was said,
- *  and withdrawing what this drops from the page is the caller's to do. */
-export function clearNotes(){
-  const unviewed=unviewCommented();
-  state.notes.clear();
-  state.msgs.clear();
-  state.seen.clear();
-  state.place.clear();
+/** Drops the selected conversations, all by default. Display preferences stay. The review file
+ *  remains untouched here; withdrawing the selected ids from it is the caller's to do. */
+export function clearNotes(ids=[...state.notes.keys()]){
+  const unviewed=unviewCommented(ids.map(id=>state.notes.get(id)).filter(Boolean));
+  ids.forEach(id=>{
+    state.notes.delete(id); state.msgs.delete(id); state.seen.delete(id); state.place.delete(id); state.resolved.delete(id);
+  });
+  if(!state.notes.size) state.resolved.clear();
+  state.showResolved=false;
   save();
   return unviewed;
 }

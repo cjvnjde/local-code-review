@@ -450,13 +450,13 @@
   #refpop .rfnone{padding:12px;color:var(--ink-faint);font-size:var(--fs-sm)}
 
   tr.nrow td{padding:0;background:var(--base)}
-  .nbox{margin:8px 10px 10px 28px;border:1px solid var(--edge-hi);border-radius:6px;background:var(--panel2);overflow:hidden}
+  .nbox{margin:8px 10px 10px 28px;border:1px solid var(--edge-hi);border-radius:6px;background:var(--panel2);overflow:clip}
   /* the file's own note sits between header and table, full width and without the gutter indent */
   .fnotes:empty{display:none}
   .fnotes{background:var(--base);border-bottom:1px solid var(--edge)}
   .fnotes .nbox{margin:9px;box-shadow:inset 3px 0 0 var(--mark)}
   .nhead{display:flex;align-items:center;flex-wrap:wrap;gap:10px;padding:6px 11px;border-bottom:1px solid var(--edge);
-    background:var(--s0);font-size:var(--fs-sm);color:var(--ink-dim)}
+    background:var(--s0);font-size:var(--fs-sm);color:var(--ink-dim);position:sticky;top:var(--note-top,0px);z-index:3}
   .nhead .loc{color:var(--mark)}
   .nhead .snip{background:var(--cnote);border-radius:3px;padding:0 6px;color:var(--ink);
     max-width:46%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -473,6 +473,12 @@
   .nhead button{padding:5px 9px;min-height:var(--tap);font-size:var(--fs-xs)}
   .nhead .sug{color:var(--add)}
   .nhead .sug:hover{color:var(--add);border-color:var(--add)}
+  .nhead .resolve{display:flex;align-items:center;gap:calc(var(--tap) / 4);color:var(--teal)}
+  button[data-icon-action]{display:inline-flex;align-items:center;justify-content:center;flex:none;
+    width:var(--tap-lg);height:var(--tap-lg);min-width:var(--tap);min-height:var(--tap);padding:0}
+  .nhead button[data-icon-action],.msg button[data-icon-action]{width:var(--tap);height:var(--tap);padding:0}
+  #historyPanel button[data-icon-action],header>button[data-icon-action],.nhead button[data-icon-action],
+  .msg .who button[data-icon-action],.acts button[data-icon-action]{padding:0}
   .nhead .refb,.acts .refb{color:var(--lav)}
   .nhead .refb:hover,.acts .refb:hover{color:var(--lav);border-color:var(--lav)}
   .nhead .attb,.acts .attb{color:var(--teal)}
