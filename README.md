@@ -60,7 +60,8 @@ to select a rectangle. Each note keeps its before/after side, original pixel coo
 capture in the review file, so the agent can inspect the exact area even after the screenshot changes.
 Click a marked region's short reference to read its note. Hold Alt to use the image normally.
 
-File-header actions use icons with hover tooltips. **Copy file path** copies the repository-relative path.
+File-header actions have immediate hover tooltips. Comment, Viewed and fold removed keep text labels;
+**Copy file path** beside the filename copies the repository-relative path.
 
 ## Browser history
 

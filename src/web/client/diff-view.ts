@@ -125,24 +125,24 @@ function fileHtml(f,fi){
   const folded=state.folded.has(f.path), seen=state.viewed.has(f.path);
   const cls='file'+(folded?' fold':'')+(seen?' seen':'');
   const head='<div class="fh">'+
-    '<button class="fchev" data-fold="'+esc(f.path)+'" title="'+(folded?'Expand file':'Collapse file')+'">'+
+    '<button class="fchev" data-fold="'+esc(f.path)+'" data-tooltip="'+(folded?'Expand file':'Collapse file')+'" aria-label="'+(folded?'Expand file':'Collapse file')+'">'+
       (folded?SVG.chevR:SVG.chevD)+'</button>'+
-    '<span class="p file-path" title="'+esc(filePathTitle(f))+'">'+filePathHtml(f)+'</span>'+
+    '<span class="p file-path" data-tooltip="'+esc(filePathTitle(f))+'">'+filePathHtml(f)+'</span>'+
+    '<button class="cp" data-copy-path="'+esc(f.path)+'" data-tooltip="Copy file path" aria-label="Copy file path">'+SVG.copy+'</button>'+
     '<span class="s">'+f.status+'</span>'+
     '<span class="plus">+'+f.added+'</span><span class="minus">-'+f.removed+'</span>'+
     (state.stale&&state.stale.has(f.path)?'<span class="stale">changed since viewed</span>':'')+
     '<span class="spacer"></span>'+
-    '<button class="cf" data-cf="'+esc(f.path)+'" title="Comment on this file as a whole" aria-label="Comment on this file">'+
-      SVG.plus+'</button>'+
+    '<button class="cf" data-cf="'+esc(f.path)+'" data-tooltip="Comment on this file as a whole" aria-label="Comment on this file">'+
+      SVG.plus+' comment</button>'+
     delBtnHtml(f)+
     '<button class="vw'+(seen?' on':'')+'" data-vw="'+esc(f.path)+'" aria-label="'+
-      (seen?'Mark as not reviewed':'Mark reviewed')+'" aria-pressed="'+seen+'" title="'+
+      (seen?'Mark as not reviewed':'Mark reviewed')+'" aria-pressed="'+seen+'" data-tooltip="'+
       (seen?'Mark as not reviewed':'Mark reviewed — collapses until the file changes')+'">'+
-      (seen?SVG.boxOn:SVG.box)+'</button>'+
-    '<button class="cp" data-copy-path="'+esc(f.path)+'" title="Copy file path" aria-label="Copy file path">'+SVG.copy+'</button>'+
-    '<button class="op" data-open-file="'+esc(f.path)+'" title="Open in editor" aria-label="Open in editor">'+
+      (seen?SVG.boxOn:SVG.box)+' viewed</button>'+
+    '<button class="op" data-open-file="'+esc(f.path)+'" data-tooltip="Open in editor" aria-label="Open in editor">'+
       SVG.open+'</button>'+
-    '<button class="eye" data-hf="'+esc(f.path)+'" title="Hide from diff" aria-label="Hide from diff">'+SVG.eye+'</button></div>'+
+    '<button class="eye" data-hf="'+esc(f.path)+'" data-tooltip="Hide from diff" aria-label="Hide from diff">'+SVG.eye+'</button></div>'+
     // Whole-file notes hang off the header, so a binary or folded file can still carry several.
     '<div class="fnotes" id="fn'+fi+'"></div>';
   // Outdated comments sit at the end of the file card instead of claiming an unrelated row.
@@ -382,10 +382,10 @@ function delBtnHtml(f){
   if(f.binary||!f.removed) return '';
   const on=foldingDeleted(f.path);
   const lines=f.removed+' removed line'+(f.removed===1?'':'s');
-  return '<button class="dl'+(on?' on':'')+'" data-dl="'+esc(f.path)+'" title="'+
+  return '<button class="dl'+(on?' on':'')+'" data-dl="'+esc(f.path)+'" data-tooltip="'+
     (on?'Show the '+lines+' in this file':'Fold this file’s '+lines+' away')+'" aria-label="'+
     (on?'Show removed lines':'Fold removed lines')+'" aria-pressed="'+on+'">'+
-    (on?SVG.expDown:SVG.expUp)+'</button>';
+    (on?'show removed':'fold removed')+'</button>';
 }
 /**
  * Folds one file's removed lines away, or brings them all back. Every block of the file draws
@@ -535,14 +535,18 @@ function paintCard(fi,on){
   node.classList.toggle('seen',on);
   node.classList.toggle('fold',folded);
   const chev=node.querySelector('[data-fold]');
-  if(chev){ chev.innerHTML=folded?SVG.chevR:SVG.chevD; chev.title=folded?'Expand file':'Collapse file'; }
+  if(chev){
+    chev.innerHTML=folded?SVG.chevR:SVG.chevD;
+    chev.dataset.tooltip=folded?'Expand file':'Collapse file';
+    chev.setAttribute('aria-label',chev.dataset.tooltip);
+  }
   const btn=node.querySelector('[data-vw]');
   if(btn){
     btn.classList.toggle('on',on);
-    btn.innerHTML=on?SVG.boxOn:SVG.box;
+    btn.innerHTML=(on?SVG.boxOn:SVG.box)+' viewed';
     btn.setAttribute('aria-label',on?'Mark as not reviewed':'Mark reviewed');
     btn.setAttribute('aria-pressed',String(on));
-    btn.title=on?'Mark as not reviewed':'Mark reviewed — collapses until the file changes';
+    btn.dataset.tooltip=on?'Mark as not reviewed':'Mark reviewed — collapses until the file changes';
   }
   const stale=node.querySelector('.stale');
   if(stale) stale.remove();
@@ -558,7 +562,11 @@ export function setFolded(path: string,on: boolean){
   const node=el('f'+idxOf(path)); if(!node) return;
   node.classList.toggle('fold',on);
   const chev=node.querySelector('[data-fold]');
-  if(chev){ chev.innerHTML=on?SVG.chevR:SVG.chevD; chev.title=on?'Expand file':'Collapse file'; }
+  if(chev){
+    chev.innerHTML=on?SVG.chevR:SVG.chevD;
+    chev.dataset.tooltip=on?'Expand file':'Collapse file';
+    chev.setAttribute('aria-label',chev.dataset.tooltip);
+  }
 }
 /**
  * Bulk toggles rebuild once; single files patch the DOM in place.

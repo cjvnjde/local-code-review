@@ -3,9 +3,9 @@ export async function copyText(button: any,value: string,icon=false){
   try{
     await navigator.clipboard.writeText(value);
     if(icon){
-      const title=button.title;
-      button.title='Copied'; button.classList.add('copied');
-      setTimeout(()=>{ if(button.isConnected){ button.title=title; button.classList.remove('copied'); } },1500);
+      const label=button.dataset.tooltip;
+      button.dataset.tooltip='Copied'; button.classList.add('copied');
+      setTimeout(()=>{ if(button.isConnected){ button.dataset.tooltip=label; button.classList.remove('copied'); } },1500);
     }else{
       const was=button.textContent;
       button.textContent='Copied';

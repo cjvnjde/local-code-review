@@ -17,12 +17,14 @@ import { loadCfg } from "./persistence.ts";
 import { watchPaths } from "./path.ts";
 import { applyQuick } from "./quick.ts";
 import { applyNav, applySections } from "./sidebar.ts";
+import { watchTooltips } from './tooltip.ts';
 
 loadCfg();
 watchAudio();
 watchImages();
 watchImageComments({busy:busyEditor,open:openImageEditor,jump:jumpToNote});
 watchPaths();
+watchTooltips();
 watchPreviews(renderBody);
 applyQuick();
 applyNav();

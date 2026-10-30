@@ -249,10 +249,15 @@
     letter-spacing:.05em;border-radius:4px}
   .fh .eye:hover,.fh .vw:hover,.fh .cf:hover,.fh .dl:hover,.fh .op:hover{color:var(--ink);background:var(--s1)}
   .fh .vw.on{color:var(--green)}
-  .file .fh :is(.eye,.vw,.cf,.dl,.op,.cp){width:var(--tap);height:var(--tap);padding:0;justify-content:center}
+  .file .fh :is(.eye,.op,.cp){width:var(--tap);height:var(--tap);padding:0;justify-content:center}
   .fh .cp{border:0;background:none;color:var(--ink-faint);border-radius:4px;display:flex;align-items:center;flex:none}
   .fh .cp:hover{color:var(--ink);background:var(--s1)}
   .fh .cp.copied{color:var(--teal)}
+  .tooltip{position:fixed;z-index:100;pointer-events:none;max-width:calc(100vw - var(--tap));
+    padding:calc(var(--tap) / 4) calc(var(--tap) / 3);border:1px solid var(--edge-hi);border-radius:4px;
+    background:var(--crust);color:var(--ink);font:var(--fs-xs)/1.5 var(--sans);overflow-wrap:anywhere;
+    box-shadow:0 2px 8px rgba(0,0,0,.3)}
+  .tooltip[hidden]{display:none}
   /* folded away: the header says so in the colour the removed lines themselves are drawn in */
   .fh .dl.on{color:var(--del)}
   .fh .stale{color:var(--peach);font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.05em}
