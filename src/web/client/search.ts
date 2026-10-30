@@ -132,6 +132,13 @@ function step(dir:number){
 }
 
 export function startSearch(){
+  // Bun's CSS parser does not recognize this browser-supported selector yet. Install only this
+  // rule in the browser, beside the native highlight API it styles, so bundling stays warning-free.
+  if((globalThis.CSS as any)?.highlights){
+    const style=document.createElement('style');
+    style.textContent='::highlight(review-search){background:var(--mark);color:var(--crust)}';
+    document.head.append(style);
+  }
   input().addEventListener('input',()=>{
     active=-1; input().removeAttribute('aria-activedescendant');
     clearTimeout(timer); timer=setTimeout(()=>refresh(true),100);
