@@ -4,6 +4,7 @@ import { mdHtml } from './markdown.ts';
 import { pathHtml } from './path.ts';
 import { el, esc } from './state.ts';
 import { historyNavigation, type HistoryView } from './history-navigation.ts';
+import { imageCaptureHtml } from './image-capture.ts';
 
 let entries: HistoryEntry[]=[], selected='', noteId='', mode:'changes'|'snapshot'='changes', limit=60;
 let opened=false, request=0, returnFocus: HTMLElement|null=null;
@@ -89,6 +90,7 @@ function safeMarkdown(body: string,path: string){
 export function historyNoteHtml(n: HistoryNote|undefined){
   if(!n) return '<p class="history-empty">Not present</p>';
   return '<div class="history-note">'+
+    imageCaptureHtml(n.image)+
     (n.code?'<details class="history-capture"><summary>Captured code</summary><pre>'+esc(n.code)+'</pre></details>':'')+
     '<div class="history-question"><b>Question / note</b><div class="md">'+safeMarkdown(n.body,n.file)+'</div></div>'+
     '<p class="history-status">'+esc(n.status+(n.detail?' — '+n.detail:''))+'</p>'+

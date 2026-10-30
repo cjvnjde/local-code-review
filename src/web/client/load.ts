@@ -114,6 +114,7 @@ function noteFrom(n: any,at: number){
   if(n.code) note.code=n.code;
   if(n.ca!=null){ note.ca=n.ca; note.cb=n.cb; }
   if(n.snippet) note.snippet=n.snippet;
+  if(n.image) note.image=n.image;
   return note;
 }
 

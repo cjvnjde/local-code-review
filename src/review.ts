@@ -85,6 +85,11 @@ const FOOTER = [
     "about one place in it, so it carries no path and no `diff` block. Answer it exactly like the " +
     "rest: it has its own `Status:` line and its own thread.",
   "",
+  "A screenshot-region note includes its before/after side, a rectangle in original image pixels " +
+    "measured from the top-left, and a cropped capture linked relative to this file. Open that " +
+    "capture to see the area the reviewer means. The capture records the image as it was when " +
+    "commented on, even if the current file has changed. Leave the capture and its metadata intact.",
+  "",
   "Fix what you agree with. If a note is wrong or would break something, say so instead of " +
     "implementing it. A note that only asks a question about the code has two outcomes: fix the " +
     "code when the question exposes a real problem, or leave the code alone and answer the " +

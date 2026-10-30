@@ -69,7 +69,7 @@ function ownMessage(doc: ReviewDoc, id: string, at: string) {
 /** Only reviewer-owned fields: an agent reply or verdict must never wake the agent again. */
 function reviewerFields(note: ReviewNote): string {
   return JSON.stringify([note.body, note.file, note.label, note.start, note.end,
-    note.code ?? "", note.scope ?? "", note.side ?? "new", note.ca, note.cb, note.snippet ?? ""]);
+    note.code ?? "", note.scope ?? "", note.side ?? "new", note.ca, note.cb, note.snippet ?? "", note.image ?? null]);
 }
 
 /**

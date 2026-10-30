@@ -9,6 +9,7 @@ export const SVG={
   box:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.2 2.2h11.6v11.6H2.2z" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>',
   boxOn:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.2 2.2h11.6v11.6H2.2z" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M4.6 8.1l2.3 2.3 4.5-4.7" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>',
   check:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M6.1 12.4 2 8.3l1.3-1.3 2.8 2.8 6.6-6.6L14 4.5z"/></svg>',
+  copy:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 5.5h8v8h-8zM2.5 10.5v-8h8" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>',
   sliders:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3.6h4.4V5H2zM9.6 3.6H14V5H9.6zM2 11h4.4v1.4H2zM9.6 11H14v1.4H9.6z"/><path d="M6.6 1.8h1.5v5.1H6.6zM9.1 9.2h1.5v5.1H9.1z"/></svg>',
   panel:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.2 3.2h11.6v9.6H2.2z" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M6.1 3.9h1.3v8.2H6.1z"/></svg>',
   panelOff:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.2 3.2h11.6v9.6H2.2z" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>',

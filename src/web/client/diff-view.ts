@@ -3,6 +3,7 @@ import { globalNotes, outdatedNotes, replaceIn, strayNotes } from './anchor.ts';
 import { bmKey } from './bookmarks.ts';
 import { delRunAt, delRuns, drawnRows, foldingDeleted, revealRow, toggleFileFold, toggleRun } from './deleted.ts';
 import { imagesHtml } from './images.ts';
+import { paintImageNotes } from './image-comments.ts';
 import { expandStep } from './expand.ts';
 import { autoHidden, isHidden } from './filters.ts';
 import { gapOf, gapSize } from './gaps.ts';
@@ -51,6 +52,7 @@ export function renderDiff(){
   applyGlobals();
   shown.forEach(i=>{ applyFileNotes(state.files[i],i); applyOutdated(i); });
   applyStray();
+  paintImageNotes();
   sec.querySelectorAll('tbody.blk').forEach(observeBlock);
   sec.querySelectorAll('.file').forEach(n=>obsPass.observe(n));
   followDiff(); // the cards moved, so which of them the pane is showing may have changed
@@ -130,15 +132,17 @@ function fileHtml(f,fi){
     '<span class="plus">+'+f.added+'</span><span class="minus">-'+f.removed+'</span>'+
     (state.stale&&state.stale.has(f.path)?'<span class="stale">changed since viewed</span>':'')+
     '<span class="spacer"></span>'+
-    '<button class="cf" data-cf="'+esc(f.path)+'" title="Comment on this file as a whole">'+
-      SVG.plus+' comment</button>'+
+    '<button class="cf" data-cf="'+esc(f.path)+'" title="Comment on this file as a whole" aria-label="Comment on this file">'+
+      SVG.plus+'</button>'+
     delBtnHtml(f)+
-    '<button class="vw'+(seen?' on':'')+'" data-vw="'+esc(f.path)+'" title="'+
+    '<button class="vw'+(seen?' on':'')+'" data-vw="'+esc(f.path)+'" aria-label="'+
+      (seen?'Mark as not reviewed':'Mark reviewed')+'" aria-pressed="'+seen+'" title="'+
       (seen?'Mark as not reviewed':'Mark reviewed — collapses until the file changes')+'">'+
-      (seen?SVG.boxOn:SVG.box)+' viewed</button>'+
-    '<button class="op" data-open-file="'+esc(f.path)+'" title="Open in editor">'+
-      SVG.open+' open</button>'+
-    '<button class="eye" data-hf="'+esc(f.path)+'" title="Hide from diff">'+SVG.eye+' hide</button></div>'+
+      (seen?SVG.boxOn:SVG.box)+'</button>'+
+    '<button class="cp" data-copy-path="'+esc(f.path)+'" title="Copy file path" aria-label="Copy file path">'+SVG.copy+'</button>'+
+    '<button class="op" data-open-file="'+esc(f.path)+'" title="Open in editor" aria-label="Open in editor">'+
+      SVG.open+'</button>'+
+    '<button class="eye" data-hf="'+esc(f.path)+'" title="Hide from diff" aria-label="Hide from diff">'+SVG.eye+'</button></div>'+
     // Whole-file notes hang off the header, so a binary or folded file can still carry several.
     '<div class="fnotes" id="fn'+fi+'"></div>';
   // Outdated comments sit at the end of the file card instead of claiming an unrelated row.
@@ -379,8 +383,9 @@ function delBtnHtml(f){
   const on=foldingDeleted(f.path);
   const lines=f.removed+' removed line'+(f.removed===1?'':'s');
   return '<button class="dl'+(on?' on':'')+'" data-dl="'+esc(f.path)+'" title="'+
-    (on?'Show the '+lines+' in this file':'Fold this file’s '+lines+' away')+'">'+
-    (on?SVG.chevR:SVG.chevD)+' removed</button>';
+    (on?'Show the '+lines+' in this file':'Fold this file’s '+lines+' away')+'" aria-label="'+
+    (on?'Show removed lines':'Fold removed lines')+'" aria-pressed="'+on+'">'+
+    (on?SVG.expDown:SVG.expUp)+'</button>';
 }
 /**
  * Folds one file's removed lines away, or brings them all back. Every block of the file draws
@@ -534,7 +539,9 @@ function paintCard(fi,on){
   const btn=node.querySelector('[data-vw]');
   if(btn){
     btn.classList.toggle('on',on);
-    btn.innerHTML=(on?SVG.boxOn:SVG.box)+' viewed';
+    btn.innerHTML=on?SVG.boxOn:SVG.box;
+    btn.setAttribute('aria-label',on?'Mark as not reviewed':'Mark reviewed');
+    btn.setAttribute('aria-pressed',String(on));
     btn.title=on?'Mark as not reviewed':'Mark reviewed — collapses until the file changes';
   }
   const stale=node.querySelector('.stale');

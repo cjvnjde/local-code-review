@@ -28,6 +28,24 @@ const overall = (id: string, body = "This branch does two things."): ReviewComme
 const read = async (dir: string, file: string) => parseReview(await readFile(path.join(dir, file), "utf8"));
 
 describe("createSession", () => {
+  test('screenshot regions survive replies, edits and restarts; deletion removes only the chosen region',async()=>{
+    const dir=await workspace(), session=createSession(dir,'.review','HEAD');
+    const image={side:'new' as const,x:10,y:100,width:40,height:30,imageWidth:100,imageHeight:2000,
+      source:'abc',capture:'images/area.png'};
+    const area: ReviewComment={id:'screen.png|*|*|#area',file:'screen.png',scope:'file',start:0,end:0,
+      body:'Move this label.',image};
+    const other={...area,id:'screen.png|*|*|#other',image:{...image,y:300}};
+    const {file}=await session.save({comments:[area,other]});
+    await session.reply(area.id!,'Keep the button where it is.');
+    await session.save({comments:[{...area,body:'Move this label left.'}]});
+    const restarted=createSession(dir,'.review','HEAD');
+    await restarted.adoptNewest();
+    const doc=await read(dir,file);
+    expect(doc.notes[0]!.image).toEqual(image);
+    expect(doc.notes[0]!.messages[0]!.body).toBe('Keep the button where it is.');
+    await restarted.remove([area.id!]);
+    expect((await read(dir,file)).notes.map(n=>n.id)).toEqual([other.id]);
+  });
   test("the first save opens one timestamped file and later saves stay in it", async () => {
     const dir = await workspace();
     const session = createSession(dir, ".review", "HEAD");

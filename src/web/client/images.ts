@@ -40,10 +40,13 @@ function paneHtml(f: any,side: string,label: string,name: string){
   return '<figure class="imgf '+side+'">'+
     '<figcaption><span class="side">'+label+'</span>'+
     (name?pathHtml(name,{className:'was',title:name}):'')+
-    '<span class="spacer"></span><span class="dim"></span></figcaption>'+
+    '<span class="spacer"></span><span class="dim"></span>'+
+    '<button type="button" class="imgcomment" title="Click or drag on the image to comment on an area">comment on image</button></figcaption>'+
     // Every file card is drawn, mounted or not, so a diff full of pictures waits for the reader.
-    '<div class="imgb"><img alt="'+esc(f.path)+', '+label+'" loading="lazy" decoding="async" src="'+
-      esc(src(f.path,side))+'"></div></figure>';
+    '<div class="imgb"><div class="imgstage" data-side="'+side+'" '+
+    'title="Click or drag to comment on an area. Hold Alt to use the image normally.">'+
+    '<img alt="'+esc(f.path)+', '+label+'" loading="lazy" decoding="async" src="'+
+      esc(src(f.path,side))+'"><div class="imgmarks"></div></div></div></figure>';
 }
 
 /**

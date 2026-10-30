@@ -1,4 +1,5 @@
 import { orderedNotes } from './anchor.ts';
+import { regionLabel } from '../../image-region.ts';
 import { stepAt } from './bookmarks.ts';
 import { isHidden } from './filters.ts';
 import { jumpToNote } from './live.ts';
@@ -16,10 +17,10 @@ import { SVG, clip, el, esc, isFileNote, isGlobalNote, state, statusOf, unreadOf
 
 /** How a note names itself in a list one line wide: the file's own name is enough next to the tree. */
 const rowLabel=(n: any)=>isGlobalNote(n)?'Overall'
-  :String(n.file).split('/').pop()+(isFileNote(n)?' — whole file':':'+(n.label||n.start||''));
+  :String(n.file).split('/').pop()+(n.image?' — '+regionLabel(n.image):isFileNote(n)?' — whole file':':'+(n.label||n.start||''));
 /** The same, spelled out for the row's tooltip. */
 const rowTitle=(n: any)=>isGlobalNote(n)?'About the review as a whole'
-  :n.file+(isFileNote(n)?' (whole file)':':'+(n.label||n.start||''));
+  :n.file+(n.image?' ('+regionLabel(n.image)+')':isFileNote(n)?' (whole file)':':'+(n.label||n.start||''));
 /** Why a note is not where it was written, for the row's tooltip. */
 const PLACED: Record<string,string>={
   moved:'the code it was written on has moved',

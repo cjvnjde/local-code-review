@@ -16,7 +16,7 @@ import { SVG, el, state } from './state.ts';
  */
 const QUICK=[
   {
-    btn:'qHide',cfg:'hideEnabled',label:'hide patterns',
+    btn:'qHide',cfg:'hideEnabled',label:'hide patterns',offLabel:'show patterns',
     on:'Disable hide patterns temporarily; keep the patterns and per-file overrides',
     off:'Enable saved hide patterns',redraw:false,
   },
@@ -35,7 +35,7 @@ export function applyQuick(){
     btn.classList.toggle('on',on);
     btn.title=on?q.on:q.off;
     btn.setAttribute('aria-pressed',String(on));
-    btn.innerHTML=(on?SVG.eyeOff:SVG.eye)+'<span>'+q.label+'</span>';
+    btn.innerHTML=(on?SVG.eyeOff:SVG.eye)+'<span>'+(!on&&q.offLabel?q.offLabel:q.label)+'</span>';
   });
 }
 QUICK.forEach(q=>{

@@ -102,7 +102,7 @@ let waits=0;
  * rather than being made here: it is the hash of the bytes, so the server is the only side that can
  * say what a picture is called.
  */
-async function upload(file: any){
+export async function upload(file: any){
   const response=await fetch('/api/attach',
     {method:'POST',headers:{'content-type':file.type},body:file});
   const data=await response.json().catch(()=>({}));

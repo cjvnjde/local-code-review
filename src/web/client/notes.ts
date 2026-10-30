@@ -1,4 +1,7 @@
 import { placeOf } from './anchor.ts';
+import { imageRegion, regionLabel } from '../../image-region.ts';
+import { imageCaptureHtml } from './image-capture.ts';
+import { paintImageNotes } from './image-comments.ts';
 import { noteSaveLabel } from './agent.ts';
 import { openHistory } from './history-ui.ts';
 import { attachButton, wireAttach } from './attach.ts';
@@ -78,6 +81,7 @@ function dropEmptyDraft(){
   if(!ta||ta.value.trim()) return;
   const host=row.parentElement;
   row.remove();
+  if(row.__imageCleanup) row.__imageCleanup();
   if(host&&host.id==='globalDraft') host.hidden=true;
   syncGlobals(); // it may have been the only thing in the card at the top
 }
@@ -159,6 +163,35 @@ export function openFileEditor(fi: number){
   state.draftRow=rowOf(box); state.draftKey=key; state.draftAt=null;
   editUI(box,{f,fi,i:null,j:null,ch:null,scope:'file',id});
 }
+/** A screenshot note uses the ordinary file conversation, with its editor beside the selected area. */
+export function openImageEditor(fi: number,image: any,stage: any,rect: any,capture: ()=>Promise<string>){
+  const f=state.files[fi];
+  if(!f||busyEditor()){ rect.remove(); return; }
+  clearSel();
+  const host=document.createElement('div'); host.className='imgdraft';
+  // Place the box near the bottom of the selected area, bounded to the visible part of a tall image.
+  const bounds=stage.getBoundingClientRect(), pane=el('diff').getBoundingClientRect();
+  const imageBox=stage.closest('.imgb'), parent=imageBox.getBoundingClientRect();
+  const bottom=(image.y+image.height)/image.imageHeight*bounds.height;
+  host.style.top=Math.max(0,Math.min(bounds.top-parent.top+bottom,pane.bottom-parent.top-120))+'px';
+  imageBox.append(host); imageBox.classList.add('editing-image');
+  const baseHeight=imageBox.clientHeight;
+  const size=new ResizeObserver(()=>{
+    imageBox.style.minHeight=Math.max(baseHeight,host.offsetTop+host.offsetHeight+
+      parseFloat(getComputedStyle(imageBox).paddingBottom))+'px';
+  });
+  size.observe(host);
+  const id=mintNoteId(f.path,FILE_ANCHOR,FILE_ANCHOR), box=mountFileBox(host,id);
+  state.draftRow=rowOf(box); state.draftKey=id; state.draftAt=null;
+  const cleanup=()=>{
+    size.disconnect(); host.remove(); rect.remove();
+    imageBox.classList.remove('editing-image'); imageBox.style.removeProperty('min-height');
+  };
+  // Empty drafts can be displaced by another editor; their detached wrappers and marks go with them.
+  (rowOf(box) as any).__imageCleanup=cleanup;
+  editUI(box,{f,fi,i:null,j:null,ch:null,scope:'file',id,image:{...image,capture:''},capture,cleanup,stage});
+  box.scrollIntoView({block:'nearest'});
+}
 /**
  * A note about the review as a whole. Its editor hangs from the permanent page header, so starting
  * one never moves the diff. Saving puts the note in its ordinary card above the first file.
@@ -205,6 +238,7 @@ function removeDraftBox(box: any){
   const host=row&&row.parentElement;
   if(state.draftRow===row) state.draftRow=state.draftKey=state.draftAt=null;
   if(row) row.remove();
+  if(row?.__imageCleanup) row.__imageCleanup();
   if(host&&host.id==='globalDraft') host.hidden=true;
 }
 /** What the agent reported for this note, sourced from the review file it wrote it in. */
@@ -217,10 +251,10 @@ function statusChip(st){
  * What a note says it is about. A note on the whole review names no file, one on a whole file names
  * no lines, and the badge under `all` is what carries that instead of a line range.
  */
-function headHtml(f,label,snippet,extra,scope?){
+function headHtml(f,label,snippet,extra,scope?,image?){
   const global=scope==='global';
   return '<div class="nhead"><span class="loc">'+(global?'Overall':esc(f.path)+(label?':'+label:''))+'</span>'+
-    (global?'<span class="all">whole review</span>':label?'':'<span class="all">whole file</span>')+
+    (image?'<span class="all">'+esc(regionLabel(image))+'</span>':global?'<span class="all">whole review</span>':label?'':'<span class="all">whole file</span>')+
     (snippet?'<span class="snip" title="'+esc(snippet)+'">'+esc(clip(snippet.trim()))+'</span>':'')+
     '<span class="spacer"></span>'+(extra||'')+'</div>';
 }
@@ -233,10 +267,11 @@ function editUI(box,ctx){
   const suggest=whole?'':'<button class="sug" title="Insert these lines as a suggested change">'+
     SVG.plus+' suggest</button>';
   box.innerHTML=headHtml(f,whole?null:sp.label,whole?null:sp.snippet,
-      suggest+attachButton()+refButton(id),ctx.scope)+
+      suggest+attachButton()+refButton(id),ctx.scope,ctx.image)+
+    (ctx.image?'<div class="image-preview">'+imageCaptureHtml(ctx.image)+'</div>':'')+
     '<div class="nedit"><textarea placeholder="'+
       (global?'What should be said about this review as a whole?':
-      whole?'What should change in this file?':
+      ctx.image?'What should change in this area?':whole?'What should change in this file?':
       ch?'What should change in this part of the line?':'What should change here?')+'"></textarea>'+
     '<div class="acts"><button class="primary" data-save-note>'+esc(noteSaveLabel())+'</button><button class="cancel">Cancel</button>'+
     (state.notes.has(id)?'<button class="danger del">Delete</button>':'')+
@@ -249,6 +284,23 @@ function editUI(box,ctx){
   wireRefButton(box,ta,id);
   // A picture is written in as well: the link lands in the prose, and the box grows to hold it.
   wireAttach(box,ta);
+  if(ctx.capture&&!ctx.image.capture){
+    const start=()=>{
+      const button=box.querySelector('[data-save-note]'), preview=box.querySelector('.image-preview');
+      button.disabled=true; preview.textContent='Capturing selected area…';
+      void ctx.capture().then(ref=>{
+        if(!box.isConnected) return;
+        ctx.image={...ctx.image,capture:ref};
+        preview.innerHTML=imageCaptureHtml(ctx.image); button.disabled=false;
+      }).catch(error=>{
+        if(!box.isConnected) return;
+        preview.textContent='Could not capture this area: '+String(error.message||error)+' ';
+        const retry=document.createElement('button'); retry.textContent='Retry capture'; retry.onclick=start;
+        preview.append(retry);
+      });
+    };
+    start();
+  }
   const sug=box.querySelector('.sug');
   // The suggestion is seeded with whole lines even for a note on part of one: it replaces lines.
   if(sug) sug.onclick=()=>{
@@ -259,6 +311,7 @@ function editUI(box,ctx){
   };
   const commit=()=>{
     const body=ta.value.trim();
+    if(ctx.image&&!imageRegion(ctx.image)) return;
     if(!body){ drop(); return; }
     const kept=state.notes.get(id);
     const note: any=global
@@ -268,6 +321,7 @@ function editUI(box,ctx){
       :{id,file:f.path,body,a:rowKey(f.rows[i]),b:rowKey(f.rows[j]),
         side:sp.side,start:sp.start,end:sp.end,label:sp.label,code:sp.code};
     if(ch){ note.ca=ch.ca; note.cb=ch.cb; note.snippet=sp.snippet; }
+    if(ctx.image) note.image={...ctx.image};
     // Start this note's write now; another browser-only note must not be submitted with it.
     const ask=!!state.agent;
     // Editing a note that is already in the review file leaves it in the same conversation.
@@ -284,6 +338,12 @@ function editUI(box,ctx){
       const host=globalHost(true);
       if(host) mountGlobal(host,note);
       if(at>0) pane.scrollTop=at+(pane.scrollHeight-before);
+    }else if(ctx.cleanup){
+      const before=ctx.stage.getBoundingClientRect().top;
+      removeDraftBox(box);
+      const host=el('fn'+fi);
+      if(host) viewUI(mountFileBox(host,id),note,{...ctx,cleanup:null,capture:null});
+      el('diff').scrollTop+=ctx.stage.getBoundingClientRect().top-before;
     }else{
       viewUI(box,note,ctx);
       repaintNote(id,box); // the same note may be mounted in the all-notes panel as well
@@ -291,6 +351,7 @@ function editUI(box,ctx){
     mark(fi,i,j,true);
     if(ch) repaintRow(fi,i);
     renderTree(); updateCount();
+    paintImageNotes();
     if(ask) void sendNote(note);
   };
   const drop=()=>{
@@ -398,9 +459,10 @@ export function viewUI(box,note,ctx){
       (state.agent?'<button class="ask"'+(state.noteSending.has(note.id)?' disabled':'')+'>'+
         (state.noteDelivery.get(note.id)?.error?'Retry AI':'Ask AI')+'</button>':'')+
       '<button class="history" title="See earlier versions of this note">History</button>'+
-      '<button class="edit">Edit</button><button class="danger del">Delete</button>',ctx.scope)+
+      '<button class="edit">Edit</button><button class="danger del">Delete</button>',ctx.scope,note.image)+
     placeHtml(how==='exact'||how==='file'||how==='global'?'':how)+
     capturedHtml(note,how)+
+    imageCaptureHtml(note.image,!!ctx.f.hash&&note.image?.source!==ctx.f.hash)+
     '<div class="nbody"></div>'+(st&&st.detail?'<div class="nstat"></div>':'')+
     '<div class="thread"></div><div class="replyhost"></div>';
   renderBody(box.querySelector('.nbody'),note.body,note.file,capturedLines(note.code));
@@ -432,7 +494,7 @@ export function viewUI(box,note,ctx){
       alert('This note has no lines to edit against any more. Reply to it instead, or delete it.');
       return;
     }
-    editUI(box,Object.assign({},ctx,{id:note.id,body:note.body}));
+    editUI(box,Object.assign({},ctx,{id:note.id,body:note.body,image:note.image}));
   };
   box.querySelector('.del').onclick=()=>removeNote(box,note,ctx);
 }
@@ -451,6 +513,7 @@ function removeNote(box,note,ctx){
   if(note.ca!=null&&ctx.i!=null&&ctx.i>=0) repaintRow(ctx.fi,ctx.i);
   syncGlobals(); // the card at the top goes with the last note in it
   renderTree(); updateCount();
+  paintImageNotes();
   withdrawNotes([note.id]);
 }
 function mark(fi,i,j,on){

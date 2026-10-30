@@ -53,6 +53,15 @@ model, and tool permissions. See [Codex setup and delivery behavior](docs/codex-
 The header reports the detected agent as checking, ready, or unavailable. Without a confirmed working
 connection, editors say **Save note** and keep the ordinary manual review workflow.
 
+## Screenshot comments
+
+Images fit the pane width without a height limit. Click an image to comment on a small area, or drag
+to select a rectangle. Each note keeps its before/after side, original pixel coordinates and a cropped
+capture in the review file, so the agent can inspect the exact area even after the screenshot changes.
+Click a marked region's short reference to read its note. Hold Alt to use the image normally.
+
+File-header actions use icons with hover tooltips. **Copy file path** copies the repository-relative path.
+
 ## Browser history
 
 **History** in the header opens a searchable timeline of saved notes, question edits, replies,

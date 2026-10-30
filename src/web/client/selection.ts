@@ -2,6 +2,7 @@ import { toggleBookmark } from './bookmark-pane.ts';
 import { repaintRow, setFolded, setHidden, setViewed, toggleDeleted, toggleFileDeleted } from './diff-view.ts';
 import { atStart, charRange, pressKind } from './drag.ts';
 import { openFileInEditor } from './editor.ts';
+import { copyText } from './clipboard.ts';
 import { expandGap } from './expand.ts';
 import { isHidden } from './filters.ts';
 import { busyEditor, openEditor, openFileEditor, openGlobalEditor } from './notes.ts';
@@ -214,6 +215,8 @@ el('diff').addEventListener('click',e=>{
   if(vw){ setViewed([vw.dataset.vw],!state.viewed.has(vw.dataset.vw)); return; }
   const open=e.target.closest('[data-open-file]');
   if(open){ void openFileInEditor(open.dataset.openFile,open); return; }
+  const copy=e.target.closest('[data-copy-path]');
+  if(copy){ void copyText(copy,copy.dataset.copyPath,true); return; }
   const hf=e.target.closest('[data-hf]');
   if(hf){ setHidden([hf.dataset.hf],!isHidden(hf.dataset.hf)); return; }
   const cf=e.target.closest('[data-cf]');

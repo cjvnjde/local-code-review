@@ -1,4 +1,5 @@
 import { isFileNote, isGlobalNote, noteKey } from './state.ts';
+import { regionLabel } from '../../image-region.ts';
 
 /* ---------- one note pointing at another ---------- */
 /**
@@ -49,7 +50,7 @@ export function noteByRef(ref: string,notes: Iterable<any>){
 }
 /** What a reference reads as in prose: beside the note it stands in, the file's own name is enough. */
 export const refLabel=(n: any)=>isGlobalNote(n)?noteKey(n)
-  :String(n.file).split('/').pop()+(isFileNote(n)?' (whole file)':':'+(n.label||n.start||''));
+  :String(n.file).split('/').pop()+(n.image?' ('+regionLabel(n.image)+')':isFileNote(n)?' (whole file)':':'+(n.label||n.start||''));
 /** A stable short token survives reordering, deletion and restarting without renumbering notes. */
 export const refToken=(n: any)=>'#'+refOf(n.id);
 /**

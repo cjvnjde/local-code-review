@@ -8,6 +8,15 @@ const revision=(before: any[],after: any[],source:'page'|'file'='page')=>history
   snapshot:snapshot(after),at:42},snapshot(before))!;
 
 describe('review history revisions',()=>{
+  test('keeps screenshot coordinates and captures detached and records region changes',()=>{
+    const image={side:'new',x:0,y:300,width:20,height:40,imageWidth:100,imageHeight:2000,
+      source:'abc',capture:'images/area.png'};
+    const saved=snapshot([{...note,image}]);
+    image.y=400;
+    expect(saved.notes[0]!.image?.y).toBe(300);
+    const changes=historyChanges(saved.notes,snapshot([{...note,image}]).notes);
+    expect(changes[0]!.kinds).toEqual(['Location or captured code changed']);
+  });
   test('keeps a detached copy of questions, captured code, anchors and conversations',()=>{
     const input={...note,ca:2,cb:5,snippet:'foo',code:'const foo=1;',status:'answered',detail:'Because.',
       messages:[{role:'agent',at:'now',body:'It protects the save.'}]};

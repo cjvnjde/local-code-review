@@ -249,6 +249,10 @@
     letter-spacing:.05em;border-radius:4px}
   .fh .eye:hover,.fh .vw:hover,.fh .cf:hover,.fh .dl:hover,.fh .op:hover{color:var(--ink);background:var(--s1)}
   .fh .vw.on{color:var(--green)}
+  .file .fh :is(.eye,.vw,.cf,.dl,.op,.cp){width:var(--tap);height:var(--tap);padding:0;justify-content:center}
+  .fh .cp{border:0;background:none;color:var(--ink-faint);border-radius:4px;display:flex;align-items:center;flex:none}
+  .fh .cp:hover{color:var(--ink);background:var(--s1)}
+  .fh .cp.copied{color:var(--teal)}
   /* folded away: the header says so in the colour the removed lines themselves are drawn in */
   .fh .dl.on{color:var(--del)}
   .fh .stale{color:var(--peach);font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.05em}
@@ -283,6 +287,23 @@
   /* Fit the pane's width without shrinking tall screenshots to the viewport; compare both from the top. */
   .imgb img{max-width:100%;height:auto;object-fit:contain;display:block;
     box-shadow:0 2px 14px rgba(0,0,0,.45)}
+  .imgb{position:relative}
+  .imgb.editing-image{min-height:calc(var(--tap) * 18)}
+  .imgstage{position:relative;max-width:100%;min-width:0;cursor:crosshair;line-height:0}
+  .imgmarks{position:absolute;inset:0;pointer-events:none}
+  .imgregion{position:absolute;border:2px solid var(--mark);background:rgba(249,226,175,.12);pointer-events:none}
+  .imgregion button{pointer-events:auto;position:absolute;left:-2px;top:-2px;min-height:var(--tap);
+    min-width:var(--tap);padding:0 calc(var(--tap) / 4);font:var(--fs-xs) var(--mono);line-height:1.5;
+    background:var(--mark);color:var(--crust);border:0;border-radius:3px;white-space:nowrap}
+  .imgregion.picking{border-style:dashed}
+  .imgdraft{position:absolute;left:var(--fs-sm);right:var(--fs-sm);z-index:4;line-height:1.5;cursor:auto}
+  .imgdraft .nbox{margin:0;box-shadow:0 4px 20px rgba(0,0,0,.4)}
+  .imgcomment{font:var(--fs-xs) var(--sans);min-height:var(--tap);padding:0 calc(var(--tap) / 4);flex:none}
+  .image-capture{padding:var(--fs-sm);border-bottom:1px solid var(--edge)}
+  .image-caption{color:var(--ink-faint);font:var(--fs-xs)/1.5 var(--sans);margin-bottom:calc(var(--tap) / 4)}
+  .image-capture img{max-width:100%;max-height:14em;height:auto;display:block;object-fit:contain}
+  .imgdraft .image-capture img{max-height:7em}
+  .image-preview:empty{display:none}
   /* a side that could not be read says so in its caption; an empty frame would read as an empty image */
   .imgf.gone .imgb img{display:none}
   .imgf.gone .dim{color:var(--del)}

@@ -1,3 +1,5 @@
+import type { ImageRegion } from './image-region.ts';
+
 export type FileStatus = "modified" | "added" | "deleted" | "renamed";
 export type DiffRowType = "hunk" | "add" | "del" | "ctx";
 
@@ -53,6 +55,8 @@ export interface ReviewComment {
   cb?: number;
   /** Exact selected text of that range. */
   snippet?: string;
+  /** Selected pixels of an image, with a capture that survives later file changes. */
+  image?: ImageRegion;
 }
 
 export interface ReviewSubmission {

@@ -1,4 +1,5 @@
 import type { NoteStatusKind, ReviewComment } from "./types.ts";
+import { imageRegion, imageRegionLines, type ImageRegion } from './image-region.ts';
 
 /**
  * The review file is the conversation. It is written by lcr and appended to by the agent, and both
@@ -72,6 +73,7 @@ export interface ReviewNote {
   ca?: number;
   cb?: number;
   snippet?: string;
+  image?: ImageRegion;
   code?: string;
   body: string;
   status: NoteStatusKind;
@@ -116,6 +118,7 @@ const BASE = /^Base:\s*`(.*)`\s*$/;
 const MARKER = /<!--\s*lcr:(.+?)\s*-->/;
 /** Provenance line of a note continued from an earlier review: `<file>#<id>` of the original. */
 const FROM = /^<!--\s*lcr:from\s+(.+?)\s*-->\s*$/;
+const IMAGE = /^<!-- lcr:image (.+) -->$/;
 const MESSAGE = /^\*\*(Reviewer|Agent)\*\*\s*(?:<!--\s*lcr:m\s*([^>]*?)\s*-->\s*)?$/i;
 const STATUS = /^\s*status\s*:\s*(.+?)\s*$/i;
 const SNIPPET = /^Applies to this part of the line only:\s*(.+?)\s*$/;
@@ -178,7 +181,7 @@ class Fences {
 /** Line shapes the parser reads as structure when they stand outside a fence. */
 function dangerous(line: string): boolean {
   return H1.test(line) || H2.test(line) || H3.test(line) || /^-{3,}\s*$/.test(line) ||
-    STATUS.test(line) || MESSAGE.test(line) || SNIPPET.test(line) || FROM.test(line) || END.test(line);
+    STATUS.test(line) || MESSAGE.test(line) || SNIPPET.test(line) || FROM.test(line) || IMAGE.test(line) || END.test(line);
 }
 const escapable = (line: string): boolean => dangerous(line) || FENCE.test(line);
 
@@ -444,7 +447,22 @@ function readOpening(note: ReviewNote, lines: string[]): void {
   let code: string[] | null = null;
   let taken = false;
 
-  for (const line of lines) {
+  for (let at = 0; at < lines.length; at++) {
+    const line = lines[at] as string;
+    const image = !open && !note.image && !body.some(entry => entry.trim()) && IMAGE.exec(line);
+    if (image) {
+      try {
+        const region = imageRegion(JSON.parse(image[1] as string));
+        if (region && note.scope === 'file') {
+          const block = imageRegionLines(region);
+          if (lines.slice(at, at + block.length).join('\n') === block.join('\n')) {
+            note.image = region;
+            at += block.length - 1;
+            continue;
+          }
+        }
+      } catch {}
+    }
     const match = FENCE.exec(line);
     if (open) {
       const mark = match?.[2] as string | undefined;
@@ -621,6 +639,8 @@ export function noteFromComment(comment: ReviewComment): ReviewNote {
   }
   if (comment.snippet) note.snippet = comment.snippet;
   if (comment.code) note.code = comment.code;
+  const image = comment.scope === 'file' ? imageRegion(comment.image) : null;
+  if (image) note.image = image;
   note.key = headingKey(note);
   return note;
 }
@@ -638,6 +658,8 @@ export function headingKey(note: ReviewNote): string {
  */
 export function applyComment(note: ReviewNote, comment: ReviewComment): ReviewNote {
   const fresh = noteFromComment(comment);
+  // Older tabs do not know this field; rewording their note must not discard its captured subject.
+  if (note.image && fresh.scope === 'file' && !fresh.image) fresh.image = note.image;
   if (note.from) fresh.from = note.from;
   return {
     ...fresh,
@@ -653,6 +675,7 @@ export function renderNote(note: ReviewNote): string[] {
   const side = !note.scope && note.side === "old" ? " (line numbers before the change)" : "";
   const out = [`### ${headingKey(note)}${side}${marker}`, ""];
   if (note.from) out.push(`<!-- lcr:from ${note.from.replace(/[<>]/g, "")} -->`, "");
+  if (note.image) out.push(...imageRegionLines(note.image));
   if (note.code && note.code.trim()) {
     const fence = fenceFor(note.code);
     out.push(`${fence}diff`, note.code, fence, "");
