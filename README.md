@@ -267,13 +267,6 @@ bun build ./src/index.ts --compile --minify --outfile lcr
 
 The compiled executable contains the browser UI and needs only Git at runtime.
 
-### Demo projects
-
-Run `bun run demo` to create ignored, independent Git playgrounds under `examples/repos/`:
-mixed working-tree changes, divergent branches, and a dependency-free local web app for live
-UI comments. Setup leaves existing demos and their review notes untouched.
-See [demo commands and UI review exercises](examples/README.md).
-
 ## License
 
 MIT

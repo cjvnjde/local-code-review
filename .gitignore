@@ -9,9 +9,6 @@
 # Compiled executable
 /lcr
 
-# Generated demo Git repositories (templates and setup stay tracked)
-/examples/repos/
-
 # Logs and Windows metadata
 *.log
 Thumbs.db

@@ -1,3 +1,0 @@
-export function formatCount(count: number): string {
-  return count + ' tasks remaining';
-}
