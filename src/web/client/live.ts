@@ -21,7 +21,7 @@ import { noteByRef, refIn } from './note-ref.ts';
  * for that editor to close. Replies never wait: they only add to a note that is already on screen.
  */
 
-const editing=()=>!!document.querySelector('.nbox textarea');
+const editing=()=>!!document.querySelector('.nbox textarea,[data-annotation-editor]');
 
 export function startLive(){
   const source=new EventSource('/api/events');

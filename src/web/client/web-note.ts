@@ -17,7 +17,7 @@ export function prepareWebNote(){
 export async function startWebNote(){
   if(!state.uiEmbed||!state.web)return;
   const parentOrigin=new URL(state.web.url).origin;
-  const tell=(action:'dirty'|'close'|'review'|'ready'|'remove-selection',value:{dirty?:boolean;saving?:boolean;id?:string;index?:number;key?:string}={})=>
+  const tell=(action:'dirty'|'close'|'review'|'ready'|'remove-selection'|'annotation',value:{dirty?:boolean;saving?:boolean;id?:string;index?:number;key?:string;open?:boolean}={})=>
     window.parent.postMessage({type:'lcr:ui',token,action,...value},parentOrigin);
   const host=document.createElement('section');host.id='uiNote';host.setAttribute('aria-label','Review note');
   const tools=document.createElement('div');tools.className='ui-note-tools';
@@ -26,9 +26,10 @@ export async function startWebNote(){
   const body=document.createElement('div');body.className='ui-note-body';host.append(tools,body);document.body.append(host);
   let activeId=noteId||'';
   let capturing=false,closing=false,pendingWeb: WebReview|null|undefined=undefined;
+  let annotationOpen=false,annotationDirty=false;
   function dirty(){
     if(closing)return false;
-    if(capturing)return true;
+    if(capturing||annotationDirty)return true;
     if(state.noteSending.size||state.noteDelivery.get(activeId)?.error)return true;
     const ta=host.querySelector<HTMLTextAreaElement>('textarea');
     if(!ta)return false;
@@ -37,9 +38,14 @@ export async function startWebNote(){
   }
   const changed=()=>{
     setWebNoteCapturing(body,capturing);
-    tell('dirty',{dirty:dirty(),saving:!!state.noteSending.size});
+    tell('dirty',{dirty:dirty(),saving:!!state.noteSending.size||annotationOpen});
   };
   host.addEventListener('input',changed);
+  document.addEventListener('lcr:annotation-state',event=>{
+    if(!(event instanceof CustomEvent)||typeof event.detail?.open!=='boolean')return;
+    annotationOpen=event.detail.open;annotationDirty=event.detail.dirty===true;
+    tell('annotation',{open:annotationOpen});changed();
+  });
   host.addEventListener('lcr:web-remove',event=>{
     if(!(event instanceof CustomEvent)||capturing||state.noteSending.size)return;
     capturing=true;setWebNoteError(body,activeId);changed();

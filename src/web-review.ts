@@ -1,10 +1,11 @@
 import path from 'node:path';
-import { attachRef, saveAttachment } from './attach.ts';
+import { attachRef, readAttachment, saveAttachment } from './attach.ts';
 import type { Hub } from './events.ts';
 import { launchReviewBrowser } from './review-browser.ts';
 import type { ReviewSession } from './session.ts';
 import { installPageReview } from './web/page-overlay.ts';
-import { dropWebSelection, localWebUrl, webCapture, type WebReview } from './web-review-model.ts';
+import { dropWebSelection, localWebUrl, setWebAnnotation, webAnnotationTarget, WebAnnotationInvalid, WebSelectionConflict, webCapture, type WebAnnotationTarget, type WebReview } from './web-review-model.ts';
+import { webAnnotation, webAnnotationImagesMatch, type WebAnnotation } from './web-annotation.ts';
 
 export interface WebReviewOptions {
   url:string;repoRoot:string;outDir:string;session:ReviewSession;hub:Hub;reviewUrl:()=>string;
@@ -90,7 +91,7 @@ export function createWebReview(options:WebReviewOptions){
     return {};
   }
   async function screenshot(input:any){
-    const clean=webCapture({...input,page:'images/page.png',area:'images/area.png'});
+    const clean=webCapture({...input,annotation:undefined,page:'images/page.png',area:'images/area.png'});
     if(!clean||new URL(clean.url).origin!==origin)throw new Error('Invalid page selection. Select an area in the reviewed localhost page.');
     const actual=await evaluate('({url:location.href,width:innerWidth,height:innerHeight,x:scrollX,y:scrollY})');
     if(actual.url!==clean.url||actual.width!==clean.viewport.width||actual.height!==clean.viewport.height||actual.x!==clean.scroll.x||actual.y!==clean.scroll.y)
@@ -111,6 +112,32 @@ export function createWebReview(options:WebReviewOptions){
   }
   async function action(name:string,payload:any){
     if(name==='notes')return {notes:(await options.session.read()).notes.filter(n=>n.web)};
+    if(name==='annotation'){
+      const hasDraft=payload.draftId!==undefined,hasNote=payload.id!==undefined;
+      const target=webAnnotationTarget(payload.target),annotation=payload.annotation===null?null:webAnnotation(payload.annotation);
+      if(hasDraft===hasNote||!target||payload.annotation!==null&&!annotation)
+        throw new WebAnnotationInvalid('Choose a draft or saved note and a valid screenshot annotation target.');
+      if(hasDraft){
+        if(typeof payload.draftId!=='string'||!drafts.has(payload.draftId))
+          throw new WebSelectionConflict('That captured selection no longer exists.');
+        const current=drafts.get(payload.draftId);
+        if(!current)throw new WebSelectionConflict('That capture no longer exists. Reload the note and try again.');
+        const web=setWebAnnotation(current,target,annotation);
+        if(annotation){
+          const capture=target.kind==='after'?web.after[target.index]!:
+            target.index===0?web.before:web.additional![target.index-1]!;
+          if(!await webAnnotationImagesMatch(annotation,capture.area,name=>readAttachment(options.repoRoot,options.outDir,name)))
+            throw new WebAnnotationInvalid('The PNG attachments are missing, invalid, or their dimensions do not match the annotation. Upload the drawing again.');
+        }
+        drafts.set(payload.draftId,web);
+        return {web:structuredClone(web)};
+      }
+      if(typeof payload.id!=='string'||!payload.id)throw new WebAnnotationInvalid('A note id is required.');
+      const note=await options.session.annotateWebCapture(payload.id,target,annotation);
+      if(!note?.web)throw new WebSelectionConflict('That UI capture no longer exists.');
+      options.hub.emit({type:'review',file:options.session.file});
+      return {web:note.web};
+    }
     if(name==='remove-selection'){
       const hasDraft=payload.draftId!==undefined,hasNote=payload.id!==undefined;
       if(hasDraft===hasNote)throw new Error('Choose either a draft or a saved UI note.');
@@ -250,6 +277,9 @@ export function createWebReview(options:WebReviewOptions){
     return web===undefined?undefined:structuredClone(web);
   },removeSelection(payload:{draftId?:string;id?:string;index:number;key:string}){
     const work=()=>action('remove-selection',payload);const next=queue.then(work,work);queue=next.catch(()=>{});return next;
+  },annotate(payload:{draftId?:string;id?:string;target:WebAnnotationTarget;annotation:WebAnnotation|null}){
+    const input=structuredClone(payload);
+    const work=()=>action('annotation',input);const next=queue.then(work,work);queue=next.catch(()=>{});return next;
   },async captureAfter(id:string){
     const work=()=>action('after',{id});const next=queue.then(work,work);queue=next.catch(()=>{});return next;
   },async focus(id:string){

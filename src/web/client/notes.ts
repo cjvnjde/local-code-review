@@ -1,5 +1,6 @@
 import { webCaptureHtml } from './web-capture.ts';
-import { webReview, type WebReview } from '../../web-review-model.ts';
+import { webReview, webSelectionKey, type WebReview, type WebAnnotationTarget } from '../../web-review-model.ts';
+import { openAnnotation } from './annotation-editor.ts';
 import { placeOf } from './anchor.ts';
 import { imageRegion, regionLabel } from '../../image-region.ts';
 import { imageCaptureHtml } from './image-capture.ts';
@@ -100,6 +101,8 @@ function draftFor(key: string){
  * floor and is brought back into view instead.
  */
 export function busyEditor(){
+  const drawing=document.querySelector<HTMLDialogElement>('[data-annotation-editor]');
+  if(drawing){drawing.focus();return true;}
   dropEmptyDraft();
   dropEmptyReply();
   dropCleanEdit();
@@ -247,13 +250,14 @@ const rowOf=(box: any)=>box.closest('.nrow');
 const noteContexts=new WeakMap<HTMLElement,any>();
 const webCapturing=new WeakSet<HTMLElement>();
 const webRemoving=new Set<string>();
+const webAnnotating=new Set<string>();
 const webRemovalErrors=new Map<string,string>();
 const webRemovalWired=new WeakSet<HTMLElement>();
 /** Busy state follows the box and note id through view/edit repaints. */
 function refreshWebControls(box: HTMLElement){
   const id=rowOf(box)?.dataset.nid;
-  const busy=webCapturing.has(box)||webRemoving.has(id)||state.noteSending.has(id);
-  box.querySelectorAll<HTMLButtonElement>('[data-save-note],[data-web-remove],.ask').forEach(button=>{button.disabled=busy;});
+  const busy=webCapturing.has(box)||webRemoving.has(id)||webAnnotating.has(id)||state.noteSending.has(id);
+  box.querySelectorAll<HTMLButtonElement>('[data-save-note],[data-web-remove],[data-web-annotate],.ask').forEach(button=>{button.disabled=busy;});
   let error=box.querySelector<HTMLElement>('[data-web-error]');
   const message=webRemovalErrors.get(id);
   if(message&&!error){
@@ -308,15 +312,54 @@ export function updateWebNoteEvidence(host: ParentNode,id: string,web: WebReview
     refreshWebControls(box);
   });
 }
+/** Edit evidence without replacing the note's textarea, thread, or original screenshot. */
+async function annotateWebCapture(box: HTMLElement,button: HTMLButtonElement){
+  const id=rowOf(box)?.dataset.nid;
+  if(!id||button.disabled||webCapturing.has(box)||webRemoving.has(id)||webAnnotating.has(id)||state.noteSending.has(id))return;
+  const ctx=noteContexts.get(box),web=webReview(ctx?.web??state.notes.get(id)?.web);
+  if(!web)return;
+  const index=Number(button.dataset.webAnnotate),kind=button.dataset.webKind;
+  if(!Number.isInteger(index)||index<0||(kind!=='selection'&&kind!=='after'))return;
+  const capture=kind==='after'?web.after[index]:index===0?web.before:web.additional?.[index-1];
+  if(!capture||button.dataset.webKey!==webSelectionKey(capture))return;
+  const target: WebAnnotationTarget={kind,index,key:webSelectionKey(capture),expected:capture.annotation?.image||''};
+  const ta=box.querySelector<HTMLTextAreaElement>('textarea');
+  const selection=ta?{start:ta.selectionStart,end:ta.selectionEnd,direction:ta.selectionDirection}:null;
+  webAnnotating.add(id);webRemovalErrors.delete(id);
+  document.querySelectorAll<HTMLElement>('.nbox').forEach(refreshWebControls);
+  try{
+    await openAnnotation(capture,async annotation=>{
+      const draftId=state.uiEmbed?new URLSearchParams(location.search).get('ui-draft'):null;
+      const response=await fetch('/api/web/annotation',{method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({...(draftId?{draftId}:{id}),target,annotation})});
+      const result=await response.json();
+      if(!response.ok)throw new Error(result.error||'Could not save this drawing.');
+      const next=webReview(result.web);
+      if(!next)throw new Error('The server returned invalid drawing evidence.');
+      updateWebNoteEvidence(document,id,next);
+      save();
+    });
+  }catch(error){
+    webRemovalErrors.set(id,error instanceof Error?error.message:String(error));
+  }finally{
+    webAnnotating.delete(id);
+    document.querySelectorAll<HTMLElement>('.nbox').forEach(refreshWebControls);
+    if(ta?.isConnected&&selection){
+      ta.focus({preventScroll:true});ta.setSelectionRange(selection.start,selection.end,selection.direction);
+    }
+  }
+}
 function wireWebRemoval(box: HTMLElement){
   refreshWebControls(box);
   if(webRemovalWired.has(box))return;
   webRemovalWired.add(box);
   box.addEventListener('click',async event=>{
+    const annotate=event.target instanceof Element?event.target.closest<HTMLButtonElement>('[data-web-annotate]'):null;
+    if(annotate&&box.contains(annotate)){void annotateWebCapture(box,annotate);return;}
     const button=event.target instanceof Element?event.target.closest<HTMLButtonElement>('[data-web-remove]'):null;
     if(!button||!box.contains(button))return;
     const id=rowOf(box)?.dataset.nid;
-    if(!id||button.disabled||webCapturing.has(box)||webRemoving.has(id)||state.noteSending.has(id))return;
+    if(!id||button.disabled||webCapturing.has(box)||webRemoving.has(id)||webAnnotating.has(id)||state.noteSending.has(id))return;
     const index=Number(button.dataset.webRemove),key=button.dataset.webKey;
     if(key===undefined)return;
     webRemovalErrors.delete(id);
@@ -425,7 +468,7 @@ function editUI(box,ctx){
     ta.focus(); ta.setSelectionRange(to,to);
   };
   const commit=()=>{
-    if(webCapturing.has(box)||webRemoving.has(id)||state.noteSending.has(id)) return;
+    if(webCapturing.has(box)||webRemoving.has(id)||webAnnotating.has(id)||state.noteSending.has(id)) return;
     const body=ta.value.trim();
     if(ctx.image&&!imageRegion(ctx.image)) return;
     if(!body){ drop(); return; }

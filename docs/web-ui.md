@@ -114,6 +114,45 @@ can reference each other with the same short `#ref` tokens and shared picker; pr
 captured code or page evidence. The main review keeps its normal file tree, diff, settings and controls;
 its header's **Open page** control opens or focuses the application.
 
+## Draw on a capture
+
+Use a capture's pencil action, **Annotate screenshot**, to open its original selected-area image
+in a drawing editor. It works for the first selection, additional selections, and comparison captures,
+from either the live page or the full review. On the live page the note window temporarily expands
+to give drawing room, then returns to its chosen size and position. The note's text and caret stay put.
+
+The editor adds white, drawable padding around the screenshot: 64 CSS pixels per side at the
+capture's image scale. This is blank space for arrows and labels, not extra page context. The
+original screenshot stays unpadded and unchanged. A dashed outline identifies its bounds only in
+the editor; it is not exported.
+
+- **Pen** draws freehand strokes, including into the padding.
+- **Arrow** draws from the press to the release.
+- **Rectangle** draws a border with an adjustable corner radius.
+- **Text** places a label where clicked; type before placing it, or click first and then type.
+- Palette colors and **Custom color** set a drawing's color. Stroke width, radius, and text size use
+  screenshot image pixels, not CSS viewport coordinates.
+- **Select / move**, or the **Drawing** selector, picks an existing drawing to move, recolor,
+  reword, resize its stroke/text, or delete. **Clear drawings** removes marks, not the screenshot.
+- Undo/redo work across new changes and reopened drawings. Zoom and **Fit** change only the view.
+
+**Apply drawing** uploads a separate PNG containing the original pixels, padding, and marks.
+It also keeps the editable marks, so reopening never requires drawing over a flattened proposal.
+An applied drawing on a draft stays with that draft until the note is saved; on a saved note it is
+persisted immediately, without changing the wording, agent thread, or verdict. Applying with no
+marks removes that capture's annotation. Existing image assets are never deleted.
+
+**Cancel**, the close icon, and Escape discard unapplied changes after confirmation when needed.
+Image or save failures leave the editor available for correction or retry. A stale edit from
+another tab is rejected rather than overwriting a newer proposal or attaching it to another capture.
+
+The page shows the annotated proposal with the original crop expandable below it. The Markdown
+links the untouched original and the annotated PNG separately and labels the proposal as requested
+changes rather than observed UI. Both are ordinary relative image links usable by image-capable
+agents; no SVG support is required. Full editable vectors live in the sealed metadata, while the
+readable metadata summarizes tools and text instead of repeating every pen point. Reference
+previews and history show the same evidence without annotation controls.
+
 ## Evidence and comparison
 
 Each note records:

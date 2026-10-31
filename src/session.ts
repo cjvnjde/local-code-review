@@ -5,7 +5,9 @@ import { renderMarkdown } from "./review.ts";
 import { applyComment, noteFromComment, parseReview } from "./thread.ts";
 import type { ReviewDoc, ReviewMessage, ReviewNote } from "./thread.ts";
 import type { NoteStatusKind, ReviewComment, ReviewSubmission } from "./types.ts";
-import { dropWebSelection, webCapture, type WebCapture } from './web-review-model.ts';
+import { dropWebSelection, setWebAnnotation, webAnnotationTarget, WebAnnotationInvalid, webCapture, type WebAnnotationTarget, type WebCapture } from './web-review-model.ts';
+import { webAnnotation, webAnnotationImagesMatch, type WebAnnotation } from './web-annotation.ts';
+import { readAttachment } from './attach.ts';
 
 export interface SaveResult {
   /** Path of the session file, relative to the repository unless the output directory is absolute. */
@@ -337,6 +339,26 @@ export function createSession(repoRoot: string, outDir: string, range: string, c
           if ((note.web.additional?.length ?? 0) >= 100) throw new Error('This note already has 100 additional selections.');
           (note.web.additional ??= []).push(clean);
         }
+        await write(doc);
+        return note;
+      });
+    },
+
+    /** Update only one capture's proposal against a fresh file and the editor's expected image. */
+    annotateWebCapture(id: string,target: WebAnnotationTarget,annotation: WebAnnotation|null): Promise<ReviewNote|null> {
+      const clean=annotation===null?null:webAnnotation(annotation),where=webAnnotationTarget(target);
+      return serialise(async () => {
+        if(!where||annotation!==null&&!clean)throw new WebAnnotationInvalid('Invalid screenshot annotation.');
+        const doc=await read(),note=doc.notes.find(entry=>entry.id===id);
+        if(!note?.web||note.scope!=='global')return null;
+        const web=setWebAnnotation(note.web,where,clean);
+        if(clean){
+          const capture=where.kind==='after'?web.after[where.index]!:
+            where.index===0?web.before:web.additional![where.index-1]!;
+          if(!await webAnnotationImagesMatch(clean,capture.area,name=>readAttachment(repoRoot,outDir,name)))
+            throw new WebAnnotationInvalid('The PNG attachments are missing, invalid, or their dimensions do not match the annotation. Upload the drawing again.');
+        }
+        note.web=web;
         await write(doc);
         return note;
       });

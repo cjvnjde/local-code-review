@@ -11,7 +11,8 @@ import type { ReviewNote } from "./thread.ts";
 import type { DiffFile, DiffRow, NoteStatus, ReviewComment, ReviewSubmission } from "./types.ts";
 import { VERSION } from "./version.ts";
 import type { AgentChannel } from "./agent-channel.ts";
-import { WebSelectionConflict } from "./web-review-model.ts";
+import { webAnnotationTarget, WebAnnotationInvalid, WebSelectionConflict } from "./web-review-model.ts";
+import { webAnnotation } from "./web-annotation.ts";
 
 export interface ServerOptions {
   web?: import("./web-review.ts").WebReviewController;
@@ -175,6 +176,30 @@ function serve(options: ServerOptions, port: number) {
             statuses,
             ...channelState(options),
           });
+        }
+        if (url.pathname === '/api/web/annotation') {
+          if (request.method !== 'POST') return new Response('method not allowed', { status: 405 });
+          if (!isJsonRequest(request)) return Response.json({ error: 'JSON body required.' }, { status: 415 });
+          const origin = request.headers.get('origin');
+          if (origin && ![`http://localhost:${server.port}`, `http://127.0.0.1:${server.port}`].includes(origin))
+            return Response.json({ error: 'Open this action from the review page.' }, { status: 403 });
+          const payload = await readJson(request) as { id?: unknown; draftId?: unknown; target?: unknown; annotation?: unknown } | null;
+          const target = webAnnotationTarget(payload?.target);
+          const annotation = payload?.annotation === null ? null : webAnnotation(payload?.annotation);
+          const hasNote = payload?.id !== undefined, hasDraft = payload?.draftId !== undefined;
+          if (!payload || hasNote === hasDraft || !target || payload.annotation !== null && !annotation ||
+              hasNote && (typeof payload.id !== 'string' || !payload.id) ||
+              hasDraft && (typeof payload.draftId !== 'string' || !payload.draftId))
+            return Response.json({ error: 'A draft or note id, expected capture target and valid annotation are required.' }, { status: 400 });
+          if (hasDraft) {
+            if (!options.web || options.web.draft(payload.draftId as string) === undefined)
+              return Response.json({ error: 'That captured selection no longer exists.' }, { status: 404 });
+            return Response.json(await options.web.annotate({ draftId: payload.draftId as string, target, annotation }));
+          }
+          const note = await options.session.annotateWebCapture(payload.id as string, target, annotation);
+          if (!note?.web) return Response.json({ error: 'That UI capture no longer exists.' }, { status: 404 });
+          options.hub.emit({ type: 'review', file: options.session.file });
+          return Response.json({ web: note.web });
         }
         if (url.pathname === '/api/web/selection') {
           if (request.method !== 'POST') return new Response('method not allowed', { status: 405 });
@@ -419,7 +444,7 @@ function serve(options: ServerOptions, port: number) {
       } catch (error) {
         console.error(error);
         const message = error instanceof Error ? error.message : String(error);
-        return Response.json({ error: message }, { status: error instanceof WebSelectionConflict ? 409 : 500 });
+        return Response.json({ error: message }, { status: error instanceof WebSelectionConflict ? 409 : error instanceof WebAnnotationInvalid ? 400 : 500 });
       }
     },
   });

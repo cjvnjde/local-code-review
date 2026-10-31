@@ -2,7 +2,9 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { dropWebSelection, localWebUrl, webCapture, webReview, webReviewLines, webSelectionKey, type WebCapture, type WebReview } from './web-review-model.ts';
+import { dropWebSelection, localWebUrl, setWebAnnotation, webCapture, webReview, webReviewLines, webSelectionKey, type WebAnnotationTarget, type WebCapture, type WebReview } from './web-review-model.ts';
+import { ANNOTATION_LIMITS, webAnnotation, webAnnotationImagesMatch, type WebAnnotation } from './web-annotation.ts';
+import { saveAttachment } from './attach.ts';
 import { noteFromComment, parseReview, renderNote, applyComment } from './thread.ts';
 import { renderMarkdown } from './review.ts';
 import { createSession } from './session.ts';
@@ -24,6 +26,116 @@ const multiCapture=(): WebCapture=>{
 };
 const dirs:string[]=[];
 afterEach(async()=>{await Promise.all(dirs.splice(0).map(dir=>rm(dir,{recursive:true,force:true})));});
+const annotation=():WebAnnotation=>({image:'images/proposal.png',width:360,height:96,padding:128,marks:[
+  {tool:'pen',color:'#ff0000',width:3,points:[{x:0,y:0},{x:200,y:100}]},
+  {tool:'arrow',color:'#00ff00',width:2,from:{x:10,y:20},to:{x:100,y:100}},
+  {tool:'rectangle',color:'#0000ff',width:4,from:{x:20,y:20},to:{x:120,y:100},radius:10},
+  {tool:'text',color:'#123abc',at:{x:30,y:20},text:'Proposed <button>\n### note',size:24},
+]});
+const annotationTarget=(capture:WebCapture,kind:WebAnnotationTarget['kind']='selection',index=0):WebAnnotationTarget=>
+  ({kind,index,key:webSelectionKey(capture),expected:capture.annotation?.image??''});
+describe('editable screenshot annotations',()=>{
+  test('whitelists and detaches all tools, including drawable blank padding',()=>{
+    const input=annotation(),clean=webAnnotation({...input,unknown:'discard',marks:input.marks.map(mark=>({...mark,unknown:'discard'}))})!;
+    expect(clean).toEqual(input);expect(JSON.stringify(clean)).not.toContain('discard');
+    if(clean.marks[0]!.tool==='pen')clean.marks[0].points[0]!.x=10;
+    if(input.marks[0]!.tool==='pen')expect(input.marks[0].points[0]!.x).toBe(0);
+    expect(webCapture({...capture,annotation:input})!.annotation).toEqual(input);
+  });
+  test('rejects unsafe image paths and bounded canvas, geometry, colors, arrays and text',()=>{
+    const valid=annotation(),pen=valid.marks[0]!;
+    for(const patch of [{image:'../secret.png'},{image:'images/a.svg'},{image:'https://example.com/a.png'},
+      {width:0},{width:1.5},{height:Infinity},{padding:-1},{padding:0.5},
+      {width:ANNOTATION_LIMITS.maxDimension,height:ANNOTATION_LIMITS.maxDimension},
+      {marks:[]},{marks:new Array(1)},{marks:Array.from({length:ANNOTATION_LIMITS.maxMarks+1},()=>pen)},
+      {marks:[{...pen,color:'red'}]},{marks:[{...pen,width:Infinity}]},{marks:[{...pen,width:0}]},
+      {marks:[{...pen,points:[]}]},{marks:[{...pen,points:[{x:-1,y:0}]}]},
+      {marks:[{...pen,points:[{x:617,y:0}]}]},{marks:[{...pen,points:[{x:NaN,y:0}]}]},
+      {marks:[{...pen,points:Array.from({length:ANNOTATION_LIMITS.maxPoints+1},()=>({x:0,y:0}))}]},
+      {marks:[{tool:'text',color:'#123456',at:{x:0,y:0},size:12,text:'x'.repeat(ANNOTATION_LIMITS.maxText+1)}]},
+      {marks:[{tool:'rectangle',color:'#123456',width:1,from:{x:0,y:0},to:{x:10,y:10},radius:6}]}]){
+      expect(webAnnotation({...valid,...patch})).toBeNull();
+      expect(webCapture({...capture,annotation:{...valid,...patch}})).toBeNull();
+    }
+    expect(webAnnotation({...valid,marks:[{...pen,points:new Array(1)}]})).toBeNull();
+  });
+  test('compares capture identity and previous image while isolating original and other captures',()=>{
+    const second={...structuredClone(capture),area:'images/second.png'},after={...structuredClone(capture),area:'images/after.png'};
+    const web:WebReview={before:structuredClone(capture),after:[after],additional:[second]},original=structuredClone(web);
+    for(const [kind,index,c] of [['selection',0,web.before],['selection',1,second],['after',0,after]] as const){
+      const target=annotationTarget(c,kind,index),next=setWebAnnotation(web,target,annotation());
+      const changed=kind==='after'?next.after[0]!:index===0?next.before:next.additional![0]!;
+      expect(changed.annotation).toEqual(annotation());expect({...changed,annotation:undefined}).toEqual({...c,annotation:undefined});
+      expect(web).toEqual(original);expect(webSelectionKey(changed)).toBe(target.key);
+      expect(()=>setWebAnnotation(next,target,null)).toThrow('changed');
+      expect(setWebAnnotation(next,{...target,expected:annotation().image},null)).toEqual(web);
+    }
+    for(const target of [{...annotationTarget(capture),key:'stale'},annotationTarget(capture,'selection',2),annotationTarget(capture,'after',1)])
+      expect(()=>setWebAnnotation(web,target,annotation())).toThrow();
+  });
+  test('round trips annotated proposals with clear original labels and preserves old sealed captures',()=>{
+    const c=comment();c.web.before.annotation=annotation();c.web.after=[{...structuredClone(capture),annotation:annotation()}];
+    const markdown=renderMarkdown({range:'web',notes:[noteFromComment(c)]}),parsed=parseReview(markdown);
+    expect(parsed.notes[0]!.web).toEqual(c.web);expect(parsed.notes[0]!.body).toBe(c.body);
+    expect(markdown).toContain('original selected area is the unmodified screenshot');
+    expect(markdown).toContain('![Before — annotated proposal](images/proposal.png)');
+    expect(markdown).toContain('128 px of blank white padding');
+    expect(markdown.split('\n').filter(line=>!line.startsWith('<!-- lcr:web ')).join('\n')).not.toContain('"points"');
+    expect(renderMarkdown(parsed)).toBe(markdown);
+    const web=webReview({before:{...structuredClone(capture),title:'Legacy'},after:[]})!,old=web.before;
+    const block=['<!-- lcr:web '+JSON.stringify(web)+' -->','','UI capture: element selection. Metadata and screenshots record the page at capture time.','',
+      'Before capture:','','```json',JSON.stringify({...old,page:undefined,area:undefined},null,2),'```','',
+      '![Before — page](images/page.png)','','![Before — selected area](images/area.png)',''].join('\n');
+    const legacy=renderMarkdown({range:'web',notes:[noteFromComment({...comment(),web:undefined,body:'LEGACY_EVIDENCE'})]}).replace('LEGACY_EVIDENCE',block+'\nOriginal question.');
+    expect(parseReview(legacy).notes[0]!.web).toEqual(web);
+    expect(parseReview(legacy).notes[0]!.body).toBe('Original question.');
+  });
+  test('serializes fresh annotation writes and preserves proposals across restart, stale text and removal',async()=>{
+    const dir=await mkdtemp(path.join(os.tmpdir(),'lcr-annotations-'));dirs.push(dir);
+    const session=createSession(dir,'.review','web'),c=comment(),second={...structuredClone(capture),area:'images/second.png'};
+    c.web.additional=[second];c.web.after=[{...structuredClone(capture),area:'images/after.png'}];
+    await session.save({comments:[c,{...comment(),id:'|@|@|#other'}]});
+    const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=','base64');
+    const image=await saveAttachment(dir,'.review',png,'image/png');
+    for(const name of ['area.png','second.png','after.png'])await writeFile(path.join(dir,'.review','images',name),png);
+    const proposal:WebAnnotation={image:'images/'+image,width:1,height:1,padding:0,
+      marks:[{tool:'pen',color:'#ff0000',width:1,points:[{x:0,y:0},{x:1,y:1}]}]};
+    await session.answer(session.file,c.id,'Keep this conversation.','applied');
+    const target=annotationTarget(second,'selection',1);
+    const writes=await Promise.allSettled([session.annotateWebCapture(c.id,target,proposal),session.annotateWebCapture(c.id,target,proposal)]);
+    expect(writes.map(result=>result.status)).toEqual(['fulfilled','rejected']);
+    await session.annotateWebCapture(c.id,annotationTarget(c.web.after[0]!,'after',0),proposal);
+    await session.save({comments:[{...c,body:'New wording from stale text editor.'}]});
+    const restart=createSession(dir,'.review','web');await restart.adoptMatching();
+    const doc=await restart.read(),note=doc.notes.find(note=>note.id===c.id)!;
+    expect(note.web!.before).toEqual(c.web.before);expect(note.web!.additional![0]!.annotation).toEqual(proposal);
+    expect(note.web!.after[0]!.annotation).toEqual(proposal);expect(note.body).toBe('New wording from stale text editor.');
+    expect(note.status).toBe('applied');expect(note.messages[0]!.body).toBe('Keep this conversation.');
+    expect(doc.notes.find(note=>note.id==='|@|@|#other')!.web).toEqual(comment().web);
+    await expect(restart.annotateWebCapture(c.id,annotationTarget(c.web.before),annotation())).rejects.toThrow('PNG attachments');
+    await restart.annotateWebCapture(c.id,{...target,expected:proposal.image},null);
+    await restart.save({comments:[{...c,web:note.web}]});
+    expect((await restart.read()).notes.find(note=>note.id===c.id)!.web!.additional![0]!.annotation).toBeUndefined();
+    await restart.removeWebSelection(c.id,1,webSelectionKey(second));
+    await expect(restart.annotateWebCapture(c.id,target,proposal)).rejects.toThrow('no longer exists');
+    expect(await readFile(path.join(dir,'.review','images',image))).toBeDefined();
+  });
+  test('checks PNG signatures and exact original and padded dimensions before storage',async()=>{
+    const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=','base64');
+    const proposal:WebAnnotation={image:'images/proposal.png',width:1,height:1,padding:0,
+      marks:[{tool:'pen',color:'#ff0000',width:1,points:[{x:0,y:0}]}]};
+    const read=async()=>({bytes:png,type:'image/png'});
+    expect(await webAnnotationImagesMatch(proposal,'images/source.png',read)).toBe(true);
+    expect(await webAnnotationImagesMatch({...proposal,padding:1},'images/source.png',read)).toBe(false);
+    expect(await webAnnotationImagesMatch({...proposal,width:2},'images/source.png',read)).toBe(false);
+    expect(await webAnnotationImagesMatch(proposal,'images/source.png',async()=>null)).toBe(false);
+    expect(await webAnnotationImagesMatch(proposal,'images/source.png',async()=>({bytes:png,type:'image/svg+xml'}))).toBe(false);
+    const invalid=Buffer.from(png);invalid[0]=0;
+    expect(await webAnnotationImagesMatch(proposal,'images/source.png',async()=>({bytes:invalid,type:'image/png'}))).toBe(false);
+    const invalidChunk=Buffer.from(png);invalidChunk[12]=0;
+    expect(await webAnnotationImagesMatch(proposal,'images/source.png',async()=>({bytes:invalidChunk,type:'image/png'}))).toBe(false);
+  });
+});
 describe('UI review evidence',()=>{
   test('local URLs add live-page evidence alongside Git arguments',()=>{
     expect(parseArgs(['--web','http://localhost:3000','--id','checkout']).web).toBe('http://localhost:3000/');

@@ -1,3 +1,5 @@
+import { webAnnotation, type WebAnnotation } from './web-annotation.ts';
+
 /** Evidence is immutable; another capture adds an observation rather than replacing the before. */
 export interface WebCapture {
   url: string; title: string; at: string;
@@ -6,6 +8,7 @@ export interface WebCapture {
   viewport: {width: number; height: number; dpr: number};
   scroll: {x: number; y: number};
   page: string; area: string;
+  annotation?: WebAnnotation;
   selector?: string;
   element?: {tag: string; text: string; attributes: Record<string,string>; styles: Record<string,string>};
   components: {framework: 'React'|'Vue'; name: string; file?: string; line?: number}[];
@@ -50,6 +53,8 @@ export function webCapture(value: unknown): WebCapture|null {
       (c.file==null||typeof c.file==='string')&&(c.line==null||(typeof c.line==='number'&&Number.isSafeInteger(c.line)&&c.line>=0)));
   };
   if(!rect(r)||!metadata(value))return null;
+  const annotation=value.annotation===undefined?undefined:webAnnotation(value.annotation);
+  if(annotation===null)return null;
   const cleanMetadata=(target: Pick<WebCapture,'selector'|'element'|'components'>)=>({
     ...(target.selector?{selector:target.selector}:{}),
     ...(target.element?{element:{tag:target.element.tag,text:target.element.text,attributes:target.element.attributes,styles:target.element.styles}}:{}),
@@ -69,6 +74,7 @@ export function webCapture(value: unknown): WebCapture|null {
     rect:{x:r.x,y:r.y,width:r.width,height:r.height},viewport:{width:v.width,height:v.height,dpr:v.dpr},
     scroll:{x:s.x,y:s.y},page:value.page,area:value.area,...cleanMetadata(value),
     ...(value.selections!==undefined?{selections}:{}),
+    ...(annotation?{annotation}:{}),
   }));
 }
 export function webReview(value: unknown): WebReview|null {
@@ -87,6 +93,29 @@ export function webSelectionKey(capture: WebCapture): string {
   return JSON.stringify([capture.url,capture.at,capture.page,capture.area]);
 }
 export class WebSelectionConflict extends Error {}
+export interface WebAnnotationTarget { kind: 'selection'|'after'; index: number; key: string; expected: string }
+export class WebAnnotationInvalid extends Error {}
+export function webAnnotationTarget(value: unknown): WebAnnotationTarget|null {
+  if(!record(value)||(value.kind!=='selection'&&value.kind!=='after')||typeof value.index!=='number'||
+    !Number.isInteger(value.index)||value.index<0||value.index>100||typeof value.key!=='string'||value.key.length>32768||
+    typeof value.expected!=='string'||(value.expected!==''&&(!ref(value.expected)||value.expected.length>255)))return null;
+  return {kind:value.kind,index:value.index,key:value.key,expected:value.expected};
+}
+/** Compare identity and previous annotation atomically; never replace original capture evidence. */
+export function setWebAnnotation(web: WebReview,target: WebAnnotationTarget,annotation: WebAnnotation|null): WebReview {
+  const cleanTarget=webAnnotationTarget(target),clean=annotation===null?null:webAnnotation(annotation);
+  if(!cleanTarget||annotation!==null&&!clean)throw new WebAnnotationInvalid('Invalid screenshot annotation.');
+  const next=webReview(web);
+  if(!next)throw new WebAnnotationInvalid('Invalid UI evidence.');
+  const capture=cleanTarget.kind==='after'?next.after[cleanTarget.index]:
+    cleanTarget.index===0?next.before:next.additional?.[cleanTarget.index-1];
+  if(!capture)throw new WebSelectionConflict('That capture no longer exists. Reload the note and try again.');
+  if(webSelectionKey(capture)!==cleanTarget.key||(capture.annotation?.image??'')!==cleanTarget.expected)
+    throw new WebSelectionConflict('That capture or annotation changed. Reload the note and try again.');
+  if(clean)capture.annotation=clean;
+  else delete capture.annotation;
+  return next;
+}
 /** Remove only the selection the editor saw; comparisons belong to the original first capture. */
 export function dropWebSelection(web: WebReview,index: number,key: string): WebReview|null {
   const additional=web.additional??[];
@@ -112,12 +141,20 @@ export function webReviewLines(web: WebReview): string[] {
     ...(web.additional??[]).map((capture,i)=>({capture,label:'Selection '+(i+2)})),
     ...web.after.map((capture,i)=>({capture,label:'After '+(i+1)}))];
   captures.forEach(({capture:c,label})=>{
-    const data=JSON.stringify({...c,page:undefined,area:undefined},null,2);
+    const annotation=c.annotation;
+    const summary=annotation?{image:annotation.image,width:annotation.width,height:annotation.height,padding:annotation.padding,
+      toolCounts:Object.fromEntries(['pen','arrow','rectangle','text'].map(tool=>[tool,annotation.marks.filter(mark=>mark.tool===tool).length])),
+      textPreviews:annotation.marks.flatMap(mark=>mark.tool==='text'?[mark.text.length>200?mark.text.slice(0,200)+'…':mark.text]:[])}:undefined;
+    const data=JSON.stringify({...c,page:undefined,area:undefined,...(annotation?{annotation:summary}:{})},null,2);
     const fence='`'.repeat(Math.max(3,...(data.match(/`+/g)||[]).map(s=>s.length+1)));
     const imageLabel=label.startsWith('After ')?'After':label;
     lines.push(label==='Before'?'Before capture:':label.startsWith('After ')?'After capture '+label.slice(6)+':':label+':', '',fence+'json',data,fence,'',
       '!['+imageLabel+' — page]('+c.page+')','',
       '!['+imageLabel+' — selected area]('+c.area+')','');
+    if(c.annotation)lines.push(
+      label+' original selected area is the unmodified screenshot above. Annotated proposal below adds reviewer drawings, not captured page content.',
+      'The proposal has '+c.annotation.padding+' px of blank white padding on each side; padding is not page context.','',
+      '!['+imageLabel+' — annotated proposal]('+c.annotation.image+')','');
   });
   return lines.join("\n").split("\n");
 }

@@ -87,7 +87,9 @@ const FOOTER = [
   "",
   "A UI note carries a `lcr:web` metadata block, its page URL, viewport, element or area details, " +
     "and immutable before/after screenshots linked relative to this file. Inspect both the page and " +
-    "selected-area images. Component names and source locations are best-effort runtime hints; verify " +
+    "selected-area images, plus any separately linked annotated proposal. A proposal shows requested " +
+    "changes, not the current UI; its blank margin is drawing space, not captured page content. " +
+    "Compare it with the untouched original. Component names and source locations are best-effort runtime hints; verify " +
     "them in the project. Preserve this evidence when answering. The reviewer can capture the result " +
     "with Capture after once the original route and relevant page state are restored.",
   "",

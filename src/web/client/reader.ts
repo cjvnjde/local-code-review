@@ -110,6 +110,7 @@ function repaintEntry(wrap: any){
  */
 export function syncReader(){
   if(!state.reader) return;
+  if(document.querySelector('[data-annotation-editor]')){state.rdrStale=true;return;}
   const entries=visible();
   const ids=idsOf(entries), sig=sigOf(entries);
   if(ids===shownIds){

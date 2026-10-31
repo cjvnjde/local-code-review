@@ -886,3 +886,70 @@
   .web-observation>a{display:block;overflow:auto;max-height:360px}
   .web-observation summary{cursor:pointer;color:var(--ink-dim);min-height:var(--tap);padding-top:5px}
   .web-observation pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:var(--fs-xs);max-height:300px;overflow:auto}
+
+  /* Screenshot proposals are separate canvases; the captured evidence stays immutable. */
+  .web-image-label{margin-bottom:calc(var(--tap) / 4);color:var(--ink-dim);font:var(--fs-xs)/1.5 var(--sans)}
+  [data-annotation-editor]{width:calc(100vw - var(--tap));max-width:1440px;height:calc(100dvh - var(--tap));
+    max-height:calc(100dvh - var(--tap));margin:auto;padding:0;border:1px solid var(--edge-hi);border-radius:8px;
+    background:var(--panel);color:var(--ink);font:var(--fs-ui)/1.5 var(--sans);box-shadow:0 12px 60px #0008;overflow:hidden}
+  [data-annotation-editor][open]{display:flex;flex-direction:column}
+  [data-annotation-editor]::backdrop{background:#0009}
+  [data-annotation-editor] button{position:relative;display:inline-flex;align-items:center;justify-content:center;
+    gap:calc(var(--tap) / 5);min-width:var(--tap);min-height:var(--tap);padding:calc(var(--tap) / 6) calc(var(--tap) / 3);
+    font:var(--fs-sm)/1.3 var(--sans);white-space:nowrap;flex:none}
+  [data-annotation-editor] :is(button,input,select,textarea):focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  [data-annotation-editor] button[aria-pressed="true"]{border-color:var(--accent);background:var(--sel);color:var(--accent)}
+  [data-annotation-editor] [hidden]{display:none}
+  [data-annotation-editor] button:disabled{opacity:.45;cursor:default}
+  .annotation-head{display:flex;align-items:center;gap:calc(var(--tap) / 3);padding:calc(var(--tap) / 3) calc(var(--tap) / 2);
+    background:var(--panel2);border-bottom:1px solid var(--edge);flex:none}
+  .annotation-head strong{font-size:var(--fs-ui)}
+  .annotation-head button{margin-left:auto}
+  .annotation-dirty{font-size:var(--fs-xs);color:var(--mark)}
+  .annotation-tools,.annotation-properties{display:flex;align-items:center;flex-wrap:wrap;gap:calc(var(--tap) / 3);
+    padding:calc(var(--tap) / 3) calc(var(--tap) / 2);border-bottom:1px solid var(--edge);flex:none}
+  .annotation-tools{background:var(--panel2)}
+  .annotation-group{display:flex;align-items:center;gap:calc(var(--tap) / 6);flex-wrap:wrap}
+  .annotation-group+.annotation-group{padding-left:calc(var(--tap) / 3);border-left:1px solid var(--edge-hi)}
+  .annotation-zoom{min-width:calc(var(--tap) * 1.6);text-align:center;font-size:var(--fs-xs);font-variant-numeric:tabular-nums}
+  .annotation-properties label{display:flex;align-items:center;gap:calc(var(--tap) / 5);font-size:var(--fs-xs);color:var(--ink-dim)}
+  .annotation-properties :is(input,select,textarea){min-height:var(--tap);min-width:0;background:var(--crust);color:var(--ink);
+    border:1px solid var(--edge-hi);border-radius:4px;padding:calc(var(--tap) / 7);font:var(--fs-sm)/1.4 var(--sans)}
+  .annotation-properties input[type="number"]{width:calc(var(--tap) * 2.5)}
+  .annotation-properties input[type="color"]{width:var(--tap-lg);height:var(--tap-lg);padding:2px;cursor:pointer}
+  .annotation-properties select{max-width:calc(var(--tap) * 8)}
+  .annotation-palette{display:flex;gap:calc(var(--tap) / 8);align-items:center}
+  [data-annotation-editor] .annotation-palette button{width:var(--tap);height:var(--tap);padding:3px;border:1px solid var(--edge-hi)}
+  .annotation-palette button::before{content:"";display:block;width:100%;height:100%;min-height:calc(var(--tap) - 10px);
+    border-radius:2px;background:var(--annotation-color);box-shadow:inset 0 0 0 1px #0003}
+  [data-annotation-editor] .annotation-palette button[aria-pressed="true"]{outline:2px solid var(--accent);outline-offset:1px}
+  .annotation-text-label{flex:1 1 calc(var(--tap) * 14)}
+  .annotation-text-label textarea{width:100%;resize:none}
+  .annotation-help{margin:0;padding:calc(var(--tap) / 5) calc(var(--tap) / 2);font-size:var(--fs-xs);color:var(--ink-dim);flex:none}
+  .annotation-viewport{min-height:calc(var(--tap) * 4);min-width:0;flex:1;overflow:auto;background:var(--crust);
+    padding:calc(var(--tap) / 2);overscroll-behavior:contain;isolation:isolate}
+  .annotation-surface{position:relative;flex:none;margin:auto;line-height:0;background:#fff;box-shadow:0 0 0 1px var(--edge-hi),0 2px 12px #0005}
+  .annotation-surface canvas{display:block;max-width:none;touch-action:none;user-select:none}
+  .annotation-source-outline{position:absolute;border:1px dashed #64748b;pointer-events:none}
+  .annotation-message,.annotation-error{padding:calc(var(--tap) / 5) calc(var(--tap) / 2);flex:none;font-size:var(--fs-xs)}
+  .annotation-message{color:var(--ink-dim)}
+  .annotation-error{color:var(--del);background:var(--del-bg);overflow-wrap:anywhere}
+  .annotation-error[hidden]{display:none}
+  .annotation-footer{display:flex;align-items:center;gap:calc(var(--tap) / 3);padding:calc(var(--tap) / 3) calc(var(--tap) / 2);
+    border-top:1px solid var(--edge);background:var(--panel2);flex:none}
+  .annotation-footer>span{margin-right:auto;font-size:var(--fs-xs);color:var(--ink-faint)}
+  [data-annotation-editor] .annotation-apply{border-color:var(--accent);color:var(--accent)}
+  /* Native dialogs live above body tooltips: these labels stay inside the modal's top layer. */
+  [data-annotation-editor] button[data-tooltip]:is(:hover,:focus-visible)::after{content:attr(data-tooltip);position:absolute;
+    z-index:4;top:calc(100% + var(--tap) / 6);left:0;pointer-events:none;padding:calc(var(--tap) / 4) calc(var(--tap) / 3);
+    border:1px solid var(--edge-hi);border-radius:4px;background:var(--crust);color:var(--ink);font:var(--fs-xs)/1.5 var(--sans);
+    white-space:nowrap;box-shadow:0 2px 8px #0005}
+  [data-annotation-editor] .annotation-head button[data-tooltip]::after{left:auto;right:0}
+  @media(max-width:650px),(max-height:650px){
+    [data-annotation-editor]{width:calc(100vw - var(--tap) / 2);height:calc(100dvh - var(--tap) / 2);max-height:calc(100dvh - var(--tap) / 2);overflow-y:auto}
+    .annotation-properties{max-height:30dvh;overflow-y:auto}
+    .annotation-tools{max-height:25dvh;overflow-y:auto}
+    .annotation-footer>span{display:none}
+    .annotation-footer{justify-content:flex-end;position:sticky;bottom:0;z-index:2}
+    .annotation-help{max-height:calc(var(--tap) * 2);overflow:auto}
+  }

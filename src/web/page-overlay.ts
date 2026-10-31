@@ -11,6 +11,7 @@ export function installPageReview(config: {key:string;binding:string;origin:stri
   let dockPosition={x:innerWidth-578,y:18},dockPress:{id:number;x:number;y:number;origin:{x:number;y:number}}|null=null;
   let dockSize:{width:number;height:number}|null=null;
   let resizePress:{id:number;x:number;y:number;width:number;height:number}|null=null;
+  let annotationOpen=false;
   let expanded=false,suppressLauncherClick=false;
   let selected:Element[]=[],selectionUrl=location.href,multiple=false;
   let launcherPress:{id:number;x:number;y:number;origin:{x:number;y:number};moved:boolean;held:boolean;timer:ReturnType<typeof setTimeout>}|null=null;
@@ -37,6 +38,7 @@ export function installPageReview(config: {key:string;binding:string;origin:stri
     .resize svg{width:var(--icon);height:var(--icon);pointer-events:none}.resize:focus-visible{outline:2px solid #c6b7ff;outline-offset:-3px}.dock.minimized .resize{display:none}
     .resize:is(:hover,:focus-visible)::before{content:attr(title);position:absolute;right:calc(var(--tap) / 4);bottom:100%;width:calc(var(--tap) * 9);padding:calc(var(--tap) / 4);border:1px solid #444858;border-radius:7px;background:#242733;font-size:var(--fs-small);pointer-events:none;cursor:default}
     .bar[hidden],.dock[hidden],.selection-tools[hidden]{display:none}.head{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid #363a47;cursor:move;touch-action:none;user-select:none}.head b{flex:1;min-width:0}.head button{flex:none}.content{display:flex;flex-direction:column;flex:1;min-height:0;overflow:auto}.content iframe{width:100%;flex:1;min-height:0;border:0;background:#191c26}.status,.error{padding:10px 14px;margin:0}
+    .dock.annotating .head,.dock.annotating .resize{display:none}
     .pin{pointer-events:auto;position:fixed;border-radius:16px;background:#7554df;border:2px solid #fff;box-shadow:0 2px 8px #0007;color:white;font-weight:700;padding:0 6px;min-width:28px;min-height:28px}
     .selected{position:fixed;pointer-events:none;border:2px solid #9f7cff;background:#9f7cff19;border-radius:3px}
     .selection-tools{pointer-events:auto;position:fixed;bottom:18px;left:50%;transform:translateX(-50%);display:flex;gap:5px;align-items:center;padding:8px;border:1px solid #444858;border-radius:13px;background:#191c26;max-width:calc(100vw - 24px)}
@@ -63,6 +65,10 @@ export function installPageReview(config: {key:string;binding:string;origin:stri
     bar.style.top=Math.max(12,Math.min(innerHeight-bar.offsetHeight-12,above>=12?above:launcherPosition.y+size+8))+'px';
   }
   function positionDock(){
+    if(annotationOpen){
+      dock.style.left='12px';dock.style.right='auto';dock.style.top='12px';
+      dock.style.width=Math.max(1,innerWidth-24)+'px';dock.style.height=Math.max(1,innerHeight-24)+'px';return;
+    }
     const width=Math.max(1,Math.min(dockSize?.width??560,innerWidth-24));
     const expandedHeight=Math.max(1,Math.min(dockSize?.height??innerHeight-96,innerHeight-24));
     const height=minimized?($('.head').offsetHeight||50):expandedHeight;
@@ -113,6 +119,7 @@ export function installPageReview(config: {key:string;binding:string;origin:stri
     if(!discard&&frameDirty&&!confirm('Discard the note changes you are writing?'))return false;
     if(frameKind==='draft'&&activeToken)void rpc('discard',{draftId:activeToken}).catch(()=>{});
     panelGeneration++;frame=null;activeToken='';frameKind='';pendingWeb=undefined;frameDirty=false;frameSaving=false;resizePress=null;
+    annotationOpen=false;dock.classList.remove('annotating');
     dock.hidden=true;content.textContent='';minimize(false);clearSelections();start=null;hovering=null;outline.style.display='none';return true;
   }
   function setMode(value:string){
@@ -300,6 +307,11 @@ export function installPageReview(config: {key:string;binding:string;origin:stri
     if(message.action==='dirty'){
       if(typeof message.dirty==='boolean')frameDirty=message.dirty;
       if(typeof message.saving==='boolean')frameSaving=message.saving;
+    }
+    else if(message.action==='annotation'&&typeof message.open==='boolean'){
+      annotationOpen=message.open;dock.classList.toggle('annotating',annotationOpen);
+      if(!annotationOpen)pendingWeb=undefined;
+      positionDock();
     }
     else if(message.action==='ready'){
       tellFrame('capturing',{busy});

@@ -108,6 +108,13 @@ Screenshots remain on disk, and a cleared note can receive new selections.
 Common note actions use familiar icons, with immediate hover/focus tooltips and accessible labels.
 Compound actions such as **Save & ask AI** keep their text.
 
+Use the pencil on a capture to draw on its screenshot in a large editor: pen, arrow, rounded
+rectangle, or text, with palette/custom colors, stroke width, corner radius, undo/redo, and zoom.
+Blank drawable margins let arrows and labels extend beyond the selected area. **Apply drawing**
+keeps an annotated PNG beside the untouched original; **Cancel** leaves the capture unchanged.
+Reopen the pencil to move or edit saved drawings. The review file links both images, clearly
+separating captured UI from the proposed change, and retains editable drawing data.
+
 Save a comment to keep an immutable viewport screenshot, a crop of the selection, the URL,
 viewport and scroll position, a selector, element text and attributes, selected CSS properties, and
 available React/Vue component names and source hints.

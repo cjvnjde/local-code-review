@@ -1,5 +1,5 @@
 import type { Server } from "bun";
-import { mkdtemp } from "node:fs/promises";
+import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
@@ -19,6 +19,8 @@ import { repoId, startServer } from "./server.ts";
 import type { ServerOptions } from "./server.ts";
 import { webSelectionKey, type WebCapture } from "./web-review-model.ts";
 import { createWebReview } from "./web-review.ts";
+import { saveAttachment } from "./attach.ts";
+import type { WebAnnotation } from "./web-annotation.ts";
 import type {
   DiffFile,
   NoteStatus,
@@ -82,6 +84,7 @@ function webController(overrides: Partial<NonNullable<ServerOptions["web"]>> = {
     review: async () => ({}),
     draft: () => undefined,
     removeSelection: async () => ({ web: null }),
+    annotate: async () => ({ web: { before: webCapture, after: [] } }),
     captureAfter: async () => ({ capture: webCapture, preview: "" }),
     focus: async () => ({}),
     close: async () => {},
@@ -345,6 +348,99 @@ describe("combined Git and live-page routes", () => {
     expect((await remove(0, webSelectionKey(third))).status).toBe(404);
     expect((await started.options.session.read()).notes.map(note => note.id)).toEqual([comment.id]);
     off();
+  });
+
+  test("annotations persist independently for subject and after captures without --web or stale text clobbering", async () => {
+    const started = await startTestServer();
+    const second = { ...webCapture, area: "images/second.png" }, after = { ...webCapture, area: "images/after.png" };
+    const visual: ReviewComment = { id: "|@|@|#drawn", file: "", scope: "global", start: 0, end: 0,
+      body: "Keep original evidence.", web: { before: webCapture, after: [after], additional: [second] } };
+    await started.options.session.save({ comments: [visual, comment] });
+    await started.options.session.answer(started.options.session.file, visual.id!, "Agent conversation.", "applied");
+    const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=", "base64");
+    const image = await saveAttachment(started.options.repoRoot, ".review", png, "image/png");
+    for(const name of ["area.png", "second.png", "after.png"])
+      await writeFile(path.join(started.options.repoRoot, ".review", "images", name), png);
+    const annotation: WebAnnotation = { image: "images/" + image, width: 1, height: 1, padding: 0,
+      marks: [{ tool: "arrow", color: "#ff0000", width: 3, from: { x: 0, y: 0 }, to: { x: 1, y: 1 } }] };
+    const events: string[] = [], off = started.hub.add(event => events.push(event));
+    const annotate = (target: unknown, value: WebAnnotation|null = annotation, id = visual.id!) => request(started, "/api/web/annotation", {
+      method: "POST", headers: { "content-type": "application/json", origin: started.base },
+      body: JSON.stringify({ id, target, annotation: value }),
+    });
+    const subject = { kind: "selection", index: 1, key: webSelectionKey(second), expected: "" };
+    const comparison = { kind: "after", index: 0, key: webSelectionKey(after), expected: "" };
+    const response = await annotate(subject);
+    expect(response.status).toBe(200);
+    expect((await response.json()).web).toEqual({ before: webCapture, after: [after], additional: [{ ...second, annotation }] });
+    expect((await annotate(subject)).status).toBe(409);
+    expect((await annotate({ ...subject, key: "wrong" }, null)).status).toBe(409);
+    expect((await annotate(comparison)).status).toBe(200);
+    expect((await annotate({ ...subject, index: 3 })).status).toBe(409);
+    expect((await annotate(subject, annotation, "missing")).status).toBe(404);
+    expect((await annotate(subject, annotation, comment.id!)).status).toBe(404);
+    expect((await annotate({ kind: "selection", index: 0, key: webSelectionKey(webCapture), expected: "" },
+      { ...annotation, image: "images/missing.png" })).status).toBe(400);
+    expect((await request(started, "/api/note", { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ comment: { ...visual, body: "Edited in an older tab." } }) })).status).toBe(200);
+    expect((await annotate({ ...subject, expected: annotation.image }, null)).status).toBe(200);
+    const restart = createSession(started.options.repoRoot, ".review", "HEAD");await restart.adoptMatching();
+    const notes = (await restart.read()).notes, note = notes.find(note => note.id === visual.id)!;
+    expect(note.web!.before).toEqual(webCapture);expect(note.web!.additional![0]).toEqual(second);
+    expect(note.web!.after[0]).toEqual({ ...after, annotation });expect(note.body).toBe("Edited in an older tab.");
+    expect(note.status).toBe("applied");expect(note.messages[0]!.body).toBe("Agent conversation.");
+    expect(notes.find(note => note.id === comment.id)!.body).toBe(comment.body);
+    expect(events.filter(event => event.includes('"type":"review"'))).toHaveLength(4);
+    off();
+  });
+
+  test("annotation requests enforce same-origin JSON, valid targets and safe existing PNG attachments", async () => {
+    const started = await startTestServer();
+    const annotation: WebAnnotation = { image: "images/proposal.png", width: 1, height: 1, padding: 0,
+      marks: [{ tool: "text", color: "#123456", at: { x: 0, y: 0 }, text: "Proposal", size: 20 }] };
+    const target = { kind: "selection" as const, index: 0, key: webSelectionKey(webCapture), expected: "" };
+    const post = (body: unknown, headers: Record<string,string> = { "content-type": "application/json" }) =>
+      request(started, "/api/web/annotation", { method: "POST", headers, body: JSON.stringify(body) });
+    expect((await request(started, "/api/web/annotation")).status).toBe(405);
+    expect((await post({}, {})).status).toBe(415);
+    expect((await post({}, { "content-type": "application/json", origin: "http://localhost:3000" })).status).toBe(403);
+    for(const body of [null, [], {}, { id: 42, target, annotation }, { id: "", target, annotation },
+      { id: comment.id, draftId: "draft", target, annotation }, { target, annotation }, { id: comment.id, target },
+      ...[{ kind: "page" }, { index: -1 }, { index: 1.5 }, { index: 101 }, { key: 42 }, { expected: "../secret.png" }]
+        .map(patch => ({ id: comment.id, target: { ...target, ...patch }, annotation })),
+      ...[{ image: "../secret.png" }, { image: "images/proposal.svg" }, { marks: [] }, { width: 999999 }]
+        .map(patch => ({ id: comment.id, target, annotation: { ...annotation, ...patch } }))]){
+      expect((await post(body)).status).toBe(400);
+    }
+    expect((await post({ draftId: "missing", target, annotation })).status).toBe(404);
+    const web = createWebReview({ url: webCapture.url, repoRoot: started.options.repoRoot, outDir: ".review",
+      session: started.options.session, hub: started.hub, reviewUrl: () => started.base });
+    started.options.web = web;
+    expect((await post({ draftId: "missing", target, annotation })).status).toBe(404);
+    await expect(web.annotate({ draftId: "missing", target, annotation })).rejects.toThrow("no longer exists");
+    await expect(web.annotate({ id: comment.id, draftId: "missing", target, annotation })).rejects.toThrow("Choose");
+    const visual: ReviewComment = { id: "|@|@|#secure", file: "", scope: "global", start: 0, end: 0,
+      body: "Original.", web: { before: webCapture, after: [] } };
+    await started.options.session.save({ comments: [visual] });
+    const outside = await mkdtemp(path.join(tmpdir(), "lcr-outside-"));
+    const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=", "base64");
+    await writeFile(path.join(outside, "proposal.png"), png);
+    await mkdir(path.join(started.options.repoRoot, ".review", "images"), { recursive: true });
+    await writeFile(path.join(started.options.repoRoot, ".review", "images", "area.png"), png);
+    await symlink(path.join(outside, "proposal.png"), path.join(started.options.repoRoot, ".review", "images", "proposal.png"));
+    expect((await post({ id: visual.id, target, annotation })).status).toBe(400);
+    expect((await started.options.session.read()).notes[0]!.web!.before.annotation).toBeUndefined();
+    expect(web.status().state).toBe("closed");
+    const image = await saveAttachment(started.options.repoRoot, ".review", png, "image/png");
+    const valid = { ...annotation, image: "images/" + image };
+    const writes = await Promise.allSettled([
+      web.annotate({ id: visual.id, target, annotation: valid }),
+      web.annotate({ id: visual.id, target, annotation: valid }),
+    ]);
+    expect(writes.map(result => result.status)).toEqual(["fulfilled", "rejected"]);
+    expect((await started.options.session.read()).notes[0]!.web!.before.annotation).toEqual(valid);
+    await web.annotate({ id: visual.id, target: { ...target, expected: valid.image }, annotation: null });
+    expect((await started.options.session.read()).notes[0]!.web!.before.annotation).toBeUndefined();
   });
 
   test("selection removal requires a bounded index, expected key and same-origin JSON POST", async () => {
