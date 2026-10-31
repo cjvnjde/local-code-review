@@ -165,6 +165,52 @@ afterAll(() => {
   console.error = originalError;
 });
 
+describe("review settings handoff", () => {
+  test("retains a run-local snapshot for new editors and announces changes to open editors", async () => {
+    const started = await startTestServer();
+    const initial = await request(started, "/api/settings");
+    expect(initial.headers.get("cache-control")).toBe("no-store");
+    expect(await initial.json()).toEqual({ settings: null });
+    const events: string[] = [];
+    const detach = started.hub.add(chunk => events.push(chunk));
+    const settings = { enterSaves: true, single: true, editor: "code", disabledHide: ["dist/"] };
+    const put = await request(started, "/api/settings", {
+      method: "PUT",
+      headers: { "content-type": "application/json", origin: started.base },
+      body: JSON.stringify(settings),
+    });
+    expect(put.status).toBe(200);
+    expect(events).toEqual(['data: {"type":"settings"}\n\n']);
+    expect(await (await request(started, "/api/settings")).json()).toEqual({ settings });
+    detach();
+
+    // Settings are browser preferences handed to this server, not a record shared with another run.
+    const other = await startTestServer();
+    expect(await (await request(other, "/api/settings")).json()).toEqual({ settings: null });
+  });
+
+  test("rejects foreign origins, malformed snapshots and unsupported methods without an event", async () => {
+    const started = await startTestServer();
+    const events: string[] = [];
+    const detach = started.hub.add(chunk => events.push(chunk));
+    expect((await request(started, "/api/settings", {
+      method: "PUT",
+      headers: { "content-type": "application/json", origin: "https://reviewed-app.example" },
+      body: JSON.stringify({ enterSaves: true }),
+    })).status).toBe(403);
+    for (const body of ["null", "[]", '"settings"', "true", "42", '{"enterSaves":{"value":true}}']) {
+      expect((await request(started, "/api/settings", {
+        method: "PUT", headers: { "content-type": "application/json" }, body,
+      })).status).toBe(400);
+    }
+    expect((await request(started, "/api/settings", { method: "POST" })).status).toBe(405);
+    expect((await request(started, "/api/settings", { method: "PUT", body: "{}" })).status).toBe(415);
+    expect(await (await request(started, "/api/settings")).json()).toEqual({ settings: null });
+    expect(events).toEqual([]);
+    detach();
+  });
+});
+
 describe("combined Git and live-page routes", () => {
   test("diff keeps Git files and its range alongside live-page status", async () => {
     const web = webController();

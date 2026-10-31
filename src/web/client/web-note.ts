@@ -2,6 +2,7 @@ import { mountNoteIn, openWebEditor } from './notes.ts';
 import { noteByRef, refIn, refOf } from './note-ref.ts';
 import { state } from './state.ts';
 import { webCapture } from '../../web-review-model.ts';
+import { syncCfg } from './persistence.ts';
 
 const query=new URLSearchParams(location.search);
 const draft=query.get('ui-draft'),noteId=query.get('ui-note');
@@ -57,6 +58,7 @@ export async function startWebNote(){
   },true);
   window.addEventListener('beforeunload',event=>{if(dirty()){event.preventDefault();event.returnValue='';}});
   try{
+    await syncCfg();
     if(draft){
       const response=await fetch('/api/web/draft?id='+encodeURIComponent(draft));
       const data:unknown=await response.json();

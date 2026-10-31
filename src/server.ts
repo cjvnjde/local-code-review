@@ -120,6 +120,9 @@ function isPortTaken(error: unknown): boolean {
 }
 
 function serve(options: ServerOptions, port: number) {
+  // Browser storage is partitioned in an editor embedded under the reviewed app's origin.
+  // The full review page supplies this run-local snapshot; embedded editors only read it.
+  let settings: Record<string, unknown> | null = null;
   const server = Bun.serve({
     port,
     hostname: "127.0.0.1",
@@ -137,6 +140,24 @@ function serve(options: ServerOptions, port: number) {
       try {
         const url = new URL(request.url);
         if (url.pathname === "/api/events") return events(options, request, server);
+        if (url.pathname === "/api/settings") {
+          const headers = { "cache-control": "no-store" };
+          if (request.method === "GET") return Response.json({ settings }, { headers });
+          if (request.method !== "PUT")
+            return new Response("method not allowed", { status: 405, headers: { allow: "GET, PUT" } });
+          if (!isJsonRequest(request)) return Response.json({ error: "JSON body required." }, { status: 415 });
+          const origin = request.headers.get("origin");
+          if (origin && ![`http://localhost:${server.port}`, `http://127.0.0.1:${server.port}`].includes(origin))
+            return Response.json({ error: "Change settings from the review page." }, { status: 403 });
+          const payload = await readJson(request);
+          if (!payload || typeof payload !== "object" || Array.isArray(payload) || JSON.stringify(payload).length > 32768 ||
+              !Object.values(payload).every(value => typeof value === "boolean" || typeof value === "number" ||
+                typeof value === "string" || (Array.isArray(value) && value.every(item => typeof item === "string"))))
+            return Response.json({ error: "A settings object is required." }, { status: 400 });
+          settings = payload as Record<string, unknown>;
+          options.hub.emit({ type: "settings" });
+          return Response.json({ ok: true }, { headers });
+        }
         if (url.pathname === "/api/agent" && request.method === "GET") {
           await options.channel?.check?.();
           return Response.json(channelState(options));

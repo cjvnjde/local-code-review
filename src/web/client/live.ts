@@ -4,7 +4,7 @@ import { isHidden } from './filters.ts';
 import { updateCount } from './footer.ts';
 import { adopt, load, render } from './load.ts';
 import { markCurrentNote } from './note-pane.ts';
-import { save } from './persistence.ts';
+import { save, syncCfg } from './persistence.ts';
 import { busyEditor, repaintNote } from './notes.ts';
 import { closeReader, syncReader } from './reader.ts';
 import { SVG, el, esc, idxOf, msgsOf, state, visibleNotes, noteVisible } from './state.ts';
@@ -28,6 +28,8 @@ export function startLive(){
   let connected=false;
   source.onopen=()=>{
     setLive(true);
+    // Refresh on the first open too: a settings change can land between editor load and subscribe.
+    void syncCfg().catch(()=>{});
     // Whatever moved while the connection was down was announced to nobody, so a reconnect
     // fetches instead of trusting the silence; the first open lands on a freshly loaded page.
     if(connected){ refreshReview(); checkDiffStale(); }
@@ -38,6 +40,7 @@ export function startLive(){
     let event: any=null;
     try{ event=JSON.parse(e.data); }catch{ return; }
     if(event.type==='hello'){ state.sessionFile=event.file||state.sessionFile; setLive(true); return; }
+    if(event.type==='settings'){ if(state.uiEmbed) void syncCfg().catch(()=>{}); return; }
     if(event.type==='review'){ refreshReview(); return; }
     if(event.type==='diff') queueDiff();
   };

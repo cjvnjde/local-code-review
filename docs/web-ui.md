@@ -30,6 +30,8 @@ and dark with an **OFF** badge while browsing. Hold **Alt** to use the app norma
 Dragging more than 6 CSS pixels before the hold completes moves the circle instead, without toggling
 selection or opening the menu; its position survives reloads in the same tab. Keyboard users can
 toggle with Enter/Space and open the tools with Arrow Down while the circle is focused.
+The tools are a one-use menu: choosing an action, clicking elsewhere, leaving the menu with keyboard
+focus, switching windows, or pressing Escape hides it without changing the chosen targeting mode.
 Hiding or switching away from a half-written comment asks before discarding it; saved notes are never removed.
 
 - **Element** (default): click the exact HTML element under the pointer. Start dragging instead and
@@ -37,6 +39,11 @@ Hiding or switching away from a half-written comment asks before discarding it; 
 - **Block**: click a containing block, flex/grid container, table, or list item rather than the exact
   element. For example, Element selects an inline button while Block selects its enclosing section.
   If the element is already a layout block, these may select the same thing. Dragging also selects an area.
+- **Multiple**: collect several elements for one note, then choose **Write note**. In Element or
+  Block mode, **Shift-click** also adds or removes a target without opening the editor. Outside
+  Multiple mode, an ordinary click adds the final target and opens the editor; Enter opens it with the current selection.
+  **Clear** or Escape cancels the collection. Keep all targets at least partly visible when capturing;
+  a note can include up to 100 targets, each with its own metadata, and one crop covering them together.
 - **Area**: explicitly drag a rectangle, including over a canvas or embedded frame.
 - **Point**: click to capture a 96 × 96 CSS-pixel neighborhood, clipped to the viewport.
 - **Browse**: interact with the app normally while keeping the toolbar and saved pins available.
@@ -51,12 +58,17 @@ asks before discarding it.
 The on-page panel embeds the main app's actual editor and note components, not a reduced copy:
 the configured Enter/Shift+Enter behavior, Markdown, image paste/drop/picker, image previews,
 references, editing, deleting, replies, and live agent answers work the same way in both places.
+Changes made in the full review's settings reach both already-open and future page editors, including
+the Enter save behavior. They do not replace a draft or move its caret. The review server relays these
+preferences because an embedded editor can have a separate browser-storage partition.
 Saving a visual comment persists it immediately and closes the panel, leaving the page ready for
 another selection. Saved visual comments appear under **Overall** above the unchanged Git diff.
 
-Numbered pins reopen notes on the current URL. Element pins follow a unique selector with matching
-element metadata; region pins use document coordinates and require the original viewport size.
-Missing elements do not silently move to another similar element. **Notes** and **Review** focus the
+Numbered pins reopen notes on the current URL. Each selected element gets a pin bearing the same note
+number. Element pins follow a unique selector with matching element metadata; region pins use document
+coordinates and require the original viewport size. Pins scroll offscreen with their targets rather
+than sticking to the viewport edge. Missing elements do not silently move to another similar element.
+**Notes** and **Review** focus the
 existing full review tab. **Full conversation** and note references follow ordinary `#note=<ref>`
 links there, preserving its current state rather than opening another tab. Code and visual comments
 can reference each other with the same short `#ref` tokens and shared picker; previews include their
@@ -78,8 +90,8 @@ browser's display scale; selection coordinates remain CSS pixels. Ordinary relat
 resolve beside the review Markdown. Content-addressed attachments are immutable and remain usable
 after the page, source, or review changes.
 
-**Capture after** records another observation without changing the original. For an element it
-finds the target again and scrolls it into view; for a region it uses the original viewport and
+**Capture after** records another observation without changing the original. For elements it
+finds every target again and brings the group into view; for a region it uses the original viewport and
 document coordinates. Restore the original route, dialog/menu state, relevant data, and viewport
 before comparing. Automatic replay of interactions and pixel-difference scoring are not included.
 The complete review shows the crops side by side, with expandable page screenshots and metadata.

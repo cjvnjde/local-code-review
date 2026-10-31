@@ -1,6 +1,6 @@
 import { bookmarksIn } from './bookmarks.ts';
 import { compileHide } from './filters.ts';
-import { GLOBAL_ANCHOR, el, idxOf, isMinted, markSubmitted, mintGlobalId, mintNoteId, reindexNotes, state } from './state.ts';
+import { GLOBAL_ANCHOR, el, idxOf, isMinted, markSubmitted, mintGlobalId, mintNoteId, reindexNotes, saveKeyHint, state } from './state.ts';
 import { adoptAgent } from './agent.ts';
 import { rememberPage } from './history.ts';
 
@@ -57,8 +57,26 @@ export function submitNote(note: any,retry=false){
 
 /* ---------- persistence ---------- */
 const CFG_KEY='gitreview:settings';
+let cfgRequests: Promise<unknown>=Promise.resolve();
+function adoptCfg(value: unknown){
+  if(!value||typeof value!=='object'||Array.isArray(value)) return;
+  for(const key of Object.keys(state.cfg)){
+    const next=Reflect.get(value,key), current=state.cfg[key];
+    if(Array.isArray(current)){
+      if(Array.isArray(next)&&next.every(item=>typeof item==='string')) state.cfg[key]=next;
+    }else if(typeof next===typeof current) state.cfg[key]=next;
+  }
+}
 export function loadCfg(){
-  try{ Object.assign(state.cfg,JSON.parse(localStorage.getItem(CFG_KEY)||'{}')); }catch(e){}
+  // A third-party iframe may see old defaults in a different storage partition. Only the full
+  // review's storage is authoritative; the embedded editor gets its settings from the server.
+  if(!state.uiEmbed){
+    try{ adoptCfg(JSON.parse(localStorage.getItem(CFG_KEY)||'{}')); }catch(e){}
+  }
+  paintCfg();
+  if(!state.uiEmbed&&typeof window!=='undefined') void syncCfg().catch(()=>{});
+}
+function paintCfg(){
   el('cfgAuto').checked=state.cfg.auto;
   el('cfgBack').checked=state.cfg.back;
   el('cfgToast').checked=state.cfg.toast;
@@ -72,10 +90,34 @@ export function loadCfg(){
   el('cfgEditor').value=state.cfg.editor||'';
   el('cfgBack').disabled=!state.cfg.auto;
   state.hideRx=compileHide(state.cfg.hide,state.cfg.disabledHide);
+  // Do not render an editor to update its shortcut hint: its text, selection and handlers stay put.
+  document.querySelectorAll?.<HTMLElement>('.nedit .tip,.medit .tip,.reply .tip').forEach(hint=>{
+    hint.textContent=saveKeyHint()+(hint.closest('.reply')?' send':' save')+' · esc cancel';
+  });
+}
+/** The HTTP/SSE handoff crosses browser storage partitions. Only full review tabs may publish. */
+export function syncCfg(): Promise<void>{
+  const embedded=state.uiEmbed, snapshot=JSON.stringify(state.cfg);
+  const next=cfgRequests.then(async()=>{
+    const response=await fetch('/api/settings',embedded?{cache:'no-store'}:{
+      method:'PUT',headers:{'content-type':'application/json'},body:snapshot,
+    });
+    if(!response.ok) throw new Error('Could not load review settings. Reload the editor to try again.');
+    if(embedded){
+      const data=await response.json();
+      adoptCfg(data.settings);
+      paintCfg();
+    }
+  });
+  cfgRequests=next.catch(()=>{});
+  return next;
 }
 /** Writes `state.cfg` out as it stands, for the preferences that are not fields in the settings panel. */
 export function persistCfg(){
+  if(state.uiEmbed) return;
   try{ localStorage.setItem(CFG_KEY,JSON.stringify(state.cfg)); }catch(e){}
+  paintCfg();
+  if(typeof window!=='undefined') void syncCfg().catch(()=>{});
 }
 /** Returns true for the settings the rendered diff depends on: which files it shows, and its expanders. */
 export function saveCfg(){

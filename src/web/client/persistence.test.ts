@@ -78,6 +78,7 @@ const savedState = {
   hideRx: state.hideRx,
   soloKeys: state.soloKeys,
   cfg: state.cfg,
+  uiEmbed: state.uiEmbed,
 };
 let local: MemoryStorage;
 let session: MemoryStorage;
@@ -131,6 +132,7 @@ beforeEach(() => {
   });
 
   state.repo = "repo-a";
+  state.uiEmbed = false;
   state.range = "main..HEAD";
   state.reviewId = "";
   state.files = [];
@@ -229,6 +231,18 @@ describe("settings persistence", () => {
       pattern.test("src/app.snap")
     ))).toBe(true);
   });
+
+  test("embedded settings ignore partitioned storage and cannot persist stale defaults", () => {
+    state.uiEmbed = true;
+    state.cfg.enterSaves = false;
+    local.setItem("gitreview:settings", JSON.stringify({ enterSaves: true }));
+    loadCfg();
+    expect(state.cfg.enterSaves).toBe(false);
+    state.cfg.editor = "stale editor";
+    persistCfg();
+    expect(JSON.parse(local.getItem("gitreview:settings")!)).toEqual({ enterSaves: true });
+  });
+
 
   test("saveCfg persists controls and reports a display-affecting change", () => {
     controls.cfgAuto.checked = false;

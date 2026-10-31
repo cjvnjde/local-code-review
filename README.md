@@ -89,17 +89,23 @@ lcr opens a dedicated Chrome/Chromium window with the app and the lcr review in 
 The app starts ready to annotate: click an element or drag an area, without opening the small **lcr**
 circle. **Click the circle** to toggle between selection and normal page use; its **ON/OFF** badge and
 purple active state show which is enabled. Turning selection back on restores your last targeting mode.
-**Hold the circle** to open the tools menu; **drag it** to move it out of the way.
+**Hold the circle** to open the tools menu; **drag it** to move it out of the way. The menu hides after
+one action, an outside click, or losing focus.
 **Block** targets a containing layout block instead of the exact element; **Area** and **Point** remain
 available explicitly. Hold **Alt** to interact with the app temporarily, or choose **Browse** in the tools.
 Opening the tools does not change selection mode. Alt + wheel selects an element's parent.
+Choose **Multiple**, or **Shift-click** in Element/Block mode, to collect elements for one note.
+Shift-click a target again to remove it; **Write note** (or Enter) opens the shared editor.
+Keep the targets visible: the capture includes each target's metadata and one crop covering the group.
 
 Save a comment to keep an immutable viewport screenshot, a crop of the selection, the URL,
 viewport and scroll position, a selector, element text and attributes, selected CSS properties, and
 available React/Vue component names and source hints.
 
 Numbered pins reopen the main app's own note component on the live page: the same Enter setting,
-Markdown, image paste/drop/picker and previews, references, editing, deletion, and replies. Saving a
+Markdown, image paste/drop/picker and previews, references, editing, deletion, and replies. Settings
+changes reach open page editors without disturbing their drafts. Pins scroll with their targets,
+not the viewport edge; a multi-element note has the same number on every target. Saving a
 visual comment closes the editor and writes it into the shared review. Visual notes appear under
 **Overall**, above the Git diff, in the same conversation file, note lists, history, and reference
 picker as code comments. References work in both directions. **Full conversation** follows the note

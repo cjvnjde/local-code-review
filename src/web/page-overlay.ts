@@ -8,6 +8,7 @@ export function installPageReview(config: {key:string;binding:string;origin:stri
   let start:any=null, hovering:Element|null=null, busy=false;
   let frame:HTMLIFrameElement|null=null,activeToken='',frameDirty=false,panelGeneration=0;
   let expanded=false,suppressLauncherClick=false;
+  let selected:Element[]=[],selectionUrl=location.href,multiple=false;
   let launcherPress:{id:number;x:number;y:number;origin:{x:number;y:number};moved:boolean;held:boolean;timer:ReturnType<typeof setTimeout>}|null=null;
   const reviewOrigin=new URL(config.reviewUrl).origin;
   const host=document.createElement('div'); host.id=config.key;
@@ -27,13 +28,16 @@ export function installPageReview(config: {key:string;binding:string;origin:stri
     .outline{position:fixed;pointer-events:none;border:2px solid #9f7cff;background:#9f7cff19;border-radius:3px;display:none}
     .label{position:absolute;bottom:100%;left:0;white-space:nowrap;padding:2px 7px;background:#7554df;color:white;font-size:var(--fs-small)}
     .dock{pointer-events:auto;position:fixed;right:18px;top:18px;bottom:78px;width:min(560px,calc(100vw - 36px));background:#191c26;border:1px solid #444858;box-shadow:0 8px 40px #0006;border-radius:12px;display:flex;flex-direction:column;overflow:hidden}
-    .bar[hidden],.dock[hidden]{display:none}.head{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid #363a47}.head b{flex:1}.content{display:flex;flex-direction:column;flex:1;min-height:0;overflow:auto}.content iframe{width:100%;flex:1;min-height:0;border:0;background:#191c26}.status,.error{padding:10px 14px;margin:0}
+    .bar[hidden],.dock[hidden],.selection-tools[hidden]{display:none}.head{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid #363a47}.head b{flex:1}.content{display:flex;flex-direction:column;flex:1;min-height:0;overflow:auto}.content iframe{width:100%;flex:1;min-height:0;border:0;background:#191c26}.status,.error{padding:10px 14px;margin:0}
     .pin{pointer-events:auto;position:fixed;border-radius:16px;background:#7554df;border:2px solid #fff;box-shadow:0 2px 8px #0007;color:white;font-weight:700;padding:0 6px;min-width:28px;min-height:28px}
+    .selected{position:fixed;pointer-events:none;border:2px solid #9f7cff;background:#9f7cff19;border-radius:3px}
+    .selection-tools{pointer-events:auto;position:fixed;bottom:18px;left:50%;transform:translateX(-50%);display:flex;gap:5px;align-items:center;padding:8px;border:1px solid #444858;border-radius:13px;background:#191c26;max-width:calc(100vw - 24px)}
     .error{color:#ffafa8;white-space:pre-wrap}
-  </style><div class="outline"><span class="label"></span></div><div class="pins"></div>
+  </style><div class="outline"><span class="label"></span></div><div class="selections"></div><div class="pins"></div>
+  <div class="selection-tools" hidden><span data-selection-count></span><button data-write>Write note</button><button data-clear>Clear</button></div>
   <div class="dock" hidden><div class="head"><b></b><button type="button" data-close aria-label="Close note panel">×</button></div><div class="content"></div></div>
   <button class="launcher" data-launcher aria-label="Selection mode" aria-pressed="true" aria-expanded="false"><span>lcr</span><span class="mode-state" aria-hidden="true">ON</span></button>
-  <div class="bar" hidden><span class="brand">lcr · UI</span><button data-mode="browse">Browse</button><button data-mode="element" aria-pressed="true" title="Click the exact HTML element; drag to select an area">Element</button><button data-mode="block" title="Click a containing layout block; drag to select an area">Block</button><button data-mode="area">Area</button><button data-mode="point">Point</button><button data-notes>Notes · 0</button><a class="review-link" data-review target="lcr-review" rel="noopener">Review ↗</a></div>`;
+  <div class="bar" hidden><span class="brand">lcr · UI</span><button data-mode="browse">Browse</button><button data-mode="element" aria-pressed="true" title="Click the exact HTML element; Shift-click to select multiple; drag to select an area">Element</button><button data-mode="block" title="Click a containing layout block; Shift-click to select multiple; drag to select an area">Block</button><button data-multiple aria-pressed="false" title="Collect elements for one note, then choose Write note">Multiple</button><button data-mode="area">Area</button><button data-mode="point">Point</button><button data-notes>Notes · 0</button><a class="review-link" data-review target="lcr-review" rel="noopener">Review ↗</a></div>`;
   (document.body||document.documentElement).append(host);
   const $=(s:string)=>root.querySelector(s) as HTMLElement;
   const dock=$('.dock'),content=$('.content'),outline=$('.outline');
@@ -50,9 +54,12 @@ export function installPageReview(config: {key:string;binding:string;origin:stri
     const above=launcherPosition.y-bar.offsetHeight-8;
     bar.style.top=Math.max(12,Math.min(innerHeight-bar.offsetHeight-12,above>=12?above:launcherPosition.y+size+8))+'px';
   }
+  function hideTools(){
+    expanded=false;bar.hidden=true;launcher.setAttribute('aria-expanded','false');
+  }
   function expand(value:boolean){
     if(value===expanded)return;
-    if(!dock.hidden&&!close())return;
+    if(value&&!dock.hidden&&!close())return;
     expanded=value;bar.hidden=!value;
     launcher.setAttribute('aria-expanded',String(value));
     positionLauncher();
@@ -77,7 +84,8 @@ export function installPageReview(config: {key:string;binding:string;origin:stri
   function setMode(value:string){
     if(!dock.hidden&&!close())return;
     mode=value;if(mode!=='browse')selectionMode=mode;
-    start=null;hovering=null;outline.style.display='none';
+    multiple=false;$('[data-multiple]').setAttribute('aria-pressed','false');
+    clearSelections();hideTools();start=null;hovering=null;outline.style.display='none';
     launcher.setAttribute('aria-pressed',String(mode!=='browse'));
     $('.mode-state').textContent=mode==='browse'?'OFF':'ON';
     launcher.title='Selection '+(mode==='browse'?'off — use the page normally':'on — '+mode+' targeting')+'. Click to toggle; hold for tools; drag to move. Hold Alt to use the page temporarily.';
@@ -124,6 +132,40 @@ export function installPageReview(config: {key:string;binding:string;origin:stri
       viewport:{width:innerWidth,height:innerHeight,dpr:devicePixelRatio},scroll:{x:scrollX,y:scrollY},
       ...(el?{selector:selector(el),element:{tag:el.localName,text:((el as HTMLElement).innerText||el.textContent||'').trim().slice(0,2000),attributes,styles}}:{}),components:el?components(el):[]};
   }
+  function union(rects:any[]){
+    const x=Math.min(...rects.map(r=>r.x)),y=Math.min(...rects.map(r=>r.y));
+    return {x,y,width:Math.max(...rects.map(r=>r.x+r.width))-x,height:Math.max(...rects.map(r=>r.y+r.height))-y};
+  }
+  function selectionCapture(elements:Element[],kind:string){
+    const captures=elements.map(el=>{
+      const r=el.getBoundingClientRect();
+      if(!el.isConnected||r.bottom<=0||r.right<=0||r.top>=innerHeight||r.left>=innerWidth)
+        throw new Error('Bring all selected elements into view before writing the note.');
+      return metadata(el,rect(el),kind);
+    });
+    const selections=captures.map(({selector,element,components,rect})=>({selector,element,components,rect}));
+    return {...captures[0],rect:union(selections.map(s=>s.rect)),...(selections.length>1?{selections}:{})};
+  }
+  function paintSelections(){
+    if(selectionUrl!==location.href){selected=[];selectionUrl=location.href;}
+    const container=$('.selections');container.textContent='';
+    selected.forEach((el,i)=>{
+      if(!el.isConnected)return;
+      const r=el.getBoundingClientRect(),box=document.createElement('div');
+      box.className='selected';box.style.cssText=`left:${r.x}px;top:${r.y}px;width:${r.width}px;height:${r.height}px`;
+      const label=document.createElement('span');label.className='label';label.textContent=String(i+1);box.append(label);container.append(box);
+    });
+    $('.selection-tools').hidden=!selected.length;
+    $('[data-selection-count]').textContent=selected.length+' selected';
+  }
+  function clearSelections(){selected=[];paintSelections();}
+  function toggleSelection(el:Element){
+    if(selectionUrl!==location.href)clearSelections();
+    const index=selected.indexOf(el);
+    if(index>=0)selected.splice(index,1);
+    else if(selected.length<100)selected.push(el);
+    paintSelections();
+  }
   function target(event:any){let el=document.elementsFromPoint(event.clientX,event.clientY).find(n=>n!==host);if(!el)return null;
     if(mode==='block')for(let i=0;el.parentElement&&i<12;i++){if(['block','flex','grid','table','list-item'].includes(getComputedStyle(el).display)&&el.getBoundingClientRect().width>40)break;el=el.parentElement;}
     return el;
@@ -141,22 +183,24 @@ export function installPageReview(config: {key:string;binding:string;origin:stri
     editor.onerror=()=>{if(frame===editor){status.remove();error(new Error('The review editor could not load. Open Review to continue.'));}};
     content.append(editor);
   }
-  async function choose(el:Element|null,r:any,kind=mode){
+  async function choose(el:Element|null,r:any,kind=mode,elements:Element[]=[]){
     if(busy||!close())return;
+    hideTools();
     const generation=panelGeneration;
-    const capture=metadata(el,r,kind);
     dock.hidden=false;$('.head b').textContent='New visual note';
     const status=document.createElement('p');status.className='status';status.textContent='Capturing page and selected area…';content.append(status);
     busy=true;
     try{
+      const capture=elements.length?selectionCapture(elements,kind):metadata(el,r,kind);
       const result=await rpc('capture',{capture});
       if(generation!==panelGeneration)return;
       if(typeof result.draftId!=='string'||!result.draftId)throw new Error('The page capture did not return a draft.');
+      clearSelections();
       showFrame('draft',result.draftId);
     }catch(e){
       if(generation!==panelGeneration)return;
       status.remove();error(e);
-      const retry=document.createElement('button');retry.textContent='Retry capture';retry.onclick=()=>{void choose(el,r,kind);};content.append(retry);
+      const retry=document.createElement('button');retry.textContent='Retry capture';retry.onclick=()=>{void choose(el,r,kind,elements);};content.append(retry);
     }finally{busy=false;}
   }
   window.addEventListener('message',event=>{
@@ -179,7 +223,8 @@ export function installPageReview(config: {key:string;binding:string;origin:stri
         const attr=c.element.attributes;
         for(const key of ['id','data-testid','role','aria-label','name'])if(attr[key]&&el.getAttribute(key)!==attr[key])return null;
         if(!attr.id&&!attr['data-testid']&&(el.innerText||el.textContent||'').trim().slice(0,2000)!==c.element.text)return null;
-        return {el,rect:rect(el)};
+        const bounds=el.getBoundingClientRect();
+        return {el,rect:{x:bounds.x,y:bounds.y,width:bounds.width,height:bounds.height}};
       }catch{return null;}
     }
     if(innerWidth!==c.viewport.width||innerHeight!==c.viewport.height)return null;
@@ -188,24 +233,38 @@ export function installPageReview(config: {key:string;binding:string;origin:stri
   }
   function pins(){
     const container=$('.pins');container.textContent='';
-    notes.forEach((n,i)=>{const p=locate(n.web.before);if(!p)return;const r=p.rect;
+    notes.forEach((n,i)=>(n.web.before.selections||[n.web.before]).forEach((selection:any)=>{
+      const p=locate({...n.web.before,...selection});if(!p)return;const r=p.rect;
       if(r.y+r.height<0||r.y>innerHeight||r.x+r.width<0||r.x>innerWidth)return;
       const b=document.createElement('button');b.className='pin';b.textContent=String(i+1);b.title=n.body;
-      b.setAttribute('aria-label','UI note '+(i+1)+': '+n.body.slice(0,120));b.style.left=Math.max(0,Math.min(innerWidth-32,r.x))+'px';b.style.top=Math.max(0,Math.min(innerHeight-32,r.y))+'px';
+      b.setAttribute('aria-label','UI note '+(i+1)+': '+n.body.slice(0,120));b.style.left=r.x+'px';b.style.top=r.y+'px';
       b.onclick=()=>showNote(n.id);container.append(b);
-    });
+    }));
   }
   function showNote(id:string){
     const n=notes.find(n=>n.id===id);if(!n||busy||!close())return;
+    hideTools();clearSelections();
     dock.hidden=false;$('.head b').textContent='Visual note '+(notes.indexOf(n)+1);
     showFrame('note',id);
   }
   async function refresh(){const result=await rpc('notes');notes=result.notes;$('[data-notes]').textContent='Notes · '+notes.length;pins();}
-  root.querySelectorAll('[data-mode]').forEach(b=>(b as HTMLElement).onclick=()=>setMode((b as HTMLElement).dataset.mode!));
-  $('[data-notes]').onclick=()=>{void rpc('review').catch(error);};
+  root.querySelectorAll('[data-mode]').forEach(b=>(b as HTMLElement).onclick=()=>{hideTools();setMode((b as HTMLElement).dataset.mode!);});
+  $('[data-multiple]').onclick=()=>{
+    hideTools();
+    const value=!multiple;
+    if(!dock.hidden&&!close())return;
+    if(value&&mode!=='element'&&mode!=='block')setMode('element');
+    multiple=value;$('[data-multiple]').setAttribute('aria-pressed',String(value));hideTools();
+  };
+  $('[data-notes]').onclick=()=>{hideTools();void rpc('review').catch(error);};
   const reviewLink=$('[data-review]') as HTMLAnchorElement;reviewLink.href=config.reviewUrl;
-  reviewLink.onclick=e=>{if(e.button!==0||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey)return;e.preventDefault();void rpc('review').catch(error);};
+  reviewLink.onclick=e=>{hideTools();if(e.button!==0||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey)return;e.preventDefault();void rpc('review').catch(error);};
   $('[data-close]').onclick=close;
+  $('[data-write]').onclick=()=>{if(selected.length)void choose(selected[0],rect(selected[0]),mode,[...selected]);};
+  $('[data-clear]').onclick=clearSelections;
+  root.addEventListener('focusout',event=>{
+    if(!(event.relatedTarget instanceof Node)||!root.contains(event.relatedTarget))hideTools();
+  });
   launcher.onpointerdown=e=>{
     if(e.button!==0||launcherPress)return;
     suppressLauncherClick=false;
@@ -231,6 +290,7 @@ export function installPageReview(config: {key:string;binding:string;origin:stri
   launcher.onclick=e=>{
     const suppressed=suppressLauncherClick;suppressLauncherClick=false;
     if(suppressed&&e.detail!==0)return;
+    hideTools();
     setMode(mode==='browse'?selectionMode:'browse');
   };
   launcher.oncontextmenu=e=>{e.preventDefault();expand(true);};
@@ -247,10 +307,11 @@ export function installPageReview(config: {key:string;binding:string;origin:stri
     hovering=target(e);if(hovering&&(mode==='element'||mode==='block'))paint(rect(hovering),hovering.localName);
   },true);
   document.addEventListener('pointerdown',e=>{
+    if(!ours(e))hideTools();
     if(mode==='browse'||busy||ours(e)||e.altKey||e.button!==0)return;
     stop(e);const el=target(e);
     if(!dock.hidden&&!close())return;
-    start={x:e.clientX,y:e.clientY,id:e.pointerId,el,area:mode==='area'};
+    start={x:e.clientX,y:e.clientY,id:e.pointerId,el,area:mode==='area',multiple:multiple||e.shiftKey};
   },true);
   document.addEventListener('pointerup',e=>{
     if(!start||e.pointerId!==start.id)return;
@@ -259,25 +320,40 @@ export function installPageReview(config: {key:string;binding:string;origin:stri
     stop(e);
     if(mode==='point'){void choose(null,clamp({x:e.clientX-48,y:e.clientY-48,width:96,height:96}));return;}
     if(a.area||Math.hypot(a.x-e.clientX,a.y-e.clientY)>6)void choose(null,areaRect(a,e.clientX,e.clientY),'area');
-    else {const el=target(e)||a.el;if(el)void choose(el,rect(el));}
+    else {
+      const el=target(e)||a.el;if(!el)return;
+      if(a.multiple){toggleSelection(el);outline.style.display='none';}
+      else if(selected.length){if(!selected.includes(el)&&selected.length<100)selected.push(el);void choose(el,rect(el),mode,[...selected]);}
+      else void choose(el,rect(el));
+    }
   },true);
   for(const type of ['click','dblclick','contextmenu'])document.addEventListener(type,e=>{if(mode!=='browse'&&!ours(e)&&!(e as MouseEvent).altKey)stop(e);},true);
   document.addEventListener('pointercancel',()=>{start=null;outline.style.display='none';},true);
-  window.addEventListener('blur',()=>{start=null;outline.style.display='none';endLauncher(true);});
+  window.addEventListener('blur',()=>{start=null;outline.style.display='none';endLauncher(true);hideTools();});
   window.addEventListener('beforeunload',e=>{if(frameDirty||busy){e.preventDefault();e.returnValue='';}});
   document.addEventListener('keydown',e=>{
     if(e.key==='Alt'){start=null;outline.style.display='none';}
-    if(e.key==='Escape'){stop(e);if(!dock.hidden){close();return;}if(mode!=='browse'){setMode('browse');return;}expand(false);}
+    if(e.key==='Escape'){stop(e);if(expanded){hideTools();return;}if(selected.length){clearSelections();return;}if(!dock.hidden){close();return;}if(mode!=='browse'){setMode('browse');return;}}
+    if(e.key==='Enter'&&selected.length&&!ours(e)){stop(e);void choose(selected[0],rect(selected[0]),mode,[...selected]);}
   },true);
-  let scheduled=false;function schedulePins(){if(scheduled)return;scheduled=true;requestAnimationFrame(()=>{scheduled=false;pins();});}
+  let scheduled=false;function schedulePins(){if(scheduled)return;scheduled=true;requestAnimationFrame(()=>{scheduled=false;pins();paintSelections();});}
   window.addEventListener('scroll',schedulePins,true);window.addEventListener('resize',()=>{positionLauncher();schedulePins();});
   win[config.key]={
     resolve(seq:number,result:any){const call=pending.get(seq);if(!call)return;pending.delete(seq);clearTimeout(call.timer);result.ok?call.resolve(result.value):call.reject(new Error(result.error));},
     async visible(value:boolean){host.style.visibility=value?'visible':'hidden';await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));},
     async focus(id:string){await refresh();const n=notes.find(n=>n.id===id);if(!n)throw new Error('That UI note no longer exists.');if(busy||!close())return;const p=locate(n.web.before);if(p?.el)p.el.scrollIntoView({block:'center'});showNote(id);},
-    prepare(c:any){const p=locate(c);if(!p)throw new Error('The original element or viewport cannot be matched. Restore the original URL, viewport and page state, or create a new note.');
-      if(p.el)p.el.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'});
-      return new Promise(resolve=>requestAnimationFrame(()=>{const r=p.el?rect(p.el):p.rect;resolve(metadata(p.el,clamp(r),c.mode));}));},
+    async prepare(c:any){
+      const captures=c.selections||[c],places=captures.map((s:any)=>locate({...c,...s}));
+      if(places.some((p:any)=>!p))throw new Error('The original element or viewport cannot be matched. Restore the original URL, viewport and page state, or create a new note.');
+      const elements=places.map((p:any)=>p.el);
+      if(c.selections){
+        const r=union(places.map((p:any)=>p.rect));
+        window.scrollBy({left:r.x+r.width/2-innerWidth/2,top:r.y+r.height/2-innerHeight/2,behavior:'instant'});
+      }else if(elements[0])elements[0].scrollIntoView({block:'center',inline:'nearest',behavior:'instant'});
+      await new Promise(resolve=>requestAnimationFrame(resolve));
+      if(c.selections)return selectionCapture(elements,c.mode);
+      const p=places[0];return metadata(p.el,clamp(p.el?rect(p.el):p.rect),c.mode);
+    },
   };
   setMode(mode);positionLauncher();void refresh().catch(error);setInterval(()=>{void refresh().catch(()=>{});},2000);
 }

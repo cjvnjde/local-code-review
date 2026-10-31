@@ -7,13 +7,21 @@ import { noteFromComment, parseReview, renderNote, applyComment } from './thread
 import { renderMarkdown } from './review.ts';
 import { createSession } from './session.ts';
 import { parseArgs } from './cli.ts';
-import { historyChanges, historySnapshot } from './web/client/history-model.ts';
+import { historyChanges, historySnapshot, historyText } from './web/client/history-model.ts';
+import { webCaptureHtml } from './web/client/web-capture.ts';
 
 export const capture:WebCapture={url:'http://localhost:3000/checkout?step=2',title:'Checkout ` <script>',at:'2026-10-31T10:00:00.000Z',mode:'element',
   rect:{x:24,y:100,width:180,height:48},viewport:{width:1200,height:800,dpr:2},scroll:{x:0,y:200},
   selector:'button[data-testid="submit"]',element:{tag:'button',text:'Buy now',attributes:{'data-testid':'submit'},styles:{color:'rgb(0, 0, 0)'}},
   components:[{framework:'React',name:'Checkout',file:'src/Checkout.tsx',line:14}],page:'images/page.png',area:'images/area.png'};
 const comment=()=>({id:'|@|@|#abc123',file:'',scope:'global' as const,start:0,end:0,body:'Make this button wider.',web:{before:structuredClone(capture),after:[] as WebCapture[]}});
+const multiCapture=(): WebCapture=>{
+  const first={rect:structuredClone(capture.rect),selector:capture.selector,element:structuredClone(capture.element),components:structuredClone(capture.components)};
+  const second={rect:{x:280,y:160,width:240,height:60},selector:'[data-testid="total"]',
+    element:{tag:'output',text:'Total <script>alert("x")</script>',attributes:{'data-testid':'total'},styles:{color:'red'}},
+    components:[{framework:'Vue' as const,name:'OrderTotal',file:'src/OrderTotal.vue',line:0}]};
+  return {...structuredClone(capture),rect:{x:24,y:100,width:496,height:120},selections:[first,second]};
+};
 const dirs:string[]=[];
 afterEach(async()=>{await Promise.all(dirs.splice(0).map(dir=>rm(dir,{recursive:true,force:true})));});
 describe('UI review evidence',()=>{
@@ -44,6 +52,68 @@ describe('UI review evidence',()=>{
     for(const patch of [{area:'../secret.png'},{url:'https://example.com'},{rect:{x:0,y:0,width:1300,height:1}},{components:[{framework:'Other',name:'x'}]}])expect(webCapture({...capture,...patch})).toBeNull();
     expect(webReview({before:capture,after:[{}]})).toBeNull();
     const value=webCapture(capture)!;value.element!.styles.color='changed';expect(capture.element!.styles.color).toBe('rgb(0, 0, 0)');
+  });
+  test('multiple targets survive Markdown, parsing, history and browser evidence',()=>{
+    const c=comment();c.web.before=multiCapture();c.web.after=[multiCapture()];
+    c.web.after[0]!.selections![1]!.element!.text='Updated total';
+    const markdown=renderMarkdown({range:'web',notes:[noteFromComment(c)]});
+    const parsed=parseReview(markdown);
+    expect(parsed.notes[0]!.web).toEqual(c.web);
+    expect(renderMarkdown(parsed)).toBe(markdown);
+    const snapshot=historySnapshot('review.md',parsed.notes);
+    expect(snapshot.notes[0]!.web).toEqual(c.web);
+    parsed.notes[0]!.web!.before.selections![1]!.element!.text='Changed after snapshot';
+    expect(snapshot.notes[0]!.web!.before.selections![1]!.element!.text).toContain('Total');
+    const text=historyText({reason:'',changes:[],snapshot},'snapshot');
+    expect(text).toContain('"selector": "[data-testid=\\"total\\"]"');
+    expect(text).toContain('"x": 280');
+    const html=webCaptureHtml(c.web);
+    expect(html).toContain('data-testid=&quot;total&quot;');
+    expect(html).toContain('OrderTotal');
+    expect(html).toContain('Updated total');
+    expect(html).toContain('&lt;script&gt;');
+    expect(html).not.toContain('<script>');
+  });
+  test('bounds and validates every target, including nested metadata',()=>{
+    const c=multiCapture(),target=c.selections![1]!;
+    expect(webCapture(capture)).toEqual(capture);
+    expect(webCapture({...c,selections:[target]})!.selections).toHaveLength(1);
+    expect(webCapture({...c,selections:Array.from({length:100},()=>target)})!.selections).toHaveLength(100);
+    for(const selections of [null,{},[],Array.from({length:101},()=>target),new Array(2),[null],[{}]]){
+      expect(webCapture({...c,selections})).toBeNull();
+    }
+    const patches=[
+      {rect:{...target.rect,x:-1}},{rect:{...target.rect,width:0}},
+      {rect:{...target.rect,width:Infinity}},{rect:{...target.rect,x:1190}},
+      {rect:{...target.rect,y:790}},{selector:12},{element:false},
+      {element:{...target.element,tag:12}},{element:{...target.element,text:12}},
+      {element:{...target.element,attributes:[]}},{element:{...target.element,styles:{color:12}}},
+      {element:{...target.element,styles:{color:'x'.repeat(4001)}}},
+      {element:{...target.element,attributes:Object.fromEntries(Array.from({length:51},(_,i)=>[String(i),'x']))}},
+      {components:undefined},{components:new Array(1)},{components:Array.from({length:31},()=>target.components[0])},
+      {components:[{framework:'Other',name:'x'}]},{components:[{framework:'React',name:12}]},
+      {components:[{framework:'Vue',name:'x',file:12}]},{components:[{framework:'Vue',name:'x',line:-1}]},
+      {components:[{framework:'Vue',name:'x',line:1.5}]},
+    ];
+    for(const patch of patches)expect(webCapture({...c,selections:[c.selections![0],{...target,...patch}]})).toBeNull();
+    expect(webCaptureHtml({before:{...c,selections:[]},after:[]})).toBe('');
+  });
+  test('whitelists and detaches each selected target independently',()=>{
+    const c=multiCapture(),target=c.selections![1]!;
+    const input={...c,selections:[c.selections![0],{...target,unknown:'discard',
+      rect:{...target.rect,unknown:'discard'},element:{...target.element!,unknown:'discard'},
+      components:target.components.map(component=>({...component,unknown:'discard'}))}]};
+    const clean=webCapture(input)!;
+    expect(clean).toEqual(c);
+    expect(JSON.stringify(clean)).not.toContain('discard');
+    clean.selections![1]!.rect.x=400;
+    clean.selections![1]!.element!.attributes['data-testid']='changed';
+    clean.selections![1]!.element!.styles.color='blue';
+    clean.selections![1]!.components[0]!.name='Changed';
+    expect(target.rect.x).toBe(280);
+    expect(target.element!.attributes['data-testid']).toBe('total');
+    expect(target.element!.styles.color).toBe('red');
+    expect(target.components[0]!.name).toBe('OrderTotal');
   });
   test('an older editor cannot erase later captures or the agent conversation',()=>{
     const note=noteFromComment(comment());note.web!.after.push(structuredClone(capture));note.messages.push({role:'agent',at:'',body:'Fixed.'});note.status='applied';

@@ -130,9 +130,23 @@ browserTest('one review: diff and visual notes share editors, attachments, links
     // Holding opens the menu without changing selection, including on release.
     await pressLauncher(true);
     expect(await js('testRoot.querySelector("[data-launcher]").getAttribute("aria-pressed")')).toBe('false');
-    await click('[data-mode="block"]');await pressLauncher();await pressLauncher();
+    await click('[data-mode="block"]');
+    expect(await js('testRoot.querySelector(".bar").hidden')).toBe(true);
+    await pressLauncher();await pressLauncher();
     expect(await js('testRoot.querySelector("[data-mode=block]").getAttribute("aria-pressed")')).toBe('true');
-    await click('[data-mode="element"]');
+    // Outside clicks dismiss the one-use menu even in Browse mode.
+    await pressLauncher();await pressLauncher(true);
+    await mouse('mousePressed',box.x,box.y);await mouse('mouseReleased',box.x,box.y);
+    expect(await js('testRoot.querySelector(".bar").hidden')).toBe(true);
+    await pressLauncher(true);
+    await js('testRoot.querySelector("[data-launcher]").focus();document.querySelector("#save").focus()');
+    expect(await js('testRoot.querySelector(".bar").hidden')).toBe(true);
+    await pressLauncher(true);
+    // Headless target activation does not emit OS window blur, so deliver that browser event directly.
+    await js('dispatchEvent(new Event("blur"))');
+    expect(await js('testRoot.querySelector(".bar").hidden')).toBe(true);
+    await pressLauncher(true);await click('[data-mode="element"]');
+    expect(await js('testRoot.querySelector(".bar").hidden')).toBe(true);
     await js('window.clicks=0');
     // Alt uses the app normally; an unmodified click annotates without expanding the launcher.
     await mouse('mousePressed',box.x,box.y,1);await mouse('mouseReleased',box.x,box.y,1);expect(await js('window.clicks')).toBe(1);
@@ -193,10 +207,16 @@ browserTest('one review: diff and visual notes share editors, attachments, links
     await js('document.querySelector("#save").style.padding="16px 60px";document.querySelector("#save").style.background="#227d62"');
     await web.captureAfter(note.id).catch(error=>{throw new Error('Comparison capture: '+String(error)+'; '+errors.join('\n'));});expect((await session.read()).notes.find(n=>n.id===note.id)!.web!.after[0]!.rect.width).toBeGreaterThan(note.web!.before.rect.width);
     // A new drag defaults to Area without opening the circle or preselecting Area.
-    await reviewJs('localStorage.setItem("gitreview:settings",JSON.stringify({enterSaves:true}))');
     await mouse('mousePressed',200,220);await mouse('mouseMoved',430,350);await mouse('mouseReleased',430,350);await frame();
     await js('window.testDirty=false;window.addEventListener("message",event=>{if(event.data?.type==="lcr:ui"&&event.data.action==="dirty"&&event.data.dirty)window.testDirty=true;})');
     await writeComment('Keep this unfinished draft.');await js('window.confirm=()=>false');
+    // A live settings change reaches an existing dirty embedded draft without replacing its editor.
+    await frameJs('window.draftBox=document.querySelector("#uiNote textarea");draftBox.setSelectionRange(5,5)');
+    await reviewJs('document.querySelector("#cfgEnter").checked=true;document.querySelector("#cfgEnter").dispatchEvent(new Event("change",{bubbles:true}))');
+    await until(()=>frameJs('document.querySelector("#cfgEnter").checked'),'save setting reaches active embedded editor');
+    expect(await frameJs('document.querySelector("#uiNote textarea")===window.draftBox')).toBe(true);
+    expect(await frameJs('window.draftBox.value')).toBe('Keep this unfinished draft.');
+    expect(await frameJs('window.draftBox.selectionStart')).toBe(5);
     await until(()=>js('window.testDirty'),'cross-origin dirty notification');
     await click('[data-close]');expect(await js('testRoot.querySelector(".dock").hidden')).toBe(false);
     await saveFrame('Align this section with the heading.','plain');
@@ -209,11 +229,43 @@ browserTest('one review: diff and visual notes share editors, attachments, links
     await until(()=>js('testRoot.querySelectorAll(".pin").length===2'),'restored pins');
     expect(await js('testRoot.querySelector("[data-launcher]").getBoundingClientRect().x')).toBeCloseTo(moved);
     await pressLauncher(true);await click('[data-mode="point"]');
-    await mouse('mousePressed',240,170);await mouse('mouseReleased',240,170);await frame();await saveFrame('Add space at this location.');
+    await mouse('mousePressed',240,170);await mouse('mouseReleased',240,170);await frame();
+    expect(await frameJs('document.querySelector("#cfgEnter").checked')).toBe(true);
+    await saveFrame('Add space at this location.','plain');
     expect((await session.read()).notes.filter(n=>n.web).at(-1)!.web!.before.rect).toEqual({x:192,y:122,width:96,height:96});
-    await click('[data-mode="block"]');await mouse('mouseMoved',box.x+40,box.y);await mouse('mousePressed',box.x+40,box.y);await mouse('mouseReleased',box.x+40,box.y);await frame();await saveFrame('Group these settings.');
+    await pressLauncher(true);await click('[data-mode="block"]');await mouse('mouseMoved',box.x+40,box.y);await mouse('mousePressed',box.x+40,box.y);await mouse('mouseReleased',box.x+40,box.y);await frame();await saveFrame('Group these settings.');
     expect((await session.read()).notes.filter(n=>n.web).at(-1)!.web!.before.element!.tag).toBe('section');
-    await click('[data-mode="element"]');
+    await pressLauncher(true);await click('[data-mode="element"]');
+    // Pins follow the element offscreen rather than sticking to the viewport edge.
+    await js('scrollBy(0,document.querySelector("#save").getBoundingClientRect().top+10)');
+    await until(()=>js('(()=>{const p=[...testRoot.querySelectorAll(".pin")].find(p=>p.title.includes("Updated visual wording"));return p&&p.getBoundingClientRect().top<0})()'),'partly visible element pin scrolls past viewport edge');
+    await js('scrollTo(0,0)');
+    // Shift-click collects/toggles elements without opening an editor.
+    const heading=await js('(()=>{const r=document.querySelector("h1").getBoundingClientRect();return {x:r.x+10,y:r.y+10}})()');
+    const currentSave=await js('(()=>{const r=document.querySelector("#save").getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()');
+    await mouse('mousePressed',heading.x,heading.y,8);await mouse('mouseReleased',heading.x,heading.y,8);
+    await mouse('mousePressed',currentSave.x,currentSave.y,8);await mouse('mouseReleased',currentSave.x,currentSave.y,8);
+    expect(await js('testRoot.querySelectorAll(".selected").length')).toBe(2);
+    expect(await js('testRoot.querySelector(".dock").hidden')).toBe(true);
+    await mouse('mousePressed',heading.x,heading.y,8);await mouse('mouseReleased',heading.x,heading.y,8);
+    expect(await js('testRoot.querySelectorAll(".selected").length')).toBe(1);
+    await mouse('mousePressed',heading.x,heading.y,8);await mouse('mouseReleased',heading.x,heading.y,8);
+    await click('[data-write]');await frame();await saveFrame('Align the heading and save action together.');
+    const multi=(await session.read()).notes.filter(n=>n.web).at(-1)!;
+    expect(multi.web!.before.selections!.map(s=>s.element!.tag)).toEqual(['button','h1']);
+    expect(multi.web!.before.rect.height).toBeGreaterThan(100);
+    await until(()=>js('testRoot.querySelectorAll(".pin[title=\\"Align the heading and save action together.\\"]").length===2'),'one pin per selected element');
+    await web.captureAfter(multi.id);
+    expect((await session.read()).notes.find(n=>n.id===multi.id)!.web!.after[0]!.selections!.map(s=>s.selector)).toEqual(multi.web!.before.selections!.map(s=>s.selector));
+    await until(()=>reviewJs('document.querySelector("#loGlobal").textContent.includes("Align the heading and save action together.")'),'multi-element evidence in review');
+    await pressLauncher(true);await click('[data-multiple]');
+    expect(await js('testRoot.querySelector(".bar").hidden')).toBe(true);
+    const multiBox=await js('(()=>{const r=document.querySelector("#save").getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()');
+    await mouse('mousePressed',multiBox.x,multiBox.y);await mouse('mouseReleased',multiBox.x,multiBox.y);
+    expect(await js('testRoot.querySelector(".dock").hidden')).toBe(true);
+    expect(await js('testRoot.querySelectorAll(".selected").length')).toBe(1);
+    await click('[data-clear]');
+    await pressLauncher(true);await click('[data-mode="element"]');
     await js('document.querySelector("#bottom").scrollIntoView({block:"center"})');
     const bottom=await js('(()=>{const r=document.querySelector("#bottom").getBoundingClientRect();return {x:r.x+10,y:r.y+10}})()');
     await mouse('mouseMoved',bottom.x,bottom.y);await mouse('mousePressed',bottom.x,bottom.y);await mouse('mouseReleased',bottom.x,bottom.y);await frame();await saveFrame('Review this lower action.');
@@ -230,6 +282,6 @@ browserTest('one review: diff and visual notes share editors, attachments, links
     appTarget=(await targets()).find(t=>t.url===web.status().url)!;
     sid=(await cdp.send('Target.attachToTarget',{targetId:appTarget.targetId,flatten:true})).sessionId;await root();
     expect((await targets()).filter(t=>t.type==='page'&&t.url.startsWith(reviewUrl))).toHaveLength(1);
-    expect((await session.read()).notes.filter(n=>n.web)).toHaveLength(4);expect(errors).toEqual([]);
+    expect((await session.read()).notes.filter(n=>n.web)).toHaveLength(5);expect(errors).toEqual([]);
   }finally{cdp?.close();await web.close();server.stop(true);app.stop(true);await rm(dir,{recursive:true,force:true,maxRetries:5,retryDelay:100});}
 },90_000);
