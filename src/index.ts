@@ -207,11 +207,17 @@ async function main() {
   }
   for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, shutdown);
 
-  if (options.open && web) {
-    await web.open().catch(error => console.error('  '+error.message+' Open the review URL to retry.'));
-  }
-  if (options.open && !openInBrowser(`http://localhost:${server.port}`)) {
-    console.log("  could not open browser; open the URL above manually\n");
+  if (options.open) {
+    let opened = false;
+    if (web) {
+      opened = await web.open().then(() => true).catch(error => {
+        console.error('  '+error.message+' Open the review URL to retry.');
+        return false;
+      });
+    }
+    if (!opened && !openInBrowser(webUrl)) {
+      console.log("  could not open browser; open the URL above manually\n");
+    }
   }
   if (options.codexThread) console.log(`  Codex feedback target: ${options.codexThread}\n`);
 }

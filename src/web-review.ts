@@ -156,7 +156,11 @@ export function createWebReview(options:WebReviewOptions){
           await Bun.sleep(100);
         }
         if(!installed)throw new Error('The annotation toolbar could not start. Check that the local app is running and its page finishes loading.');
-        state='ready';detail='Select Element, Block, Area or Point in the review browser.';
+        const reviewUrl=options.reviewUrl();
+        if(!targets.targetInfos.some((t:any)=>t.type==='page'&&(t.url===reviewUrl||t.url.startsWith(reviewUrl+'/')||t.url.startsWith(reviewUrl+'#'))))
+          await cdp.send('Target.createTarget',{url:reviewUrl,background:true});
+        await cdp.send('Target.activateTarget',{targetId});
+        state='ready';detail='Open the lcr circle to select an element, or drag to select an area.';
         listeners.push(cdp.on('Target.detachedFromTarget',event=>{if(event.sessionId===attachedSession&&sessionId===attachedSession){sessionId='';contextId=0;state='closed';detail='The reviewed tab closed. Open the review browser to continue.';}}));
       }catch(error){state='error';detail=error instanceof Error?error.message:String(error);if(browser){await browser.close();browser=null;}throw error;}
       finally{opening=null;}

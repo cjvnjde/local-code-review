@@ -82,10 +82,15 @@ Annotate a running local app without an extension or changes to its code:
 lcr --web http://localhost:3000 --id checkout-ui
 ```
 
-lcr opens a dedicated Chrome/Chromium window with a floating toolbar. **Browse** uses the app normally;
-**Element** selects a tag, **Block** selects its containing layout block, **Area** draws a rectangle,
-and **Point** captures a small area around a click. Alt + wheel moves an element selection up to its
-parent. Save a comment to keep an immutable viewport screenshot, a crop of the selection, the URL,
+lcr opens a dedicated Chrome/Chromium window with the app and the lcr review in separate tabs.
+The app starts with only a small **lcr** circle: drag it out of the way, or click it to show the tools.
+Click it again to hide the tools, note panel, and pins and use the app normally. Its position survives
+reloads in that tab. Opening the tools defaults to **Element**: click an element, or start dragging to
+select an **Area** automatically. **Block** targets a containing layout block instead of the exact
+element; **Area** and **Point** remain available explicitly. **Browse** keeps the tools visible while
+using the app. Alt + wheel moves an element selection up to its parent.
+
+Save a comment to keep an immutable viewport screenshot, a crop of the selection, the URL,
 viewport and scroll position, a selector, element text and attributes, selected CSS properties, and
 available React/Vue component names and source hints.
 
@@ -103,7 +108,7 @@ a new note.
 
 This optional mode needs an installed Chrome, Chromium, or Edge. It keeps a separate persistent
 profile in the output directory's `.browser/` folder; log in there once if your app requires it.
-Set `LCR_BROWSER_PATH` to choose another Chromium executable. `--no-open` keeps both browsers closed;
+Set `LCR_BROWSER_PATH` to choose another Chromium executable. `--no-open` opens neither tab;
 open the printed review URL and choose **Open review browser** when ready. Stopping lcr closes its
 owned browser. See [UI review details and limits](docs/web-ui.md).
 

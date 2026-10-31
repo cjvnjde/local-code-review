@@ -14,19 +14,30 @@ Use a separate name for a UI review and a diff review when you want separate con
 
 ## Select and comment
 
-The dedicated browser opens the actual application URL, preserving its routing, cookies, APIs,
-and development-server hot reload. The annotation toolbar and pins live in a shadow root; no
-application code is rewritten, proxied, or installed into the project.
+The dedicated browser opens the actual application URL and the full lcr review in two tabs of the
+same window, preserving the app's routing, cookies, APIs, and development-server hot reload.
+The annotation tools and pins live in a shadow root; no application code is rewritten, proxied,
+or installed into the project.
 
-- **Browse**: interact with the app normally, including forms, menus, and navigation.
-- **Element**: hover and click an HTML element. Alt + wheel selects a parent.
-- **Block**: select a containing block, flex/grid container, table, or list item.
-- **Area**: drag a rectangle, including over a canvas or embedded frame.
+Only a small **lcr** circle is shown initially, leaving the app usable normally. Drag the circle to
+move it; its position survives reloads in the same tab. Click it to expand the tools and start
+selecting elements. Click it again to hide the toolbar, panel, outlines, and pins and resume normal
+browsing. Hiding a half-written comment asks before discarding it; saved notes are never removed.
+
+- **Element** (default when opening tools): click the exact HTML element under the pointer. Start
+  dragging instead and that gesture automatically selects an **Area**. Alt + wheel selects a parent.
+- **Block**: click a containing block, flex/grid container, table, or list item rather than the exact
+  element. For example, Element selects an inline button while Block selects its enclosing section.
+  If the element is already a layout block, these may select the same thing. Dragging also selects an area.
+- **Area**: explicitly drag a rectangle, including over a canvas or embedded frame.
 - **Point**: click to capture a 96 × 96 CSS-pixel neighborhood, clipped to the viewport.
+- **Browse**: interact with the app normally while keeping the toolbar and saved pins available.
 
-Clicking in selection mode annotates instead of activating application controls. An element partly
-outside the viewport captures only its visible portion. Escape closes the note panel, then returns
-to browsing. Switching away from a half-written comment asks before discarding it.
+Selection finishes on release: a click with up to 6 CSS pixels of movement remains an element/block
+selection; a larger drag becomes an area. Clicking in selection mode annotates instead of activating
+application controls. An element partly outside the viewport captures only its visible portion.
+Escape closes the note panel, then returns to browsing, then collapses the tools. Switching away
+from a half-written comment asks before discarding it.
 
 Saving immediately writes a note into the existing Markdown conversation. Numbered pins reopen
 notes on the current URL. Element pins follow a unique selector with matching element metadata;
@@ -81,11 +92,12 @@ are not inherited. One run should own this profile at a time; concurrent UI revi
 repository can use separate output directories. The default `.review/` directory remains ignored,
 and custom relative output directories remain locally excluded.
 
-`--no-open` starts only the review server. Open its printed URL manually and use **Open review
-browser** to launch later. Closing the reviewed tab or browser leaves lcr running; the same button
-opens it again. Stopping lcr closes the browser it launched. The debugging endpoint listens only
-on loopback. A missing browser or failed launch leaves the review server available with an error
-and a retry action.
+`--no-open` starts only the review server without opening either tab. Open its printed URL manually
+and use **Open review browser** to launch the app and review together later. Closing the reviewed tab
+or browser leaves lcr running; the same button opens it again. Reopening the app in the same browser
+keeps the existing review tab rather than opening another. Stopping lcr closes the browser it launched.
+The debugging endpoint listens only on loopback. A missing browser or failed launch leaves the review
+server available with an error and a retry action.
 
 ## Development verification
 

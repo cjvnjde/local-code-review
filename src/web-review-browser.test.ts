@@ -37,6 +37,8 @@ browserTest('live UI review: select, capture, save, reply, compare, reload, and 
     await web.open();
     const active=(await readFile(path.join(dir,'.review/.browser/DevToolsActivePort'),'utf8')).trim().split('\n');
     cdp=await Cdp.connect('ws://127.0.0.1:'+active[0]+active[1]);
+    const initialReviews=(await cdp.send('Target.getTargets')).targetInfos.filter((t:any)=>t.url===reviewUrl+'/');
+    expect(initialReviews).toHaveLength(1);
     const target=(await cdp.send('Target.getTargets')).targetInfos.find((t:any)=>t.url===web.status().url);
     let sid=(await cdp.send('Target.attachToTarget',{targetId:target.targetId,flatten:true})).sessionId;
     const send=(m:string,p:Record<string,unknown>={})=>cdp!.send(m,p,sid);
@@ -56,15 +58,30 @@ browserTest('live UI review: select, capture, save, reply, compare, reload, and 
     async function click(selector:string){await js(`testRoot.querySelector(${JSON.stringify(selector)}).click()`);}
     async function mouse(type:string,x:number,y:number){await send('Input.dispatchMouseEvent',{type,x,y,button:'left',clickCount:1,...(type==='mousePressed'?{buttons:1}:{})});}
     await root();
-    await click('[data-mode="element"]');
+    expect(await js('getComputedStyle(testRoot.querySelector(".bar")).display')).toBe('none');
+    // The compact launcher moves without opening the tools or intercepting the application.
+    const launcher=await js('(()=>{const r=testRoot.querySelector("[data-launcher]").getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()');
+    await mouse('mousePressed',launcher.x,launcher.y);await mouse('mouseMoved',launcher.x+80,launcher.y-80);await mouse('mouseReleased',launcher.x+80,launcher.y-80);
+    expect(await js('testRoot.querySelector("[data-launcher]").getAttribute("aria-expanded")')).toBe('false');
+    const moved=await js('testRoot.querySelector("[data-launcher]").getBoundingClientRect().x');
+    expect(moved).toBeCloseTo(launcher.x-22+80);
+    const appButton=await js('(()=>{const r=document.querySelector("#save").getBoundingClientRect();return {x:r.x+10,y:r.y+10}})()');
+    await mouse('mousePressed',appButton.x,appButton.y);await mouse('mouseReleased',appButton.x,appButton.y);
+    expect(await js('window.clicks')).toBe(1);
+    await js('window.clicks=0');
+    await click('[data-launcher]');
+    expect(await js('testRoot.querySelector("[data-mode=element]").getAttribute("aria-pressed")')).toBe('true');
     const box=await js('(()=>{const r=document.querySelector("#save").getBoundingClientRect();return {x:r.x+10,y:r.y+10,width:r.width,height:r.height}})()');
-    await mouse('mouseMoved',box.x,box.y);await mouse('mousePressed',box.x,box.y);await mouse('mouseReleased',box.x,box.y);
+    await mouse('mouseMoved',box.x,box.y);await mouse('mousePressed',box.x,box.y);
+    expect(await js('testRoot.querySelector(".dock").hidden')).toBe(true);
+    await mouse('mouseMoved',box.x+2,box.y+1);await mouse('mouseReleased',box.x+2,box.y+1);
     await until(()=>js('!!testRoot.querySelector("[data-save]")'),'captured element editor');
     expect(await js('window.clicks')).toBe(0);
     await js('testRoot.querySelector("textarea").value="Give the save button more breathing room."');await click('[data-save]');
     await until(async()=>((await session.read()).notes.length===1),'saved note');
     const note=(await session.read()).notes[0]!;
     expect(note.web!.before.components.map(c=>c.name)).toEqual(['WorkspaceSettings','SettingsCard']);
+    expect(note.web!.before.mode).toBe('element');
     expect(note.web!.before.element!.attributes['data-testid']).toBe('save');
     expect(note.web!.before.element!.styles['background-color']).toBe('rgb(113, 78, 217)');
     const page=await readFile(path.join(dir,'.review',note.web!.before.page));
@@ -88,15 +105,20 @@ browserTest('live UI review: select, capture, save, reply, compare, reload, and 
     // Reload installs a fresh toolbar and restores saved pins and conversations.
     version=2;await send('Page.reload');await Bun.sleep(400);await root();
     await until(()=>js('testRoot.querySelectorAll(".pin").length===1'),'restored pin');
+    expect(await js('testRoot.querySelector("[data-launcher]").getBoundingClientRect().x')).toBeCloseTo(moved);
+    expect(await js('getComputedStyle(testRoot.querySelector(".pins")).display')).toBe('none');
+    await click('[data-launcher]');await click('[data-mode="browse"]');
     await click('.pin');expect(await js('testRoot.querySelector(".content").textContent')).toContain('Keep the rounded corners too.');
-    await click('[data-close]');await click('[data-mode="area"]');
-    await mouse('mousePressed',200,220);await mouse('mouseMoved',430,350);await mouse('mouseReleased',430,350);
+    await click('[data-close]');await click('[data-mode="element"]');
+    await mouse('mousePressed',200,220);await mouse('mouseMoved',430,350);
+    expect(await js('testRoot.querySelector(".dock").hidden')).toBe(true);
+    await mouse('mouseReleased',430,350);
     await until(()=>js('!!testRoot.querySelector("[data-save]")'),'area editor');
     await js('testRoot.querySelector("textarea").value="Align this section with the heading."');await click('[data-save]');
     await until(async()=>((await session.read()).notes.length===2),'area note');
     const areaNote=(await session.read()).notes[1]!;expect(areaNote.web!.before.mode).toBe('area');expect(areaNote.web!.before.rect).toEqual({x:200,y:220,width:230,height:130});
     // The ordinary review page renders the same notes, images and comparison controls.
-    const reviewTarget=await cdp.send('Target.createTarget',{url:reviewUrl});
+    const reviewTarget={targetId:initialReviews[0].targetId};
     const reviewSid=(await cdp.send('Target.attachToTarget',{targetId:reviewTarget.targetId,flatten:true})).sessionId;
     async function reviewJs(expression:string){const r=await cdp!.send('Runtime.evaluate',{expression,returnByValue:true},reviewSid);return r.result.value;}
     await until(()=>reviewJs('document.querySelectorAll(".web-capture").length===2'),'shared review UI');
@@ -124,6 +146,19 @@ browserTest('live UI review: select, capture, save, reply, compare, reload, and 
     await until(async()=>((await session.read()).notes.length===4),'block note');
     expect((await session.read()).notes[3]!.web!.before.element!.tag).toBe('section');
     await click('[data-close]');
+    // Hiding withdraws the overlay, not saved notes; cancelling a hide keeps a draft intact.
+    await click('[data-mode="area"]');
+    await mouse('mousePressed',200,220);await mouse('mouseMoved',330,300);await mouse('mouseReleased',330,300);
+    await until(()=>js('!!testRoot.querySelector("[data-save]")'),'explicit area editor');
+    await js('testRoot.querySelector("textarea").value="Keep this draft";window.confirm=()=>false');
+    await click('[data-launcher]');
+    expect(await js('testRoot.querySelector("textarea").value')).toBe('Keep this draft');
+    expect(await js('testRoot.querySelector("[data-launcher]").getAttribute("aria-expanded")')).toBe('true');
+    await js('window.confirm=()=>true');await click('[data-launcher]');
+    expect(await js('getComputedStyle(testRoot.querySelector(".pins")).display')).toBe('none');
+    expect(await js('testRoot.querySelector(".glass").hidden')).toBe(true);
+    expect((await session.read()).notes).toHaveLength(4);
+    await click('[data-launcher]');
     await js('document.querySelector("#bottom").scrollIntoView({block:"center"})');
     await click('[data-mode="element"]');
     const bottom=await js('(()=>{const r=document.querySelector("#bottom").getBoundingClientRect();return {x:r.x+10,y:r.y+10}})()');
@@ -148,7 +183,8 @@ browserTest('live UI review: select, capture, save, reply, compare, reload, and 
     expect(web.status().state).toBe('ready');
     const reopened=(await cdp.send('Target.getTargets')).targetInfos.find((t:any)=>t.url===web.status().url);
     sid=(await cdp.send('Target.attachToTarget',{targetId:reopened.targetId,flatten:true})).sessionId;
-    await root();await click('[data-mode="point"]');
+    await root();await click('[data-launcher]');await click('[data-mode="point"]');
+    expect((await cdp.send('Target.getTargets')).targetInfos.filter((t:any)=>t.url===reviewUrl+'/')).toHaveLength(1);
     await mouse('mousePressed',240,170);await mouse('mouseReleased',240,170);
     await until(()=>js('!!testRoot.querySelector("[data-save]")'),'reopened editor');
     await js('testRoot.querySelector("textarea").value="One note after reopening."');
