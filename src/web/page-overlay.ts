@@ -4,10 +4,11 @@ export function installPageReview(config: {key:string;binding:string;origin:stri
   if(window!==window.top||location.origin!==config.origin||win[config.key]) return;
   if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',()=>installPageReview(config),{once:true});return;}
   const pending=new Map<number,{resolve:(v:any)=>void;reject:(e:Error)=>void;timer:ReturnType<typeof setTimeout>}>();
-  let sequence=0, mode='element', notes:any[]=[];
+  let sequence=0, mode='element', selectionMode='element', notes:any[]=[];
   let start:any=null, hovering:Element|null=null, busy=false;
   let frame:HTMLIFrameElement|null=null,activeToken='',frameDirty=false,panelGeneration=0;
-  let expanded=false,launcherPress:any=null,suppressLauncherClick=false;
+  let expanded=false,suppressLauncherClick=false;
+  let launcherPress:{id:number;x:number;y:number;origin:{x:number;y:number};moved:boolean;held:boolean;timer:ReturnType<typeof setTimeout>}|null=null;
   const reviewOrigin=new URL(config.reviewUrl).origin;
   const host=document.createElement('div'); host.id=config.key;
   host.style.cssText='position:fixed;inset:0;z-index:2147483647;pointer-events:none';
@@ -18,6 +19,9 @@ export function installPageReview(config: {key:string;binding:string;origin:stri
     button:hover,.review-link:hover{background:#35394b}button:disabled{opacity:.55;cursor:wait}button[aria-pressed=true]{background:#7554df;border-color:#9779f1;color:white}.review-link{text-decoration:none}
     .launcher{pointer-events:auto;position:fixed;left:18px;bottom:18px;width:calc(var(--tap) + 12px);height:calc(var(--tap) + 12px);padding:0;border-radius:50%;background:#191c26;border-color:#9779f1;font-weight:700;touch-action:none;cursor:grab;box-shadow:0 6px 30px #0005}
     .launcher:active{cursor:grabbing}
+    .launcher[aria-pressed=true]{box-shadow:0 0 0 3px #9779f155,0 6px 30px #0005}
+    .mode-state{position:absolute;bottom:-5px;left:50%;transform:translateX(-50%);padding:0 4px;border:1px solid #727888;border-radius:5px;background:#242733;color:#e9eaf2;font-size:var(--fs-small);line-height:1.3}
+    .launcher[aria-pressed=true] .mode-state{background:#7554df;border-color:#c6b7ff;color:white}
     .bar{pointer-events:auto;position:fixed;display:flex;gap:5px;align-items:center;padding:8px;border:1px solid #444858;border-radius:13px;background:#191c26;box-shadow:0 6px 30px #0005;max-width:calc(100vw - 24px);flex-wrap:wrap;justify-content:center}
     .brand{font-weight:700;padding:0 9px;color:#c6b7ff}
     .outline{position:fixed;pointer-events:none;border:2px solid #9f7cff;background:#9f7cff19;border-radius:3px;display:none}
@@ -28,7 +32,7 @@ export function installPageReview(config: {key:string;binding:string;origin:stri
     .error{color:#ffafa8;white-space:pre-wrap}
   </style><div class="outline"><span class="label"></span></div><div class="pins"></div>
   <div class="dock" hidden><div class="head"><b></b><button type="button" data-close aria-label="Close note panel">×</button></div><div class="content"></div></div>
-  <button class="launcher" data-launcher aria-label="Open UI review tools" aria-expanded="false" title="Click or drag the page to annotate; hold Alt to interact. Click for tools and Browse; drag this circle to move.">lcr</button>
+  <button class="launcher" data-launcher aria-label="Selection mode" aria-pressed="true" aria-expanded="false"><span>lcr</span><span class="mode-state" aria-hidden="true">ON</span></button>
   <div class="bar" hidden><span class="brand">lcr · UI</span><button data-mode="browse">Browse</button><button data-mode="element" aria-pressed="true" title="Click the exact HTML element; drag to select an area">Element</button><button data-mode="block" title="Click a containing layout block; drag to select an area">Block</button><button data-mode="area">Area</button><button data-mode="point">Point</button><button data-notes>Notes · 0</button><a class="review-link" data-review target="lcr-review" rel="noopener">Review ↗</a></div>`;
   (document.body||document.documentElement).append(host);
   const $=(s:string)=>root.querySelector(s) as HTMLElement;
@@ -50,7 +54,7 @@ export function installPageReview(config: {key:string;binding:string;origin:stri
     if(value===expanded)return;
     if(!dock.hidden&&!close())return;
     expanded=value;bar.hidden=!value;
-    launcher.setAttribute('aria-expanded',String(value));launcher.setAttribute('aria-label',value?'Hide UI review tools':'Open UI review tools');
+    launcher.setAttribute('aria-expanded',String(value));
     positionLauncher();
   }
   function rpc(action:string,payload:any={}):Promise<any>{
@@ -72,7 +76,11 @@ export function installPageReview(config: {key:string;binding:string;origin:stri
   }
   function setMode(value:string){
     if(!dock.hidden&&!close())return;
-    mode=value;start=null;hovering=null;outline.style.display='none';
+    mode=value;if(mode!=='browse')selectionMode=mode;
+    start=null;hovering=null;outline.style.display='none';
+    launcher.setAttribute('aria-pressed',String(mode!=='browse'));
+    $('.mode-state').textContent=mode==='browse'?'OFF':'ON';
+    launcher.title='Selection '+(mode==='browse'?'off — use the page normally':'on — '+mode+' targeting')+'. Click to toggle; hold for tools; drag to move. Hold Alt to use the page temporarily.';
     root.querySelectorAll('[data-mode]').forEach(b=>b.setAttribute('aria-pressed',String((b as HTMLElement).dataset.mode===mode)));
   }
   function rect(el:Element){const r=el.getBoundingClientRect();return clamp({x:r.x,y:r.y,width:r.width,height:r.height});}
@@ -199,24 +207,34 @@ export function installPageReview(config: {key:string;binding:string;origin:stri
   reviewLink.onclick=e=>{if(e.button!==0||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey)return;e.preventDefault();void rpc('review').catch(error);};
   $('[data-close]').onclick=close;
   launcher.onpointerdown=e=>{
-    if(e.button!==0)return;
-    suppressLauncherClick=false;launcherPress={id:e.pointerId,x:e.clientX,y:e.clientY,origin:{...launcherPosition},moved:false};
-    launcher.setPointerCapture(e.pointerId);e.preventDefault();
+    if(e.button!==0||launcherPress)return;
+    suppressLauncherClick=false;
+    const press={id:e.pointerId,x:e.clientX,y:e.clientY,origin:{...launcherPosition},moved:false,held:false,
+      timer:setTimeout(()=>{if(launcherPress!==press||press.moved)return;press.held=true;expand(true);},450)};
+    launcherPress=press;launcher.setPointerCapture(e.pointerId);e.preventDefault();
   };
   launcher.onpointermove=e=>{
-    if(!launcherPress||e.pointerId!==launcherPress.id)return;
+    if(!launcherPress||e.pointerId!==launcherPress.id||launcherPress.held)return;
     const dx=e.clientX-launcherPress.x,dy=e.clientY-launcherPress.y;
-    if(Math.hypot(dx,dy)>6)launcherPress.moved=true;
+    if(Math.hypot(dx,dy)>6){launcherPress.moved=true;clearTimeout(launcherPress.timer);}
     if(!launcherPress.moved)return;
     launcherPosition={x:launcherPress.origin.x+dx,y:launcherPress.origin.y+dy};positionLauncher();
   };
-  function endLauncher(){
+  function endLauncher(cancelled=false){
     if(!launcherPress)return;
-    suppressLauncherClick=launcherPress.moved;launcherPress=null;
+    clearTimeout(launcherPress.timer);
+    suppressLauncherClick=cancelled||launcherPress.moved||launcherPress.held;launcherPress=null;
     try{sessionStorage.setItem(positionKey,JSON.stringify(launcherPosition));}catch{}
   }
-  launcher.onpointerup=endLauncher;launcher.onpointercancel=endLauncher;
-  launcher.onclick=()=>{if(suppressLauncherClick){suppressLauncherClick=false;return;}expand(!expanded);};
+  launcher.onpointerup=e=>{if(e.pointerId===launcherPress?.id)endLauncher();};
+  launcher.onpointercancel=launcher.onlostpointercapture=e=>{if(e.pointerId===launcherPress?.id)endLauncher(true);};
+  launcher.onclick=e=>{
+    const suppressed=suppressLauncherClick;suppressLauncherClick=false;
+    if(suppressed&&e.detail!==0)return;
+    setMode(mode==='browse'?selectionMode:'browse');
+  };
+  launcher.oncontextmenu=e=>{e.preventDefault();expand(true);};
+  launcher.onkeydown=e=>{if(e.key==='ArrowDown'){e.preventDefault();expand(true);}};
   function areaRect(a:any,x:number,y:number){return clamp({x:Math.min(a.x,x),y:Math.min(a.y,y),width:Math.max(1,Math.abs(a.x-x)),height:Math.max(1,Math.abs(a.y-y))});}
   document.addEventListener('pointermove',e=>{
     if(e.altKey){outline.style.display='none';return;}
@@ -245,7 +263,7 @@ export function installPageReview(config: {key:string;binding:string;origin:stri
   },true);
   for(const type of ['click','dblclick','contextmenu'])document.addEventListener(type,e=>{if(mode!=='browse'&&!ours(e)&&!(e as MouseEvent).altKey)stop(e);},true);
   document.addEventListener('pointercancel',()=>{start=null;outline.style.display='none';},true);
-  window.addEventListener('blur',()=>{start=null;outline.style.display='none';endLauncher();});
+  window.addEventListener('blur',()=>{start=null;outline.style.display='none';endLauncher(true);});
   window.addEventListener('beforeunload',e=>{if(frameDirty||busy){e.preventDefault();e.returnValue='';}});
   document.addEventListener('keydown',e=>{
     if(e.key==='Alt'){start=null;outline.style.display='none';}
@@ -261,5 +279,5 @@ export function installPageReview(config: {key:string;binding:string;origin:stri
       if(p.el)p.el.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'});
       return new Promise(resolve=>requestAnimationFrame(()=>{const r=p.el?rect(p.el):p.rect;resolve(metadata(p.el,clamp(r),c.mode));}));},
   };
-  positionLauncher();void refresh().catch(error);setInterval(()=>{void refresh().catch(()=>{});},2000);
+  setMode(mode);positionLauncher();void refresh().catch(error);setInterval(()=>{void refresh().catch(()=>{});},2000);
 }

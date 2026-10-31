@@ -87,10 +87,12 @@ lcr --web http://localhost:3000 main...HEAD # Visual and code notes on an explic
 
 lcr opens a dedicated Chrome/Chromium window with the app and the lcr review in separate tabs.
 The app starts ready to annotate: click an element or drag an area, without opening the small **lcr**
-circle. Drag the circle out of the way; click it only when you want the optional targeting controls.
+circle. **Click the circle** to toggle between selection and normal page use; its **ON/OFF** badge and
+purple active state show which is enabled. Turning selection back on restores your last targeting mode.
+**Hold the circle** to open the tools menu; **drag it** to move it out of the way.
 **Block** targets a containing layout block instead of the exact element; **Area** and **Point** remain
-available explicitly. Hold **Alt** to interact with the app normally, or choose **Browse** in the tools.
-Collapsing the tools does not turn annotation off. Alt + wheel selects an element's parent.
+available explicitly. Hold **Alt** to interact with the app temporarily, or choose **Browse** in the tools.
+Opening the tools does not change selection mode. Alt + wheel selects an element's parent.
 
 Save a comment to keep an immutable viewport screenshot, a crop of the selection, the URL,
 viewport and scroll position, a selector, element text and attributes, selected CSS properties, and

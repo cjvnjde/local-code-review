@@ -112,7 +112,28 @@ browserTest('one review: diff and visual notes share editors, attachments, links
     expect(await js('testRoot.querySelector("[data-launcher]").getAttribute("aria-expanded")')).toBe('false');
     const moved=await js('testRoot.querySelector("[data-launcher]").getBoundingClientRect().x');
     expect(moved).toBeCloseTo(launcher.x-22+80);
+    expect(await js('testRoot.querySelector("[data-launcher]").getAttribute("aria-pressed")')).toBe('true');
     const box=await js('(()=>{const r=document.querySelector("#save").getBoundingClientRect();return {x:r.x+10,y:r.y+10,width:r.width,height:r.height}})()');
+    // A short click turns selection off without opening tools; the app receives normal clicks.
+    async function pressLauncher(hold=false){
+      const p=await js('(()=>{const r=testRoot.querySelector("[data-launcher]").getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()');
+      await mouse('mousePressed',p.x,p.y);
+      if(hold)await until(()=>js('!testRoot.querySelector(".bar").hidden'),'hold opens tools');
+      await mouse('mouseReleased',p.x,p.y);
+    }
+    await pressLauncher();
+    expect(await js('testRoot.querySelector("[data-launcher]").getAttribute("aria-pressed")')).toBe('false');
+    expect(await js('testRoot.querySelector(".bar").hidden')).toBe(true);
+    await mouse('mousePressed',box.x,box.y);await mouse('mouseReleased',box.x,box.y);
+    expect(await js('window.clicks')).toBe(1);
+    expect(await js('testRoot.querySelector(".dock").hidden')).toBe(true);
+    // Holding opens the menu without changing selection, including on release.
+    await pressLauncher(true);
+    expect(await js('testRoot.querySelector("[data-launcher]").getAttribute("aria-pressed")')).toBe('false');
+    await click('[data-mode="block"]');await pressLauncher();await pressLauncher();
+    expect(await js('testRoot.querySelector("[data-mode=block]").getAttribute("aria-pressed")')).toBe('true');
+    await click('[data-mode="element"]');
+    await js('window.clicks=0');
     // Alt uses the app normally; an unmodified click annotates without expanding the launcher.
     await mouse('mousePressed',box.x,box.y,1);await mouse('mouseReleased',box.x,box.y,1);expect(await js('window.clicks')).toBe(1);
     await mouse('mouseMoved',box.x,box.y);await mouse('mousePressed',box.x,box.y);
@@ -187,12 +208,12 @@ browserTest('one review: diff and visual notes share editors, attachments, links
     version=2;await send('Page.reload');await navigated.promise;await root();
     await until(()=>js('testRoot.querySelectorAll(".pin").length===2'),'restored pins');
     expect(await js('testRoot.querySelector("[data-launcher]").getBoundingClientRect().x')).toBeCloseTo(moved);
-    await click('[data-launcher]');await click('[data-mode="point"]');
+    await pressLauncher(true);await click('[data-mode="point"]');
     await mouse('mousePressed',240,170);await mouse('mouseReleased',240,170);await frame();await saveFrame('Add space at this location.');
     expect((await session.read()).notes.filter(n=>n.web).at(-1)!.web!.before.rect).toEqual({x:192,y:122,width:96,height:96});
     await click('[data-mode="block"]');await mouse('mouseMoved',box.x+40,box.y);await mouse('mousePressed',box.x+40,box.y);await mouse('mouseReleased',box.x+40,box.y);await frame();await saveFrame('Group these settings.');
     expect((await session.read()).notes.filter(n=>n.web).at(-1)!.web!.before.element!.tag).toBe('section');
-    await click('[data-mode="element"]');await click('[data-launcher]');
+    await click('[data-mode="element"]');
     await js('document.querySelector("#bottom").scrollIntoView({block:"center"})');
     const bottom=await js('(()=>{const r=document.querySelector("#bottom").getBoundingClientRect();return {x:r.x+10,y:r.y+10}})()');
     await mouse('mouseMoved',bottom.x,bottom.y);await mouse('mousePressed',bottom.x,bottom.y);await mouse('mouseReleased',bottom.x,bottom.y);await frame();await saveFrame('Review this lower action.');

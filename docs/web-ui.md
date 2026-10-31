@@ -22,11 +22,15 @@ same window, preserving the app's routing, cookies, APIs, and development-server
 The annotation tools and pins live in a shadow root; no application code is rewritten, proxied,
 or installed into the project.
 
-The app starts in **Element** mode even with the **lcr** circle collapsed: click an element or drag
-an area immediately. Hold **Alt** to use the app normally, or expand the circle and choose **Browse**.
-Drag the circle to move it; its position survives reloads in the same tab. Expanding it exposes the
-optional modes; collapsing it hides the tools without disabling annotation. Hiding or switching
-away from a half-written comment asks before discarding it; saved notes are never removed.
+The app starts in **Element** mode even with the **lcr** tools hidden: click an element or drag an area
+immediately. **Click the circle** to toggle selection off for normal page use, then click again to
+restore your last selection mode. The circle is purple with an **ON** badge while selection is active,
+and dark with an **OFF** badge while browsing. Hold **Alt** to use the app normally for one gesture.
+**Hold the circle for 450 ms** to open the optional targeting tools without changing selection mode.
+Dragging more than 6 CSS pixels before the hold completes moves the circle instead, without toggling
+selection or opening the menu; its position survives reloads in the same tab. Keyboard users can
+toggle with Enter/Space and open the tools with Arrow Down while the circle is focused.
+Hiding or switching away from a half-written comment asks before discarding it; saved notes are never removed.
 
 - **Element** (default): click the exact HTML element under the pointer. Start dragging instead and
   that gesture automatically selects an **Area**. Alt + wheel selects a parent.
