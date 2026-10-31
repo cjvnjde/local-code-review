@@ -9,6 +9,8 @@ export function installPageReview(config: {key:string;binding:string;origin:stri
   let frame:HTMLIFrameElement|null=null,activeToken='',frameDirty=false,panelGeneration=0;
   let frameKind:'draft'|'note'|''='',pendingWeb:any=undefined,minimized=false,frameSaving=false;
   let dockPosition={x:innerWidth-578,y:18},dockPress:{id:number;x:number;y:number;origin:{x:number;y:number}}|null=null;
+  let dockSize:{width:number;height:number}|null=null;
+  let resizePress:{id:number;x:number;y:number;width:number;height:number}|null=null;
   let expanded=false,suppressLauncherClick=false;
   let selected:Element[]=[],selectionUrl=location.href,multiple=false;
   let launcherPress:{id:number;x:number;y:number;origin:{x:number;y:number};moved:boolean;held:boolean;timer:ReturnType<typeof setTimeout>}|null=null;
@@ -31,6 +33,9 @@ export function installPageReview(config: {key:string;binding:string;origin:stri
     .label{position:absolute;bottom:100%;left:0;white-space:nowrap;padding:2px 7px;background:#7554df;color:white;font-size:var(--fs-small)}
     .dock{pointer-events:auto;position:fixed;right:18px;top:18px;height:calc(100vh - 96px);width:min(560px,calc(100vw - 36px));background:#191c26;border:1px solid #444858;box-shadow:0 8px 40px #0006;border-radius:12px;display:flex;flex-direction:column;overflow:hidden}
     .dock.minimized{height:auto}.dock.minimized .content{position:absolute;top:100%;left:0;right:0;flex:none;height:var(--content-height);visibility:hidden;pointer-events:none}
+    .resize{position:absolute;right:0;bottom:0;width:var(--tap);height:var(--tap);padding:0;border:0;border-radius:0;background:transparent;cursor:nwse-resize;touch-action:none;display:grid;place-items:center;color:#c6b7ff}
+    .resize svg{width:var(--icon);height:var(--icon);pointer-events:none}.resize:focus-visible{outline:2px solid #c6b7ff;outline-offset:-3px}.dock.minimized .resize{display:none}
+    .resize:is(:hover,:focus-visible)::before{content:attr(title);position:absolute;right:calc(var(--tap) / 4);bottom:100%;width:calc(var(--tap) * 9);padding:calc(var(--tap) / 4);border:1px solid #444858;border-radius:7px;background:#242733;font-size:var(--fs-small);pointer-events:none;cursor:default}
     .bar[hidden],.dock[hidden],.selection-tools[hidden]{display:none}.head{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid #363a47;cursor:move;touch-action:none;user-select:none}.head b{flex:1;min-width:0}.head button{flex:none}.content{display:flex;flex-direction:column;flex:1;min-height:0;overflow:auto}.content iframe{width:100%;flex:1;min-height:0;border:0;background:#191c26}.status,.error{padding:10px 14px;margin:0}
     .pin{pointer-events:auto;position:fixed;border-radius:16px;background:#7554df;border:2px solid #fff;box-shadow:0 2px 8px #0007;color:white;font-weight:700;padding:0 6px;min-width:28px;min-height:28px}
     .selected{position:fixed;pointer-events:none;border:2px solid #9f7cff;background:#9f7cff19;border-radius:3px}
@@ -38,7 +43,7 @@ export function installPageReview(config: {key:string;binding:string;origin:stri
     .error{color:#ffafa8;white-space:pre-wrap}
   </style><div class="outline"><span class="label"></span></div><div class="selections"></div><div class="pins"></div>
   <div class="selection-tools" hidden><span data-selection-count></span><button data-write>Write note</button><button data-clear>Clear</button></div>
-  <div class="dock" hidden><div class="head"><b tabindex="0" title="Drag to move; arrow keys move the note window"></b><button type="button" data-minimize aria-label="Minimize note panel" aria-expanded="true">−</button><button type="button" data-close aria-label="Close note panel">×</button></div><div class="content"></div></div>
+  <div class="dock" hidden><div class="head"><b tabindex="0" title="Drag to move; arrow keys move the note window"></b><button type="button" data-minimize aria-label="Minimize note panel" aria-expanded="true">−</button><button type="button" data-close aria-label="Close note panel">×</button></div><div class="content"></div><button type="button" class="resize" data-resize aria-label="Resize note panel" title="Drag to resize; arrow keys resize; Shift moves farther"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 13 13 3M8 13l5-5M12 13l1-1"/></svg></button></div>
   <button class="launcher" data-launcher aria-label="Selection mode" aria-pressed="true" aria-expanded="false"><span>lcr</span><span class="mode-state" aria-hidden="true">ON</span></button>
   <div class="bar" hidden><span class="brand">lcr · UI</span><button data-mode="browse">Browse</button><button data-mode="element" aria-pressed="true" title="Click the exact HTML element; Shift-click to select multiple; drag to select an area">Element</button><button data-mode="block" title="Click a containing layout block; Shift-click to select multiple; drag to select an area">Block</button><button data-multiple aria-pressed="false" title="Collect elements for one note, then choose Write note">Multiple</button><button data-mode="area">Area</button><button data-mode="point">Point</button><button data-notes>Notes · 0</button><a class="review-link" data-review target="lcr-review" rel="noopener">Review ↗</a></div>`;
   (document.body||document.documentElement).append(host);
@@ -58,10 +63,20 @@ export function installPageReview(config: {key:string;binding:string;origin:stri
     bar.style.top=Math.max(12,Math.min(innerHeight-bar.offsetHeight-12,above>=12?above:launcherPosition.y+size+8))+'px';
   }
   function positionDock(){
-    const width=Math.min(560,innerWidth-36),height=minimized?($('.head').offsetHeight||50):innerHeight-96;
+    const width=Math.max(1,Math.min(dockSize?.width??560,innerWidth-24));
+    const expandedHeight=Math.max(1,Math.min(dockSize?.height??innerHeight-96,innerHeight-24));
+    const height=minimized?($('.head').offsetHeight||50):expandedHeight;
     dockPosition.x=Math.max(12,Math.min(innerWidth-width-12,dockPosition.x));
     dockPosition.y=Math.max(12,Math.min(innerHeight-height-12,dockPosition.y));
     dock.style.left=dockPosition.x+'px';dock.style.right='auto';dock.style.top=dockPosition.y+'px';
+    dock.style.width=width+'px';dock.style.height=minimized?'auto':expandedHeight+'px';
+  }
+  function resizeDock(width:number,height:number){
+    const maxWidth=Math.max(1,innerWidth-dockPosition.x-12),maxHeight=Math.max(1,innerHeight-dockPosition.y-12);
+    const css=getComputedStyle(host);
+    dockSize={width:Math.max(Math.min(parseFloat(css.getPropertyValue('--tap'))*10,maxWidth),Math.min(width,maxWidth)),
+      height:Math.max(Math.min(parseFloat(css.getPropertyValue('--row'))*7,maxHeight),Math.min(height,maxHeight))};
+    positionDock();
   }
   function minimize(value:boolean){
     if(value&&!minimized)dock.style.setProperty('--content-height',content.getBoundingClientRect().height+'px');
@@ -97,7 +112,7 @@ export function installPageReview(config: {key:string;binding:string;origin:stri
   function close(discard=false){
     if(!discard&&frameDirty&&!confirm('Discard the note changes you are writing?'))return false;
     if(frameKind==='draft'&&activeToken)void rpc('discard',{draftId:activeToken}).catch(()=>{});
-    panelGeneration++;frame=null;activeToken='';frameKind='';pendingWeb=undefined;frameDirty=false;frameSaving=false;
+    panelGeneration++;frame=null;activeToken='';frameKind='';pendingWeb=undefined;frameDirty=false;frameSaving=false;resizePress=null;
     dock.hidden=true;content.textContent='';minimize(false);clearSelections();start=null;hovering=null;outline.style.display='none';return true;
   }
   function setMode(value:string){
@@ -394,6 +409,23 @@ export function installPageReview(config: {key:string;binding:string;origin:stri
     e.preventDefault();const step=e.shiftKey?40:10;
     dockPosition.x+=delta[e.key][0]*step;dockPosition.y+=delta[e.key][1]*step;positionDock();
   };
+  const resize=$('[data-resize]');
+  resize.onpointerdown=e=>{
+    if(e.button!==0||minimized)return;
+    resizePress={id:e.pointerId,x:e.clientX,y:e.clientY,width:dock.offsetWidth,height:dock.offsetHeight};
+    resize.setPointerCapture(e.pointerId);e.preventDefault();
+  };
+  resize.onpointermove=e=>{
+    if(!resizePress||resizePress.id!==e.pointerId)return;
+    resizeDock(resizePress.width+e.clientX-resizePress.x,resizePress.height+e.clientY-resizePress.y);
+  };
+  resize.onpointerup=resize.onpointercancel=resize.onlostpointercapture=e=>{if(resizePress?.id===e.pointerId)resizePress=null;};
+  resize.onkeydown=e=>{
+    const delta:{[key:string]:[number,number]}={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]};
+    if(!delta[e.key])return;
+    e.preventDefault();const step=e.shiftKey?40:10;
+    resizeDock(dock.offsetWidth+delta[e.key][0]*step,dock.offsetHeight+delta[e.key][1]*step);
+  };
   $('[data-write]').onclick=()=>{if(selected.length)void choose(selected[0],rect(selected[0]),mode,[...selected]);};
   $('[data-clear]').onclick=clearSelections;
   root.addEventListener('focusout',event=>{
@@ -462,7 +494,7 @@ export function installPageReview(config: {key:string;binding:string;origin:stri
   },true);
   for(const type of ['click','dblclick','contextmenu'])document.addEventListener(type,e=>{if(mode!=='browse'&&!ours(e)&&!(e as MouseEvent).altKey)stop(e);},true);
   document.addEventListener('pointercancel',()=>{start=null;outline.style.display='none';},true);
-  window.addEventListener('blur',()=>{start=null;dockPress=null;outline.style.display='none';endLauncher(true);hideTools();});
+  window.addEventListener('blur',()=>{start=null;dockPress=null;resizePress=null;outline.style.display='none';endLauncher(true);hideTools();});
   window.addEventListener('beforeunload',e=>{if(frameDirty||busy){e.preventDefault();e.returnValue='';}});
   document.addEventListener('keydown',e=>{
     if(e.key==='Alt'){start=null;outline.style.display='none';}

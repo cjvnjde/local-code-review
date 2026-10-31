@@ -98,7 +98,9 @@ Choose **Multiple**, or **Shift-click** in Element/Block mode, to collect elemen
 Shift-click a target again to remove it; **Write note** (or Enter) opens the shared editor.
 Keep the targets visible: the capture includes each target's metadata and one crop covering the group.
 With a note open, further page selections append to it without replacing the draft or earlier captures.
-Drag its title bar to move it, **−** to minimize/restore it, and **×** to discard a new unsaved draft.
+Drag its title bar to move it or its bottom-right grip to resize it; **−** minimizes/restores the
+chosen size, and **×** discards a new unsaved draft. Focus the grip and use arrow keys to resize
+with the keyboard (Shift moves farther). Resizing preserves the draft and caret.
 Saved conversations survive closing the window; there is no duplicate Cancel action on a new visual note.
 Each capture's trash button removes that selection without deleting the note text or conversation.
 Removing the first also removes its comparisons; removing the last leaves an overall note.

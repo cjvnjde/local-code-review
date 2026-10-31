@@ -66,10 +66,13 @@ the Enter save behavior. They do not replace a draft or move its caret. The revi
 preferences because an embedded editor can have a separate browser-storage partition.
 
 The note is a floating window: drag its title bar to move it, or focus the title and use the arrow keys
-(Shift moves farther). **−** minimizes it to its title bar; the same control restores it. Minimizing
-keeps the editor, draft, selection, and iframe viewport intact. **×** intentionally discards a new
-unsaved draft, so that editor has no second Cancel button. Closing a saved note keeps its conversation;
-unsubmitted wording changes are discarded.
+(Shift moves farther). Drag the bottom-right grip to resize its width and height, or focus the grip
+and use the arrow keys (Shift resizes farther). Resizing keeps the editor, text and caret intact.
+The window stays within the viewport, with a minimum usable size unless the viewport is smaller.
+**−** minimizes it to its title bar; the same control restores it at the chosen size. Minimizing
+keeps the editor, draft, selection, and iframe viewport intact. The size carries to other notes until
+the page reloads. **×** intentionally discards a new unsaved draft, so that editor has no second Cancel
+button. Closing a saved note keeps its conversation; unsubmitted wording changes are discarded.
 
 While a note window is open, selecting more of the page adds captures to **that same note**, including
 while it is minimized. Move the window aside to reach the area underneath. New captures keep separate
