@@ -1,0 +1,2 @@
+Run: bun src/index.ts
+The task count is deliberately wrong on main; review countOpen before shipping.

@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fieldwork · UI review demo</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="/"><img src="/logo.svg" alt="" width="32" height="32">Fieldwork</a>
+    <nav aria-label="Main navigation"><a href="/">Projects</a><a href="/settings">Settings</a></nav>
+    <span class="avatar" aria-label="Demo user Alex">AL</span>
+  </header>
+  <main>
+    <section id="dashboard" aria-labelledby="page-title">
+      <div class="heading"><div><p class="eyebrow">Workspace / Studio</p><h1 id="page-title">Your team, at a glance.</h1><p>A small workspace with plenty to review. All data stays in this tab.</p></div><button id="new-project" class="primary">New project</button></div>
+      <section class="stats" aria-label="Workspace summary">
+        <article class="card"><p>Active projects</p><strong id="project-count">3</strong></article>
+        <article class="card"><p>Tasks this week</p><strong>24</strong></article>
+        <article class="card"><p>Team members</p><strong>8</strong></article>
+      </section>
+      <div class="heading"><h2>Projects</h2><label>Filter projects <input id="project-filter" type="search" placeholder="Search by name"></label></div>
+      <section id="projects" class="projects" aria-label="Projects">
+        <article class="card project" data-name="Brand refresh"><span class="badge">Design</span><h3 class="project-title">Brand refresh</h3><p>A clearer identity for the next chapter.</p><label><input type="checkbox" class="complete"> Mark complete</label></article>
+        <article class="card project" data-name="Customer onboarding improvements for international teams"><span class="badge">Product</span><h3 class="project-title">Customer onboarding improvements for international teams</h3><p>A deliberately long title to inspect at narrow widths.</p><label><input type="checkbox" class="complete"> Mark complete</label></article>
+        <article class="card project" data-name="Documentation"><span class="badge">Writing</span><h3 class="project-title">Documentation</h3><p>Make the first five minutes feel effortless.</p><label><input type="checkbox" class="complete"> Mark complete</label></article>
+      </section>
+      <p id="empty" hidden>No projects match this search.</p>
+      <section class="card activity" aria-labelledby="activity-title"><h2 id="activity-title">Weekly activity</h2><p>Use Area or Point to comment on this canvas chart.</p><canvas id="activity-chart" width="900" height="200" role="img" aria-label="Tasks completed Monday to Friday: 8, 14, 10, 19, 16"></canvas></section>
+      <section class="card checklist"><h2>Review checklist</h2><p>Try the long project title, the New project dialog, the chart, and the settings form.</p><p>Scroll here to test pins below the first viewport. Refresh after a CSS edit to compare captures.</p><a href="/settings">Open workspace settings →</a></section>
+    </section>
+    <section id="settings" hidden aria-labelledby="settings-title"><p class="eyebrow">Workspace / Settings</p><h1 id="settings-title">Workspace settings</h1><form id="settings-form" class="card form"><label>Workspace name<input id="workspace-name" name="workspace" required value="Studio"></label><label>Contact email<input name="email" type="email" required value="alex@example.invalid"></label><label><input type="checkbox" name="digest" checked> Weekly email digest</label><button id="save-settings" class="primary">Save changes</button></form><a href="/">← Back to projects</a></section>
+    <p id="notice" role="status" aria-live="polite"></p>
+  </main>
+  <dialog id="project-dialog"><form id="project-form" class="form"><h2>Start something new</h2><label>Project name<input id="project-name" name="title" required maxlength="120"></label><div class="actions"><button id="cancel-project" type="button">Cancel</button><button class="primary">Create project</button></div></form></dialog>
+</body>
+</html>
