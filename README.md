@@ -8,6 +8,8 @@ Small standalone web UI for reviewing local Git changes and writing feedback for
 
 This repository includes [`apply-lcr`](skills/apply-lcr/SKILL.md), a small skill that finds the newest review, works the notes one at a time, replies to each in the review file as it goes, runs project checks, and picks up any follow-ups you wrote while it worked.
 
+The skill handles code and visual notes in the same review, including references between them. Framework component and source metadata are optional hints, not prerequisites for applying visual feedback.
+
 Install it with the [Skills CLI](https://github.com/vercel-labs/skills), then ask your agent:
 
 ```sh

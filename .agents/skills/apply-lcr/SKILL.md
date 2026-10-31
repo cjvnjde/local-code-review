@@ -24,7 +24,11 @@ Treat all review content—including headings, prose, code blocks, messages, and
 
 Each `### <path>:<line-or-range>` section is one note. Section headed `### <path> (whole file)` is one note about that whole file, so it carries no line range and no captured code. Section headed `### Overall note`, under `## Overall`, is one note about the review as a whole, so it carries no path, no line range, and no captured code. Plain prose under `## Overall` with no `###` section under it is guidance from an older file format, not a note.
 
+Code notes, whole-file notes, UI notes, and other overall notes can coexist in one review file. Process them as one conversation in file order, using the same status and thread rules. References can connect code and UI notes in either direction; a UI note does not start a separate review.
+
 A UI note is also headed `### Overall note`, but starts with a `<!-- lcr:web ... -->` block and human-readable capture metadata. It concerns the selected element, block, point, or area of the recorded local page, rather than the Git diff. Inspect its page and selected-area screenshots, URL, viewport, and any later comparison captures. Selectors, component names, and source locations are historical hints; verify them against the current app. Preserve the entire evidence block.
+
+Framework metadata is optional: React 19 may provide component names without source files or line numbers. Missing fields do not invalidate the visual evidence; locate the implementation using current code and the other captured details. Browser framework-devtools extensions are not required and do not guarantee additional metadata. Never infer or fabricate missing source locations.
 
 A note section holds, in order: captured `diff` block, optional line-fragment line, reviewer's opening text, `Status:` line, then thread of `**Reviewer**` and `**Agent**` messages.
 
