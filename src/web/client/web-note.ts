@@ -1,7 +1,7 @@
-import { mountNoteIn, openWebEditor } from './notes.ts';
+import { mountNoteIn, openWebEditor, setWebNoteCapturing, updateWebNoteEvidence } from './notes.ts';
 import { noteByRef, refIn, refOf } from './note-ref.ts';
 import { state } from './state.ts';
-import { webCapture } from '../../web-review-model.ts';
+import { webReview, type WebReview } from '../../web-review-model.ts';
 import { syncCfg } from './persistence.ts';
 
 const query=new URLSearchParams(location.search);
@@ -17,7 +17,7 @@ export function prepareWebNote(){
 export async function startWebNote(){
   if(!state.uiEmbed||!state.web)return;
   const parentOrigin=new URL(state.web.url).origin;
-  const tell=(action:'dirty'|'close'|'review',value:{dirty?:boolean;id?:string}={})=>
+  const tell=(action:'dirty'|'close'|'review'|'ready',value:{dirty?:boolean;saving?:boolean;id?:string}={})=>
     window.parent.postMessage({type:'lcr:ui',token,action,...value},parentOrigin);
   const host=document.createElement('section');host.id='uiNote';host.setAttribute('aria-label','Review note');
   const tools=document.createElement('div');tools.className='ui-note-tools';
@@ -25,17 +25,37 @@ export async function startWebNote(){
   tools.append(link);
   const body=document.createElement('div');body.className='ui-note-body';host.append(tools,body);document.body.append(host);
   let activeId=noteId||'';
+  let capturing=false,closing=false,pendingWeb: WebReview|null=null;
   function dirty(){
+    if(closing)return false;
+    if(capturing)return true;
     if(state.noteSending.size||state.noteDelivery.get(activeId)?.error)return true;
     const ta=host.querySelector<HTMLTextAreaElement>('textarea');
     if(!ta)return false;
     const original=ta.dataset.was??(ta.closest('.nedit')?state.notes.get(activeId)?.body:'')??'';
     return ta.value.trim()!==original.trim();
   }
-  const changed=()=>tell('dirty',{dirty:dirty()});
+  const changed=()=>{
+    setWebNoteCapturing(body,capturing);
+    tell('dirty',{dirty:dirty(),saving:!!state.noteSending.size});
+  };
   host.addEventListener('input',changed);
   new MutationObserver(changed).observe(body,{childList:true,subtree:true});
-  const close=()=>{tell('dirty',{dirty:false});tell('close');};
+  const close=()=>{closing=true;tell('dirty',{dirty:false,saving:false});tell('close');};
+  window.addEventListener('message',event=>{
+    if(event.source!==window.parent||event.origin!==parentOrigin)return;
+    const data:unknown=event.data;
+    if(!data||typeof data!=='object'||!('type' in data)||data.type!=='lcr:ui'||
+      !('token' in data)||data.token!==token||!('action' in data))return;
+    if(data.action==='capturing'&&'busy' in data&&typeof data.busy==='boolean'){
+      capturing=data.busy;changed();
+    }else if(data.action==='evidence'&&'web' in data){
+      const web=webReview(data.web);
+      if(!web)return;
+      pendingWeb=web;
+      if(activeId)updateWebNoteEvidence(body,activeId,web);
+    }
+  });
   document.addEventListener('lcr:note-saved',event=>{
     if(event instanceof CustomEvent&&event.detail===activeId)close();
   });
@@ -62,17 +82,19 @@ export async function startWebNote(){
     if(draft){
       const response=await fetch('/api/web/draft?id='+encodeURIComponent(draft));
       const data:unknown=await response.json();
-      const capture=webCapture(data&&typeof data==='object'&&'capture' in data?data.capture:null);
-      if(!response.ok||!capture)throw new Error('This selection is no longer available. Select the page again.');
-      activeId=openWebEditor(body,{before:capture,after:[]},close);
+      const web=webReview(data&&typeof data==='object'&&'web' in data?data.web:null);
+      if(!response.ok||!web)throw new Error('This selection is no longer available. Select the page again.');
+      activeId=openWebEditor(body,pendingWeb||web,close);
     }else{
       const note=state.notes.get(noteId);
       if(!note)throw new Error('This note is no longer in the review.');
       mountNoteIn(body,note);
     }
+    if(pendingWeb)updateWebNoteEvidence(body,activeId,pendingWeb);
     link.href=state.notes.has(activeId)?'/#note='+encodeURIComponent(refOf(activeId)):'/';
     if(draft)link.textContent='Review';
     changed();
+    tell('ready',{id:activeId});
   }catch(error){
     const message=document.createElement('p');message.className='ui-note-error';message.setAttribute('role','alert');
     message.textContent=error instanceof Error?error.message:String(error);body.append(message);

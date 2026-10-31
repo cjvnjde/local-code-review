@@ -5,6 +5,7 @@ import { renderMarkdown } from "./review.ts";
 import { applyComment, noteFromComment, parseReview } from "./thread.ts";
 import type { ReviewDoc, ReviewMessage, ReviewNote } from "./thread.ts";
 import type { NoteStatusKind, ReviewComment, ReviewSubmission } from "./types.ts";
+import { webCapture, type WebCapture } from './web-review-model.ts';
 
 export interface SaveResult {
   /** Path of the session file, relative to the repository unless the output directory is absolute. */
@@ -309,13 +310,30 @@ export function createSession(repoRoot: string, outDir: string, range: string, c
     },
 
     /** Add visual evidence without rewriting the original subject or the agent's conversation. */
-    addWebCapture(id: string, capture: import('./web-review-model.ts').WebCapture): Promise<ReviewNote | null> {
+    addWebCapture(id: string, capture: WebCapture): Promise<ReviewNote | null> {
+      const clean=webCapture(capture);
       return serialise(async () => {
+        if (!clean) throw new Error('Invalid comparison capture.');
         const doc = await read();
         const note = doc.notes.find(entry => entry.id === id);
         if (!note?.web) return null;
         if (note.web.after.length >= 100) throw new Error('This note already has 100 comparison captures.');
-        note.web.after.push(structuredClone(capture));
+        note.web.after.push(clean);
+        await write(doc);
+        return note;
+      });
+    },
+
+    /** Append another selected subject, keeping comparison captures tied to the original subject. */
+    addWebSelection(id: string, capture: WebCapture): Promise<ReviewNote | null> {
+      const clean=webCapture(capture);
+      return serialise(async () => {
+        if (!clean) throw new Error('Invalid page selection.');
+        const doc = await read();
+        const note = doc.notes.find(entry => entry.id === id);
+        if (!note?.web) return null;
+        if ((note.web.additional?.length ?? 0) >= 100) throw new Error('This note already has 100 additional selections.');
+        (note.web.additional ??= []).push(clean);
         await write(doc);
         return note;
       });

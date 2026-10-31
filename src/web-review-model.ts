@@ -16,7 +16,7 @@ export interface WebCapture {
     components: WebCapture['components'];
   }[];
 }
-export interface WebReview { before: WebCapture; after: WebCapture[] }
+export interface WebReview { before: WebCapture; after: WebCapture[]; additional?: WebCapture[] }
 const finite=(v: unknown): v is number=>typeof v==='number'&&Number.isFinite(v);
 const ref=(v: unknown): v is string=>typeof v==='string'&&/^images\/[a-z0-9][a-z0-9._-]*\.png$/i.test(v);
 const record=(v: unknown): v is Record<string,unknown>=>v!==null&&typeof v==='object'&&!Array.isArray(v);
@@ -76,19 +76,27 @@ export function webReview(value: unknown): WebReview|null {
   const before=webCapture(value.before);
   if(!before||!Array.isArray(value.after)||value.after.length>100) return null;
   const after=Array.from(value.after,webCapture);
-  return after.every((capture): capture is WebCapture=>capture!==null)?{before,after}:null;
+  if(!after.every((capture): capture is WebCapture=>capture!==null))return null;
+  if(value.additional===undefined)return {before,after};
+  if(!Array.isArray(value.additional)||value.additional.length>100)return null;
+  const additional=Array.from(value.additional,webCapture);
+  return additional.every((capture): capture is WebCapture=>capture!==null)?{before,after,additional}:null;
 }
 /** Human-readable evidence and a sealed machine-readable copy both travel in ordinary Markdown. */
 export function webReviewLines(web: WebReview): string[] {
   web = webReview(web)!;
   const json=JSON.stringify(web).replace(/[<>&]/g,c=>'\\u'+c.charCodeAt(0).toString(16).padStart(4,'0'));
   const lines=['<!-- lcr:web '+json+' -->','','UI capture: '+web.before.mode+' selection. Metadata and screenshots record the page at capture time.',''];
-  [web.before,...web.after].forEach((c,i)=>{
+  const captures=[{capture:web.before,label:'Before'},
+    ...(web.additional??[]).map((capture,i)=>({capture,label:'Selection '+(i+2)})),
+    ...web.after.map((capture,i)=>({capture,label:'After '+(i+1)}))];
+  captures.forEach(({capture:c,label})=>{
     const data=JSON.stringify({...c,page:undefined,area:undefined},null,2);
     const fence='`'.repeat(Math.max(3,...(data.match(/`+/g)||[]).map(s=>s.length+1)));
-    lines.push(i?'After capture '+i+':':'Before capture:', '',fence+'json',data,fence,'',
-      '!['+(i?'After':'Before')+' — page]('+c.page+')','',
-      '!['+(i?'After':'Before')+' — selected area]('+c.area+')','');
+    const imageLabel=label.startsWith('After ')?'After':label;
+    lines.push(label==='Before'?'Before capture:':label.startsWith('After ')?'After capture '+label.slice(6)+':':label+':', '',fence+'json',data,fence,'',
+      '!['+imageLabel+' — page]('+c.page+')','',
+      '!['+imageLabel+' — selected area]('+c.area+')','');
   });
   return lines.join("\n").split("\n");
 }

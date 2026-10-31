@@ -32,7 +32,8 @@ selection or opening the menu; its position survives reloads in the same tab. Ke
 toggle with Enter/Space and open the tools with Arrow Down while the circle is focused.
 The tools are a one-use menu: choosing an action, clicking elsewhere, leaving the menu with keyboard
 focus, switching windows, or pressing Escape hides it without changing the chosen targeting mode.
-Hiding or switching away from a half-written comment asks before discarding it; saved notes are never removed.
+Changing targeting mode or minimizing a note leaves its draft intact. Opening a different saved note
+asks before discarding half-written text; saved conversations are never removed by closing a window.
 
 - **Element** (default): click the exact HTML element under the pointer. Start dragging instead and
   that gesture automatically selects an **Area**. Alt + wheel selects a parent.
@@ -44,7 +45,9 @@ Hiding or switching away from a half-written comment asks before discarding it; 
   Multiple mode, an ordinary click adds the final target and opens the editor; Enter opens it with the current selection.
   **Clear** or Escape cancels the collection. Keep all targets at least partly visible when capturing;
   a note can include up to 100 targets, each with its own metadata, and one crop covering them together.
-- **Area**: explicitly drag a rectangle, including over a canvas or embedded frame.
+- **Area**: explicitly drag a rectangle, including over a canvas or embedded frame. The capture also
+  records up to 100 visible intersecting DOM elements with selectors, element bounds, and available
+  React/Vue component hints. Hidden and occluded elements are skipped on a best-effort basis.
 - **Point**: click to capture a 96 × 96 CSS-pixel neighborhood, clipped to the viewport.
 - **Browse**: interact with the app normally. Saved note circles stay hidden while selection is
   **OFF** and return immediately when it is turned **ON**; the notes themselves are unchanged.
@@ -52,9 +55,8 @@ Hiding or switching away from a half-written comment asks before discarding it; 
 Selection finishes on release: a click with up to 6 CSS pixels of movement remains an element/block
 selection; a larger drag becomes an area. Clicking in selection mode annotates instead of activating
 application controls. An element partly outside the viewport captures only its visible portion.
-Escape cancels the shared editor's draft or edit as in the main review. From the surrounding page,
-Escape closes the note panel, then returns to browsing. Switching away from a half-written comment
-asks before discarding it.
+Escape inside the shared editor cancels its draft or edit as in the main review. From the surrounding
+page, Escape closes the note panel, asking before discarding half-written text, then returns to browsing.
 
 The on-page panel embeds the main app's actual editor and note components, not a reduced copy:
 the configured Enter/Shift+Enter behavior, Markdown, image paste/drop/picker, image previews,
@@ -62,14 +64,32 @@ references, editing, deleting, replies, and live agent answers work the same way
 Changes made in the full review's settings reach both already-open and future page editors, including
 the Enter save behavior. They do not replace a draft or move its caret. The review server relays these
 preferences because an embedded editor can have a separate browser-storage partition.
+
+The note is a floating window: drag its title bar to move it, or focus the title and use the arrow keys
+(Shift moves farther). **−** minimizes it to its title bar; the same control restores it. Minimizing
+keeps the editor, draft, selection, and iframe viewport intact. **×** intentionally discards a new
+unsaved draft, so that editor has no second Cancel button. Closing a saved note keeps its conversation;
+unsubmitted wording changes are discarded.
+
+While a note window is open, selecting more of the page adds captures to **that same note**, including
+while it is minimized. Move the window aside to reach the area underneath. New captures keep separate
+screenshots and metadata rather than replacing the first selection; the text box and caret stay put.
+They remain draft-only for a new note until Save. Additions to an already-saved note are persisted
+immediately and survive a stale editor save. A note supports up to 100 additional captures. Saving is
+disabled during a capture, and selection is disabled while a save is being sent.
+
 Saving a visual comment persists it immediately and closes the panel, leaving the page ready for
 another selection. Saved visual comments appear under **Overall** above the unchanged Git diff.
 
-Numbered pins reopen notes on the current URL. Each selected element gets a pin bearing the same note
-number. Element pins follow a unique selector with matching element metadata; region pins use document
-coordinates and require the original viewport size. Pins scroll offscreen with their targets rather
-than sticking to the viewport edge. Missing elements do not silently move to another similar element.
-**Notes** and **Review** focus the
+Numbered pins reopen notes on their exact captured URL, including its query and fragment. Each selected
+element gets a pin bearing the same note number; additional captures share that number too.
+Element pins follow a unique selector with matching element metadata. Area pins follow up to three
+captured DOM anchors whose selectors, text, and available component names still match and agree on
+where the area moved. Missing, duplicate, hidden, or conflicting anchors hide the circle rather than
+reuse its old coordinates. Older area captures without usable anchors remain readable in the review
+but have no on-page circle. This is DOM matching, not pixel comparison; canvas and iframe contents are
+not inspected. Point pins retain document coordinates and require the original viewport size.
+Pins scroll offscreen with their targets instead of sticking to the viewport edge. **Notes** and **Review** focus the
 existing full review tab. **Full conversation** and note references follow ordinary `#note=<ref>`
 links there, preserving its current state rather than opening another tab. Code and visual comments
 can reference each other with the same short `#ref` tokens and shared picker; previews include their
@@ -91,11 +111,13 @@ browser's display scale; selection coordinates remain CSS pixels. Ordinary relat
 resolve beside the review Markdown. Content-addressed attachments are immutable and remain usable
 after the page, source, or review changes.
 
-**Capture after** records another observation without changing the original. For elements it
-finds every target again and brings the group into view; for a region it uses the original viewport and
-document coordinates. Restore the original route, dialog/menu state, relevant data, and viewport
-before comparing. Automatic replay of interactions and pixel-difference scoring are not included.
-The complete review shows the crops side by side, with expandable page screenshots and metadata.
+**Capture after** records another observation of the **first selection** without changing the original.
+For elements it finds every target of that selection again and brings the group into view; for an
+area it requires matching DOM anchors and uses the region they identify. A point capture requires the
+original viewport and document position. Restore the original route, dialog/menu state, relevant data,
+and viewport before comparing. Additional selections remain separate evidence, not comparisons.
+Automatic replay of interactions and pixel-difference scoring are not included. The complete review
+shows before/after crops together, with expandable page screenshots and metadata.
 
 A screenshot can contain anything visible on the page. Element metadata excludes form values,
 component props, component state, and browser cookies. Component discovery does not need framework

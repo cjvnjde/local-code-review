@@ -181,8 +181,8 @@ function serve(options: ServerOptions, port: number) {
           if (url.pathname === '/api/web/draft') {
             if (request.method !== 'GET') return new Response('method not allowed', { status: 405 });
             const id = url.searchParams.get('id') ?? '';
-            const capture = /^[a-zA-Z0-9_-]{1,128}$/.test(id) ? options.web.draft(id) : null;
-            return capture ? Response.json({ capture }) : Response.json({ error: 'That captured selection no longer exists.' }, { status: 404 });
+            const web = /^[a-zA-Z0-9_-]{1,128}$/.test(id) ? options.web.draft(id) : null;
+            return web ? Response.json({ web }) : Response.json({ error: 'That captured selection no longer exists.' }, { status: 404 });
           }
           if (request.method !== 'POST') return new Response('method not allowed', { status: 405 });
           if (!isJsonRequest(request)) return Response.json({ error: 'JSON body required.' }, { status: 415 });

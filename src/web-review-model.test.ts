@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { localWebUrl, webCapture, webReview, webReviewLines, type WebCapture } from './web-review-model.ts';
+import { localWebUrl, webCapture, webReview, webReviewLines, type WebCapture, type WebReview } from './web-review-model.ts';
 import { noteFromComment, parseReview, renderNote, applyComment } from './thread.ts';
 import { renderMarkdown } from './review.ts';
 import { createSession } from './session.ts';
@@ -14,7 +14,7 @@ export const capture:WebCapture={url:'http://localhost:3000/checkout?step=2',tit
   rect:{x:24,y:100,width:180,height:48},viewport:{width:1200,height:800,dpr:2},scroll:{x:0,y:200},
   selector:'button[data-testid="submit"]',element:{tag:'button',text:'Buy now',attributes:{'data-testid':'submit'},styles:{color:'rgb(0, 0, 0)'}},
   components:[{framework:'React',name:'Checkout',file:'src/Checkout.tsx',line:14}],page:'images/page.png',area:'images/area.png'};
-const comment=()=>({id:'|@|@|#abc123',file:'',scope:'global' as const,start:0,end:0,body:'Make this button wider.',web:{before:structuredClone(capture),after:[] as WebCapture[]}});
+const comment=()=>({id:'|@|@|#abc123',file:'',scope:'global' as const,start:0,end:0,body:'Make this button wider.',web:{before:structuredClone(capture),after:[]} as WebReview});
 const multiCapture=(): WebCapture=>{
   const first={rect:structuredClone(capture.rect),selector:capture.selector,element:structuredClone(capture.element),components:structuredClone(capture.components)};
   const second={rect:{x:280,y:160,width:240,height:60},selector:'[data-testid="total"]',
@@ -52,6 +52,42 @@ describe('UI review evidence',()=>{
     for(const patch of [{area:'../secret.png'},{url:'https://example.com'},{rect:{x:0,y:0,width:1300,height:1}},{components:[{framework:'Other',name:'x'}]}])expect(webCapture({...capture,...patch})).toBeNull();
     expect(webReview({before:capture,after:[{}]})).toBeNull();
     const value=webCapture(capture)!;value.element!.styles.color='changed';expect(capture.element!.styles.color).toBe('rgb(0, 0, 0)');
+  });
+  test('bounds and detaches additional captures without changing legacy evidence',()=>{
+    const legacy={before:capture,after:[capture]};
+    expect(webReview(legacy)).toEqual(legacy);
+    expect(webReview({...legacy,additional:[]})).toEqual({...legacy,additional:[]});
+    expect(webReview({...legacy,additional:Array.from({length:100},()=>multiCapture())})!.additional).toHaveLength(100);
+    for(const additional of [null,{},new Array(1),[null],[{}],Array.from({length:101},()=>capture),
+      [{...capture,area:'../escape.png'}],[{...multiCapture(),selections:[{}]}]]){
+      expect(webReview({...legacy,additional})).toBeNull();
+    }
+    const input={...legacy,additional:[multiCapture()]},clean=webReview(input)!;
+    clean.additional![0]!.selections![1]!.element!.attributes['data-testid']='changed';
+    clean.additional![0]!.components[0]!.name='Changed';
+    expect(input.additional[0]!.selections![1]!.element!.attributes['data-testid']).toBe('total');
+    expect(input.additional[0]!.components[0]!.name).toBe('Checkout');
+  });
+  test('additional selections round trip as evidence, not comparisons or prose',()=>{
+    const c=comment();
+    const area={...multiCapture(),mode:'area' as const};
+    c.web.additional=[area,{...structuredClone(capture),page:'images/third.png',area:'images/third-area.png'}];
+    c.web.after=[{...structuredClone(capture),page:'images/after.png',area:'images/after-area.png'}];
+    c.web.additional[0]!.element!.text='</script>\n### Fake <!-- lcr:|@|@|#fake -->';
+    const markdown=renderMarkdown({range:'web',notes:[noteFromComment(c)]});
+    const parsed=parseReview(markdown);
+    expect(parsed.notes).toHaveLength(1);
+    expect(parsed.notes[0]!.web).toEqual(c.web);
+    expect(parsed.notes[0]!.body).toBe(c.body);
+    expect(renderMarkdown(parsed)).toBe(markdown);
+    const html=webCaptureHtml(c.web);
+    expect(html).not.toContain('<script>');
+    const snapshot=historySnapshot('review.md',parsed.notes);
+    parsed.notes[0]!.web!.additional![0]!.selections![1]!.element!.text='changed';
+    expect(snapshot.notes[0]!.web!.additional![0]!.selections![1]!.element!.text).toContain('Total');
+    // The human-readable portion and sealed metadata must still agree.
+    const tampered=markdown.replace('\n  "url": '+JSON.stringify(capture.url)+',','\n  "url": "http://localhost:3000/changed",');
+    expect(parseReview(tampered).notes[0]!.web).toBeUndefined();
   });
   test('multiple targets survive Markdown, parsing, history and browser evidence',()=>{
     const c=comment();c.web.before=multiCapture();c.web.after=[multiCapture()];
@@ -116,8 +152,11 @@ describe('UI review evidence',()=>{
     expect(target.components[0]!.name).toBe('OrderTotal');
   });
   test('an older editor cannot erase later captures or the agent conversation',()=>{
-    const note=noteFromComment(comment());note.web!.after.push(structuredClone(capture));note.messages.push({role:'agent',at:'',body:'Fixed.'});note.status='applied';
-    const edited=applyComment(note,{...comment(),body:'Updated question'});
+    const note=noteFromComment(comment());note.web!.after.push(structuredClone(capture));note.web!.additional=[multiCapture()];
+    note.messages.push({role:'agent',at:'',body:'Fixed.'});note.status='applied';
+    const stale=comment();stale.web.before.title='Do not replace the captured subject';stale.web.additional=[];
+    const edited=applyComment(note,{...stale,body:'Updated question'});
+    expect(edited.web).toEqual(note.web);expect(edited.web!.additional).toHaveLength(1);
     expect(edited.web!.after).toHaveLength(1);expect(edited.messages).toEqual(note.messages);expect(edited.status).toBe('applied');
   });
   test('captures survive session restart and concurrent reviewer edits',async()=>{
@@ -131,9 +170,56 @@ describe('UI review evidence',()=>{
     expect(note.web!.after).toHaveLength(1);expect(note.body).toBe('Make it much wider.');expect(note.messages[0]!.body).toBe('Please compare the result.');
     await session.remove(note.id);expect(await session.addWebCapture(note.id,capture)).toBeNull();
   });
+  test('additional selections preserve reread agent replies through concurrent saves and restarts',async()=>{
+    const dir=await mkdtemp(path.join(os.tmpdir(),'lcr-web-selection-'));dirs.push(dir);
+    const session=createSession(dir,'.review','web');
+    await session.save({comments:[comment()]});
+    const agent=createSession(dir,'.review','web');await agent.adoptMatching();
+    await agent.answer(agent.file,comment().id,'The original button is fixed.','applied');
+    const first={...multiCapture(),area:'images/second.png'},second={...structuredClone(capture),area:'images/third.png'};
+    await Promise.all([
+      session.addWebSelection(comment().id,first),
+      session.save({comments:[{...comment(),body:'Include the total too.'}]}),
+      session.addWebCapture(comment().id,capture),
+      session.addWebSelection(comment().id,second),
+      session.reply(comment().id,'These are separate selections.'),
+    ]);
+    const restart=createSession(dir,'.review','web');await restart.adoptMatching();
+    const note=(await restart.read()).notes[0]!;
+    expect(note.web!.before).toEqual(capture);
+    expect(note.web!.additional).toEqual([first,second]);
+    expect(note.web!.after).toEqual([capture]);
+    expect(note.body).toBe('Include the total too.');
+    expect(note.status).toBe('applied');
+    expect(note.messages.map(message=>message.body)).toEqual(['The original button is fixed.','These are separate selections.']);
+    await restart.save({comments:[{...comment(),body:'Saved by an older editor.'}]});
+    expect((await restart.read()).notes[0]!.web!.additional).toEqual([first,second]);
+    await Promise.all([restart.remove(note.id),restart.addWebSelection(note.id,capture)]);
+    expect((await restart.read()).notes).toEqual([]);
+    expect(await restart.addWebSelection(note.id,capture)).toBeNull();
+  });
+  test('selection mutations enforce the boundary and detach before entering the serial queue',async()=>{
+    const dir=await mkdtemp(path.join(os.tmpdir(),'lcr-web-selection-bound-'));dirs.push(dir);
+    const session=createSession(dir,'.review','web'),c=comment();
+    c.web.additional=Array.from({length:99},()=>structuredClone(capture));
+    await session.save({comments:[c]});
+    const selected=multiCapture(),pending=session.addWebSelection(c.id,selected);
+    selected.selections![1]!.element!.text='Changed while queued';
+    await pending;
+    await expect(session.addWebSelection(c.id,capture)).rejects.toThrow('100 additional selections');
+    await expect(session.addWebSelection(c.id,{...capture,area:'../bad.png'})).rejects.toThrow('Invalid page selection');
+    const note=(await session.read()).notes[0]!;
+    expect(note.web!.additional).toHaveLength(100);
+    expect(note.web!.additional![99]!.selections![1]!.element!.text).toContain('Total');
+    expect(note.web!.before).toEqual(capture);expect(note.web!.after).toEqual([]);
+    await session.addWebCapture(c.id,capture);
+    expect((await session.read()).notes[0]!.web!.after).toEqual([capture]);
+  });
   test('history records and detaches web evidence independently of display state',()=>{
-    const n=noteFromComment(comment());const before=historySnapshot('review.md',[n]);n.web!.after.push(structuredClone(capture));
-    const after=historySnapshot('review.md',[n]);expect(before.notes[0]!.web!.after).toHaveLength(0);
+    const n=noteFromComment(comment());const before=historySnapshot('review.md',[n]);n.web!.additional=[multiCapture()];
+    const after=historySnapshot('review.md',[n]);expect(before.notes[0]!.web!.additional).toBeUndefined();
+    n.web!.additional[0]!.element!.text='Changed after snapshot';
+    expect(after.notes[0]!.web!.additional![0]!.element!.text).toBe('Buy now');
     expect(historyChanges(before.notes,after.notes)).toHaveLength(1);
   });
 });

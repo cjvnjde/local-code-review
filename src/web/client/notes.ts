@@ -243,6 +243,31 @@ function mountFileBox(host,id){
 }
 /** The wrapper a box lives in, whether that is a table row or a file-header block. */
 const rowOf=(box: any)=>box.closest('.nrow');
+// Context and capture state outlive evidence refreshes and view/edit repaints of the same box.
+const noteContexts=new WeakMap<HTMLElement,any>();
+const webCapturing=new WeakSet<HTMLElement>();
+/** Keep capture-in-flight state on the box, not on a save button that an edit repaint replaces. */
+export function setWebNoteCapturing(host: HTMLElement,busy: boolean){
+  host.querySelectorAll<HTMLElement>('.nbox').forEach(box=>{
+    if(busy) webCapturing.add(box); else webCapturing.delete(box);
+    const button=box.querySelector<HTMLButtonElement>('[data-save-note]');
+    if(button) button.disabled=busy;
+  });
+}
+/** Replace only evidence and the commit context; never rebuild a textarea or its surrounding editor. */
+export function updateWebNoteEvidence(host: HTMLElement,id: string,web: WebReview){
+  const note=state.notes.get(id);
+  if(note) note.web=web;
+  host.querySelectorAll<HTMLElement>('.nrow').forEach(row=>{
+    if(row.dataset.nid!==id) return;
+    const box=row.querySelector<HTMLElement>('.nbox');
+    if(!box) return;
+    const ctx=noteContexts.get(box);
+    if(ctx) ctx.web=web;
+    const preview=box.querySelector<HTMLElement>('[data-web-evidence]');
+    if(preview) preview.innerHTML=webCaptureHtml(web);
+  });
+}
 /** Removes an unsaved editor and closes the header popover used only by overall-note drafts. */
 function removeDraftBox(box: any){
   const row=rowOf(box);
@@ -271,6 +296,7 @@ function headHtml(f,label,snippet,extra,scope?,image?,web?){
 }
 function editUI(box,ctx){
   const {f,fi,i,j,ch,id}=ctx;
+  noteContexts.set(box,ctx);
   const global=ctx.scope==='global';
   const whole=global||ctx.scope==='file';
   const sp=whole?null:span(f,i,j,ch);
@@ -280,12 +306,13 @@ function editUI(box,ctx){
   box.innerHTML=headHtml(f,whole?null:sp.label,whole?null:sp.snippet,
       suggest+attachButton()+refButton(id),ctx.scope,ctx.image,ctx.web)+
     (ctx.image?'<div class="image-preview">'+imageCaptureHtml(ctx.image)+'</div>':'')+
-    (ctx.web?webCaptureHtml(ctx.web):'')+
+    (ctx.web?'<div data-web-evidence>'+webCaptureHtml(ctx.web)+'</div>':'')+
     '<div class="nedit"><textarea placeholder="'+
       (ctx.web?'What should change here?':global?'What should be said about this review as a whole?':
       ctx.image?'What should change in this area?':whole?'What should change in this file?':
       ch?'What should change in this part of the line?':'What should change here?')+'"></textarea>'+
-    '<div class="acts"><button class="primary" data-save-note>'+esc(noteSaveLabel())+'</button><button class="cancel">Cancel</button>'+
+    '<div class="acts"><button class="primary" data-save-note'+(webCapturing.has(box)?' disabled':'')+'>'+esc(noteSaveLabel())+'</button>'+
+    (ctx.web&&state.uiEmbed&&!state.notes.has(id)?'':'<button class="cancel">Cancel</button>')+
     (state.notes.has(id)?'<button class="danger del">Delete</button>':'')+
     '<span class="spacer"></span><span class="tip">'+saveKeyHint()+' save &middot; esc cancel</span></div></div>';
   const ta=box.querySelector('textarea');
@@ -322,6 +349,7 @@ function editUI(box,ctx){
     ta.focus(); ta.setSelectionRange(to,to);
   };
   const commit=()=>{
+    if(webCapturing.has(box)) return;
     const body=ta.value.trim();
     if(ctx.image&&!imageRegion(ctx.image)) return;
     if(!body){ drop(); return; }
@@ -380,16 +408,18 @@ function editUI(box,ctx){
   box.querySelector('.primary').onclick=commit;
   const del=box.querySelector('.del');
   if(del) del.onclick=drop;
-  box.querySelector('.cancel').onclick=()=>{
+  const cancel=()=>{
     const kept=state.notes.get(id);
     clearSel();
     if(kept) viewUI(box,kept,ctx);
     else{ removeDraftBox(box); syncGlobals(); ctx.onCancel?.(); }
   };
+  const cancelButton=box.querySelector('.cancel');
+  if(cancelButton) cancelButton.onclick=cancel;
   ta.onkeydown=e=>{
     const action=editorAction(e,state.cfg.enterSaves);
     if(action==='save'){ e.preventDefault(); commit(); }
-    if(action==='cancel'){ e.preventDefault(); box.querySelector('.cancel').click(); }
+    if(action==='cancel'){ e.preventDefault(); cancel(); }
   };
 }
 
@@ -454,6 +484,7 @@ function capturedHtml(note: any,how: string){
     '<div class="capc">'+rows+'</div></div>';
 }
 export function viewUI(box,note,ctx){
+  noteContexts.set(box,ctx);
   const st=statusOf(note);
   const how=ctx.how||'exact';
   const lost=how==='outdated'||how==='stray';
@@ -480,7 +511,7 @@ export function viewUI(box,note,ctx){
       '<button class="edit">Edit</button><button class="danger del">Delete</button>',ctx.scope,note.image,note.web)+
     placeHtml(how==='exact'||how==='file'||how==='global'?'':how)+
     capturedHtml(note,how)+
-    webCaptureHtml(note.web)+
+    (note.web?'<div data-web-evidence>'+webCaptureHtml(note.web)+'</div>':'')+
     imageCaptureHtml(note.image,!!ctx.f.hash&&note.image?.source!==ctx.f.hash)+
     '<div class="nbody"></div>'+(st&&st.detail?'<div class="nstat"></div>':'')+
     '<div class="thread"></div><div class="replyhost"></div>';
@@ -513,7 +544,8 @@ export function viewUI(box,note,ctx){
       alert('This note has no lines to edit against any more. Reply to it instead, or delete it.');
       return;
     }
-    editUI(box,Object.assign({},ctx,{id:note.id,body:note.body,image:note.image,web:note.web}));
+    const current=state.notes.get(note.id)||note;
+    editUI(box,Object.assign({},ctx,{id:current.id,body:current.body,image:current.image,web:current.web}));
   };
   box.querySelector('.del').onclick=()=>removeNote(box,note,ctx);
 }
@@ -617,8 +649,8 @@ export function mountNoteIn(host: any,note: any){
 }
 /**
  * Redraws one note wherever it is mounted, for a reply or a verdict that arrived from the review
- * file. A box being typed into is left alone: the news can wait until the note is finished. `skip` is
- * the box whose own change started this, which has already been drawn with what it knows.
+ * file. An open editor keeps its wording and DOM; only its visual evidence and commit context
+ * refresh in place. `skip` is the box whose own change started this and is already current.
  */
 export function repaintNote(id: string,skip?: any){
   const n=state.notes.get(id); if(!n) return;
@@ -626,7 +658,16 @@ export function repaintNote(id: string,skip?: any){
   document.querySelectorAll('.nrow').forEach((row: any)=>{
     if(row.dataset.nid!==id) return;
     const box=row.querySelector('.nbox');
-    if(!box||box===skip||box.querySelector('textarea')) return;
+    if(!box||box===skip) return;
+    if(box.querySelector('textarea')){
+      const editing=noteContexts.get(box);
+      if(editing&&n.web&&editing.web!==n.web){
+        editing.web=n.web;
+        const preview=box.querySelector('[data-web-evidence]');
+        if(preview) preview.innerHTML=webCaptureHtml(n.web);
+      }
+      return;
+    }
     viewUI(box,n,ctx);
   });
 }

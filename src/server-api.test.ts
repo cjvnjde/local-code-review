@@ -271,14 +271,14 @@ describe("combined Git and live-page routes", () => {
     const lookups: string[] = [];
     let mutations = 0;
     const started = await startTestServer({ web: webController({
-      draft: (id) => { lookups.push(id); return id === token ? webCapture : null; },
+      draft: (id) => { lookups.push(id); return id === token ? { before: webCapture, after: [], additional: [webCapture] } : null; },
       open: async () => { mutations++; },
       captureAfter: async () => { mutations++; return { capture: webCapture, preview: "" }; },
     }) });
     for (let i = 0; i < 2; i++) {
       const response = await request(started, `/api/web/draft?id=${token}`);
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({ capture: webCapture });
+      expect(await response.json()).toEqual({ web: { before: webCapture, after: [], additional: [webCapture] } });
     }
     for (const id of ["", "../capture", "a".repeat(129), "unknown"]) {
       expect((await request(started, `/api/web/draft?id=${encodeURIComponent(id)}`)).status).toBe(404);

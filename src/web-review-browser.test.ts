@@ -67,7 +67,7 @@ browserTest('one review: diff and visual notes share editors, attachments, links
     const js=(expression:string)=>evaluate(expression);
     const reviewJs=(expression:string)=>evaluate(expression,reviewSid);
     // These polls cross into a separate real Chrome process; fake timers cannot drive its lifecycle.
-    async function until(fn:()=>Promise<unknown>,message:string){for(let i=0;i<150;i++){if(await fn())return;await Bun.sleep(100);}throw new Error('Timed out: '+message+'; browser errors: '+errors.join('\n')+'; review: '+await reviewJs('document.body.innerText'));}
+    async function until(fn:()=>Promise<unknown>,message:string){for(let i=0;i<150;i++){if(await fn())return;await Bun.sleep(100);}throw new Error('Timed out: '+message+'; browser errors: '+errors.join('\n')+'; review: '+await reviewJs('document.body.innerText')+'; saved notes: '+JSON.stringify((await session.read()).notes.map(n=>({id:n.id,body:n.body,extra:n.web?.additional?.length})))+'; global bodies: '+await reviewJs('JSON.stringify([...document.querySelectorAll("#loGlobal .nbody")].map(n=>n.textContent))'));}
     async function root(){
       await until(()=>js('!!document.querySelector("[id^=__lcr_]")'),'overlay');
       const doc:{root:DomNode}=await send('DOM.getDocument',{depth:-1,pierce:true});
@@ -159,12 +159,38 @@ browserTest('one review: diff and visual notes share editors, attachments, links
     expect(await frameJs('document.querySelector("#refpop").textContent')).toContain('Use the same padding');
     await frameJs('document.querySelector("#refpop .rfitem").click()');
     expect(await frameJs('document.querySelector("#uiNote textarea").value')).toContain('#'+diffRef);
+    expect(await frameJs('document.querySelectorAll("#uiNote .nedit .cancel").length')).toBe(0);
+    await writeComment('Keep this draft while moving and adding targets.');
+    await frameJs('window.movingDraft=document.querySelector("#uiNote textarea");movingDraft.setSelectionRange(5,9)');
+    const dockBefore=await js('(()=>{const r=testRoot.querySelector(".dock").getBoundingClientRect();return {x:r.x,y:r.y}})()');
+    await mouse('mousePressed',dockBefore.x+100,dockBefore.y+20);
+    await mouse('mouseMoved',dockBefore.x-20,dockBefore.y+40);await mouse('mouseReleased',dockBefore.x-20,dockBefore.y+40);
+    expect(await js('testRoot.querySelector(".dock").getBoundingClientRect().x')).toBeCloseTo(dockBefore.x-120);
+    expect(await js('testRoot.querySelector(".dock").getBoundingClientRect().y')).toBeCloseTo(dockBefore.y+20);
+    const editorViewport=await frameJs('[innerWidth,innerHeight]');
+    await click('[data-minimize]');
+    expect(await js('testRoot.querySelector(".content").checkVisibility({checkVisibilityCSS:true})')).toBe(false);
+    expect(await frameJs('[innerWidth,innerHeight]')).toEqual(editorViewport);
+    const extraHeading=await js('(()=>{const r=document.querySelector("h1").getBoundingClientRect();return {x:r.x+60,y:r.y+10}})()');
+    await js('(()=>{const api=globalThis[testRoot.host.id],original=api.visible;api.visible=async value=>{if(!value)await new Promise(resolve=>window.releaseCapture=resolve);return original(value)};window.restoreCapture=()=>{api.visible=original;window.releaseCapture()}})()');
+    await mouse('mousePressed',extraHeading.x,extraHeading.y);await mouse('mouseReleased',extraHeading.x,extraHeading.y);
+    await until(()=>frameJs('document.querySelector("#uiNote [data-save-note]").disabled'),'capture blocks save');
+    await frameJs('movingDraft.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",ctrlKey:true,bubbles:true,cancelable:true}))');
+    expect((await session.read()).notes.filter(n=>n.web)).toHaveLength(0);
+    await js('window.restoreCapture()');
+    await until(()=>frameJs('document.querySelectorAll("#uiNote .web-observation").length===2'),'selection appended to minimized draft');
+    expect(await js('testRoot.querySelector(".dock").classList.contains("minimized")')).toBe(true);
+    await click('[data-minimize]');
+    expect(await frameJs('document.querySelector("#uiNote textarea")===window.movingDraft')).toBe(true);
+    expect(await frameJs('window.movingDraft.value')).toBe('Keep this draft while moving and adding targets.');
+    expect(await frameJs('[movingDraft.selectionStart,movingDraft.selectionEnd]')).toEqual([5,9]);
     await saveFrame('Give the save button more breathing room. See #'+diffRef,'modified');
     const note=(await session.read()).notes.find(n=>n.web)!;
     expect(note.web!.before.mode).toBe('element');
     expect(note.web!.before.components.map(c=>c.name)).toEqual(['WorkspaceSettings','SettingsCard']);
     expect(note.web!.before.element!.attributes['data-testid']).toBe('save');
     expect(note.web!.before.element!.styles['background-color']).toBe('rgb(113, 78, 217)');
+    expect(note.web!.additional![0]!.element!.tag).toBe('h1');
     const page=await readFile(path.join(dir,'.review',note.web!.before.page)),area=await readFile(path.join(dir,'.review',note.web!.before.area));
     const scale=page.readUInt32BE(16)/note.web!.before.viewport.width;
     expect(note.web!.before.viewport.dpr).toBe(2);expect(page.readUInt32BE(20)).toBe(note.web!.before.viewport.height*scale);
@@ -188,6 +214,15 @@ browserTest('one review: diff and visual notes share editors, attachments, links
     await writeComment('Keep the rounded corners too.');await frameJs('document.querySelector("#uiNote .reply .primary").click()');
     await until(async()=>((await session.read()).notes.find(n=>n.id===note.id)!.messages.length===2),'shared follow-up');
     await frameJs('document.querySelector("#uiNote .edit").click()');await writeComment('Updated visual wording.');
+    await frameJs('window.editedBox=document.querySelector("#uiNote textarea");editedBox.setSelectionRange(3,7)');
+    const extraSubheading=await js('(()=>{const r=document.querySelector("h2").getBoundingClientRect();return {x:r.x+60,y:r.y+10}})()');
+    await mouse('mousePressed',extraSubheading.x,extraSubheading.y);await mouse('mouseReleased',extraSubheading.x,extraSubheading.y);
+    await until(async()=>((await session.read()).notes.find(n=>n.id===note.id)!.web!.additional?.length===2),'selection appended to saved note');
+    await until(()=>frameJs('document.querySelectorAll("#uiNote .web-observation").length===3'),'saved note evidence adopted without repainting editor');
+    expect(await frameJs('document.querySelector("#uiNote textarea")===window.editedBox')).toBe(true);
+    expect(await frameJs('window.editedBox.value')).toBe('Updated visual wording.');
+    expect(await frameJs('[editedBox.selectionStart,editedBox.selectionEnd]')).toEqual([3,7]);
+    await frameJs('editedBox.setSelectionRange(editedBox.value.length,editedBox.value.length)');
     // Paste a screenshot through the same native paste handler used on the main review.
     await frameJs(`(async()=>{const bytes=Uint8Array.from(atob(${JSON.stringify(area.toString('base64'))}),c=>c.charCodeAt(0));const data=new DataTransfer();data.items.add(new File([bytes],'screenshot.png',{type:'image/png'}));document.querySelector('#uiNote textarea').dispatchEvent(new ClipboardEvent('paste',{clipboardData:data,bubbles:true}));})()`);
     await until(()=>frameJs('document.querySelector("#uiNote textarea").value.includes("images/")'),'pasted screenshot attachment');
@@ -207,6 +242,15 @@ browserTest('one review: diff and visual notes share editors, attachments, links
     await js('document.querySelector("#save").style.padding="16px 60px";document.querySelector("#save").style.background="#227d62"');
     await web.captureAfter(note.id).catch(error=>{throw new Error('Comparison capture: '+String(error)+'; '+errors.join('\n'));});expect((await session.read()).notes.find(n=>n.id===note.id)!.web!.after[0]!.rect.width).toBeGreaterThan(note.web!.before.rect.width);
     // A new drag defaults to Area without opening the circle or preselecting Area.
+    await js(`(()=>{
+      const region=document.createElement('div');region.id='area-fixture';
+      region.innerHTML='<div id="area-obscured" style="position:fixed;left:210px;top:230px;width:120px;height:100px;background:red;z-index:1"></div>'+
+        '<section id="area-panel" style="position:fixed;left:210px;top:230px;width:120px;height:100px;background:white;z-index:2">'+
+        '<button id="area-target" style="margin:10px;padding:4px">Area action</button><span id="area-hidden" style="visibility:hidden">Hidden</span></section>'+
+        '<button id="area-outside" style="position:fixed;left:600px;top:230px">Outside</button>';
+      document.body.append(region);
+      document.querySelector('#area-panel')['__reactFiber$fixture']={type:{name:'AreaPanel'},_debugSource:{fileName:'src/AreaPanel.tsx',lineNumber:8},return:null};
+    })()`);
     await mouse('mousePressed',200,220);await mouse('mouseMoved',430,350);await mouse('mouseReleased',430,350);await frame();
     await js('window.testDirty=false;window.addEventListener("message",event=>{if(event.data?.type==="lcr:ui"&&event.data.action==="dirty"&&event.data.dirty)window.testDirty=true;})');
     await writeComment('Keep this unfinished draft.');await js('window.confirm=()=>false');
@@ -218,15 +262,45 @@ browserTest('one review: diff and visual notes share editors, attachments, links
     expect(await frameJs('window.draftBox.value')).toBe('Keep this unfinished draft.');
     expect(await frameJs('window.draftBox.selectionStart')).toBe(5);
     await until(()=>js('window.testDirty'),'cross-origin dirty notification');
-    await click('[data-close]');expect(await js('testRoot.querySelector(".dock").hidden')).toBe(false);
+    const discarded=await js('new URL(testRoot.querySelector("iframe").src).searchParams.get("ui-draft")');
+    const discardedWeb=(await (await fetch(reviewUrl+'/api/web/draft?id='+discarded)).json()).web;
+    const discardedBytes=await readFile(path.join(dir,'.review',discardedWeb.before.area));
+    await click('[data-close]');expect(await js('testRoot.querySelector(".dock").hidden')).toBe(true);
+    await until(async()=>(await fetch(reviewUrl+'/api/web/draft?id='+discarded)).status===404,'closed draft invalidated');
+    expect(await readFile(path.join(dir,'.review',discardedWeb.before.area))).toEqual(discardedBytes);
+    expect((await session.read()).notes.filter(n=>n.web)).toHaveLength(1);
+    await mouse('mousePressed',200,220);await mouse('mouseMoved',430,350);await mouse('mouseReleased',430,350);await frame();
     await saveFrame('Align this section with the heading.','plain');
     const areaNote=(await session.read()).notes.filter(n=>n.web).at(-1)!;
     expect(areaNote.web!.before.mode).toBe('area');expect(areaNote.web!.before.rect).toEqual({x:200,y:220,width:230,height:130});
+    expect(areaNote.web!.before.selections!.some(s=>s.selector==='button#area-target')).toBe(true);
+    expect(areaNote.web!.before.components.map(c=>c.name)).toContain('AreaPanel');
+    expect(areaNote.web!.before.components.find(c=>c.name==='AreaPanel')!.file).toBe('src/AreaPanel.tsx');
+    expect(areaNote.web!.before.selections!.some(s=>/area-(hidden|outside|obscured)|__lcr_/.test(s.selector||''))).toBe(false);
+    await until(()=>js('testRoot.querySelectorAll(".pin[title=\\"Align this section with the heading.\\"]").length===1'),'area evidence keeps one region pin');
+    await js('history.pushState({},"","/other-view")');
+    await until(()=>js('testRoot.querySelectorAll(".pin").length===0'),'notes never cross page URLs');
+    await js('history.replaceState({},"","/")');
+    await until(()=>js('[...testRoot.querySelectorAll(".pin")].some(p=>p.title==="Align this section with the heading.")'),'area circle returns on its own page');
+    // Area circles move with matched contents, not with the old screenshot coordinates.
+    await js('document.querySelector("#area-panel").style.left="270px";document.querySelector("#area-panel").style.top="245px"');
+    await until(()=>js('(()=>{const p=[...testRoot.querySelectorAll(".pin")].find(p=>p.title==="Align this section with the heading.");return p&&Math.abs(p.getBoundingClientRect().left-260)<1})()'),'area circle follows its DOM anchors');
+    await js('(()=>{const clone=document.querySelector("#area-panel").cloneNode(true);clone.dataset.duplicate="";document.body.append(clone)})()');
+    await until(()=>js('![...testRoot.querySelectorAll(".pin")].some(p=>p.title==="Align this section with the heading.")'),'ambiguous area selectors suppress circle');
+    await js('document.querySelector("[data-duplicate]").remove()');
+    await until(()=>js('[...testRoot.querySelectorAll(".pin")].some(p=>p.title==="Align this section with the heading.")'),'unique area anchors restore circle');
+    await web.captureAfter(areaNote.id);
+    const areaAfter=(await session.read()).notes.find(n=>n.id===areaNote.id)!.web!.after[0]!;
+    expect(areaAfter.rect).toEqual({...areaNote.web!.before.rect,x:260,y:235});
+    expect(areaAfter.selections!.some(s=>s.selector==='button#area-target')).toBe(true);
+    await js('document.querySelector("#area-target").outerHTML="<button id=\\"area-replacement\\">New action</button>"');
+    await until(()=>js('![...testRoot.querySelectorAll(".pin")].some(p=>p.title==="Align this section with the heading.")'),'changed area content suppresses stale circle');
+    await expect(web.captureAfter(areaNote.id)).rejects.toThrow('cannot be matched');
     // Reload restores pins and the launcher location, not the requirement to expand tools.
     const navigated=Promise.withResolvers<void>();
     const offNavigation=cdp.on('Page.frameNavigated',(event,eventSid)=>{if(eventSid===sid&&!event.frame.parentId){offNavigation();navigated.resolve();}});
     version=2;await send('Page.reload');await navigated.promise;await root();
-    await until(()=>js('testRoot.querySelectorAll(".pin").length===2'),'restored pins');
+    await until(()=>js('testRoot.querySelectorAll(".pin").length===3'),'only matching element pins restored; stale area stays hidden');
     expect(await js('testRoot.querySelector("[data-launcher]").getBoundingClientRect().x')).toBeCloseTo(moved);
     await pressLauncher(true);await click('[data-mode="point"]');
     await mouse('mousePressed',240,170);await mouse('mouseReleased',240,170);await frame();
@@ -241,7 +315,7 @@ browserTest('one review: diff and visual notes share editors, attachments, links
     await until(()=>js('(()=>{const p=[...testRoot.querySelectorAll(".pin")].find(p=>p.title.includes("Updated visual wording"));return p&&p.getBoundingClientRect().top<0})()'),'partly visible element pin scrolls past viewport edge');
     await js('scrollTo(0,0)');
     // Shift-click collects/toggles elements without opening an editor.
-    const heading=await js('(()=>{const r=document.querySelector("h1").getBoundingClientRect();return {x:r.x+10,y:r.y+10}})()');
+    const heading=await js('(()=>{const r=document.querySelector("h1").getBoundingClientRect();return {x:r.x+100,y:r.y+30}})()');
     const currentSave=await js('(()=>{const r=document.querySelector("#save").getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()');
     await mouse('mousePressed',heading.x,heading.y,8);await mouse('mouseReleased',heading.x,heading.y,8);
     await mouse('mousePressed',currentSave.x,currentSave.y,8);await mouse('mouseReleased',currentSave.x,currentSave.y,8);

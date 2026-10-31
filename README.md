@@ -97,10 +97,16 @@ Opening the tools does not change selection mode. Alt + wheel selects an element
 Choose **Multiple**, or **Shift-click** in Element/Block mode, to collect elements for one note.
 Shift-click a target again to remove it; **Write note** (or Enter) opens the shared editor.
 Keep the targets visible: the capture includes each target's metadata and one crop covering the group.
+With a note open, further page selections append to it without replacing the draft or earlier captures.
+Drag its title bar to move it, **−** to minimize/restore it, and **×** to discard a new unsaved draft.
+Saved conversations survive closing the window; there is no duplicate Cancel action on a new visual note.
 
 Save a comment to keep an immutable viewport screenshot, a crop of the selection, the URL,
 viewport and scroll position, a selector, element text and attributes, selected CSS properties, and
 available React/Vue component names and source hints.
+Area captures include selectors and component hints for up to 100 visible intersecting DOM elements.
+Their circles follow matching content rather than old screen coordinates, and hide when those anchors
+are missing, ambiguous, or changed—even at the same URL. This is DOM matching, not pixel comparison.
 
 Numbered pins reopen the main app's own note component on the live page: the same Enter setting,
 Markdown, image paste/drop/picker and previews, references, editing, deletion, and replies. Settings
@@ -117,7 +123,8 @@ persists the visual note for a manual handover. The header's **Open page** contr
 the app without replacing the diff.
 
 After a fix, restore the relevant page state and choose **Capture after** on the page or in lcr.
-The original element is located again, so a resized or moved element gets a fresh crop. The review
+It compares the first selection: elements are located again, and areas require matching captured DOM
+anchors. Extra selections stay separate evidence. A resized or moved element gets a fresh crop. The review
 shows before/after crops beside each other, with expandable page screenshots and metadata. Captures
 are never overwritten. An ambiguous or missing element requires restoring the page state or making
 a new note.
