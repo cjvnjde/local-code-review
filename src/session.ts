@@ -69,7 +69,7 @@ function ownMessage(doc: ReviewDoc, id: string, at: string) {
 /** Only reviewer-owned fields: an agent reply or verdict must never wake the agent again. */
 function reviewerFields(note: ReviewNote): string {
   return JSON.stringify([note.body, note.file, note.label, note.start, note.end,
-    note.code ?? "", note.scope ?? "", note.side ?? "new", note.ca, note.cb, note.snippet ?? "", note.image ?? null]);
+    note.code ?? "", note.scope ?? "", note.side ?? "new", note.ca, note.cb, note.snippet ?? "", note.image ?? null, note.web ?? null]);
 }
 
 /**
@@ -305,6 +305,19 @@ export function createSession(repoRoot: string, outDir: string, range: string, c
         found.note.messages = found.note.messages.filter((entry) => entry !== found.message);
         await write(doc);
         return found.note;
+      });
+    },
+
+    /** Add visual evidence without rewriting the original subject or the agent's conversation. */
+    addWebCapture(id: string, capture: import('./web-review-model.ts').WebCapture): Promise<ReviewNote | null> {
+      return serialise(async () => {
+        const doc = await read();
+        const note = doc.notes.find(entry => entry.id === id);
+        if (!note?.web) return null;
+        if (note.web.after.length >= 100) throw new Error('This note already has 100 comparison captures.');
+        note.web.after.push(structuredClone(capture));
+        await write(doc);
+        return note;
       });
     },
 

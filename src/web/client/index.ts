@@ -1,3 +1,5 @@
+import { startWebReviewUI } from "./web-review-ui.ts";
+import { prepareWebNote, startWebNote } from "./web-note.ts";
 import "./settings.ts";
 import "./tree-controls.ts";
 import { startAgentStatus } from './agent.ts';
@@ -23,7 +25,9 @@ import { watchActions } from './actions.ts';
 import { watchNoteHeaders } from './sticky-notes.ts';
 import { startSearch } from './search.ts';
 
+prepareWebNote();
 loadCfg();
+startWebReviewUI();
 watchActions();
 watchNoteHeaders();
 watchAudio();
@@ -36,6 +40,13 @@ applyQuick();
 applyNav();
 applySections();
 void load().then(()=>{
+  if(state.uiEmbed){
+    void startWebNote();
+    startHistory();
+    startLive();
+    startAgentStatus(()=>{state.notes.forEach(note=>repaintNote(note.id));updateCount();});
+    return;
+  }
   startResolution();
   startSearch();
   startHistory();

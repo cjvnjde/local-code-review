@@ -110,10 +110,12 @@ async function refreshReview(){
     save();
     // A note that arrived from the file has no box yet, so the pane is rebuilt for it — but a
     // rebuild eats an open editor, so it waits for the last one to close, exactly as a diff does.
-    const fresh=visibleNotes().filter((n:any)=>!beforeVisible.has(n.id));
-    if(fresh.length&&!editing()){ placeNotes(); render(); }
+    const afterVisible=visibleNotes();
+    const changed=afterVisible.some((n)=>!beforeVisible.has(n.id))||
+      [...beforeVisible].some(id=>!afterVisible.some(n=>n.id===id));
+    if(changed&&!editing()){ placeNotes(); render(); }
     else{
-      if(fresh.length) state.pendingNotes=true;
+      if(changed) state.pendingNotes=true;
       state.notes.forEach((n: any)=>repaintNote(n.id));
       updateCount();
     }

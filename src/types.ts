@@ -57,6 +57,7 @@ export interface ReviewComment {
   snippet?: string;
   /** Selected pixels of an image, with a capture that survives later file changes. */
   image?: ImageRegion;
+  web?: import("./web-review-model.ts").WebReview;
 }
 
 export interface ReviewSubmission {
@@ -82,5 +83,7 @@ export interface CliOptions {
   claudeChannel: boolean;
   /** Existing Codex session to notify through its installed CLI; empty without an adapter. */
   codexThread: string;
+  /** Local page to annotate instead of a Git diff. */
+  web?: string;
   diffArgs: string[];
 }

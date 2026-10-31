@@ -65,7 +65,7 @@ const FOOTER = [
     "file straight away. The reviewer is reading it while you work.",
   "",
   "For each note, the last message in its thread is what you are answering. Everything above it is " +
-    "history. A note with no thread yet is asking about the code under its `diff` block.",
+    "history. A note with no thread yet is asking about its captured code or UI evidence.",
   "",
   "A note may point at another note of this review using `#mk1a`, a local comment URL ending in " +
     "`#note=mk1a`, or the older link `[src/app.ts:12](lcr:mk1a)`. " +
@@ -84,6 +84,12 @@ const FOOTER = [
   "A note headed `### Overall note`, under `## Overall`, is about the review as a whole rather than " +
     "about one place in it, so it carries no path and no `diff` block. Answer it exactly like the " +
     "rest: it has its own `Status:` line and its own thread.",
+  "",
+  "A UI note carries a `lcr:web` metadata block, its page URL, viewport, element or area details, " +
+    "and immutable before/after screenshots linked relative to this file. Inspect both the page and " +
+    "selected-area images. Component names and source locations are best-effort runtime hints; verify " +
+    "them in the project. Preserve this evidence when answering. The reviewer can capture the result " +
+    "with Capture after once the original route and relevant page state are restored.",
   "",
   "A screenshot-region note includes its before/after side, a rectangle in original image pixels " +
     "measured from the top-left, and a cropped capture linked relative to this file. Open that " +

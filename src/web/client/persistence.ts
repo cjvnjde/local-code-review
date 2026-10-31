@@ -131,6 +131,8 @@ export function save(){
   reindexNotes();
   rememberPage();
   if(typeof document.dispatchEvent==='function') document.dispatchEvent(new Event('lcr:notes'));
+  // Embedded editors write their own note through the API, never a stale copy of another tab's store.
+  if(state.uiEmbed) return;
   try{
     localStorage.setItem(store(),JSON.stringify({
       notes:[...state.notes.values()],

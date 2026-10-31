@@ -13,6 +13,7 @@ import { VERSION } from "./version.ts";
 import type { AgentChannel } from "./agent-channel.ts";
 
 export interface ServerOptions {
+  web?: import("./web-review.ts").WebReviewController;
   port: number;
   repoRoot: string;
   outDir: string;
@@ -88,6 +89,7 @@ export function startServer(options: ServerOptions) {
   console.log(`\n  git review ${VERSION}  ->  http://localhost:${server.port}`);
   if (options.reviewId) console.log(`  id:   ${options.reviewId}`);
   console.log(`  diff: ${options.range}`);
+  if (options.web) console.log(`  page: ${options.web.status().url}`);
   console.log(`  repo: ${options.repoRoot}`);
   console.log(`  out:  ${options.outDir}/`);
   console.log(options.session.file
@@ -146,10 +148,39 @@ function serve(options: ServerOptions, port: number) {
             range: options.range,
             id: options.reviewId,
             context: options.context,
+            ...(options.web ? { web: options.web.status() } : {}),
             files,
             statuses,
             ...channelState(options),
           });
+        }
+        if (["/api/web", "/api/web/capture", "/api/web/focus", "/api/web/draft", "/api/web/review"].includes(url.pathname)) {
+          if (!options.web) return Response.json({ error: "This is not a web review." }, { status: 404 });
+          if (request.method === 'GET' && url.pathname === '/api/web') return Response.json(options.web.status());
+          if (url.pathname === '/api/web/draft') {
+            if (request.method !== 'GET') return new Response('method not allowed', { status: 405 });
+            const id = url.searchParams.get('id') ?? '';
+            const capture = /^[a-zA-Z0-9_-]{1,128}$/.test(id) ? options.web.draft(id) : null;
+            return capture ? Response.json({ capture }) : Response.json({ error: 'That captured selection no longer exists.' }, { status: 404 });
+          }
+          if (request.method !== 'POST') return new Response('method not allowed', { status: 405 });
+          if (!isJsonRequest(request)) return Response.json({ error: 'JSON body required.' }, { status: 415 });
+          const origin = request.headers.get('origin');
+          if (origin && ![`http://localhost:${server.port}`, `http://127.0.0.1:${server.port}`].includes(origin))
+            return Response.json({ error: 'Open this action from the review page.' }, { status: 403 });
+          server.timeout(request, 0); // Browser startup and capture own their bounded timeouts.
+          const payload = await readJson(request) as { id?: unknown } | null;
+          if (url.pathname === '/api/web') { await options.web.open(); return Response.json(options.web.status()); }
+          if (url.pathname === '/api/web/review') {
+            if (payload?.id !== undefined && typeof payload.id !== 'string')
+              return Response.json({ error: 'A note id must be a string.' }, { status: 400 });
+            await options.web.review(payload?.id);
+            return Response.json({ ok: true });
+          }
+          if (typeof payload?.id !== 'string') return Response.json({ error: 'A note id is required.' }, { status: 400 });
+          if (url.pathname === '/api/web/focus') { await options.web.focus(payload.id); return Response.json({ ok: true }); }
+          await options.web.captureAfter(payload.id);
+          return Response.json({ ok: true });
         }
         if (url.pathname === "/api/context") {
           const path = url.searchParams.get("path") ?? "";

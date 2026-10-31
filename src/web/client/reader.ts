@@ -60,7 +60,7 @@ function paintHead(entries: any[]){
 function groupHtml(g: any,count: number){
   const file=g.fi>=0?state.files[g.fi]:null;
   const head='<div class="gh">'+
-    (g.global?'<span class="p">Overall</span><span class="hid">about the review as a whole</span>'
+    (g.global?'<span class="p">'+(state.web?'UI notes':'Overall')+'</span><span class="hid">'+(state.web?'screenshots & conversations':'about the review as a whole')+'</span>'
       :g.stray?'<span class="p stray">Not in this diff any more</span>'
       :'<span class="p file-path" title="'+esc(filePathTitle(file))+'">'+filePathHtml(file)+'</span>')+
     '<span class="ct">'+count+(count===1?' note':' notes')+'</span>'+

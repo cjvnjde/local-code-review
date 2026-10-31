@@ -8,6 +8,8 @@ Small standalone web UI for reviewing local Git changes and writing feedback for
 
 This repository includes [`apply-lcr`](skills/apply-lcr/SKILL.md), a small skill that finds the newest review, works the notes one at a time, replies to each in the review file as it goes, runs project checks, and picks up any follow-ups you wrote while it worked.
 
+The skill handles code and visual notes in the same review, including references between them. Framework component and source metadata are optional hints, not prerequisites for applying visual feedback.
+
 Install it with the [Skills CLI](https://github.com/vercel-labs/skills), then ask your agent:
 
 ```sh
@@ -74,6 +76,49 @@ Note headers stay visible while scrolling through long conversations, below the 
 diff or the group header in the all-notes view. Familiar actions use icons with hover tooltips and
 accessible names throughout the page.
 
+## Live UI review
+
+Annotate a running local app alongside its Git diff, without an extension or changes to its code:
+
+```sh
+lcr --web http://localhost:3000 --id checkout-ui
+lcr --web http://localhost:3000 main...HEAD # Visual and code notes on an explicit diff
+```
+
+lcr opens a dedicated Chrome/Chromium window with the app and the lcr review in separate tabs.
+The app starts ready to annotate: click an element or drag an area, without opening the small **lcr**
+circle. Drag the circle out of the way; click it only when you want the optional targeting controls.
+**Block** targets a containing layout block instead of the exact element; **Area** and **Point** remain
+available explicitly. Hold **Alt** to interact with the app normally, or choose **Browse** in the tools.
+Collapsing the tools does not turn annotation off. Alt + wheel selects an element's parent.
+
+Save a comment to keep an immutable viewport screenshot, a crop of the selection, the URL,
+viewport and scroll position, a selector, element text and attributes, selected CSS properties, and
+available React/Vue component names and source hints.
+
+Numbered pins reopen the main app's own note component on the live page: the same Enter setting,
+Markdown, image paste/drop/picker and previews, references, editing, deletion, and replies. Saving a
+visual comment closes the editor and writes it into the shared review. Visual notes appear under
+**Overall**, above the Git diff, in the same conversation file, note lists, history, and reference
+picker as code comments. References work in both directions. **Full conversation** follows the note
+link in the already-open review tab rather than creating another.
+
+With a verified connection, **Save & ask AI** forwards one note immediately; otherwise **Save note**
+persists the visual note for a manual handover. The header's **Open page** control reopens or focuses
+the app without replacing the diff.
+
+After a fix, restore the relevant page state and choose **Capture after** on the page or in lcr.
+The original element is located again, so a resized or moved element gets a fresh crop. The review
+shows before/after crops beside each other, with expandable page screenshots and metadata. Captures
+are never overwritten. An ambiguous or missing element requires restoring the page state or making
+a new note.
+
+This optional mode needs an installed Chrome, Chromium, or Edge. It keeps a separate persistent
+profile in the output directory's `.browser/` folder; log in there once if your app requires it.
+Set `LCR_BROWSER_PATH` to choose another Chromium executable. `--no-open` opens neither tab;
+open the printed review URL and choose **Open page** when ready. Stopping lcr closes its
+owned browser. See [UI review details and limits](docs/web-ui.md).
+
 ## Search
 
 Use the header search (or **Cmd/Ctrl+K**) to find code, filenames, notes, captured code, statuses
@@ -112,7 +157,7 @@ revision, filters, and display mode. Close and Escape use that same entry and pr
 
 Download the package for your system from the [latest release](https://github.com/cjvnjde/local-code-review/releases/latest), extract it, and put `lcr` (`lcr.exe` on Windows) somewhere on your `PATH`.
 
-`lcr` only needs Git.
+`lcr` only needs Git for diff reviews. Optional live UI reviews also use an installed Chromium browser.
 
 macOS builds are unsigned, so a downloaded binary may need quarantine removed
 after you verify its release checksum:
@@ -134,6 +179,7 @@ The review page opens at <http://localhost:7777>. It includes working-tree, stag
 Common commands:
 
 ```sh
+lcr --web http://localhost:3000 # Review a live local UI
 lcr --no-open                 # Do not open the browser automatically
 lcr --staged                  # Staged changes only
 lcr HEAD~3                    # Changes since three commits ago

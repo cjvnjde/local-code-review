@@ -18,6 +18,7 @@ import { startServer } from "./server.ts";
 import { collectStatuses } from "./status.ts";
 import { parseReview } from "./thread.ts";
 import { VERSION } from "./version.ts";
+import { createWebReview } from "./web-review.ts";
 import { isNoise, watchDir, watchTree } from "./watch.ts";
 
 async function main() {
@@ -98,6 +99,8 @@ async function main() {
     return text ? parseReview(text) : null;
   }
 
+  const web = options.web ? createWebReview({ url: options.web, repoRoot, outDir: options.outDir,
+    session, hub, reviewUrl: () => webUrl }) : undefined;
   const server = startServer({
     port: options.port,
     repoRoot,
@@ -136,6 +139,7 @@ async function main() {
     session,
     hub,
     channel,
+    web,
   });
   webUrl = `http://localhost:${server.port}`;
   void channel?.check?.();
@@ -189,17 +193,30 @@ async function main() {
   ];
   const heartbeat = setInterval(() => hub.ping(), 25_000);
 
-  function shutdown() {
+  let stopping = false;
+  async function shutdown() {
+    if (stopping) return;
+    stopping = true;
     clearInterval(heartbeat);
     for (const watcher of watchers) watcher.close();
     claudeLink?.close();
+    await web?.close();
     server.stop(true);
     process.exit(0);
   }
   for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, shutdown);
 
-  if (options.open && !openInBrowser(`http://localhost:${server.port}`)) {
-    console.log("  could not open browser; open the URL above manually\n");
+  if (options.open) {
+    let opened = false;
+    if (web) {
+      opened = await web.open().then(() => true).catch(error => {
+        console.error('  '+error.message+' Open the review URL to retry.');
+        return false;
+      });
+    }
+    if (!opened && !openInBrowser(webUrl)) {
+      console.log("  could not open browser; open the URL above manually\n");
+    }
   }
   if (options.codexThread) console.log(`  Codex feedback target: ${options.codexThread}\n`);
 }

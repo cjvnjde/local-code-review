@@ -23,6 +23,17 @@ describe("parseArgs", () => {
     expect(options.diffArgs).toEqual(["HEAD~1"]);
   });
 
+  test("--web adds a live page without changing Git arguments or browser flags", () => {
+    const options = parseArgs(["--web", "http://localhost:3000", "--id", "combined",
+      "--no-open", "--context", "8", "main...HEAD", "--", "src/"]);
+    expect(options.web).toBe("http://localhost:3000/");
+    expect(options.diffArgs).toEqual(["main...HEAD", "--", "src/"]);
+    expect(options.id).toBe("combined");
+    expect(options.context).toBe(8);
+    expect(options.open).toBe(false);
+    expect(() => parseArgs(["--web", "http://localhost:3000", "--claude-channel"])).toThrow("--claude-channel");
+  });
+
   test("channel mode is opt-in and preserves the diff arguments", () => {
     const options = parseArgs(["--claude-channel", "--id", "chat", "main...HEAD"]);
     expect(options.claudeChannel).toBe(true);
