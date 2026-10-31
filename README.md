@@ -76,29 +76,34 @@ accessible names throughout the page.
 
 ## Live UI review
 
-Annotate a running local app without an extension or changes to its code:
+Annotate a running local app alongside its Git diff, without an extension or changes to its code:
 
 ```sh
 lcr --web http://localhost:3000 --id checkout-ui
+lcr --web http://localhost:3000 main...HEAD # Visual and code notes on an explicit diff
 ```
 
 lcr opens a dedicated Chrome/Chromium window with the app and the lcr review in separate tabs.
-The app starts with only a small **lcr** circle: drag it out of the way, or click it to show the tools.
-Click it again to hide the tools, note panel, and pins and use the app normally. Its position survives
-reloads in that tab. Opening the tools defaults to **Element**: click an element, or start dragging to
-select an **Area** automatically. **Block** targets a containing layout block instead of the exact
-element; **Area** and **Point** remain available explicitly. **Browse** keeps the tools visible while
-using the app. Alt + wheel moves an element selection up to its parent.
+The app starts ready to annotate: click an element or drag an area, without opening the small **lcr**
+circle. Drag the circle out of the way; click it only when you want the optional targeting controls.
+**Block** targets a containing layout block instead of the exact element; **Area** and **Point** remain
+available explicitly. Hold **Alt** to interact with the app normally, or choose **Browse** in the tools.
+Collapsing the tools does not turn annotation off. Alt + wheel selects an element's parent.
 
 Save a comment to keep an immutable viewport screenshot, a crop of the selection, the URL,
 viewport and scroll position, a selector, element text and attributes, selected CSS properties, and
 available React/Vue component names and source hints.
 
-Numbered pins on the live page open conversations. Read agent replies and send follow-ups there,
-or use **Review** to open the complete lcr note UI with Markdown, attachments, editing, deletion,
-search, and history. Notes use the same timestamped `.review/review-*.md` conversation files and
-agent connections as code reviews. With a verified connection, **Save & ask AI** forwards one note
-immediately; otherwise **Save note** keeps it for a manual handover.
+Numbered pins reopen the main app's own note component on the live page: the same Enter setting,
+Markdown, image paste/drop/picker and previews, references, editing, deletion, and replies. Saving a
+visual comment closes the editor and writes it into the shared review. Visual notes appear under
+**Overall**, above the Git diff, in the same conversation file, note lists, history, and reference
+picker as code comments. References work in both directions. **Full conversation** follows the note
+link in the already-open review tab rather than creating another.
+
+With a verified connection, **Save & ask AI** forwards one note immediately; otherwise **Save note**
+persists the visual note for a manual handover. The header's **Open page** control reopens or focuses
+the app without replacing the diff.
 
 After a fix, restore the relevant page state and choose **Capture after** on the page or in lcr.
 The original element is located again, so a resized or moved element gets a fresh crop. The review
@@ -109,7 +114,7 @@ a new note.
 This optional mode needs an installed Chrome, Chromium, or Edge. It keeps a separate persistent
 profile in the output directory's `.browser/` folder; log in there once if your app requires it.
 Set `LCR_BROWSER_PATH` to choose another Chromium executable. `--no-open` opens neither tab;
-open the printed review URL and choose **Open review browser** when ready. Stopping lcr closes its
+open the printed review URL and choose **Open page** when ready. Stopping lcr closes its
 owned browser. See [UI review details and limits](docs/web-ui.md).
 
 ## Search

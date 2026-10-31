@@ -17,11 +17,11 @@ const comment=()=>({id:'|@|@|#abc123',file:'',scope:'global' as const,start:0,en
 const dirs:string[]=[];
 afterEach(async()=>{await Promise.all(dirs.splice(0).map(dir=>rm(dir,{recursive:true,force:true})));});
 describe('UI review evidence',()=>{
-  test('local URLs are explicit CLI mode, not Git arguments',()=>{
+  test('local URLs add live-page evidence alongside Git arguments',()=>{
     expect(parseArgs(['--web','http://localhost:3000','--id','checkout']).web).toBe('http://localhost:3000/');
     expect(parseArgs(['--web','http://localhost:3000']).diffArgs).toEqual([]);
     for(const raw of ['https://example.com','file:///tmp/a','http://localhost.evil/','http://u:p@localhost/',''])expect(()=>localWebUrl(raw)).toThrow();
-    expect(()=>parseArgs(['--web','http://localhost:3000','--staged'])).toThrow();
+    expect(parseArgs(['--web','http://localhost:3000','--staged']).diffArgs).toEqual(['--staged']);
     expect(()=>parseArgs(['--web','http://localhost:3000','--claude-channel'])).toThrow();
   });
   test('round trips captures separately from note prose, including malicious-looking page metadata',()=>{

@@ -17,6 +17,8 @@ import type { Hub } from "./events.ts";
 import { createSession } from "./session.ts";
 import { repoId, startServer } from "./server.ts";
 import type { ServerOptions } from "./server.ts";
+import type { WebCapture } from "./web-review-model.ts";
+import { createWebReview } from "./web-review.ts";
 import type {
   DiffFile,
   NoteStatus,
@@ -59,6 +61,32 @@ const diffFile = (overrides: Partial<DiffFile> = {}): DiffFile => ({
   hash: "file-hash",
   ...overrides,
 });
+
+const webCapture: WebCapture = {
+  url: "http://localhost:3000/",
+  title: "Local app",
+  at: "2026-10-31T10:00:00.000Z",
+  mode: "area",
+  rect: { x: 10, y: 20, width: 100, height: 80 },
+  viewport: { width: 1200, height: 800, dpr: 1 },
+  scroll: { x: 0, y: 0 },
+  components: [],
+  page: "images/page.png",
+  area: "images/area.png",
+};
+
+function webController(overrides: Partial<NonNullable<ServerOptions["web"]>> = {}): NonNullable<ServerOptions["web"]> {
+  return {
+    status: () => ({ url: webCapture.url, state: "closed", detail: "Open the review browser." }),
+    open: async () => {},
+    review: async () => ({}),
+    draft: () => null,
+    captureAfter: async () => ({ capture: webCapture, preview: "" }),
+    focus: async () => ({}),
+    close: async () => {},
+    ...overrides,
+  };
+}
 
 async function startTestServer(overrides: Partial<ServerOptions> = {}) {
   const root = await mkdtemp(path.join(tmpdir(), "lcr-server-"));
@@ -135,6 +163,118 @@ afterEach(() => {
 afterAll(() => {
   console.log = originalLog;
   console.error = originalError;
+});
+
+describe("combined Git and live-page routes", () => {
+  test("diff keeps Git files and its range alongside live-page status", async () => {
+    const web = webController();
+    const started = await startTestServer({ web, range: "main...HEAD" });
+    const response = await request(started, "/api/diff");
+    const result = await response.json();
+    expect(result.range).toBe("main...HEAD");
+    expect(result.files).toEqual([diffFile()]);
+    expect(result.web).toEqual(web.status());
+  });
+
+  test("visual global notes and diff notes share ordinary save and reply APIs", async () => {
+    const started = await startTestServer({ web: webController() });
+    const visual: ReviewComment = {
+      id: "|@|@|#visual",
+      file: "",
+      scope: "global",
+      start: 0,
+      end: 0,
+      body: "This button has the same problem as [the diff note](lcr:note).",
+      web: { before: webCapture, after: [] },
+    };
+    for (const note of [comment, visual]) {
+      const response = await request(started, "/api/note", {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ comment: note }),
+      });
+      expect(response.status).toBe(200);
+    }
+    const reply = await request(started, "/api/reply", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: visual.id, body: "Keep this conversation in the existing review." }),
+    });
+    expect(reply.status).toBe(200);
+    const doc = await started.options.session.read();
+    expect(doc.range).toBe("HEAD");
+    expect(doc.notes).toHaveLength(2);
+    expect(doc.notes.map(note => note.id)).toEqual(expect.arrayContaining([comment.id, visual.id]));
+    const savedVisual = doc.notes.find(note => note.id === visual.id)!;
+    expect(savedVisual.web).toEqual(visual.web);
+    expect(savedVisual.messages.at(-1)!.body).toBe("Keep this conversation in the existing review.");
+  });
+
+  test("review controller rejects unowned note ids before starting a browser", async () => {
+    const started = await startTestServer();
+    const web = createWebReview({
+      url: webCapture.url, repoRoot: started.options.repoRoot, outDir: ".review",
+      session: started.options.session, hub: started.hub, reviewUrl: () => started.base,
+    });
+    for (const id of [comment.id, "https://example.com/#note=note", "|@|@|#missing"]) {
+      await expect(web.review(id)).rejects.toThrow("That note no longer exists.");
+    }
+    expect(web.status().state).toBe("closed");
+    expect(web.draft("../capture")).toBeNull();
+  });
+
+  test("draft lookup is bounded, read-only, and does not open a browser", async () => {
+    const token = "c57a083d-1559-4e06-9da8-a56d34788c63";
+    const lookups: string[] = [];
+    let mutations = 0;
+    const started = await startTestServer({ web: webController({
+      draft: (id) => { lookups.push(id); return id === token ? webCapture : null; },
+      open: async () => { mutations++; },
+      captureAfter: async () => { mutations++; return { capture: webCapture, preview: "" }; },
+    }) });
+    for (let i = 0; i < 2; i++) {
+      const response = await request(started, `/api/web/draft?id=${token}`);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ capture: webCapture });
+    }
+    for (const id of ["", "../capture", "a".repeat(129), "unknown"]) {
+      expect((await request(started, `/api/web/draft?id=${encodeURIComponent(id)}`)).status).toBe(404);
+    }
+    expect(lookups).toEqual([token, token, "unknown"]);
+    expect((await request(started, "/api/web/draft", {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: comment.id }),
+    })).status).toBe(405);
+    expect(mutations).toBe(0);
+  });
+
+  test("review navigation accepts an optional note id and enforces same-origin JSON POST", async () => {
+    const ids: (string | undefined)[] = [];
+    const started = await startTestServer({ web: webController({
+      review: async (id) => { ids.push(id); return {}; },
+    }) });
+    for (const body of [{}, { id: comment.id }]) {
+      const response = await request(started, "/api/web/review", {
+        method: "POST", headers: { "content-type": "application/json", origin: started.base },
+        body: JSON.stringify(body),
+      });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ ok: true });
+    }
+    expect((await request(started, "/api/web/review")).status).toBe(405);
+    expect((await request(started, "/api/web/review", { method: "POST", body: "{}" })).status).toBe(415);
+    expect((await request(started, "/api/web/review", {
+      method: "POST", headers: { "content-type": "application/json", origin: "http://localhost:3000" }, body: "{}",
+    })).status).toBe(403);
+    expect((await request(started, "/api/web/review", {
+      method: "POST", headers: { "content-type": "application/json" }, body: '{"id":42}',
+    })).status).toBe(400);
+    expect(ids).toEqual([undefined, comment.id]);
+  });
+
+  test("live-page routes remain unavailable without --web", async () => {
+    const started = await startTestServer();
+    expect((await request(started, "/api/web/draft?id=missing")).status).toBe(404);
+    expect((await request(started, "/api/web/review", {
+      method: "POST", headers: { "content-type": "application/json" }, body: "{}",
+    })).status).toBe(404);
+  });
 });
 
 describe("general API routes", () => {

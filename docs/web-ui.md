@@ -6,11 +6,14 @@ Start your development server, then run lcr inside the project's Git repository:
 lcr --web http://localhost:3000 --id checkout-ui
 ```
 
-`--web` selects a UI review instead of a Git diff. It accepts HTTP(S) URLs on `localhost`,
-`127.0.0.1`, or `[::1]`, and cannot be combined with Git diff arguments. `--id`, `--out`, `--port`,
-`--no-open`, and the existing agent connection options keep their usual meanings. A named review
-continues its conversation across restarts. Without a name, the starting URL and branch identify it.
-Use a separate name for a UI review and a diff review when you want separate conversations.
+`--web` adds visual annotation to an ordinary Git review. It accepts HTTP(S) URLs on `localhost`,
+`127.0.0.1`, or `[::1]`. Working-tree, staged, and untracked changes remain visible by default;
+explicit Git diff arguments work as usual, for example `lcr --web http://localhost:3000 main...HEAD`.
+Code comments and visual comments share one session, Markdown conversation, note lists, references,
+and history. Visual comments are overall notes with captured page evidence, not a separate review type.
+`--id`, `--out`, `--port`, `--no-open`, and existing agent connections keep their usual meanings.
+The diff range (or `--id` when supplied), not the page URL, identifies the conversation, so the same
+review continues when restarted with or without `--web`.
 
 ## Select and comment
 
@@ -19,13 +22,14 @@ same window, preserving the app's routing, cookies, APIs, and development-server
 The annotation tools and pins live in a shadow root; no application code is rewritten, proxied,
 or installed into the project.
 
-Only a small **lcr** circle is shown initially, leaving the app usable normally. Drag the circle to
-move it; its position survives reloads in the same tab. Click it to expand the tools and start
-selecting elements. Click it again to hide the toolbar, panel, outlines, and pins and resume normal
-browsing. Hiding a half-written comment asks before discarding it; saved notes are never removed.
+The app starts in **Element** mode even with the **lcr** circle collapsed: click an element or drag
+an area immediately. Hold **Alt** to use the app normally, or expand the circle and choose **Browse**.
+Drag the circle to move it; its position survives reloads in the same tab. Expanding it exposes the
+optional modes; collapsing it hides the tools without disabling annotation. Hiding or switching
+away from a half-written comment asks before discarding it; saved notes are never removed.
 
-- **Element** (default when opening tools): click the exact HTML element under the pointer. Start
-  dragging instead and that gesture automatically selects an **Area**. Alt + wheel selects a parent.
+- **Element** (default): click the exact HTML element under the pointer. Start dragging instead and
+  that gesture automatically selects an **Area**. Alt + wheel selects a parent.
 - **Block**: click a containing block, flex/grid container, table, or list item rather than the exact
   element. For example, Element selects an inline button while Block selects its enclosing section.
   If the element is already a layout block, these may select the same thing. Dragging also selects an area.
@@ -36,18 +40,24 @@ browsing. Hiding a half-written comment asks before discarding it; saved notes a
 Selection finishes on release: a click with up to 6 CSS pixels of movement remains an element/block
 selection; a larger drag becomes an area. Clicking in selection mode annotates instead of activating
 application controls. An element partly outside the viewport captures only its visible portion.
-Escape closes the note panel, then returns to browsing, then collapses the tools. Switching away
-from a half-written comment asks before discarding it.
+Escape cancels the shared editor's draft or edit as in the main review. From the surrounding page,
+Escape closes the note panel, then returns to browsing. Switching away from a half-written comment
+asks before discarding it.
 
-Saving immediately writes a note into the existing Markdown conversation. Numbered pins reopen
-notes on the current URL. Element pins follow a unique selector with matching element metadata;
-region pins use document coordinates and require the original viewport size. Missing elements do
-not silently move to another similar element. The Notes button still lists every saved UI note.
+The on-page panel embeds the main app's actual editor and note components, not a reduced copy:
+the configured Enter/Shift+Enter behavior, Markdown, image paste/drop/picker, image previews,
+references, editing, deleting, replies, and live agent answers work the same way in both places.
+Saving a visual comment persists it immediately and closes the panel, leaving the page ready for
+another selection. Saved visual comments appear under **Overall** above the unchanged Git diff.
 
-The on-page panel shows compact text conversations, live agent answers, and a reply editor. The
-**Review** and **Full conversation** buttons open the complete lcr UI, where Markdown, images,
-references, edit/delete actions, resolution, search, and browser history are available. Agent
-readiness and delivery use the same adapters as code reviews.
+Numbered pins reopen notes on the current URL. Element pins follow a unique selector with matching
+element metadata; region pins use document coordinates and require the original viewport size.
+Missing elements do not silently move to another similar element. **Notes** and **Review** focus the
+existing full review tab. **Full conversation** and note references follow ordinary `#note=<ref>`
+links there, preserving its current state rather than opening another tab. Code and visual comments
+can reference each other with the same short `#ref` tokens and shared picker; previews include their
+captured code or page evidence. The main review keeps its normal file tree, diff, settings and controls;
+its header's **Open page** control opens or focuses the application.
 
 ## Evidence and comparison
 
@@ -93,7 +103,7 @@ repository can use separate output directories. The default `.review/` directory
 and custom relative output directories remain locally excluded.
 
 `--no-open` starts only the review server without opening either tab. Open its printed URL manually
-and use **Open review browser** to launch the app and review together later. Closing the reviewed tab
+and use **Open page** to launch the app and review together later. Closing the reviewed tab
 or browser leaves lcr running; the same button opens it again. Reopening the app in the same browser
 keeps the existing review tab rather than opening another. Stopping lcr closes the browser it launched.
 The debugging endpoint listens only on loopback. A missing browser or failed launch leaves the review

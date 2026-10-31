@@ -865,22 +865,16 @@
     @keyframes bump{0%,100%{border-color:var(--edge-hi)}30%{border-color:var(--accent)}}
   }
 
-  /* Live UI reviews keep the same note boxes and conversations, without diff-only controls. */
-  body.web-review .navtop,body.web-review #tree,body.web-review #readingPosition,
-  body.web-review #quick,body.web-review #pending{display:none}
-  body.web-review nav{width:280px}
-  body.web-review #ntpane{flex:1;max-height:none}
-  body.web-review #settings>h4,body.web-review #settings>label,body.web-review #settings>.sub,
-  body.web-review #settings>p,body.web-review #settings>.settings-section:has(#resetViewed),
-  body.web-review #settings>.settings-section:has(#cfgEditor),body.web-review #settings>.settings-section:has(#cfgHide),
-  body.web-review #settings>.settings-section:has(#cfgExpand),body.web-review #settings>.settings-section:has(#cfgGhosts){display:none}
-  .web-welcome{padding:calc(var(--row) * 2);font-family:var(--sans);max-width:960px}
-  .web-eyebrow{color:var(--mauve);font-size:var(--fs-xs);letter-spacing:.16em;font-weight:600}
-  .web-welcome h1{font-size:calc(var(--fs-ui) * 2);font-weight:600;letter-spacing:-.03em;margin:var(--row) 0 10px}
-  .web-welcome p{color:var(--ink-dim);font-size:var(--fs-ui);max-width:640px}
-  .web-launch{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-top:var(--row)}
-  .web-launch button{min-height:var(--tap-lg);font-size:var(--fs-ui)}
-  .web-launch span,.web-browser-status{font-size:var(--fs-sm);color:var(--ink-faint);overflow-wrap:anywhere}
+  /* The live page exposes the same editor, attachment picker, previews and thread as the review. */
+  body.ui-note{overflow:auto}
+  body.ui-note>header,body.ui-note>footer,body.ui-note nav,body.ui-note #diff,body.ui-note .rdr{display:none}
+  body.ui-note main,body.ui-note .pane{display:contents}
+  body.ui-note #historyPanel{position:fixed;inset:0;z-index:20}
+  #uiNote{min-width:0;font-family:var(--sans);flex:1}
+  .ui-note-tools{display:flex;justify-content:flex-end;padding:calc(var(--row) / 3);border-bottom:1px solid var(--edge)}
+  .ui-note-tools a{display:inline-flex;align-items:center;min-height:var(--tap);color:var(--accent);font-size:var(--fs-ui)}
+  .ui-note-body .nbox{margin:0;border:0;border-radius:0}
+  .ui-note-error{padding:var(--row);color:var(--red)}
   .web-capture{padding:12px;border-bottom:1px solid var(--edge);font:var(--fs-sm)/1.5 var(--sans)}
   .web-location{color:var(--ink);margin-bottom:12px;overflow-wrap:anywhere}
   .web-location span{color:var(--ink-faint);font-size:var(--fs-xs)}

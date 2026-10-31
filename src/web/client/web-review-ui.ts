@@ -1,19 +1,15 @@
-import { el, esc, state } from './state.ts';
+import { el, state } from './state.ts';
 
-export function configureWebReview(web:any){
-  state.web=web||null;
-  document.body.classList.toggle('web-review',!!web);
-  if(!web)return;
-  document.title='UI review · lcr';
-  const title=document.querySelector('header>b');if(title)title.textContent='UI review';
-  el('range').textContent=web.url;
-}
-export function webWelcomeHtml(){
-  if(!state.web)return '';
-  return '<div class="web-welcome"><div class="web-eyebrow">LIVE UI REVIEW</div><h1>Point at what should change.</h1>'+
-    '<p>Browse your app, select an element or drag an area, and leave a note. Each conversation keeps its page screenshot, selected area and metadata.</p>'+
-    '<div class="web-launch"><button class="primary" data-web-open>Open review browser</button><span>'+esc(state.web.url)+'</span></div>'+
-    '<p class="web-browser-status" role="status">'+esc(state.web.detail)+'</p></div>';
+export function configureWebReview(value:unknown){
+  const web=value&&typeof value==='object'&&'url' in value&&typeof value.url==='string'?value:null;
+  state.web=web;
+  let button=document.getElementById('openWebPage') as HTMLButtonElement|null;
+  if(!button){
+    button=document.createElement('button');button.id='openWebPage';button.dataset.webOpen='';button.textContent='Open page';
+    el('addGlobal').before(button);
+  }
+  button.hidden=!web;
+  button.title=web?'Open or focus '+web.url:'';
 }
 export function startWebReviewUI(){
   document.addEventListener('click',async event=>{
@@ -25,7 +21,7 @@ export function startWebReviewUI(){
     try{
       const response=await fetch('/api/web'+(action?'/'+action:''),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id})});
       const result=await response.json();if(!response.ok)throw new Error(result.error||'Could not reach the review browser.');
-      if(!action){state.web=result;const status=document.querySelector('.web-browser-status');if(status)status.textContent=result.detail;}
+      if(!action) configureWebReview(result);
     }catch(error){alert(error instanceof Error?error.message:String(error));}
     finally{button.disabled=false;button.textContent=label;}
   });

@@ -1,6 +1,5 @@
 import path from 'node:path';
 import { attachRef, saveAttachment } from './attach.ts';
-import type { AgentChannel } from './agent-channel.ts';
 import type { Hub } from './events.ts';
 import { launchReviewBrowser } from './review-browser.ts';
 import type { ReviewSession } from './session.ts';
@@ -8,15 +7,15 @@ import { installPageReview } from './web/page-overlay.ts';
 import { localWebUrl, webCapture, type WebCapture } from './web-review-model.ts';
 
 export interface WebReviewOptions {
-  url:string;repoRoot:string;outDir:string;session:ReviewSession;hub:Hub;
-  channel?:AgentChannel;reviewUrl:()=>string;
+  url:string;repoRoot:string;outDir:string;session:ReviewSession;hub:Hub;reviewUrl:()=>string;
   /** Used by browser integration tests; ordinary launches always have a visible window. */
   browserArgs?:string[];
 }
 export function createWebReview(options:WebReviewOptions){
   const url=localWebUrl(options.url),origin=new URL(url).origin;
   let browser:Awaited<ReturnType<typeof launchReviewBrowser>>|null=null,sessionId='',contextId=0;
-  let opening:Promise<void>|null=null,state='closed',detail='Open the review browser to annotate your UI.';
+  let reviewTargetId='',reviewOpening:Promise<{targetId:string;created:boolean;url:string}>|null=null;
+  let opening:Promise<void>|null=null,state='closed',detail='Open the page to annotate your UI.';
   let queue:Promise<unknown>=Promise.resolve();
   const key='__lcr_'+crypto.randomUUID().replaceAll('-',''),binding=key+'_send';
   const drafts=new Map<string,WebCapture>();
@@ -34,6 +33,62 @@ export function createWebReview(options:WebReviewOptions){
     return result.result.value;
   }
   const api=(method:string,value:any)=>evaluate(`globalThis[${JSON.stringify(key)}].${method}(${JSON.stringify(value)})`);
+  /** Only top-level pages in our owned browser can be the conversation tab, never editor frames. */
+  async function ensureReviewTarget(destination=options.reviewUrl()){
+    if(reviewOpening)return reviewOpening;
+    if(!browser)throw new Error('Browser disconnected.');
+    const cdp=browser.cdp;
+    reviewOpening=(async()=>{
+      const {targetInfos}=await cdp.send('Target.getTargets');
+      const reviewOrigin=new URL(options.reviewUrl()).origin;
+      const isReview=(target:any)=>{
+        if(target.type!=='page')return false;
+        try{
+          const candidate=new URL(target.url);
+          return candidate.origin===reviewOrigin&&!candidate.searchParams.has('ui-draft')&&!candidate.searchParams.has('ui-note');
+        }catch{return false;}
+      };
+      const target=targetInfos.find((target:any)=>target.targetId===reviewTargetId&&isReview(target))
+        ||targetInfos.find(isReview);
+      if(target){reviewTargetId=target.targetId;return {targetId:reviewTargetId,created:false,url:target.url};}
+      reviewTargetId=(await cdp.send('Target.createTarget',{url:destination,background:true})).targetId;
+      return {targetId:reviewTargetId,created:true,url:destination};
+    })();
+    try{return await reviewOpening;}finally{reviewOpening=null;}
+  }
+  async function review(id?:string){
+    let ref='';
+    if(id!==undefined){
+      if(typeof id!=='string'||!(await options.session.read()).notes.some(note=>note.id===id))
+        throw new Error('That note no longer exists.');
+      ref=/\|#([0-9a-z]+)$/.exec(id)?.[1]||'';
+      if(!ref)throw new Error('That note has no valid reference.');
+    }
+    if(!browser?.cdp.connected)await open();
+    if(!browser)throw new Error('Browser disconnected.');
+    const destination=new URL(options.reviewUrl());
+    if(ref)destination.hash='note='+encodeURIComponent(ref);
+    const target=await ensureReviewTarget(destination.href);
+    await browser.cdp.send('Target.activateTarget',{targetId:target.targetId});
+    if(ref&&!target.created){
+      const attached=await browser.cdp.send('Target.attachToTarget',{targetId:target.targetId,flatten:true});
+      try{
+        // Native fragment navigation keeps the document and its active editors intact.
+        const next=new URL(target.url);
+        next.hash=destination.hash;
+        if(target.url!==next.href){
+          const navigation=await browser.cdp.send('Page.navigate',{url:next.href},attached.sessionId);
+          if(navigation.errorText)throw new Error('Could not navigate to the note: '+navigation.errorText);
+        }else{
+          // User-facing hash handlers may open a dialog; do not await that interaction over CDP.
+          await browser.cdp.send('Runtime.evaluate',{
+            expression:"setTimeout(()=>dispatchEvent(new HashChangeEvent('hashchange')),0);void 0",
+          },attached.sessionId);
+        }
+      }finally{await browser.cdp.send('Target.detachFromTarget',{sessionId:attached.sessionId}).catch(()=>{});}
+    }
+    return {};
+  }
   async function screenshot(input:any){
     const clean=webCapture({...input,page:'images/page.png',area:'images/area.png'});
     if(!clean||new URL(clean.url).origin!==origin)throw new Error('Invalid page selection. Select an area in the reviewed localhost page.');
@@ -51,16 +106,8 @@ export function createWebReview(options:WebReviewOptions){
         saveAttachment(options.repoRoot,options.outDir,Buffer.from(page.data,'base64'),'image/png'),
         saveAttachment(options.repoRoot,options.outDir,Buffer.from(area.data,'base64'),'image/png')]);
       if(!pageName||!areaName)throw new Error('Could not save screenshots.');
-      return {capture:{...clean,page:attachRef(pageName),area:attachRef(areaName)},preview:'data:image/png;base64,'+area.data};
+      return {capture:{...clean,page:attachRef(pageName),area:attachRef(areaName)}};
     }finally{await api('visible',true).catch(()=>{});}
-  }
-  async function publish(notes:any[]){
-    options.hub.emit({type:'review',file:options.session.file});
-    const channel=options.channel;
-    if(!channel||(channel.available&&!channel.available()))return undefined;
-    try{const delivery=await channel.publish(options.session.file,notes);
-      return delivery.state==='failed'?'Saved, but forwarding failed: '+(delivery.error||'Retry AI from the full conversation.'):undefined;
-    }catch(error){return 'Saved, but forwarding failed: '+String(error);}
   }
   async function action(name:string,payload:any){
     if(name==='notes')return {notes:(await options.session.read()).notes.filter(n=>n.web)};
@@ -68,55 +115,39 @@ export function createWebReview(options:WebReviewOptions){
       const result=await screenshot(payload.capture);
       if(drafts.size>=30)drafts.delete(drafts.keys().next().value!);
       const draftId=crypto.randomUUID();drafts.set(draftId,result.capture);
-      return {...result,draftId,saveLabel:options.channel&&(!options.channel.available||options.channel.available())?'Save & ask AI':'Save note'};
-    }
-    if(name==='save'){
-      const capture=drafts.get(payload.draftId);
-      const body=typeof payload.body==='string'?payload.body.trim():'';
-      if(!capture||!body||body.length>100_000)throw new Error('A captured selection and a comment are required.');
-      const id='|@|@|#'+crypto.randomUUID().replaceAll('-','').slice(0,12);
-      const result=await options.session.save({comments:[{id,file:'',scope:'global',start:0,end:0,body,web:{before:capture,after:[]}}]});
-      drafts.delete(payload.draftId);
-      return {id,delivery:await publish(result.changed)};
-    }
-    if(name==='reply'){
-      const doc=await options.session.read();
-      if(!doc.notes.some(n=>n.id===payload.id&&n.web))throw new Error('That UI note no longer exists.');
-      const body=typeof payload.body==='string'?payload.body.trim():'';
-      if(!body||body.length>100_000)throw new Error('Write a reply first.');
-      const note=await options.session.reply(payload.id,body);
-      if(!note)throw new Error('That note was deleted.');
-      return {delivery:await publish([note])};
+      return {...result,draftId};
     }
     if(name==='after'){
       const note=(await options.session.read()).notes.find(n=>n.id===payload.id);
       if(!note?.web)throw new Error('That UI note no longer exists.');
+      await open(); // A background page can suspend the animation frame that locates its capture.
       const metadata=await api('prepare',note.web.before);
       const result=await screenshot(metadata);
       if(!await options.session.addWebCapture(note.id,result.capture))throw new Error('That note was deleted before the comparison was saved.');
       options.hub.emit({type:'review',file:options.session.file});
       return result;
     }
-    if(name==='review'){
-      // Open only lcr's own review URL, never a URL supplied by the reviewed page.
-      if(!browser)throw new Error('Browser disconnected.');
-      const ref=typeof payload.id==='string'?payload.id.split('|#').at(-1):'';
-      await browser.cdp.send('Target.createTarget',{url:options.reviewUrl()+(ref?'#note='+encodeURIComponent(ref):'')});
-      return {};
-    }
+    if(name==='review')return review(payload.id);
     throw new Error('Unknown web review action.');
   }
   async function open(){
     if(opening)return opening;
-    if(browser&&!browser.cdp.connected){await browser.close();browser=null;sessionId='';}
-    if(browser&&sessionId){try{await browser.cdp.send('Target.activateTarget',{targetId:(await send('Target.getTargetInfo')).targetInfo.targetId});return;}catch{sessionId='';}}
+    if(browser&&!browser.cdp.connected){await browser.close();browser=null;sessionId='';reviewTargetId='';}
+    if(browser&&sessionId){
+      try{
+        const targetId=(await send('Target.getTargetInfo')).targetInfo.targetId;
+        await ensureReviewTarget();
+        await browser.cdp.send('Target.activateTarget',{targetId});
+        return;
+      }catch{sessionId='';}
+    }
     opening=(async()=>{
       state='opening';detail='Starting the review browser…';
       try{
         if(!browser){
           browser=await launchReviewBrowser(path.resolve(options.repoRoot,options.outDir,'.browser'),options.browserArgs);
           const launched=browser;
-          void launched.child.exited.then(()=>{launched.cdp.close();if(browser!==launched)return;browser=null;sessionId='';state='closed';detail='The review browser closed. Reopen it to continue.';});
+          void launched.child.exited.then(()=>{launched.cdp.close();if(browser!==launched)return;browser=null;sessionId='';reviewTargetId='';state='closed';detail='The review browser closed. Reopen it to continue.';});
         }
         unbind();
         const cdp=browser.cdp;
@@ -156,18 +187,20 @@ export function createWebReview(options:WebReviewOptions){
           await Bun.sleep(100);
         }
         if(!installed)throw new Error('The annotation toolbar could not start. Check that the local app is running and its page finishes loading.');
-        const reviewUrl=options.reviewUrl();
-        if(!targets.targetInfos.some((t:any)=>t.type==='page'&&(t.url===reviewUrl||t.url.startsWith(reviewUrl+'/')||t.url.startsWith(reviewUrl+'#'))))
-          await cdp.send('Target.createTarget',{url:reviewUrl,background:true});
+        await ensureReviewTarget();
         await cdp.send('Target.activateTarget',{targetId});
-        state='ready';detail='Open the lcr circle to select an element, or drag to select an area.';
-        listeners.push(cdp.on('Target.detachedFromTarget',event=>{if(event.sessionId===attachedSession&&sessionId===attachedSession){sessionId='';contextId=0;state='closed';detail='The reviewed tab closed. Open the review browser to continue.';}}));
-      }catch(error){state='error';detail=error instanceof Error?error.message:String(error);if(browser){await browser.close();browser=null;}throw error;}
+        state='ready';detail='Click an element or drag an area to annotate. Hold Alt to interact with the app.';
+        listeners.push(cdp.on('Target.detachedFromTarget',event=>{if(event.sessionId===attachedSession&&sessionId===attachedSession){sessionId='';contextId=0;state='closed';detail='The reviewed tab closed. Use Open page to continue.';}}));
+      }catch(error){state='error';detail=error instanceof Error?error.message:String(error);if(browser){await browser.close();browser=null;}sessionId='';reviewTargetId='';throw error;}
       finally{opening=null;}
     })();
     return opening;
   }
-  return {status,open,async captureAfter(id:string){
+  return {status,open,review(id?:string){
+    const work=()=>review(id);const next=queue.then(work,work);queue=next.catch(()=>{});return next;
+  },draft(id:string){
+    return /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(id)?drafts.get(id)??null:null;
+  },async captureAfter(id:string){
     const work=()=>action('after',{id});const next=queue.then(work,work);queue=next.catch(()=>{});return next;
   },async focus(id:string){
     const note=(await options.session.read()).notes.find(n=>n.id===id);
@@ -175,6 +208,6 @@ export function createWebReview(options:WebReviewOptions){
     await open();
     // Do not navigate automatically: restoring app state belongs to the reviewer.
     return api('focus',note.id);
-  },async close(){unbind();const current=browser;browser=null;if(current)await current.close();}};
+  },async close(){unbind();const current=browser;browser=null;sessionId='';reviewTargetId='';if(current)await current.close();}};
 }
 export type WebReviewController=ReturnType<typeof createWebReview>;

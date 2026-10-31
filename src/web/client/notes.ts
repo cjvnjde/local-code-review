@@ -1,4 +1,5 @@
 import { webCaptureHtml } from './web-capture.ts';
+import type { WebReview } from '../../web-review-model.ts';
 import { placeOf } from './anchor.ts';
 import { imageRegion, regionLabel } from '../../image-region.ts';
 import { imageCaptureHtml } from './image-capture.ts';
@@ -207,6 +208,14 @@ export function openGlobalEditor(){
   state.draftRow=rowOf(box); state.draftKey=locKey('',GLOBAL_ANCHOR,GLOBAL_ANCHOR); state.draftAt=null;
   editUI(box,{f:{path:'',rows:[]},fi:-1,i:null,j:null,ch:null,scope:'global',id,body:''});
 }
+/** The live page hosts this same editor; only its captured subject differs from an overall note. */
+export function openWebEditor(host: HTMLElement,web: WebReview,onCancel: ()=>void){
+  if(busyEditor()) return '';
+  const id=mintGlobalId(),box=mountFileBox(host,id);
+  state.draftRow=rowOf(box);state.draftKey=id;state.draftAt=null;
+  editUI(box,{f:{path:'',rows:[]},fi:-1,i:null,j:null,ch:null,scope:'global',id,body:'',web,onCancel});
+  return id;
+}
 /** Several ranges can end on the same row, so each note row is tagged and matched by id. */
 function rowFor(anchor,id){
   let n=anchor.nextElementSibling;
@@ -271,6 +280,7 @@ function editUI(box,ctx){
   box.innerHTML=headHtml(f,whole?null:sp.label,whole?null:sp.snippet,
       suggest+attachButton()+refButton(id),ctx.scope,ctx.image,ctx.web)+
     (ctx.image?'<div class="image-preview">'+imageCaptureHtml(ctx.image)+'</div>':'')+
+    (ctx.web?webCaptureHtml(ctx.web):'')+
     '<div class="nedit"><textarea placeholder="'+
       (ctx.web?'What should change here?':global?'What should be said about this review as a whole?':
       ctx.image?'What should change in this area?':whole?'What should change in this file?':
@@ -355,7 +365,7 @@ function editUI(box,ctx){
     if(ch) repaintRow(fi,i);
     renderTree(); updateCount();
     paintImageNotes();
-    if(ask) void sendNote(note);
+    if(ask||state.uiEmbed) void sendNote(note);
   };
   const drop=()=>{
     // Emptying a saved note is deleting it, and deleting is what takes it out of the review file
@@ -365,6 +375,7 @@ function editUI(box,ctx){
     removeDraftBox(box); clearSel();
     if(ch) repaintRow(fi,i);
     syncGlobals();
+    ctx.onCancel?.();
   };
   box.querySelector('.primary').onclick=commit;
   const del=box.querySelector('.del');
@@ -373,7 +384,7 @@ function editUI(box,ctx){
     const kept=state.notes.get(id);
     clearSel();
     if(kept) viewUI(box,kept,ctx);
-    else{ removeDraftBox(box); syncGlobals(); }
+    else{ removeDraftBox(box); syncGlobals(); ctx.onCancel?.(); }
   };
   ta.onkeydown=e=>{
     const action=editorAction(e,state.cfg.enterSaves);
@@ -391,7 +402,9 @@ async function sendNote(note: any,retry=false){
   try{
     const data=await sending;
     if(state.notes.has(note.id)) state.noteDelivery.set(note.id,
-      {...(data?.channel||{state:'saved'}),agent,error:data?.channel?.error||(!data?.channel?'Saved, but no working agent connection was confirmed.':'')});
+      {...(data?.channel||{state:'saved'}),agent,error:data?.channel?.error||(!data?.channel&&agent?'Saved, but no working agent connection was confirmed.':'')});
+    if(!state.noteDelivery.get(note.id)?.error)
+      document.dispatchEvent(new CustomEvent('lcr:note-saved',{detail:note.id}));
   }catch(error){
     if(state.notes.has(note.id)) state.noteDelivery.set(note.id,{state:'failed',agent,error:'Could not save this note: '+(error instanceof Error?error.message:String(error))});
   }finally{ if(state.notes.has(note.id)){ repaintNote(note.id); updateCount(); } }
@@ -459,8 +472,8 @@ export function viewUI(box,note,ctx){
       (away?'<button class="jmp" data-goto="'+esc(note.id)+
         '" title="Show this note where it sits in the diff">'+
         (ctx.scope==='global'?'show':'in diff')+'</button>':'')+
-      (state.agent?'<button class="ask"'+(state.noteSending.has(note.id)?' disabled':'')+'>'+
-        (state.noteDelivery.get(note.id)?.error?'Retry AI':'Ask AI')+'</button>':'')+
+      (state.agent||state.noteDelivery.get(note.id)?.error?'<button class="ask"'+(state.noteSending.has(note.id)?' disabled':'')+'>'+
+        (state.noteDelivery.get(note.id)?.error?(state.agent?'Retry AI':'Retry save'):'Ask AI')+'</button>':'')+
       (isResolved(note)||canResolve(note)?'<button class="resolve" data-resolve="'+esc(note.id)+'" title="'+(isResolved(note)?'Show this conversation again':'Hide from the page; keep the conversation in Markdown')+'">'+SVG.check+' '+(isResolved(note)?'Reopen':'Resolve')+'</button>':'')+
       (note.web&&state.web?'<button data-web-focus="'+esc(note.id)+'">On page</button><button data-web-after="'+esc(note.id)+'">Capture after</button>':'')+
       '<button class="history" title="See earlier versions of this note">History</button>'+

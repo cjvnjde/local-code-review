@@ -86,9 +86,10 @@ export function startServer(options: ServerOptions) {
     console.log(`\n  port ${options.port} is in use, using ${server.port} instead`);
   }
   // The banner carries the build stamp: this line is the one place that says which lcr is serving.
-  console.log(`\n  ${options.web ? "UI review" : "git review"} ${VERSION}  ->  http://localhost:${server.port}`);
+  console.log(`\n  git review ${VERSION}  ->  http://localhost:${server.port}`);
   if (options.reviewId) console.log(`  id:   ${options.reviewId}`);
-  console.log(`  ${options.web ? "page" : "diff"}: ${options.range}`);
+  console.log(`  diff: ${options.range}`);
+  if (options.web) console.log(`  page: ${options.web.status().url}`);
   console.log(`  repo: ${options.repoRoot}`);
   console.log(`  out:  ${options.outDir}/`);
   console.log(options.session.file
@@ -153,9 +154,15 @@ function serve(options: ServerOptions, port: number) {
             ...channelState(options),
           });
         }
-        if (url.pathname === "/api/web" || url.pathname === "/api/web/capture" || url.pathname === "/api/web/focus") {
+        if (["/api/web", "/api/web/capture", "/api/web/focus", "/api/web/draft", "/api/web/review"].includes(url.pathname)) {
           if (!options.web) return Response.json({ error: "This is not a web review." }, { status: 404 });
           if (request.method === 'GET' && url.pathname === '/api/web') return Response.json(options.web.status());
+          if (url.pathname === '/api/web/draft') {
+            if (request.method !== 'GET') return new Response('method not allowed', { status: 405 });
+            const id = url.searchParams.get('id') ?? '';
+            const capture = /^[a-zA-Z0-9_-]{1,128}$/.test(id) ? options.web.draft(id) : null;
+            return capture ? Response.json({ capture }) : Response.json({ error: 'That captured selection no longer exists.' }, { status: 404 });
+          }
           if (request.method !== 'POST') return new Response('method not allowed', { status: 405 });
           if (!isJsonRequest(request)) return Response.json({ error: 'JSON body required.' }, { status: 415 });
           const origin = request.headers.get('origin');
@@ -164,6 +171,12 @@ function serve(options: ServerOptions, port: number) {
           server.timeout(request, 0); // Browser startup and capture own their bounded timeouts.
           const payload = await readJson(request) as { id?: unknown } | null;
           if (url.pathname === '/api/web') { await options.web.open(); return Response.json(options.web.status()); }
+          if (url.pathname === '/api/web/review') {
+            if (payload?.id !== undefined && typeof payload.id !== 'string')
+              return Response.json({ error: 'A note id must be a string.' }, { status: 400 });
+            await options.web.review(payload?.id);
+            return Response.json({ ok: true });
+          }
           if (typeof payload?.id !== 'string') return Response.json({ error: 'A note id is required.' }, { status: 400 });
           if (url.pathname === '/api/web/focus') { await options.web.focus(payload.id); return Response.json({ ok: true }); }
           await options.web.captureAfter(payload.id);

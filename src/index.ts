@@ -46,25 +46,25 @@ async function main() {
     process.exit(0);
   }
 
-  const range = options.web ? `web ${options.web}` : diffRangeLabel(options.diffArgs);
+  const range = diffRangeLabel(options.diffArgs);
   const diffSource = {
     repoRoot,
     context: options.context,
     diffArgs: options.diffArgs,
-    ...(!options.web && options.diffArgs.length === 0 ? { worktreeBase: await resolveWorktreeBase(repoRoot) } : {}),
+    ...(options.diffArgs.length === 0 ? { worktreeBase: await resolveWorktreeBase(repoRoot) } : {}),
   };
 
   // Reject invalid Git options, revisions and paths before opening any review resources.
-  if (!options.web) await validateDiff(diffSource);
+  await validateDiff(diffSource);
   await excludeRelativeOutput(repoRoot, options.outDir);
-  const initialDiff = options.web ? [] : await getDiff(diffSource);
+  const initialDiff = await getDiff(diffSource);
 
   // The revisions the diff is between are fixed by the arguments it was started with, so they are
   // worked out once; what they point at — the working tree, the index — is re-read on every request.
   const [branch, base, sides] = await Promise.all([
     currentBranch(repoRoot),
-    options.web ? "" : diffBase(diffSource),
-    options.web ? { old: "", new: "" } : diffSides(diffSource),
+    diffBase(diffSource),
+    diffSides(diffSource),
   ]);
   const session = createSession(repoRoot, options.outDir, range, {
     range,
@@ -100,7 +100,7 @@ async function main() {
   }
 
   const web = options.web ? createWebReview({ url: options.web, repoRoot, outDir: options.outDir,
-    session, hub, channel, reviewUrl: () => webUrl }) : undefined;
+    session, hub, reviewUrl: () => webUrl }) : undefined;
   const server = startServer({
     port: options.port,
     repoRoot,
@@ -108,8 +108,8 @@ async function main() {
     range,
     reviewId: options.id,
     context: options.context,
-    getDiff: () => options.web ? Promise.resolve([]) : getDiff(diffSource),
-    getContext: (file, start, end) => options.web ? Promise.resolve([]) : getFileContext(diffSource, file, start, end),
+    getDiff: () => getDiff(diffSource),
+    getContext: (file, start, end) => getFileContext(diffSource, file, start, end),
     readBlob: (side, file) => readBlob(repoRoot, side === "old" ? sides.old : sides.new, file),
     // Beside the review file, because that is what a note's link to one resolves against.
     saveAttachment: (bytes, type) => saveAttachment(repoRoot, options.outDir, bytes, type),
@@ -122,7 +122,6 @@ async function main() {
     // The branch is asked for per request rather than kept from startup: the reviewer can check
     // another one out mid-run, and the ghosts on offer should follow them there.
     getGhosts: async () => {
-      if (options.web) return [];
       const doc = await session.read();
       const taken = new Set(doc.notes.map((note) => note.from).filter((from): from is string => !!from));
       return collectGhosts(repoRoot, options.outDir, {
@@ -187,7 +186,7 @@ async function main() {
   }
 
   const watchers = [
-    ...(!options.web ? [watchTree(repoRoot, () => checkDiff(), { ignore: ignoreTree })] : []),
+    watchTree(repoRoot, () => checkDiff(), { ignore: ignoreTree }),
     watchDir(outPath, () => {
       if (hub.size) hub.emit({ type: "review", file: session.file });
     }),

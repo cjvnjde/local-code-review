@@ -82,21 +82,37 @@ async function loadNow(keep: boolean){
  * picking the file back up, or a second tab — is adopted rather than dropped, so the reviewer sees
  * the whole conversation whichever side of it they come from.
  */
+// A file update may change a note in another tab; browser-only wording must still keep the floor.
+let observedBodies=new Map<string,string>();
 export function adopt(review: any){
   rememberReview(review);
   adoptAgent(review);
   state.sessionFile=review.file||'';
   const at=reviewTime(review.file||'')||Date.now();
   const held=new Set();
+  const nextBodies=new Map<string,string>();
   (review.notes||[]).forEach((n: any)=>{
     if(!n.id) return;
     held.add(n.id);
     state.msgs.set(n.id,n.messages||[]);
     const kept=state.notes.get(n.id);
-    if(kept){ if(n.web) kept.web=n.web; if(!kept.sentAt) kept.sentAt=at; return; }
+    nextBodies.set(n.id,n.body||'');
+    if(kept){
+      if(observedBodies.get(n.id)===kept.body&&!state.noteSending.has(n.id))kept.body=n.body||'';
+      if(n.web)kept.web=n.web;
+      if(!kept.sentAt)kept.sentAt=at;
+      return;
+    }
     const note=noteFrom(n,at);
     if(note) state.notes.set(n.id,note);
   });
+  for(const [id,body] of observedBodies){
+    const kept=state.notes.get(id);
+    if(!held.has(id)&&kept?.sentAt&&kept.body===body&&!state.noteSending.has(id)){
+      state.notes.delete(id);state.place.delete(id);state.resolved.delete(id);
+    }
+  }
+  observedBodies=nextBodies;
   // A thread whose note left the file went with it; keeping it would haunt the next note on that id.
   [...state.msgs.keys()].forEach((id: any)=>{ if(!held.has(id)) state.msgs.delete(id); });
 }

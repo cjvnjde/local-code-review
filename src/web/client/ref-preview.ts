@@ -4,6 +4,7 @@ import { esc, msgsOf, state, statusOf } from './state.ts';
 import { capturedLines } from './suggest.ts';
 import { codeHtml, langOf } from './highlight.ts';
 import { imageCaptureHtml } from './image-capture.ts';
+import { webCaptureHtml } from './web-capture.ts';
 
 type Body=(host: any,body: string,path: string,base?: string[],previews?: boolean)=>void;
 
@@ -20,7 +21,9 @@ export function previewIn(host: any,note: any,render: Body){
     (status?'<span>'+esc(status.status)+'</span>':'')+'</div>'+
     '<div class="refcapture c"></div><div class="refbody"></div><div class="refreplies"></div>';
   const capture=host.querySelector('.refcapture');
-  if(note.image){
+  if(note.web){
+    capture.innerHTML=webCaptureHtml(note.web);
+  }else if(note.image){
     capture.innerHTML=imageCaptureHtml(note.image);
   }else if(note.code){
     const pre=document.createElement('pre');
