@@ -7,7 +7,7 @@ export function installPageReview(config: {key:string;binding:string;origin:stri
   let sequence=0, mode='element', selectionMode='element', notes:any[]=[];
   let start:any=null, hovering:Element|null=null, busy=false;
   let frame:HTMLIFrameElement|null=null,activeToken='',frameDirty=false,panelGeneration=0;
-  let frameKind:'draft'|'note'|''='',pendingWeb:any=null,minimized=false,frameSaving=false;
+  let frameKind:'draft'|'note'|''='',pendingWeb:any=undefined,minimized=false,frameSaving=false;
   let dockPosition={x:innerWidth-578,y:18},dockPress:{id:number;x:number;y:number;origin:{x:number;y:number}}|null=null;
   let expanded=false,suppressLauncherClick=false;
   let selected:Element[]=[],selectionUrl=location.href,multiple=false;
@@ -97,7 +97,7 @@ export function installPageReview(config: {key:string;binding:string;origin:stri
   function close(discard=false){
     if(!discard&&frameDirty&&!confirm('Discard the note changes you are writing?'))return false;
     if(frameKind==='draft'&&activeToken)void rpc('discard',{draftId:activeToken}).catch(()=>{});
-    panelGeneration++;frame=null;activeToken='';frameKind='';pendingWeb=null;frameDirty=false;frameSaving=false;
+    panelGeneration++;frame=null;activeToken='';frameKind='';pendingWeb=undefined;frameDirty=false;frameSaving=false;
     dock.hidden=true;content.textContent='';minimize(false);clearSelections();start=null;hovering=null;outline.style.display='none';return true;
   }
   function setMode(value:string){
@@ -219,7 +219,7 @@ export function installPageReview(config: {key:string;binding:string;origin:stri
   function ours(e:Event){return e.composedPath().includes(host);}
   function stop(e:Event){e.preventDefault();e.stopImmediatePropagation();}
   function showFrame(kind:'draft'|'note',token:string){
-    content.textContent='';activeToken=token;frameKind=kind;pendingWeb=null;frameDirty=false;frameSaving=false;
+    content.textContent='';activeToken=token;frameKind=kind;pendingWeb=undefined;frameDirty=false;frameSaving=false;
     const status=document.createElement('p');status.className='status';status.textContent='Loading review editor…';content.append(status);
     const editor=document.createElement('iframe');
     frame=editor;editor.title=kind==='draft'?'New visual review note':'Visual review conversation';
@@ -228,6 +228,28 @@ export function installPageReview(config: {key:string;binding:string;origin:stri
     editor.onload=()=>{if(frame===editor)status.remove();};
     editor.onerror=()=>{if(frame===editor){status.remove();error(new Error('The review editor could not load. Open Review to continue.'));}};
     content.append(editor);
+  }
+  function showEvidence(web:any){
+    pendingWeb=web;tellFrame('evidence',{web});
+    const count=web?1+(web.additional?.length||0):0;
+    $('.head b').textContent=(frameKind==='draft'?'New note':'Note')+' · '+count+' selection'+(count===1?'':'s');
+    void refresh().catch(()=>{});
+  }
+  async function removeSelection(index:number,key:string){
+    if(!frame||!activeToken)return;
+    if(busy||frameSaving){
+      tellFrame('evidence',{error:'Wait for the current selection or save to finish.'});
+      if(!busy)tellFrame('capturing',{busy:false});
+      return;
+    }
+    const generation=panelGeneration;
+    busy=true;tellFrame('capturing',{busy:true});
+    try{
+      const result=await rpc('remove-selection',{index,key,...(frameKind==='draft'?{draftId:activeToken}:{id:activeToken})});
+      if(generation===panelGeneration)showEvidence(result.web);
+    }catch(e){
+      if(generation===panelGeneration)tellFrame('evidence',{error:e instanceof Error?e.message:String(e)});
+    }finally{busy=false;if(generation===panelGeneration)tellFrame('capturing',{busy:false});}
   }
   async function choose(el:Element|null,r:any,kind=mode,elements:Element[]=[]){
     if(busy||frameSaving)return;
@@ -246,11 +268,8 @@ export function installPageReview(config: {key:string;binding:string;origin:stri
         return;
       }
       clearSelections();
-      if(appending){
-        pendingWeb=result.web;tellFrame('evidence',{web:pendingWeb});
-        $('.head b').textContent=(frameKind==='draft'?'New visual note':'Visual note')+' · '+(1+(result.web.additional?.length||0))+' selections';
-        void refresh().catch(()=>{});
-      }else{
+      if(appending)showEvidence(result.web);
+      else{
         if(typeof result.draftId!=='string'||!result.draftId)throw new Error('The page capture did not return a draft.');
         showFrame('draft',result.draftId);
       }
@@ -269,7 +288,10 @@ export function installPageReview(config: {key:string;binding:string;origin:stri
     }
     else if(message.action==='ready'){
       tellFrame('capturing',{busy});
-      if(pendingWeb)tellFrame('evidence',{web:pendingWeb});
+      if(pendingWeb!==undefined)tellFrame('evidence',{web:pendingWeb});
+    }
+    else if(message.action==='remove-selection'&&Number.isSafeInteger(message.index)&&typeof message.key==='string'){
+      void removeSelection(message.index,message.key);
     }
     else if(message.action==='close'){frameDirty=false;close();void refresh().catch(()=>{});}
     else if(message.action==='review'&&(message.id===undefined||(typeof message.id==='string'&&message.id))){void rpc('review',message.id===undefined?{}:{id:message.id}).catch(error);}

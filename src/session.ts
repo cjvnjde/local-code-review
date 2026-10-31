@@ -5,7 +5,7 @@ import { renderMarkdown } from "./review.ts";
 import { applyComment, noteFromComment, parseReview } from "./thread.ts";
 import type { ReviewDoc, ReviewMessage, ReviewNote } from "./thread.ts";
 import type { NoteStatusKind, ReviewComment, ReviewSubmission } from "./types.ts";
-import { webCapture, type WebCapture } from './web-review-model.ts';
+import { dropWebSelection, webCapture, type WebCapture } from './web-review-model.ts';
 
 export interface SaveResult {
   /** Path of the session file, relative to the repository unless the output directory is absolute. */
@@ -331,9 +331,26 @@ export function createSession(repoRoot: string, outDir: string, range: string, c
         if (!clean) throw new Error('Invalid page selection.');
         const doc = await read();
         const note = doc.notes.find(entry => entry.id === id);
-        if (!note?.web) return null;
-        if ((note.web.additional?.length ?? 0) >= 100) throw new Error('This note already has 100 additional selections.');
-        (note.web.additional ??= []).push(clean);
+        if (!note || note.scope !== 'global') return null;
+        if (!note.web) note.web = {before:clean,after:[]};
+        else {
+          if ((note.web.additional?.length ?? 0) >= 100) throw new Error('This note already has 100 additional selections.');
+          (note.web.additional ??= []).push(clean);
+        }
+        await write(doc);
+        return note;
+      });
+    },
+
+    /** Remove a selected subject against freshly read evidence without changing the conversation. */
+    removeWebSelection(id: string,index: number,key: string): Promise<ReviewNote | null> {
+      return serialise(async () => {
+        const doc = await read();
+        const note = doc.notes.find(entry => entry.id === id);
+        if (!note?.web || note.scope !== 'global') return null;
+        const web = dropWebSelection(note.web,index,key);
+        if (web) note.web = web;
+        else delete note.web;
         await write(doc);
         return note;
       });

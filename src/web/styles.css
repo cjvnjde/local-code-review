@@ -880,7 +880,7 @@
   .web-location span{color:var(--ink-faint);font-size:var(--fs-xs)}
   .web-comparison{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:14px;align-items:start}
   .web-observation{min-width:0;background:var(--panel2);border:1px solid var(--edge);border-radius:7px;padding:10px}
-  .web-caption{display:flex;justify-content:space-between;gap:10px;color:var(--mauve);margin-bottom:10px}
+  .web-caption{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;color:var(--mauve);margin-bottom:10px}
   .web-caption time{font-size:var(--fs-xs);color:var(--ink-faint)}
   .web-observation img{max-width:100%;height:auto;display:block;border-radius:4px}
   .web-observation>a{display:block;overflow:auto;max-height:360px}

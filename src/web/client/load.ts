@@ -99,7 +99,7 @@ export function adopt(review: any){
     nextBodies.set(n.id,n.body||'');
     if(kept){
       if(observedBodies.get(n.id)===kept.body&&!state.noteSending.has(n.id))kept.body=n.body||'';
-      if(n.web)kept.web=n.web;
+      kept.web=n.web??null;
       if(!kept.sentAt)kept.sentAt=at;
       return;
     }

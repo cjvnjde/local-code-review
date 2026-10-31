@@ -302,6 +302,12 @@
 - Preserve no-install usage.
 - Avoid shell interpolation for Git commands; use argument arrays.
 - Escape user-controlled values rendered into HTML.
+- Prefer icon-only buttons for familiar actions such as delete/remove (trash), edit (pencil), reply,
+  history, close, copy, and download. Reuse `SVG` and `client/actions.ts` rather than inventing a second
+  icon convention. Give every icon button a descriptive accessible name and an immediate tooltip on
+  hover and keyboard focus; hide decorative SVGs from assistive technology and keep the `--tap` target.
+  Keep text for ambiguous or compound commands such as **Save & ask AI**, and for content-bearing
+  labels such as note references or status counts. Do not put redundant text beside a familiar icon.
 - A path is drawn through `pathHtml` and the `pth` class, never as one run of text. Plain
   `text-overflow` eats the file name, which is the part of a path a reader needs; the two boxes it
   writes shrink the folders first, so what a narrow header loses is the middle.

@@ -1,6 +1,7 @@
 export const SVG={
   edit:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="m10.5 2 3.5 3.5-8.5 8.5H2v-3.5zM9 3.5 12.5 7" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>',
   history:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 7a6 6 0 1 1 1 4M2 2v5h5M8 4v4l2.5 1.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  reply:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3 1.5 7 6 11V8h3a3 3 0 0 1 3 3v2h1.5v-2A4.5 4.5 0 0 0 9 6.5H6z"/></svg>',
   trash:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h12M6 4V2h4v2M4 4l.7 10h6.6L12 4M6.5 6v6M9.5 6v6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   download:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v8M5 7l3 3 3-3M3 10v4h10v-4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   chevD:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6h9l-4.5 5z"/></svg>',

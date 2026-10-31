@@ -78,6 +78,21 @@ They remain draft-only for a new note until Save. Additions to an already-saved 
 immediately and survive a stale editor save. A note supports up to 100 additional captures. Saving is
 disabled during a capture, and selection is disabled while a save is being sent.
 
+Each captured selection has a trash-button **Remove** action in its caption, both in a draft and in
+the main review or a saved note's page window. It removes that capture, not the note's wording or
+conversation. Removing the first capture promotes the next selection and drops comparisons tied to
+the removed capture. Removing the last leaves an ordinary overall note; a new draft can still be
+saved without captures or receive another selection. A multi-element crop or an area's automatically
+collected DOM metadata belongs to one capture, so removing it removes that whole selection.
+Saved-note removal is persisted immediately. Image files and the read-only history are never deleted.
+Reference previews and history show evidence without destructive controls. A stale removal from
+another tab is rejected rather than deleting a different selection.
+
+Familiar actions use icons instead of redundant labels: trash for remove/delete, pencil for edit,
+an arrow for reply, a clock for history, and a picture for attaching an image. Hover or focus one to
+read its immediate tooltip; every icon also has a descriptive accessible name. Compound commands
+such as **Save & ask AI** retain text, as do content-bearing labels such as note references.
+
 Saving a visual comment persists it immediately and closes the panel, leaving the page ready for
 another selection. Saved visual comments appear under **Overall** above the unchanged Git diff.
 

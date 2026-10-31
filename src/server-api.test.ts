@@ -17,7 +17,7 @@ import type { Hub } from "./events.ts";
 import { createSession } from "./session.ts";
 import { repoId, startServer } from "./server.ts";
 import type { ServerOptions } from "./server.ts";
-import type { WebCapture } from "./web-review-model.ts";
+import { webSelectionKey, type WebCapture } from "./web-review-model.ts";
 import { createWebReview } from "./web-review.ts";
 import type {
   DiffFile,
@@ -80,7 +80,8 @@ function webController(overrides: Partial<NonNullable<ServerOptions["web"]>> = {
     status: () => ({ url: webCapture.url, state: "closed", detail: "Open the review browser." }),
     open: async () => {},
     review: async () => ({}),
-    draft: () => null,
+    draft: () => undefined,
+    removeSelection: async () => ({ web: null }),
     captureAfter: async () => ({ capture: webCapture, preview: "" }),
     focus: async () => ({}),
     close: async () => {},
@@ -263,7 +264,7 @@ describe("combined Git and live-page routes", () => {
       await expect(web.review(id)).rejects.toThrow("That note no longer exists.");
     }
     expect(web.status().state).toBe("closed");
-    expect(web.draft("../capture")).toBeNull();
+    expect(web.draft("../capture")).toBeUndefined();
   });
 
   test("draft lookup is bounded, read-only, and does not open a browser", async () => {
@@ -271,7 +272,7 @@ describe("combined Git and live-page routes", () => {
     const lookups: string[] = [];
     let mutations = 0;
     const started = await startTestServer({ web: webController({
-      draft: (id) => { lookups.push(id); return id === token ? { before: webCapture, after: [], additional: [webCapture] } : null; },
+      draft: (id) => { lookups.push(id); return id === token ? { before: webCapture, after: [], additional: [webCapture] } : undefined; },
       open: async () => { mutations++; },
       captureAfter: async () => { mutations++; return { capture: webCapture, preview: "" }; },
     }) });
@@ -288,6 +289,100 @@ describe("combined Git and live-page routes", () => {
       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: comment.id }),
     })).status).toBe(405);
     expect(mutations).toBe(0);
+  });
+
+  test("an empty but valid draft remains readable without opening the browser", async () => {
+    const token = "c57a083d-1559-4e06-9da8-a56d34788c63";
+    const started = await startTestServer({ web: webController({
+      draft: (id) => id === token ? null : undefined,
+      open: async () => { throw new Error("Draft reads must not open the browser."); },
+    }) });
+    const response = await request(started, `/api/web/draft?id=${token}`);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ web: null });
+    expect((await request(started, "/api/web/draft?id=missing")).status).toBe(404);
+  });
+
+  test("saved selections can be removed without --web, with comparison ownership and stale-write protection", async () => {
+    const started = await startTestServer();
+    const second = { ...webCapture, page: "images/second.png" };
+    const third = { ...webCapture, page: "images/third.png" };
+    const visual: ReviewComment = { id: "|@|@|#visual", file: "", scope: "global", start: 0, end: 0,
+      body: "Keep this wording.", web: { before: webCapture, after: [webCapture], additional: [second, third] } };
+    await started.options.session.save({ comments: [visual, comment] });
+    await started.options.session.answer(started.options.session.file, visual.id!, "Agent reply.", "applied");
+    const events: string[] = [], off = started.hub.add(event => events.push(event));
+    const remove = (index: number, key: string, id = visual.id!) => request(started, "/api/web/selection", {
+      method: "POST", headers: { "content-type": "application/json", origin: started.base },
+      body: JSON.stringify({ id, index, key }),
+    });
+    const additional = await remove(1, webSelectionKey(second));
+    expect(additional.status).toBe(200);
+    expect(await additional.json()).toEqual({ web: { before: webCapture, after: [webCapture], additional: [third] } });
+    const stale = await remove(1, webSelectionKey(second));
+    expect(stale.status).toBe(409);
+    expect((await stale.json()).error).toContain("changed");
+    const first = await remove(0, webSelectionKey(webCapture));
+    expect(first.status).toBe(200);
+    expect(await first.json()).toEqual({ web: { before: third, after: [] } });
+    const last = await remove(0, webSelectionKey(third));
+    expect(last.status).toBe(200);
+    expect(await last.json()).toEqual({ web: null });
+    expect(events).toHaveLength(3);
+    expect(events.every(event => event.includes('"type":"review"'))).toBe(true);
+    const save = await request(started, "/api/note", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ comment: { ...visual, body: "Stale editor wording." } }),
+    });
+    expect(save.status).toBe(200);
+    const restart = createSession(started.options.repoRoot, ".review", "HEAD");await restart.adoptMatching();
+    const note = (await restart.read()).notes.find(note => note.id === visual.id)!;
+    expect(note.web).toBeUndefined();expect(note.body).toBe("Stale editor wording.");
+    expect(note.messages[0]!.body).toBe("Agent reply.");expect(note.status).toBe("applied");
+    expect((await remove(0, webSelectionKey(third))).status).toBe(404);
+    expect((await remove(0, webSelectionKey(webCapture), comment.id!)).status).toBe(404);
+    await started.options.session.remove(visual.id!);
+    expect((await remove(0, webSelectionKey(third))).status).toBe(404);
+    expect((await started.options.session.read()).notes.map(note => note.id)).toEqual([comment.id]);
+    off();
+  });
+
+  test("selection removal requires a bounded index, expected key and same-origin JSON POST", async () => {
+    const started = await startTestServer();
+    expect((await request(started, "/api/web/selection")).status).toBe(405);
+    expect((await request(started, "/api/web/selection", { method: "POST", body: "{}" })).status).toBe(415);
+    expect((await request(started, "/api/web/selection", {
+      method: "POST", headers: { "content-type": "application/json", origin: "http://localhost:3000" }, body: "{}",
+    })).status).toBe(403);
+    for (const body of [null, {}, { id: 42, index: 0, key: "key" }, { id: comment.id, index: 0 },
+      ...[-1, 1.5, 101, "0"].map(index => ({ id: comment.id, index, key: "key" })),
+      { id: comment.id, index: 0, key: 42 }, { id: comment.id, draftId: "draft", index: 0, key: "key" }]) {
+      expect((await request(started, "/api/web/selection", {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+      })).status).toBe(400);
+    }
+    expect(started.options.session.file).toBe("");
+  });
+
+  test("controller selection removal is serialized and rejects ambiguous targets without a browser", async () => {
+    const started = await startTestServer();
+    const visual: ReviewComment = { id: "|@|@|#visual", file: "", scope: "global", start: 0, end: 0,
+      body: "Keep note.", web: { before: webCapture, after: [webCapture] } };
+    await started.options.session.save({ comments: [visual] });
+    const web = createWebReview({ url: webCapture.url, repoRoot: started.options.repoRoot, outDir: ".review",
+      session: started.options.session, hub: started.hub, reviewUrl: () => started.base });
+    const selection = { index: 0, key: webSelectionKey(webCapture) };
+    await expect(web.removeSelection(selection)).rejects.toThrow("Choose either");
+    await expect(web.removeSelection({ ...selection, id: visual.id, draftId: "draft" })).rejects.toThrow("Choose either");
+    await expect(web.removeSelection({ ...selection, draftId: "missing" })).rejects.toThrow("no longer exists");
+    const results = await Promise.allSettled([
+      web.removeSelection({ ...selection, id: visual.id }),
+      web.removeSelection({ ...selection, id: visual.id }),
+    ]);
+    expect(results[0]).toEqual({ status: "fulfilled", value: { web: null } });
+    expect(results[1]!.status).toBe("rejected");
+    expect((await started.options.session.read()).notes[0]!.web).toBeUndefined();
+    expect(web.status().state).toBe("closed");
   });
 
   test("review navigation accepts an optional note id and enforces same-origin JSON POST", async () => {

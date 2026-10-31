@@ -82,6 +82,27 @@ export function webReview(value: unknown): WebReview|null {
   const additional=Array.from(value.additional,webCapture);
   return additional.every((capture): capture is WebCapture=>capture!==null)?{before,after,additional}:null;
 }
+/** Stable identity for an entire selected capture, not its automatic DOM metadata rows. */
+export function webSelectionKey(capture: WebCapture): string {
+  return JSON.stringify([capture.url,capture.at,capture.page,capture.area]);
+}
+export class WebSelectionConflict extends Error {}
+/** Remove only the selection the editor saw; comparisons belong to the original first capture. */
+export function dropWebSelection(web: WebReview,index: number,key: string): WebReview|null {
+  const additional=web.additional??[];
+  if(!Number.isInteger(index)||index<0||index>100||index>additional.length)
+    throw new WebSelectionConflict('That selection no longer exists. Reload the note and try again.');
+  const capture=index===0?web.before:additional[index-1]!;
+  if(webSelectionKey(capture)!==key)
+    throw new WebSelectionConflict('That selection changed. Reload the note and try again.');
+  if(index===0){
+    if(!additional.length)return null;
+    const [before,...rest]=additional;
+    return {before:before!,after:[],...(rest.length?{additional:rest}:{})};
+  }
+  const rest=additional.filter((_,i)=>i!==index-1);
+  return {before:web.before,after:web.after,...(rest.length?{additional:rest}:{})};
+}
 /** Human-readable evidence and a sealed machine-readable copy both travel in ordinary Markdown. */
 export function webReviewLines(web: WebReview): string[] {
   web = webReview(web)!;

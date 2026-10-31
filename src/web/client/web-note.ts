@@ -1,4 +1,4 @@
-import { mountNoteIn, openWebEditor, setWebNoteCapturing, updateWebNoteEvidence } from './notes.ts';
+import { mountNoteIn, openWebEditor, setWebNoteCapturing, setWebNoteError, updateWebNoteEvidence } from './notes.ts';
 import { noteByRef, refIn, refOf } from './note-ref.ts';
 import { state } from './state.ts';
 import { webReview, type WebReview } from '../../web-review-model.ts';
@@ -17,7 +17,7 @@ export function prepareWebNote(){
 export async function startWebNote(){
   if(!state.uiEmbed||!state.web)return;
   const parentOrigin=new URL(state.web.url).origin;
-  const tell=(action:'dirty'|'close'|'review'|'ready',value:{dirty?:boolean;saving?:boolean;id?:string}={})=>
+  const tell=(action:'dirty'|'close'|'review'|'ready'|'remove-selection',value:{dirty?:boolean;saving?:boolean;id?:string;index?:number;key?:string}={})=>
     window.parent.postMessage({type:'lcr:ui',token,action,...value},parentOrigin);
   const host=document.createElement('section');host.id='uiNote';host.setAttribute('aria-label','Review note');
   const tools=document.createElement('div');tools.className='ui-note-tools';
@@ -25,7 +25,7 @@ export async function startWebNote(){
   tools.append(link);
   const body=document.createElement('div');body.className='ui-note-body';host.append(tools,body);document.body.append(host);
   let activeId=noteId||'';
-  let capturing=false,closing=false,pendingWeb: WebReview|null=null;
+  let capturing=false,closing=false,pendingWeb: WebReview|null|undefined=undefined;
   function dirty(){
     if(closing)return false;
     if(capturing)return true;
@@ -40,6 +40,11 @@ export async function startWebNote(){
     tell('dirty',{dirty:dirty(),saving:!!state.noteSending.size});
   };
   host.addEventListener('input',changed);
+  host.addEventListener('lcr:web-remove',event=>{
+    if(!(event instanceof CustomEvent)||capturing||state.noteSending.size)return;
+    capturing=true;setWebNoteError(body,activeId);changed();
+    tell('remove-selection',event.detail);
+  });
   new MutationObserver(changed).observe(body,{childList:true,subtree:true});
   const close=()=>{closing=true;tell('dirty',{dirty:false,saving:false});tell('close');};
   window.addEventListener('message',event=>{
@@ -49,17 +54,29 @@ export async function startWebNote(){
       !('token' in data)||data.token!==token||!('action' in data))return;
     if(data.action==='capturing'&&'busy' in data&&typeof data.busy==='boolean'){
       capturing=data.busy;changed();
-    }else if(data.action==='evidence'&&'web' in data){
-      const web=webReview(data.web);
-      if(!web)return;
+    }else if(data.action==='evidence'){
+      if('error' in data&&typeof data.error==='string'){
+        setWebNoteError(body,activeId,data.error);
+        return;
+      }
+      if(!('web' in data))return;
+      const web=data.web===null?null:webReview(data.web);
+      if(data.web!==null&&!web)return;
       pendingWeb=web;
+      setWebNoteError(body,activeId);
       if(activeId)updateWebNoteEvidence(body,activeId,web);
     }
   });
   document.addEventListener('lcr:note-saved',event=>{
     if(event instanceof CustomEvent&&event.detail===activeId)close();
   });
-  document.addEventListener('lcr:notes',()=>{if(noteId&&!state.notes.has(noteId))close();});
+  document.addEventListener('lcr:notes',()=>{
+    if(!noteId)return;
+    const note=state.notes.get(noteId);
+    if(!note){close();return;}
+    updateWebNoteEvidence(body,noteId,note.web??null);
+    changed();
+  });
   // References remain ordinary note links, but their destination is the already-open full review.
   document.addEventListener('click',event=>{
     if(!(event.target instanceof Element))return;
@@ -82,15 +99,16 @@ export async function startWebNote(){
     if(draft){
       const response=await fetch('/api/web/draft?id='+encodeURIComponent(draft));
       const data:unknown=await response.json();
-      const web=webReview(data&&typeof data==='object'&&'web' in data?data.web:null);
-      if(!response.ok||!web)throw new Error('This selection is no longer available. Select the page again.');
-      activeId=openWebEditor(body,pendingWeb||web,close);
+      const value=data&&typeof data==='object'&&'web' in data?data.web:undefined;
+      const web=value===null?null:webReview(value);
+      if(!response.ok||value!==null&&!web)throw new Error('This selection is no longer available. Select the page again.');
+      activeId=openWebEditor(body,pendingWeb===undefined?web:pendingWeb,close);
     }else{
       const note=state.notes.get(noteId);
       if(!note)throw new Error('This note is no longer in the review.');
       mountNoteIn(body,note);
     }
-    if(pendingWeb)updateWebNoteEvidence(body,activeId,pendingWeb);
+    if(pendingWeb!==undefined)updateWebNoteEvidence(body,activeId,pendingWeb);
     link.href=state.notes.has(activeId)?'/#note='+encodeURIComponent(refOf(activeId)):'/';
     if(draft)link.textContent='Review';
     changed();

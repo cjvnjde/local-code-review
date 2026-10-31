@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { localWebUrl, webCapture, webReview, webReviewLines, type WebCapture, type WebReview } from './web-review-model.ts';
+import { dropWebSelection, localWebUrl, webCapture, webReview, webReviewLines, webSelectionKey, type WebCapture, type WebReview } from './web-review-model.ts';
 import { noteFromComment, parseReview, renderNote, applyComment } from './thread.ts';
 import { renderMarkdown } from './review.ts';
 import { createSession } from './session.ts';
@@ -67,6 +67,27 @@ describe('UI review evidence',()=>{
     clean.additional![0]!.components[0]!.name='Changed';
     expect(input.additional[0]!.selections![1]!.element!.attributes['data-testid']).toBe('total');
     expect(input.additional[0]!.components[0]!.name).toBe('Checkout');
+  });
+  test('removes complete captures, promotes the next subject, and discards only its old comparisons',()=>{
+    const second={...multiCapture(),page:'images/second.png'},third={...structuredClone(capture),area:'images/third.png'};
+    const web:WebReview={before:multiCapture(),after:[capture],additional:[second,third]},original=structuredClone(web);
+    expect(webSelectionKey(capture)).toBe(JSON.stringify([capture.url,capture.at,capture.page,capture.area]));
+    const promoted=dropWebSelection(web,0,webSelectionKey(web.before));
+    expect(promoted).toEqual({before:second,after:[],additional:[third]});
+    expect(dropWebSelection(web,1,webSelectionKey(second))).toEqual({before:web.before,after:[capture],additional:[third]});
+    expect(dropWebSelection({before:capture,after:[second],additional:[third]},1,webSelectionKey(third))).toEqual({before:capture,after:[second]});
+    expect(dropWebSelection({before:multiCapture(),after:[capture]},0,webSelectionKey(web.before))).toBeNull();
+    expect(web).toEqual(original);
+  });
+  test('selection removal rejects out-of-range indexes and keys from a stale ordering',()=>{
+    const second={...capture,page:'images/second.png'},third={...capture,page:'images/third.png'};
+    const web:WebReview={before:capture,after:[],additional:[second,third]};
+    for(const index of [-1,1.5,NaN,Infinity,3,101])expect(()=>dropWebSelection(web,index,webSelectionKey(capture))).toThrow('no longer exists');
+    expect(()=>dropWebSelection(web,0,webSelectionKey(second))).toThrow('changed');
+    const next=dropWebSelection(web,1,webSelectionKey(second))!;
+    expect(()=>dropWebSelection(next,1,webSelectionKey(second))).toThrow('changed');
+    expect(()=>dropWebSelection(next,2,webSelectionKey(third))).toThrow('no longer exists');
+    expect(dropWebSelection(next,1,webSelectionKey(third))).toEqual({before:capture,after:[]});
   });
   test('additional selections round trip as evidence, not comparisons or prose',()=>{
     const c=comment();
@@ -214,6 +235,61 @@ describe('UI review evidence',()=>{
     expect(note.web!.before).toEqual(capture);expect(note.web!.after).toEqual([]);
     await session.addWebCapture(c.id,capture);
     expect((await session.read()).notes[0]!.web!.after).toEqual([capture]);
+  });
+  test('removal rereads current wording, replies and status, and stale editors cannot restore cleared evidence',async()=>{
+    const dir=await mkdtemp(path.join(os.tmpdir(),'lcr-web-removal-'));dirs.push(dir);
+    const session=createSession(dir,'.review','web'),c=comment();
+    const second={...multiCapture(),page:'images/second.png'},third={...structuredClone(capture),page:'images/third.png'};
+    c.web.additional=[second,third];c.web.after=[structuredClone(capture)];
+    await session.save({comments:[c]});
+    await mkdir(path.join(dir,'.review','images'),{recursive:true});
+    await writeFile(path.join(dir,'.review',capture.page),'page attachment');
+    await writeFile(path.join(dir,'.review',capture.area),'area attachment');
+    const agent=createSession(dir,'.review','web');await agent.adoptMatching();
+    await agent.answer(agent.file,c.id,'Agent reply stays.','applied');
+    await Promise.all([
+      session.save({comments:[{...c,body:'Concurrent wording stays.'}]}),
+      session.removeWebSelection(c.id,1,webSelectionKey(second)),
+      session.reply(c.id,'Reviewer reply stays.'),
+    ]);
+    const afterAdditional=(await session.read()).notes[0]!;
+    expect(afterAdditional.web).toEqual({before:capture,after:[capture],additional:[third]});
+    await expect(session.removeWebSelection(c.id,1,webSelectionKey(second))).rejects.toThrow('changed');
+    const promoted=await session.removeWebSelection(c.id,0,webSelectionKey(capture));
+    expect(promoted!.web).toEqual({before:third,after:[]});
+    await session.save({comments:[{...c,body:'Stale wording edit.'}]});
+    expect((await session.read()).notes[0]!.web).toEqual({before:third,after:[]});
+    await session.removeWebSelection(c.id,0,webSelectionKey(third));
+    const restart=createSession(dir,'.review','web');await restart.adoptMatching();
+    await restart.save({comments:[{...c,body:'Updated after reopening stale editor.'}]});
+    const note=(await restart.read()).notes[0]!;
+    expect(note.web).toBeUndefined();expect(note.id).toBe(c.id);expect(note.scope).toBe('global');
+    expect(note.body).toBe('Updated after reopening stale editor.');expect(note.status).toBe('applied');
+    expect(note.messages.map(message=>message.body)).toEqual(['Agent reply stays.','Reviewer reply stays.']);
+    expect(await readFile(path.join(dir,'.review',capture.page),'utf8')).toBe('page attachment');
+    expect(await readFile(path.join(dir,'.review',capture.area),'utf8')).toBe('area attachment');
+    expect(await restart.removeWebSelection(c.id,0,webSelectionKey(third))).toBeNull();
+    const reselected=await restart.addWebSelection(c.id,second);
+    expect(reselected!.web).toEqual({before:second,after:[]});
+    expect(reselected!.messages).toEqual(note.messages);expect(reselected!.status).toBe('applied');
+    await Promise.all([restart.remove(c.id),restart.addWebSelection(c.id,capture)]);
+    expect(await restart.removeWebSelection(c.id,0,webSelectionKey(second))).toBeNull();
+    expect(await restart.addWebSelection(c.id,capture)).toBeNull();
+    expect((await restart.read()).notes).toEqual([]);
+  });
+  test('adding a selection initializes an overall note but never a file or line note',async()=>{
+    const dir=await mkdtemp(path.join(os.tmpdir(),'lcr-web-overall-'));dirs.push(dir);
+    const session=createSession(dir,'.review','web');
+    const overall={...comment(),web:undefined};
+    const file={id:'a.ts|*|*|#file',file:'a.ts',scope:'file' as const,start:0,end:0,body:'File note'};
+    const line={id:'a.ts|n1|n1|#line',file:'a.ts',start:1,end:1,body:'Line note'};
+    await session.save({comments:[overall,file,line]});
+    for(const id of [file.id,line.id,'|@|@|#deleted']){
+      expect(await session.addWebSelection(id,capture)).toBeNull();
+      expect(await session.removeWebSelection(id,0,webSelectionKey(capture))).toBeNull();
+    }
+    expect((await session.addWebSelection(overall.id,capture))!.web).toEqual({before:capture,after:[]});
+    expect((await session.read()).notes.filter(note=>note.web).map(note=>note.id)).toEqual([overall.id]);
   });
   test('history records and detaches web evidence independently of display state',()=>{
     const n=noteFromComment(comment());const before=historySnapshot('review.md',[n]);n.web!.additional=[multiCapture()];

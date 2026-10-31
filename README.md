@@ -100,6 +100,11 @@ Keep the targets visible: the capture includes each target's metadata and one cr
 With a note open, further page selections append to it without replacing the draft or earlier captures.
 Drag its title bar to move it, **−** to minimize/restore it, and **×** to discard a new unsaved draft.
 Saved conversations survive closing the window; there is no duplicate Cancel action on a new visual note.
+Each capture's trash button removes that selection without deleting the note text or conversation.
+Removing the first also removes its comparisons; removing the last leaves an overall note.
+Screenshots remain on disk, and a cleared note can receive new selections.
+Common note actions use familiar icons, with immediate hover/focus tooltips and accessible labels.
+Compound actions such as **Save & ask AI** keep their text.
 
 Save a comment to keep an immutable viewport screenshot, a crop of the selection, the URL,
 viewport and scroll position, a selector, element text and attributes, selected CSS properties, and

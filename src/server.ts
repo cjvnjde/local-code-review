@@ -11,6 +11,7 @@ import type { ReviewNote } from "./thread.ts";
 import type { DiffFile, DiffRow, NoteStatus, ReviewComment, ReviewSubmission } from "./types.ts";
 import { VERSION } from "./version.ts";
 import type { AgentChannel } from "./agent-channel.ts";
+import { WebSelectionConflict } from "./web-review-model.ts";
 
 export interface ServerOptions {
   web?: import("./web-review.ts").WebReviewController;
@@ -175,14 +176,30 @@ function serve(options: ServerOptions, port: number) {
             ...channelState(options),
           });
         }
+        if (url.pathname === '/api/web/selection') {
+          if (request.method !== 'POST') return new Response('method not allowed', { status: 405 });
+          if (!isJsonRequest(request)) return Response.json({ error: 'JSON body required.' }, { status: 415 });
+          const origin = request.headers.get('origin');
+          if (origin && ![`http://localhost:${server.port}`, `http://127.0.0.1:${server.port}`].includes(origin))
+            return Response.json({ error: 'Open this action from the review page.' }, { status: 403 });
+          const payload = await readJson(request) as { id?: unknown; draftId?: unknown; index?: unknown; key?: unknown } | null;
+          if (typeof payload?.id !== 'string' || !payload.id || payload.draftId !== undefined ||
+              typeof payload.index !== 'number' || !Number.isInteger(payload.index) || payload.index < 0 ||
+              payload.index > 100 || typeof payload.key !== 'string')
+            return Response.json({ error: 'A note id, selection index and expected key are required.' }, { status: 400 });
+          const note = await options.session.removeWebSelection(payload.id,payload.index,payload.key);
+          if (!note) return Response.json({ error: 'That UI selection no longer exists.' }, { status: 404 });
+          options.hub.emit({ type: 'review', file: options.session.file });
+          return Response.json({ web: note.web ?? null });
+        }
         if (["/api/web", "/api/web/capture", "/api/web/focus", "/api/web/draft", "/api/web/review"].includes(url.pathname)) {
           if (!options.web) return Response.json({ error: "This is not a web review." }, { status: 404 });
           if (request.method === 'GET' && url.pathname === '/api/web') return Response.json(options.web.status());
           if (url.pathname === '/api/web/draft') {
             if (request.method !== 'GET') return new Response('method not allowed', { status: 405 });
             const id = url.searchParams.get('id') ?? '';
-            const web = /^[a-zA-Z0-9_-]{1,128}$/.test(id) ? options.web.draft(id) : null;
-            return web ? Response.json({ web }) : Response.json({ error: 'That captured selection no longer exists.' }, { status: 404 });
+            const web = /^[a-zA-Z0-9_-]{1,128}$/.test(id) ? options.web.draft(id) : undefined;
+            return web !== undefined ? Response.json({ web }) : Response.json({ error: 'That captured selection no longer exists.' }, { status: 404 });
           }
           if (request.method !== 'POST') return new Response('method not allowed', { status: 405 });
           if (!isJsonRequest(request)) return Response.json({ error: 'JSON body required.' }, { status: 415 });
@@ -402,7 +419,7 @@ function serve(options: ServerOptions, port: number) {
       } catch (error) {
         console.error(error);
         const message = error instanceof Error ? error.message : String(error);
-        return Response.json({ error: message }, { status: 500 });
+        return Response.json({ error: message }, { status: error instanceof WebSelectionConflict ? 409 : 500 });
       }
     },
   });

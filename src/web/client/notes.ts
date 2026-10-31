@@ -1,5 +1,5 @@
 import { webCaptureHtml } from './web-capture.ts';
-import type { WebReview } from '../../web-review-model.ts';
+import { webReview, type WebReview } from '../../web-review-model.ts';
 import { placeOf } from './anchor.ts';
 import { imageRegion, regionLabel } from '../../image-region.ts';
 import { imageCaptureHtml } from './image-capture.ts';
@@ -209,7 +209,7 @@ export function openGlobalEditor(){
   editUI(box,{f:{path:'',rows:[]},fi:-1,i:null,j:null,ch:null,scope:'global',id,body:''});
 }
 /** The live page hosts this same editor; only its captured subject differs from an overall note. */
-export function openWebEditor(host: HTMLElement,web: WebReview,onCancel: ()=>void){
+export function openWebEditor(host: HTMLElement,web: WebReview|null,onCancel: ()=>void){
   if(busyEditor()) return '';
   const id=mintGlobalId(),box=mountFileBox(host,id);
   state.draftRow=rowOf(box);state.draftKey=id;state.draftAt=null;
@@ -246,16 +246,39 @@ const rowOf=(box: any)=>box.closest('.nrow');
 // Context and capture state outlive evidence refreshes and view/edit repaints of the same box.
 const noteContexts=new WeakMap<HTMLElement,any>();
 const webCapturing=new WeakSet<HTMLElement>();
-/** Keep capture-in-flight state on the box, not on a save button that an edit repaint replaces. */
+const webRemoving=new Set<string>();
+const webRemovalErrors=new Map<string,string>();
+const webRemovalWired=new WeakSet<HTMLElement>();
+/** Busy state follows the box and note id through view/edit repaints. */
+function refreshWebControls(box: HTMLElement){
+  const id=rowOf(box)?.dataset.nid;
+  const busy=webCapturing.has(box)||webRemoving.has(id)||state.noteSending.has(id);
+  box.querySelectorAll<HTMLButtonElement>('[data-save-note],[data-web-remove],.ask').forEach(button=>{button.disabled=busy;});
+  let error=box.querySelector<HTMLElement>('[data-web-error]');
+  const message=webRemovalErrors.get(id);
+  if(message&&!error){
+    error=document.createElement('p');error.dataset.webError='';error.className='ui-note-error';error.setAttribute('role','alert');
+    box.querySelector('[data-web-evidence]')?.after(error);
+  }
+  if(error){
+    if(error.textContent!==(message||''))error.textContent=message||'';
+    error.hidden=!message;
+  }
+}
+/** Keep capture-in-flight state on the box, not on a save button that a repaint replaces. */
 export function setWebNoteCapturing(host: HTMLElement,busy: boolean){
   host.querySelectorAll<HTMLElement>('.nbox').forEach(box=>{
     if(busy) webCapturing.add(box); else webCapturing.delete(box);
-    const button=box.querySelector<HTMLButtonElement>('[data-save-note]');
-    if(button) button.disabled=busy;
+    refreshWebControls(box);
   });
 }
-/** Replace only evidence and the commit context; never rebuild a textarea or its surrounding editor. */
-export function updateWebNoteEvidence(host: HTMLElement,id: string,web: WebReview){
+/** A failed parent mutation leaves evidence intact and reports the reason beside it. */
+export function setWebNoteError(host: HTMLElement,id: string,error?: string){
+  if(error) webRemovalErrors.set(id,error); else webRemovalErrors.delete(id);
+  host.querySelectorAll<HTMLElement>('.nbox').forEach(refreshWebControls);
+}
+/** Replace only evidence and commit context; textarea and reply DOM stay untouched. */
+export function updateWebNoteEvidence(host: ParentNode,id: string,web: WebReview|null){
   const note=state.notes.get(id);
   if(note) note.web=web;
   host.querySelectorAll<HTMLElement>('.nrow').forEach(row=>{
@@ -265,7 +288,59 @@ export function updateWebNoteEvidence(host: HTMLElement,id: string,web: WebRevie
     const ctx=noteContexts.get(box);
     if(ctx) ctx.web=web;
     const preview=box.querySelector<HTMLElement>('[data-web-evidence]');
-    if(preview) preview.innerHTML=webCaptureHtml(web);
+    if(preview) preview.innerHTML=webCaptureHtml(web,true);
+    const heading=document.createElement('div');
+    heading.innerHTML=headHtml(ctx?.f||{path:''},null,null,'',ctx?.scope,ctx?.image,web);
+    for(const selector of ['.loc','.all']){
+      const current=box.querySelector('.nhead '+selector),next=heading.querySelector(selector);
+      if(current&&next)current.replaceWith(next);
+    }
+    if(!web)box.querySelectorAll('[data-web-focus],[data-web-after]').forEach(button=>button.remove());
+    else if(note&&state.web&&!box.querySelector('.nedit')&&!box.querySelector('[data-web-focus]')){
+      const history=box.querySelector('.history');
+      for(const [action,label] of [['webFocus','On page'],['webAfter','Capture after']]){
+        const button=document.createElement('button');button.dataset[action]=id;button.textContent=label;
+        history?.before(button);
+      }
+    }
+    const ta=box.querySelector<HTMLTextAreaElement>('.nedit textarea');
+    if(ta&&ctx?.scope==='global')ta.placeholder=web?'What should change here?':'What should be said about this review as a whole?';
+    refreshWebControls(box);
+  });
+}
+function wireWebRemoval(box: HTMLElement){
+  refreshWebControls(box);
+  if(webRemovalWired.has(box))return;
+  webRemovalWired.add(box);
+  box.addEventListener('click',async event=>{
+    const button=event.target instanceof Element?event.target.closest<HTMLButtonElement>('[data-web-remove]'):null;
+    if(!button||!box.contains(button))return;
+    const id=rowOf(box)?.dataset.nid;
+    if(!id||button.disabled||webCapturing.has(box)||webRemoving.has(id)||state.noteSending.has(id))return;
+    const index=Number(button.dataset.webRemove),key=button.dataset.webKey;
+    if(key===undefined)return;
+    webRemovalErrors.delete(id);
+    if(state.uiEmbed){
+      setWebNoteCapturing(box.parentElement!,true);
+      box.dispatchEvent(new CustomEvent('lcr:web-remove',{bubbles:true,detail:{index,key}}));
+      return;
+    }
+    webRemoving.add(id);
+    document.querySelectorAll<HTMLElement>('.nbox').forEach(refreshWebControls);
+    try{
+      const response=await fetch('/api/web/selection',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id,index,key})});
+      const result=await response.json();
+      if(!response.ok)throw new Error(result.error||'Could not remove this selection.');
+      const web=result.web===null?null:webReview(result.web);
+      if(result.web!==null&&!web)throw new Error('The server returned invalid selection evidence.');
+      updateWebNoteEvidence(document,id,web);
+      save();
+    }catch(error){
+      webRemovalErrors.set(id,error instanceof Error?error.message:String(error));
+    }finally{
+      webRemoving.delete(id);
+      document.querySelectorAll<HTMLElement>('.nbox').forEach(refreshWebControls);
+    }
   });
 }
 /** Removes an unsaved editor and closes the header popover used only by overall-note drafts. */
@@ -306,15 +381,16 @@ function editUI(box,ctx){
   box.innerHTML=headHtml(f,whole?null:sp.label,whole?null:sp.snippet,
       suggest+attachButton()+refButton(id),ctx.scope,ctx.image,ctx.web)+
     (ctx.image?'<div class="image-preview">'+imageCaptureHtml(ctx.image)+'</div>':'')+
-    (ctx.web?'<div data-web-evidence>'+webCaptureHtml(ctx.web)+'</div>':'')+
+    '<div data-web-evidence>'+webCaptureHtml(ctx.web,true)+'</div>'+
     '<div class="nedit"><textarea placeholder="'+
       (ctx.web?'What should change here?':global?'What should be said about this review as a whole?':
       ctx.image?'What should change in this area?':whole?'What should change in this file?':
       ch?'What should change in this part of the line?':'What should change here?')+'"></textarea>'+
     '<div class="acts"><button class="primary" data-save-note'+(webCapturing.has(box)?' disabled':'')+'>'+esc(noteSaveLabel())+'</button>'+
-    (ctx.web&&state.uiEmbed&&!state.notes.has(id)?'':'<button class="cancel">Cancel</button>')+
+    (state.uiEmbed&&!state.notes.has(id)?'':'<button class="cancel">Cancel</button>')+
     (state.notes.has(id)?'<button class="danger del">Delete</button>':'')+
     '<span class="spacer"></span><span class="tip">'+saveKeyHint()+' save &middot; esc cancel</span></div></div>';
+  wireWebRemoval(box);
   const ta=box.querySelector('textarea');
   ta.value=ctx.body||'';
   const fit=autogrow(ta,NOTE_MAX); // after the value, so reopening a long note opens it at full height
@@ -349,7 +425,7 @@ function editUI(box,ctx){
     ta.focus(); ta.setSelectionRange(to,to);
   };
   const commit=()=>{
-    if(webCapturing.has(box)) return;
+    if(webCapturing.has(box)||webRemoving.has(id)||state.noteSending.has(id)) return;
     const body=ta.value.trim();
     if(ctx.image&&!imageRegion(ctx.image)) return;
     if(!body){ drop(); return; }
@@ -511,7 +587,7 @@ export function viewUI(box,note,ctx){
       '<button class="edit">Edit</button><button class="danger del">Delete</button>',ctx.scope,note.image,note.web)+
     placeHtml(how==='exact'||how==='file'||how==='global'?'':how)+
     capturedHtml(note,how)+
-    (note.web?'<div data-web-evidence>'+webCaptureHtml(note.web)+'</div>':'')+
+    '<div data-web-evidence>'+webCaptureHtml(note.web,true)+'</div>'+
     imageCaptureHtml(note.image,!!ctx.f.hash&&note.image?.source!==ctx.f.hash)+
     '<div class="nbody"></div>'+(st&&st.detail?'<div class="nstat"></div>':'')+
     '<div class="thread"></div><div class="replyhost"></div>';
@@ -548,6 +624,7 @@ export function viewUI(box,note,ctx){
     editUI(box,Object.assign({},ctx,{id:current.id,body:current.body,image:current.image,web:current.web}));
   };
   box.querySelector('.del').onclick=()=>removeNote(box,note,ctx);
+  wireWebRemoval(box);
 }
 /** Deleting a note that was handed over takes it out of the review file too, thread and all. */
 function removeNote(box,note,ctx){
@@ -661,11 +738,8 @@ export function repaintNote(id: string,skip?: any){
     if(!box||box===skip) return;
     if(box.querySelector('textarea')){
       const editing=noteContexts.get(box);
-      if(editing&&n.web&&editing.web!==n.web){
-        editing.web=n.web;
-        const preview=box.querySelector('[data-web-evidence]');
-        if(preview) preview.innerHTML=webCaptureHtml(n.web);
-      }
+      if(editing&&(editing.web??null)!==(n.web??null))updateWebNoteEvidence(row.parentElement,id,n.web??null);
+      refreshWebControls(box);
       return;
     }
     viewUI(box,n,ctx);

@@ -4,7 +4,7 @@ import type { Hub } from './events.ts';
 import { launchReviewBrowser } from './review-browser.ts';
 import type { ReviewSession } from './session.ts';
 import { installPageReview } from './web/page-overlay.ts';
-import { localWebUrl, webCapture, type WebReview } from './web-review-model.ts';
+import { dropWebSelection, localWebUrl, webCapture, type WebReview } from './web-review-model.ts';
 
 export interface WebReviewOptions {
   url:string;repoRoot:string;outDir:string;session:ReviewSession;hub:Hub;reviewUrl:()=>string;
@@ -18,7 +18,7 @@ export function createWebReview(options:WebReviewOptions){
   let opening:Promise<void>|null=null,state='closed',detail='Open the page to annotate your UI.';
   let queue:Promise<unknown>=Promise.resolve();
   const key='__lcr_'+crypto.randomUUID().replaceAll('-',''),binding=key+'_send';
-  const drafts=new Map<string,WebReview>();
+  const drafts=new Map<string,WebReview|null>();
   let listeners:(()=>void)[]=[];
   const unbind=()=>{for(const off of listeners)off();listeners=[];};
   const status=()=>({url,state,detail});
@@ -111,19 +111,41 @@ export function createWebReview(options:WebReviewOptions){
   }
   async function action(name:string,payload:any){
     if(name==='notes')return {notes:(await options.session.read()).notes.filter(n=>n.web)};
+    if(name==='remove-selection'){
+      const hasDraft=payload.draftId!==undefined,hasNote=payload.id!==undefined;
+      if(hasDraft===hasNote)throw new Error('Choose either a draft or a saved UI note.');
+      if(!Number.isInteger(payload.index)||payload.index<0||payload.index>100||typeof payload.key!=='string')
+        throw new Error('A selection index and expected key are required.');
+      if(hasDraft){
+        if(typeof payload.draftId!=='string'||!drafts.has(payload.draftId))
+          throw new Error('That captured selection no longer exists.');
+        const current=drafts.get(payload.draftId);
+        if(!current)throw new Error('That selection no longer exists. Reload the note and try again.');
+        const web=dropWebSelection(current,payload.index,payload.key);
+        drafts.set(payload.draftId,web);
+        return {web:structuredClone(web)};
+      }
+      if(typeof payload.id!=='string')throw new Error('A note id is required.');
+      const note=await options.session.removeWebSelection(payload.id,payload.index,payload.key);
+      if(!note)throw new Error('That UI selection no longer exists.');
+      options.hub.emit({type:'review',file:options.session.file});
+      return {web:note.web??null};
+    }
     if(name==='capture'){
       const hasDraft=payload.draftId!==undefined,hasNote=payload.id!==undefined;
       if(hasDraft&&hasNote)throw new Error('Choose either a draft or a saved UI note.');
       if(hasDraft&&(typeof payload.draftId!=='string'||!drafts.has(payload.draftId)))
         throw new Error('That captured selection no longer exists.');
-      if(hasNote&&(typeof payload.id!=='string'||!(await options.session.read()).notes.some(note=>note.id===payload.id&&note.web)))
-        throw new Error('That UI note no longer exists.');
+      if(hasNote&&(typeof payload.id!=='string'||!(await options.session.read()).notes.some(note=>note.id===payload.id&&note.scope==='global')))
+        throw new Error('That overall note no longer exists.');
       const draft=hasDraft?drafts.get(payload.draftId)!:null;
       if(draft&&(draft.additional?.length??0)>=100)throw new Error('This note already has 100 additional selections.');
       const result=await screenshot(payload.capture);
-      if(draft){
-        (draft.additional??=[]).push(result.capture);
-        return {...result,web:structuredClone(draft),draftId:payload.draftId};
+      if(hasDraft){
+        const web:WebReview=draft??{before:result.capture,after:[]};
+        if(draft)(web.additional??=[]).push(result.capture);
+        drafts.set(payload.draftId,web);
+        return {...result,web:structuredClone(web),draftId:payload.draftId};
       }
       if(hasNote){
         const note=await options.session.addWebSelection(payload.id,result.capture);
@@ -223,9 +245,11 @@ export function createWebReview(options:WebReviewOptions){
   return {status,open,review(id?:string){
     const work=()=>review(id);const next=queue.then(work,work);queue=next.catch(()=>{});return next;
   },draft(id:string){
-    if(!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(id))return null;
+    if(!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(id))return undefined;
     const web=drafts.get(id);
-    return web?structuredClone(web):null;
+    return web===undefined?undefined:structuredClone(web);
+  },removeSelection(payload:{draftId?:string;id?:string;index:number;key:string}){
+    const work=()=>action('remove-selection',payload);const next=queue.then(work,work);queue=next.catch(()=>{});return next;
   },async captureAfter(id:string){
     const work=()=>action('after',{id});const next=queue.then(work,work);queue=next.catch(()=>{});return next;
   },async focus(id:string){

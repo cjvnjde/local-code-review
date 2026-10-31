@@ -677,7 +677,11 @@ export function applyComment(note: ReviewNote, comment: ReviewComment): ReviewNo
   const fresh = noteFromComment(comment);
   // Older tabs do not know this field; rewording their note must not discard its captured subject.
   if (note.image && fresh.scope === 'file' && !fresh.image) fresh.image = note.image;
-  if (note.web && fresh.scope === 'global') fresh.web = note.web;
+  // Persisted evidence is authoritative even after its last selection was removed.
+  if (fresh.scope === 'global') {
+    if (note.web) fresh.web = note.web;
+    else delete fresh.web;
+  }
   if (note.from) fresh.from = note.from;
   return {
     ...fresh,
