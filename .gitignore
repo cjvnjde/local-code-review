@@ -1,14 +1,14 @@
-# Generated review notes
-.review/
+# Ignore dotfiles and dot directories at any depth by default
+.*
 
-# Local Pi agent state
-.pi/
-.pi-subagents/
+# Shared repository configuration and project-local skills
+!/.gitignore
+!/.github/
+!/.agents/
 
 # Compiled executable
 /lcr
 
-# Logs and OS metadata
+# Logs and Windows metadata
 *.log
-.DS_Store
 Thumbs.db
