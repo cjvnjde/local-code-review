@@ -1,3 +1,4 @@
+import { startWebReviewUI } from "./web-review-ui.ts";
 import "./settings.ts";
 import "./tree-controls.ts";
 import { startAgentStatus } from './agent.ts';
@@ -24,6 +25,7 @@ import { watchNoteHeaders } from './sticky-notes.ts';
 import { startSearch } from './search.ts';
 
 loadCfg();
+startWebReviewUI();
 watchActions();
 watchNoteHeaders();
 watchAudio();

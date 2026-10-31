@@ -1,3 +1,4 @@
+import { localWebUrl } from "./web-review-model.ts";
 import type { CliOptions } from "./types.ts";
 
 /** A backtick or a control character: what an id may not carry into the review file. */
@@ -23,6 +24,7 @@ export function parseArgs(argv: string[]): CliOptions {
   let help = false;
   let claudeChannel = false;
   let codexThread = "";
+  let web = "";
   const diffArgs: string[] = [];
 
   for (let i = 0; i < argv.length; i++) {
@@ -35,6 +37,7 @@ export function parseArgs(argv: string[]): CliOptions {
     else if (arg === "--out") outDir = argv[++i] as string;
     else if (arg === "--context") context = Number(argv[++i]);
     else if (arg === "--id") id = normalizeId(argv[++i] ?? "");
+    else if (arg === "--web") web = localWebUrl(argv[++i] ?? "");
     else if (arg === "--no-open") open = false;
     else if (arg === "--open") open = true;
     else if (arg === "--help" || arg === "-h") help = true;
@@ -55,7 +58,8 @@ export function parseArgs(argv: string[]): CliOptions {
     if (!outDir || outDir.startsWith("-")) throw new Error("--out requires a directory.");
   }
   if (claudeChannel && codexThread) throw new Error("Choose either --claude-channel or --codex-thread for this run.");
-  return { port, outDir, context, open, id, version, help, claudeChannel, codexThread, diffArgs };
+  if (web && (diffArgs.length || claudeChannel)) throw new Error("--web cannot be combined with Git diff arguments or --claude-channel.");
+  return { ...(web ? { web } : {}), port, outDir, context, open, id, version, help, claudeChannel, codexThread, diffArgs };
 }
 
 /** Help is local to the CLI: it needs neither Git nor a running review. */
@@ -71,6 +75,7 @@ Options:
   --port <number>            Starting port (default: 7777; 0 picks a free port)
   --out <directory>          Review output directory (default: .review)
   --context <lines>          Surrounding diff lines (default: 5)
+  --web <url>                Annotate a localhost UI in a dedicated Chrome window
   --id <name>                Name a review to continue it across diff changes
   --no-open                  Do not open the browser
   --open                     Open the browser (default)
@@ -80,6 +85,7 @@ Options:
 Examples:
   lcr
   lcr --staged
+  lcr --web http://127.0.0.1:3000 --id ui
   lcr HEAD~3
   lcr main...HEAD
   lcr --no-open -- src/

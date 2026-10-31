@@ -1,4 +1,5 @@
 import type { NoteStatusKind, ReviewComment } from "./types.ts";
+import { webReview, webReviewLines, type WebReview } from './web-review-model.ts';
 import { imageRegion, imageRegionLines, type ImageRegion } from './image-region.ts';
 
 /**
@@ -74,6 +75,7 @@ export interface ReviewNote {
   cb?: number;
   snippet?: string;
   image?: ImageRegion;
+  web?: WebReview;
   code?: string;
   body: string;
   status: NoteStatusKind;
@@ -118,6 +120,7 @@ const BASE = /^Base:\s*`(.*)`\s*$/;
 const MARKER = /<!--\s*lcr:(.+?)\s*-->/;
 /** Provenance line of a note continued from an earlier review: `<file>#<id>` of the original. */
 const FROM = /^<!--\s*lcr:from\s+(.+?)\s*-->\s*$/;
+const WEB = /^<!-- lcr:web (.+) -->$/;
 const IMAGE = /^<!-- lcr:image (.+) -->$/;
 const MESSAGE = /^\*\*(Reviewer|Agent)\*\*\s*(?:<!--\s*lcr:m\s*([^>]*?)\s*-->\s*)?$/i;
 const STATUS = /^\s*status\s*:\s*(.+?)\s*$/i;
@@ -181,7 +184,7 @@ class Fences {
 /** Line shapes the parser reads as structure when they stand outside a fence. */
 function dangerous(line: string): boolean {
   return H1.test(line) || H2.test(line) || H3.test(line) || /^-{3,}\s*$/.test(line) ||
-    STATUS.test(line) || MESSAGE.test(line) || SNIPPET.test(line) || FROM.test(line) || IMAGE.test(line) || END.test(line);
+    STATUS.test(line) || MESSAGE.test(line) || SNIPPET.test(line) || FROM.test(line) || IMAGE.test(line) || WEB.test(line) || END.test(line);
 }
 const escapable = (line: string): boolean => dangerous(line) || FENCE.test(line);
 
@@ -449,6 +452,18 @@ function readOpening(note: ReviewNote, lines: string[]): void {
 
   for (let at = 0; at < lines.length; at++) {
     const line = lines[at] as string;
+    const web = !open && !note.web && !body.some(entry => entry.trim()) && WEB.exec(line);
+    if (web) {
+      try {
+        const value = webReview(JSON.parse(web[1] as string));
+        if (value && note.scope === 'global') {
+          const block = webReviewLines(value);
+          if (lines.slice(at, at + block.length).join('\n') === block.join('\n')) {
+            note.web = value; at += block.length - 1; continue;
+          }
+        }
+      } catch {}
+    }
     const image = !open && !note.image && !body.some(entry => entry.trim()) && IMAGE.exec(line);
     if (image) {
       try {
@@ -641,6 +656,8 @@ export function noteFromComment(comment: ReviewComment): ReviewNote {
   if (comment.code) note.code = comment.code;
   const image = comment.scope === 'file' ? imageRegion(comment.image) : null;
   if (image) note.image = image;
+  const web = comment.scope === 'global' ? webReview(comment.web) : null;
+  if (web) note.web = web;
   note.key = headingKey(note);
   return note;
 }
@@ -660,6 +677,7 @@ export function applyComment(note: ReviewNote, comment: ReviewComment): ReviewNo
   const fresh = noteFromComment(comment);
   // Older tabs do not know this field; rewording their note must not discard its captured subject.
   if (note.image && fresh.scope === 'file' && !fresh.image) fresh.image = note.image;
+  if (note.web && fresh.scope === 'global') fresh.web = note.web;
   if (note.from) fresh.from = note.from;
   return {
     ...fresh,
@@ -675,6 +693,7 @@ export function renderNote(note: ReviewNote): string[] {
   const side = !note.scope && note.side === "old" ? " (line numbers before the change)" : "";
   const out = [`### ${headingKey(note)}${side}${marker}`, ""];
   if (note.from) out.push(`<!-- lcr:from ${note.from.replace(/[<>]/g, "")} -->`, "");
+  if (note.web) out.push(...webReviewLines(note.web));
   if (note.image) out.push(...imageRegionLines(note.image));
   if (note.code && note.code.trim()) {
     const fence = fenceFor(note.code);

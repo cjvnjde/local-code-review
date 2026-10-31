@@ -1,3 +1,4 @@
+import { configureWebReview } from './web-review-ui.ts';
 import { placeNotes } from './anchor.ts';
 import { adoptAgent } from './agent.ts';
 import { rememberPage, rememberReview } from './history.ts';
@@ -52,6 +53,7 @@ async function loadNow(keep: boolean){
   });
   state.h.clear(); state.tree=null;
   el('range').textContent=d.range;
+  configureWebReview(d.web);
   // The name the run was started under, when it has one: it, and not the diff, is which review this is.
   const named=el('reviewId');
   named.hidden=!state.reviewId;
@@ -91,7 +93,7 @@ export function adopt(review: any){
     held.add(n.id);
     state.msgs.set(n.id,n.messages||[]);
     const kept=state.notes.get(n.id);
-    if(kept){ if(!kept.sentAt) kept.sentAt=at; return; }
+    if(kept){ if(n.web) kept.web=n.web; if(!kept.sentAt) kept.sentAt=at; return; }
     const note=noteFrom(n,at);
     if(note) state.notes.set(n.id,note);
   });
@@ -115,6 +117,7 @@ function noteFrom(n: any,at: number){
   if(n.ca!=null){ note.ca=n.ca; note.cb=n.cb; }
   if(n.snippet) note.snippet=n.snippet;
   if(n.image) note.image=n.image;
+  if(n.web) note.web=n.web;
   return note;
 }
 

@@ -1,4 +1,5 @@
 import { audioHtml } from './audio.ts';
+import { webWelcomeHtml } from './web-review-ui.ts';
 import { globalNotes, outdatedNotes, replaceIn, strayNotes } from './anchor.ts';
 import { bmKey } from './bookmarks.ts';
 import { delRunAt, delRuns, drawnRows, foldingDeleted, revealRow, toggleFileFold, toggleRun } from './deleted.ts';
@@ -37,7 +38,7 @@ export function renderDiff(){
   obsMount.disconnect(); obsDrop.disconnect();
   // An empty diff is where a finished review ends up, and its notes are exactly what is left to read.
   if(!state.files.length){
-    sec.innerHTML=globalHtml()+'<div class="empty">No changes in this diff. Nothing to review.</div>'+strayHtml();
+    sec.innerHTML=webWelcomeHtml()+globalHtml()+(state.web?'':'<div class="empty">No changes in this diff. Nothing to review.</div>')+strayHtml();
     applyGlobals(); applyStray();
     return;
   }
@@ -66,7 +67,7 @@ export function renderDiff(){
 function globalHtml(force?: boolean){
   if(!force&&!globalNotes().length) return '';
   return '<div class="gcard" id="fglobal"><div class="fh">'+
-    '<span class="p">Overall</span><span class="s">whole review</span><span class="spacer"></span>'+
+    '<span class="p">'+(state.web?'UI notes':'Overall')+'</span><span class="s">'+(state.web?'screenshots & conversations':'whole review')+'</span><span class="spacer"></span>'+
     '<button class="cf" data-gn="1" title="Comment on this review as a whole">'+
     SVG.plus+' comment</button></div><div class="loose" id="loGlobal"></div></div>';
 }

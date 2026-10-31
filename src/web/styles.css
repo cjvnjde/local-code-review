@@ -864,3 +864,31 @@
     .nbox.bump{animation:bump .45s ease-out}
     @keyframes bump{0%,100%{border-color:var(--edge-hi)}30%{border-color:var(--accent)}}
   }
+
+  /* Live UI reviews keep the same note boxes and conversations, without diff-only controls. */
+  body.web-review .navtop,body.web-review #tree,body.web-review #readingPosition,
+  body.web-review #quick,body.web-review #pending{display:none}
+  body.web-review nav{width:280px}
+  body.web-review #ntpane{flex:1;max-height:none}
+  body.web-review #settings>h4,body.web-review #settings>label,body.web-review #settings>.sub,
+  body.web-review #settings>p,body.web-review #settings>.settings-section:has(#resetViewed),
+  body.web-review #settings>.settings-section:has(#cfgEditor),body.web-review #settings>.settings-section:has(#cfgHide),
+  body.web-review #settings>.settings-section:has(#cfgExpand),body.web-review #settings>.settings-section:has(#cfgGhosts){display:none}
+  .web-welcome{padding:calc(var(--row) * 2);font-family:var(--sans);max-width:960px}
+  .web-eyebrow{color:var(--mauve);font-size:var(--fs-xs);letter-spacing:.16em;font-weight:600}
+  .web-welcome h1{font-size:calc(var(--fs-ui) * 2);font-weight:600;letter-spacing:-.03em;margin:var(--row) 0 10px}
+  .web-welcome p{color:var(--ink-dim);font-size:var(--fs-ui);max-width:640px}
+  .web-launch{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-top:var(--row)}
+  .web-launch button{min-height:var(--tap-lg);font-size:var(--fs-ui)}
+  .web-launch span,.web-browser-status{font-size:var(--fs-sm);color:var(--ink-faint);overflow-wrap:anywhere}
+  .web-capture{padding:12px;border-bottom:1px solid var(--edge);font:var(--fs-sm)/1.5 var(--sans)}
+  .web-location{color:var(--ink);margin-bottom:12px;overflow-wrap:anywhere}
+  .web-location span{color:var(--ink-faint);font-size:var(--fs-xs)}
+  .web-comparison{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:14px;align-items:start}
+  .web-observation{min-width:0;background:var(--panel2);border:1px solid var(--edge);border-radius:7px;padding:10px}
+  .web-caption{display:flex;justify-content:space-between;gap:10px;color:var(--mauve);margin-bottom:10px}
+  .web-caption time{font-size:var(--fs-xs);color:var(--ink-faint)}
+  .web-observation img{max-width:100%;height:auto;display:block;border-radius:4px}
+  .web-observation>a{display:block;overflow:auto;max-height:360px}
+  .web-observation summary{cursor:pointer;color:var(--ink-dim);min-height:var(--tap);padding-top:5px}
+  .web-observation pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:var(--fs-xs);max-height:300px;overflow:auto}

@@ -26,6 +26,7 @@ export function searchDocuments(files:any[],notes:any[],messages:Map<string,any[
       (n.start?(n.start===n.end?String(n.start):n.start+'–'+n.end):'');
     const base={path:n.file||'',noteId:n.id,location};
     docs.push({...base,kind:'note',text:n.body||'',label:'Note'});
+    if(n.web) docs.push({...base,kind:'note',text:JSON.stringify([n.web.before.url,n.web.before.title,n.web.before.selector,n.web.before.components,n.web.before.element]),label:'UI metadata'});
     if(n.code) docs.push({...base,kind:'note',text:n.code,label:'Captured code'});
     const status=statuses.get(n.id);
     if(status) docs.push({...base,kind:'note',text:[status.status,status.detail].filter(Boolean).join(' · '),label:'Status'});

@@ -1,3 +1,4 @@
+import { webReview, webReviewLines, type WebReview } from '../../web-review-model.ts';
 import { imageRegion, imageRegionLines, type ImageRegion } from '../../image-region.ts';
 
 /** Durable values only: scrolling, read marks and delivery/connection state are not revisions. */
@@ -7,6 +8,7 @@ export interface HistoryNote {
   snippet: string; code: string; body: string; status: string; detail: string;
   messages: {role: string; at: string; body: string}[];
   image?: ImageRegion;
+  web?: WebReview;
 }
 export interface HistorySnapshot { file: string; notes: HistoryNote[] }
 export interface HistoryChange { id: string; before?: HistoryNote; after?: HistoryNote; kinds: string[] }
@@ -28,6 +30,7 @@ export function historySnapshot(file: string,notes: any[]): HistorySnapshot {
     start:Number(n.start)||0,end:Number(n.end)||0,ca:n.ca??null,cb:n.cb??null,
     snippet:text(n.snippet),code:text(n.code),body:text(n.body),status:text(n.status)||'pending',detail:text(n.detail),
     messages:(Array.isArray(n.messages)?n.messages:[]).map(m=>({role:text(m.role),at:text(m.at),body:text(m.body)})),
+    ...(webReview(n.web)?{web:webReview(n.web)!}:{}),
     ...(imageRegion(n.image)?{image:imageRegion(n.image)!}:{}),
   })).sort((a,b)=>a.id.localeCompare(b.id))};
 }
@@ -70,6 +73,7 @@ export function historyMatches(entry: HistoryEntry,query: string,noteId=''){
 /** Plain text makes even a deleted note reusable without writing into the live conversation. */
 export function historyText(entry: HistoryEntry,mode: 'changes'|'snapshot',noteId=''){
   const text=(n: HistoryNote)=>[n.file+(n.label?':'+n.label:''),
+    ...(n.web?webReviewLines(n.web).slice(2):[]),
     ...(n.image?imageRegionLines(n.image).slice(2):[]),n.body,
     'Status: '+n.status+(n.detail?' — '+n.detail:''),
     ...n.messages.map(m=>(m.role==='agent'?'AI':'You')+':\n'+m.body)].join('\n\n');

@@ -1012,3 +1012,24 @@ describe("review conversation APIs", () => {
     expect((await started.options.session.read()).notes).toHaveLength(1);
   });
 });
+
+describe('live UI browser API', () => {
+  test('is unavailable in a diff review and requires JSON and a local origin to launch', async () => {
+    const diff = await startTestServer();
+    expect((await request(diff, '/api/web')).status).toBe(404);
+    let opened=0, captured='';
+    const web={status:()=>({url:'http://localhost:3000/',state:'closed',detail:'Open browser'}),
+      open:async()=>{opened++;},captureAfter:async(id:string)=>{captured=id;},focus:async()=>{},close:async()=>{}};
+    const started=await startTestServer({web:web as any});
+    expect((await (await request(started,'/api/diff')).json()).web.url).toBe('http://localhost:3000/');
+    expect((await request(started,'/api/web',{method:'POST'})).status).toBe(415);
+    expect((await request(started,'/api/web',{method:'POST',headers:{'content-type':'application/json',origin:'https://example.com'},body:'{}'})).status).toBe(403);
+    expect(opened).toBe(0);
+    expect((await request(started,'/api/web',{method:'POST',headers:{'content-type':'application/json',origin:started.base},body:'{}'})).status).toBe(200);
+    expect(opened).toBe(1);
+    expect((await request(started,'/api/web/capture',{method:'GET'})).status).toBe(405);
+    expect((await request(started,'/api/web/capture',{method:'POST',headers:{'content-type':'application/json'},body:'{}'})).status).toBe(400);
+    expect((await request(started,'/api/web/capture',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id:'|@|@|#note'})})).status).toBe(200);
+    expect(captured).toBe('|@|@|#note');
+  });
+});

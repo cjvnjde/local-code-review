@@ -18,6 +18,7 @@ import { startServer } from "./server.ts";
 import { collectStatuses } from "./status.ts";
 import { parseReview } from "./thread.ts";
 import { VERSION } from "./version.ts";
+import { createWebReview } from "./web-review.ts";
 import { isNoise, watchDir, watchTree } from "./watch.ts";
 
 async function main() {
@@ -45,25 +46,25 @@ async function main() {
     process.exit(0);
   }
 
-  const range = diffRangeLabel(options.diffArgs);
+  const range = options.web ? `web ${options.web}` : diffRangeLabel(options.diffArgs);
   const diffSource = {
     repoRoot,
     context: options.context,
     diffArgs: options.diffArgs,
-    ...(options.diffArgs.length === 0 ? { worktreeBase: await resolveWorktreeBase(repoRoot) } : {}),
+    ...(!options.web && options.diffArgs.length === 0 ? { worktreeBase: await resolveWorktreeBase(repoRoot) } : {}),
   };
 
   // Reject invalid Git options, revisions and paths before opening any review resources.
-  await validateDiff(diffSource);
+  if (!options.web) await validateDiff(diffSource);
   await excludeRelativeOutput(repoRoot, options.outDir);
-  const initialDiff = await getDiff(diffSource);
+  const initialDiff = options.web ? [] : await getDiff(diffSource);
 
   // The revisions the diff is between are fixed by the arguments it was started with, so they are
   // worked out once; what they point at — the working tree, the index — is re-read on every request.
   const [branch, base, sides] = await Promise.all([
     currentBranch(repoRoot),
-    diffBase(diffSource),
-    diffSides(diffSource),
+    options.web ? "" : diffBase(diffSource),
+    options.web ? { old: "", new: "" } : diffSides(diffSource),
   ]);
   const session = createSession(repoRoot, options.outDir, range, {
     range,
@@ -98,6 +99,8 @@ async function main() {
     return text ? parseReview(text) : null;
   }
 
+  const web = options.web ? createWebReview({ url: options.web, repoRoot, outDir: options.outDir,
+    session, hub, channel, reviewUrl: () => webUrl }) : undefined;
   const server = startServer({
     port: options.port,
     repoRoot,
@@ -105,8 +108,8 @@ async function main() {
     range,
     reviewId: options.id,
     context: options.context,
-    getDiff: () => getDiff(diffSource),
-    getContext: (file, start, end) => getFileContext(diffSource, file, start, end),
+    getDiff: () => options.web ? Promise.resolve([]) : getDiff(diffSource),
+    getContext: (file, start, end) => options.web ? Promise.resolve([]) : getFileContext(diffSource, file, start, end),
     readBlob: (side, file) => readBlob(repoRoot, side === "old" ? sides.old : sides.new, file),
     // Beside the review file, because that is what a note's link to one resolves against.
     saveAttachment: (bytes, type) => saveAttachment(repoRoot, options.outDir, bytes, type),
@@ -119,6 +122,7 @@ async function main() {
     // The branch is asked for per request rather than kept from startup: the reviewer can check
     // another one out mid-run, and the ghosts on offer should follow them there.
     getGhosts: async () => {
+      if (options.web) return [];
       const doc = await session.read();
       const taken = new Set(doc.notes.map((note) => note.from).filter((from): from is string => !!from));
       return collectGhosts(repoRoot, options.outDir, {
@@ -136,6 +140,7 @@ async function main() {
     session,
     hub,
     channel,
+    web,
   });
   webUrl = `http://localhost:${server.port}`;
   void channel?.check?.();
@@ -182,22 +187,29 @@ async function main() {
   }
 
   const watchers = [
-    watchTree(repoRoot, () => checkDiff(), { ignore: ignoreTree }),
+    ...(!options.web ? [watchTree(repoRoot, () => checkDiff(), { ignore: ignoreTree })] : []),
     watchDir(outPath, () => {
       if (hub.size) hub.emit({ type: "review", file: session.file });
     }),
   ];
   const heartbeat = setInterval(() => hub.ping(), 25_000);
 
-  function shutdown() {
+  let stopping = false;
+  async function shutdown() {
+    if (stopping) return;
+    stopping = true;
     clearInterval(heartbeat);
     for (const watcher of watchers) watcher.close();
     claudeLink?.close();
+    await web?.close();
     server.stop(true);
     process.exit(0);
   }
   for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, shutdown);
 
+  if (options.open && web) {
+    await web.open().catch(error => console.error('  '+error.message+' Open the review URL to retry.'));
+  }
   if (options.open && !openInBrowser(`http://localhost:${server.port}`)) {
     console.log("  could not open browser; open the URL above manually\n");
   }

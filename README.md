@@ -74,6 +74,39 @@ Note headers stay visible while scrolling through long conversations, below the 
 diff or the group header in the all-notes view. Familiar actions use icons with hover tooltips and
 accessible names throughout the page.
 
+## Live UI review
+
+Annotate a running local app without an extension or changes to its code:
+
+```sh
+lcr --web http://localhost:3000 --id checkout-ui
+```
+
+lcr opens a dedicated Chrome/Chromium window with a floating toolbar. **Browse** uses the app normally;
+**Element** selects a tag, **Block** selects its containing layout block, **Area** draws a rectangle,
+and **Point** captures a small area around a click. Alt + wheel moves an element selection up to its
+parent. Save a comment to keep an immutable viewport screenshot, a crop of the selection, the URL,
+viewport and scroll position, a selector, element text and attributes, selected CSS properties, and
+available React/Vue component names and source hints.
+
+Numbered pins on the live page open conversations. Read agent replies and send follow-ups there,
+or use **Review** to open the complete lcr note UI with Markdown, attachments, editing, deletion,
+search, and history. Notes use the same timestamped `.review/review-*.md` conversation files and
+agent connections as code reviews. With a verified connection, **Save & ask AI** forwards one note
+immediately; otherwise **Save note** keeps it for a manual handover.
+
+After a fix, restore the relevant page state and choose **Capture after** on the page or in lcr.
+The original element is located again, so a resized or moved element gets a fresh crop. The review
+shows before/after crops beside each other, with expandable page screenshots and metadata. Captures
+are never overwritten. An ambiguous or missing element requires restoring the page state or making
+a new note.
+
+This optional mode needs an installed Chrome, Chromium, or Edge. It keeps a separate persistent
+profile in the output directory's `.browser/` folder; log in there once if your app requires it.
+Set `LCR_BROWSER_PATH` to choose another Chromium executable. `--no-open` keeps both browsers closed;
+open the printed review URL and choose **Open review browser** when ready. Stopping lcr closes its
+owned browser. See [UI review details and limits](docs/web-ui.md).
+
 ## Search
 
 Use the header search (or **Cmd/Ctrl+K**) to find code, filenames, notes, captured code, statuses
@@ -112,7 +145,7 @@ revision, filters, and display mode. Close and Escape use that same entry and pr
 
 Download the package for your system from the [latest release](https://github.com/cjvnjde/local-code-review/releases/latest), extract it, and put `lcr` (`lcr.exe` on Windows) somewhere on your `PATH`.
 
-`lcr` only needs Git.
+`lcr` only needs Git for diff reviews. Optional live UI reviews also use an installed Chromium browser.
 
 macOS builds are unsigned, so a downloaded binary may need quarantine removed
 after you verify its release checksum:
@@ -134,6 +167,7 @@ The review page opens at <http://localhost:7777>. It includes working-tree, stag
 Common commands:
 
 ```sh
+lcr --web http://localhost:3000 # Review a live local UI
 lcr --no-open                 # Do not open the browser automatically
 lcr --staged                  # Staged changes only
 lcr HEAD~3                    # Changes since three commits ago

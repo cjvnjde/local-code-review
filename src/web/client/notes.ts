@@ -1,3 +1,4 @@
+import { webCaptureHtml } from './web-capture.ts';
 import { placeOf } from './anchor.ts';
 import { imageRegion, regionLabel } from '../../image-region.ts';
 import { imageCaptureHtml } from './image-capture.ts';
@@ -252,10 +253,10 @@ function statusChip(st){
  * What a note says it is about. A note on the whole review names no file, one on a whole file names
  * no lines, and the badge under `all` is what carries that instead of a line range.
  */
-function headHtml(f,label,snippet,extra,scope?,image?){
+function headHtml(f,label,snippet,extra,scope?,image?,web?){
   const global=scope==='global';
-  return '<div class="nhead"><span class="loc">'+(global?'Overall':esc(f.path)+(label?':'+label:''))+'</span>'+
-    (image?'<span class="all">'+esc(regionLabel(image))+'</span>':global?'<span class="all">whole review</span>':label?'':'<span class="all">whole file</span>')+
+  return '<div class="nhead"><span class="loc">'+(web?esc(web.before.element?.tag||web.before.mode)+' · UI':global?'Overall':esc(f.path)+(label?':'+label:''))+'</span>'+
+    (image?'<span class="all">'+esc(regionLabel(image))+'</span>':web?'<span class="all">'+esc(web.before.components.map(c=>c.name).join(' → ')||web.before.mode)+'</span>':global?'<span class="all">whole review</span>':label?'':'<span class="all">whole file</span>')+
     (snippet?'<span class="snip" title="'+esc(snippet)+'">'+esc(clip(snippet.trim()))+'</span>':'')+
     '<span class="spacer"></span>'+(extra||'')+'</div>';
 }
@@ -268,10 +269,10 @@ function editUI(box,ctx){
   const suggest=whole?'':'<button class="sug" title="Insert these lines as a suggested change">'+
     SVG.plus+' suggest</button>';
   box.innerHTML=headHtml(f,whole?null:sp.label,whole?null:sp.snippet,
-      suggest+attachButton()+refButton(id),ctx.scope,ctx.image)+
+      suggest+attachButton()+refButton(id),ctx.scope,ctx.image,ctx.web)+
     (ctx.image?'<div class="image-preview">'+imageCaptureHtml(ctx.image)+'</div>':'')+
     '<div class="nedit"><textarea placeholder="'+
-      (global?'What should be said about this review as a whole?':
+      (ctx.web?'What should change here?':global?'What should be said about this review as a whole?':
       ctx.image?'What should change in this area?':whole?'What should change in this file?':
       ch?'What should change in this part of the line?':'What should change here?')+'"></textarea>'+
     '<div class="acts"><button class="primary" data-save-note>'+esc(noteSaveLabel())+'</button><button class="cancel">Cancel</button>'+
@@ -323,6 +324,7 @@ function editUI(box,ctx){
         side:sp.side,start:sp.start,end:sp.end,label:sp.label,code:sp.code};
     if(ch){ note.ca=ch.ca; note.cb=ch.cb; note.snippet=sp.snippet; }
     if(ctx.image) note.image={...ctx.image};
+    if(ctx.web) note.web=ctx.web;
     // Start this note's write now; another browser-only note must not be submitted with it.
     const ask=!!state.agent;
     // Editing a note that is already in the review file leaves it in the same conversation.
@@ -460,10 +462,12 @@ export function viewUI(box,note,ctx){
       (state.agent?'<button class="ask"'+(state.noteSending.has(note.id)?' disabled':'')+'>'+
         (state.noteDelivery.get(note.id)?.error?'Retry AI':'Ask AI')+'</button>':'')+
       (isResolved(note)||canResolve(note)?'<button class="resolve" data-resolve="'+esc(note.id)+'" title="'+(isResolved(note)?'Show this conversation again':'Hide from the page; keep the conversation in Markdown')+'">'+SVG.check+' '+(isResolved(note)?'Reopen':'Resolve')+'</button>':'')+
+      (note.web&&state.web?'<button data-web-focus="'+esc(note.id)+'">On page</button><button data-web-after="'+esc(note.id)+'">Capture after</button>':'')+
       '<button class="history" title="See earlier versions of this note">History</button>'+
-      '<button class="edit">Edit</button><button class="danger del">Delete</button>',ctx.scope,note.image)+
+      '<button class="edit">Edit</button><button class="danger del">Delete</button>',ctx.scope,note.image,note.web)+
     placeHtml(how==='exact'||how==='file'||how==='global'?'':how)+
     capturedHtml(note,how)+
+    webCaptureHtml(note.web)+
     imageCaptureHtml(note.image,!!ctx.f.hash&&note.image?.source!==ctx.f.hash)+
     '<div class="nbody"></div>'+(st&&st.detail?'<div class="nstat"></div>':'')+
     '<div class="thread"></div><div class="replyhost"></div>';
@@ -496,7 +500,7 @@ export function viewUI(box,note,ctx){
       alert('This note has no lines to edit against any more. Reply to it instead, or delete it.');
       return;
     }
-    editUI(box,Object.assign({},ctx,{id:note.id,body:note.body,image:note.image}));
+    editUI(box,Object.assign({},ctx,{id:note.id,body:note.body,image:note.image,web:note.web}));
   };
   box.querySelector('.del').onclick=()=>removeNote(box,note,ctx);
 }
@@ -576,7 +580,7 @@ export function mountDetached(host: any,note: any,f: any,fi: number,how: string)
  * say it is one here too.
  */
 function ctxFor(n: any){
-  if(isGlobalNote(n)) return {f:{path:'',rows:[]},fi:-1,i:null,j:null,ch:null,how:'global',scope:'global'};
+  if(isGlobalNote(n)) return {f:{path:'',rows:[]},fi:-1,i:null,j:null,ch:null,how:'global',scope:'global',web:n.web};
   const p=placeOf(n);
   const f=p?state.files[p.fi]:{path:n.file,rows:[]};
   const how=p?p.how:'stray';
