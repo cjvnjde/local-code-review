@@ -255,6 +255,14 @@ browserTest('one review: diff and visual notes share editors, attachments, links
     expect(multi.web!.before.selections!.map(s=>s.element!.tag)).toEqual(['button','h1']);
     expect(multi.web!.before.rect.height).toBeGreaterThan(100);
     await until(()=>js('testRoot.querySelectorAll(".pin[title=\\"Align the heading and save action together.\\"]").length===2'),'one pin per selected element');
+    const shownPins=await js('testRoot.querySelectorAll(".pin").length');
+    await pressLauncher();
+    expect(await js('testRoot.querySelectorAll(".pin").length')).toBe(0);
+    await js('scrollBy(0,1)');
+    await js('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+    expect(await js('testRoot.querySelectorAll(".pin").length')).toBe(0);
+    await pressLauncher();
+    expect(await js('testRoot.querySelectorAll(".pin").length')).toBe(shownPins);
     await web.captureAfter(multi.id);
     expect((await session.read()).notes.find(n=>n.id===multi.id)!.web!.after[0]!.selections!.map(s=>s.selector)).toEqual(multi.web!.before.selections!.map(s=>s.selector));
     await until(()=>reviewJs('document.querySelector("#loGlobal").textContent.includes("Align the heading and save action together.")'),'multi-element evidence in review');

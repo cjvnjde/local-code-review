@@ -90,6 +90,7 @@ export function installPageReview(config: {key:string;binding:string;origin:stri
     $('.mode-state').textContent=mode==='browse'?'OFF':'ON';
     launcher.title='Selection '+(mode==='browse'?'off — use the page normally':'on — '+mode+' targeting')+'. Click to toggle; hold for tools; drag to move. Hold Alt to use the page temporarily.';
     root.querySelectorAll('[data-mode]').forEach(b=>b.setAttribute('aria-pressed',String((b as HTMLElement).dataset.mode===mode)));
+    pins();
   }
   function rect(el:Element){const r=el.getBoundingClientRect();return clamp({x:r.x,y:r.y,width:r.width,height:r.height});}
   function clamp(r:any){const x=Math.max(0,Math.min(innerWidth-1,r.x)),y=Math.max(0,Math.min(innerHeight-1,r.y));return {x,y,width:Math.max(1,Math.min(innerWidth,r.x+r.width)-x),height:Math.max(1,Math.min(innerHeight,r.y+r.height)-y)};}
@@ -233,6 +234,7 @@ export function installPageReview(config: {key:string;binding:string;origin:stri
   }
   function pins(){
     const container=$('.pins');container.textContent='';
+    if(mode==='browse')return;
     notes.forEach((n,i)=>(n.web.before.selections||[n.web.before]).forEach((selection:any)=>{
       const p=locate({...n.web.before,...selection});if(!p)return;const r=p.rect;
       if(r.y+r.height<0||r.y>innerHeight||r.x+r.width<0||r.x>innerWidth)return;

@@ -46,7 +46,8 @@ Hiding or switching away from a half-written comment asks before discarding it; 
   a note can include up to 100 targets, each with its own metadata, and one crop covering them together.
 - **Area**: explicitly drag a rectangle, including over a canvas or embedded frame.
 - **Point**: click to capture a 96 × 96 CSS-pixel neighborhood, clipped to the viewport.
-- **Browse**: interact with the app normally while keeping the toolbar and saved pins available.
+- **Browse**: interact with the app normally. Saved note circles stay hidden while selection is
+  **OFF** and return immediately when it is turned **ON**; the notes themselves are unchanged.
 
 Selection finishes on release: a click with up to 6 CSS pixels of movement remains an element/block
 selection; a larger drag becomes an area. Clicking in selection mode annotates instead of activating

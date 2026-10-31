@@ -105,7 +105,8 @@ available React/Vue component names and source hints.
 Numbered pins reopen the main app's own note component on the live page: the same Enter setting,
 Markdown, image paste/drop/picker and previews, references, editing, deletion, and replies. Settings
 changes reach open page editors without disturbing their drafts. Pins scroll with their targets,
-not the viewport edge; a multi-element note has the same number on every target. Saving a
+not the viewport edge; a multi-element note has the same number on every target. Turning selection
+**OFF** hides the note circles; turning it **ON** brings them back without changing any notes. Saving a
 visual comment closes the editor and writes it into the shared review. Visual notes appear under
 **Overall**, above the Git diff, in the same conversation file, note lists, history, and reference
 picker as code comments. References work in both directions. **Full conversation** follows the note
