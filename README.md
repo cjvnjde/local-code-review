@@ -1,316 +1,98 @@
 # Local Code Review
 
-Small standalone web UI for reviewing local Git changes and writing feedback for coding agents.
+Review local Git changes and annotate a running web app. Feedback stays in Markdown, ready for any coding agent.
 
-![Local Code Review showing a Git diff with line notes](docs/local-code-review.png)
-
-## Optional agent skill
-
-This repository includes [`apply-lcr`](skills/apply-lcr/SKILL.md), a small skill that finds the newest review, works the notes one at a time, replies to each in the review file as it goes, runs project checks, and picks up any follow-ups you wrote while it worked.
-
-The skill handles code and visual notes in the same review, including references between them. Framework component and source metadata are optional hints, not prerequisites for applying visual feedback.
-
-Install it with the [Skills CLI](https://github.com/vercel-labs/skills), then ask your agent:
-
-```sh
-npx skills add cjvnjde/local-code-review --skill apply-lcr
-```
-
-```text
-Apply the newest lcr review.
-```
-
-Or use `/apply-lcr` when your agent supports skill commands. Each note's `Status:` line — applied, answered, skipped, or needs input — shows on the note as soon as the agent writes it.
-
-Reviews remain ordinary Markdown files. You can use them without the skill and with any coding agent.
-
-## Interactive Claude Code channel (MVP)
-
-Register the lightweight Claude bridge once, globally. Start your review yourself with its usual
-arguments, such as `lcr origin/main`, then start Claude Code with the channel enabled. The bridge
-connects to the review in that repository; starting Claude alone opens no page or review server.
-Each note editor becomes **Save & ask AI** after Claude acknowledges a connection probe. Saving
-the note immediately writes and forwards that note; the footer is not a send step. Sending or
-rewording a reply forwards the follow-up. Claude reads the latest thread and answers under the note. This uses Claude
-Code's own login and permissions; lcr does not call a model API or automate the Claude app.
-
-See [Claude channel setup](docs/claude-channel.md) for registration and launch commands. Channels are
-a Claude Code research preview; Team and Enterprise organizations must enable them. The ordinary
-`lcr` command and the optional vendor-neutral skill keep working as before.
-
-## Interactive Codex session (MVP)
-
-Point lcr at an existing Codex session:
-
-```sh
-lcr --codex-thread <session-uuid> --id interactive
-```
-
-After the selected session passes a local health check, each note editor becomes **Save & ask AI**.
-Saving it immediately forwards that note with the installed CLI's `codex queue` command.
-Sending or rewording a reply notifies the same session. Codex reads the current thread from Markdown
-and writes its answer there, where the page picks it up live. The session keeps its own login,
-model, and tool permissions. See [Codex setup and delivery behavior](docs/codex-channel.md).
-
-The header reports the detected agent as checking, ready, or unavailable. Without a confirmed working
-connection, editors say **Save note** and keep the ordinary manual review workflow.
-
-## Screenshot comments
-
-Images fit the pane width without a height limit. Click an image to comment on a small area, or drag
-to select a rectangle. Each note keeps its before/after side, original pixel coordinates and a cropped
-capture in the review file, so the agent can inspect the exact area even after the screenshot changes.
-Click a marked region's short reference to read its note. Hold Alt to use the image normally.
-
-File-header actions have immediate hover tooltips. Comment, Viewed and fold removed keep text labels;
-**Copy file path** beside the filename copies the repository-relative path.
-
-Answered notes offer **Resolve**. Resolving hides the note and its thread from the diff, note lists,
-and search, while keeping the complete conversation in Markdown for the agent to read later.
-**Show resolved** in the footer brings them back; **Reopen** returns one to the active review.
-This visibility choice is saved in this browser for the repository and review. A new reply or changed
-verdict brings the conversation back automatically. Clearing visible notes leaves hidden resolved
-conversations intact. Delete remains the action that removes a note from Markdown.
-
-Note headers stay visible while scrolling through long conversations, below the file header in the
-diff or the group header in the all-notes view. Familiar actions use icons with hover tooltips and
-accessible names throughout the page.
-
-## Live UI review
-
-Annotate a running local app alongside its Git diff, without an extension or changes to its code:
-
-```sh
-lcr --web http://localhost:3000 --id checkout-ui
-lcr --web http://localhost:3000 main...HEAD # Visual and code notes on an explicit diff
-```
-
-lcr opens a dedicated Chrome/Chromium window with the app and the lcr review in separate tabs.
-The app starts ready to annotate: click an element or drag an area, without opening the small **lcr**
-circle. **Click the circle** to toggle between selection and normal page use; its **ON/OFF** badge and
-purple active state show which is enabled. Turning selection back on restores your last targeting mode.
-**Hold the circle** to open the tools menu; **drag it** to move it out of the way. The menu hides after
-one action, an outside click, or losing focus.
-**Block** targets a containing layout block instead of the exact element; **Area** and **Point** remain
-available explicitly. Hold **Alt** to interact with the app temporarily, or choose **Browse** in the tools.
-Opening the tools does not change selection mode. Alt + wheel selects an element's parent.
-Choose **Multiple**, or **Shift-click** in Element/Block mode, to collect elements for one note.
-Shift-click a target again to remove it; **Write note** (or Enter) opens the shared editor.
-Keep the targets visible: the capture includes each target's metadata and one crop covering the group.
-With a note open, further page selections append to it without replacing the draft or earlier captures.
-Drag its title bar to move it or its bottom-right grip to resize it; **−** minimizes/restores the
-chosen size, and **×** discards a new unsaved draft. Focus the grip and use arrow keys to resize
-with the keyboard (Shift moves farther). Resizing preserves the draft and caret.
-Saved conversations survive closing the window; there is no duplicate Cancel action on a new visual note.
-Each capture's trash button removes that selection without deleting the note text or conversation.
-Removing the first also removes its comparisons; removing the last leaves an overall note.
-Screenshots remain on disk, and a cleared note can receive new selections.
-Common note actions use familiar icons, with immediate hover/focus tooltips and accessible labels.
-Compound actions such as **Save & ask AI** keep their text.
-
-Click a capture image (or its pencil) to open a fullscreen drawing editor. A compact icon toolbar
-offers pen, arrow, rounded rectangle, text, undo/redo, and only the properties the current tool needs.
-The color swatch opens saved colors and a custom picker. Pen mode offers 0–100% smoothing for new
-strokes. Zoom with the floating −/+/Fit controls, the wheel or pinch gesture; use the hand tool
-to drag a zoomed image, or hold Space and drag. Blank drawable margins let arrows and labels
-extend beyond the selected area. The checkmark applies a separate annotated PNG; Close leaves
-unapplied changes behind after confirmation. Reopen the image to move or edit saved drawings.
-The review file links the untouched original and proposal separately and retains editable drawing data.
-
-Save a comment to keep an immutable viewport screenshot, a crop of the selection, the URL,
-viewport and scroll position, a selector, element text and attributes, selected CSS properties, and
-available React/Vue component names and source hints.
-Area captures include selectors and component hints for up to 100 visible intersecting DOM elements.
-Their circles follow matching content rather than old screen coordinates, and hide when those anchors
-are missing, ambiguous, or changed—even at the same URL. This is DOM matching, not pixel comparison.
-
-Numbered pins reopen the main app's own note component on the live page: the same Enter setting,
-Markdown, image paste/drop/picker and previews, references, editing, deletion, and replies. Settings
-changes reach open page editors without disturbing their drafts. Pins scroll with their targets,
-not the viewport edge; a multi-element note has the same number on every target. Turning selection
-**OFF** hides the note circles; turning it **ON** brings them back without changing any notes. Saving a
-visual comment closes the editor and writes it into the shared review. Visual notes appear under
-**Overall**, above the Git diff, in the same conversation file, note lists, history, and reference
-picker as code comments. References work in both directions. **Full conversation** follows the note
-link in the already-open review tab rather than creating another.
-
-With a verified connection, **Save & ask AI** forwards one note immediately; otherwise **Save note**
-persists the visual note for a manual handover. The header's **Open page** control reopens or focuses
-the app without replacing the diff.
-
-After a fix, restore the relevant page state and choose **Capture after** on the page or in lcr.
-It compares the first selection: elements are located again, and areas require matching captured DOM
-anchors. Extra selections stay separate evidence. A resized or moved element gets a fresh crop. The review
-shows before/after crops beside each other, with expandable page screenshots and metadata. Captures
-are never overwritten. An ambiguous or missing element requires restoring the page state or making
-a new note.
-
-This optional mode needs an installed Chrome, Chromium, or Edge. It keeps a separate persistent
-profile in the output directory's `.browser/` folder; log in there once if your app requires it.
-Set `LCR_BROWSER_PATH` to choose another Chromium executable. `--no-open` opens neither tab;
-open the printed review URL and choose **Open page** when ready. Stopping lcr closes its
-owned browser. See [UI review details and limits](docs/web-ui.md).
-
-## Search
-
-Use the header search (or **Cmd/Ctrl+K**) to find code, filenames, notes, captured code, statuses
-and both sides of a conversation. Typing opens highlighted previews; click one to jump to it, or
-press **Enter** to see detailed results with filters for files, code, notes and replies. Arrow keys
-select a preview and Enter opens it. Matches stay highlighted in the diff after a jump.
-
-Search covers the current diff and its surrounding context, including context you have expanded
-and files you have hidden or folded. It does not search the rest of the project. Terms are literal
-and case insensitive; combine a filename and words to narrow results to that file.
-
-## Browser history
-
-**History** in the header opens a searchable timeline of saved notes, question edits, replies,
-answers, status changes and removals. Each change has a before/after view and a complete review
-snapshot. A note's own **History** button filters the timeline to that conversation. **Copy text**
-reuses earlier wording without changing the current review; **Export** downloads the timeline as JSON.
-Choose **All reviews** to find conversations from other ranges or names in this repository.
-
-History is stored separately in IndexedDB, so editing or deleting Markdown, clearing notes, and
-starting a new review do not erase earlier revisions. It records changes the page observes while
-open, including the first state it reads after a restart; it cannot recover intermediate file edits
-made while the page was closed. Repeated reads and display preferences do not create revisions.
-Local notes and the review file are observed separately so unsent notes are not mistaken for file
-deletions; identical consecutive observations are deduplicated.
-
-This is local to the browser profile and origin (including localhost port), scoped by repository
-and diff or `--id`. Reopen the same address and review to read it later. Clearing browser site data
-removes history; storage failures are shown on the page. Export a copy for a durable backup.
-Pictures remain links to the original attachment files; the export does not embed image bytes.
-Markdown remains the live handover to the agent, and history browsing never rewrites it.
-Opening history adds a browser navigation entry: Back closes it, Forward reopens the same note,
-revision, filters, and display mode. Close and Escape use that same entry and preserve any editor underneath.
+![Git diff review with an anchored code comment](docs/local-code-review.png)
 
 ## Install
 
-Download the package for your system from the [latest release](https://github.com/cjvnjde/local-code-review/releases/latest), extract it, and put `lcr` (`lcr.exe` on Windows) somewhere on your `PATH`.
+Download the [latest release](https://github.com/cjvnjde/local-code-review/releases/latest), extract it, and put `lcr` (`lcr.exe` on Windows) on your `PATH`. Git is required; no runtime or package install is needed.
 
-`lcr` only needs Git for diff reviews. Optional live UI reviews also use an installed Chromium browser.
-
-macOS builds are unsigned, so a downloaded binary may need quarantine removed
-after you verify its release checksum:
+On macOS, the binary is unsigned. After verifying the release checksum, remove quarantine if needed:
 
 ```sh
 xattr -d com.apple.quarantine ./lcr
 ```
 
-## Use
+## Review code
 
-Run inside any Git repository:
-
-```sh
-lcr
-```
-
-The review page opens at <http://localhost:7777>. It includes working-tree, staged, and untracked changes against `HEAD`. If that port is taken, `lcr` moves to the next free one (7778, 7779, ...) and prints the address it landed on.
-
-Common commands:
+Run inside a Git repository:
 
 ```sh
-lcr --web http://localhost:3000 # Review a live local UI
-lcr --no-open                 # Do not open the browser automatically
+lcr                           # Working-tree, staged, and untracked changes vs HEAD
 lcr --staged                  # Staged changes only
-lcr HEAD~3                    # Changes since three commits ago
-lcr origin/main               # Branch work plus local and untracked changes
-lcr main...HEAD               # Compare committed branch work with main
-lcr --port 8080               # Start from another port
-lcr --out .feedback           # Store reviews elsewhere
-lcr --context 8               # Show more surrounding lines
-lcr --id auth-rework          # Name this review, and come back to it by that name
-lcr --codex-thread <uuid>     # Forward saved feedback to an existing Codex session
-lcr --help                    # Show usage and options
-lcr --version                 # Print which build this is
+lcr origin/main               # Compare with origin/main, including local changes
+lcr main...HEAD               # Committed branch changes since the merge base with main
+lcr HEAD~3                    # Compare with three commits ago
+lcr -- src/                   # Limit the review to a path
+lcr --id checkout              # Continue a named review, even after commits or rebases
 ```
 
-Arguments not recognized by `lcr` are passed to `git diff`. Invalid options, revisions, or paths exit with an error before the server or browser starts. Use `--` before paths that could otherwise be read as options.
+The browser opens at `http://localhost:7777`; if the port is taken, lcr prints the next available address.
 
-Working-tree comparisons such as `lcr origin/main` include untracked files, including files created
-after `lcr` starts. Commit-to-commit ranges such as `lcr main...HEAD` remain revision-only.
+1. Click a line, drag a range, or select part of a line to comment. Use a file's **Comment** or the header's **Comment** for broader feedback.
+2. Save notes, then **Save review** to write `.review/review-<timestamp>.md`. The output directory is ignored by Git.
+3. Ask your agent to address that file. Replies and status changes appear live; keep the conversation going under each note.
 
-## How it works
+## Annotate a web app
 
-1. Open `lcr` in a repository with changes.
-2. Click a diff line, drag across lines, or select part of one line to add a note. A selected line narrows to
-   part of itself as soon as you select inside it, selecting again re-picks that part, and clicking the line goes
-   back to the whole line — a note you are still writing follows those re-picks and keeps what you typed. Hold
-   alt (option) while dragging to select the code as plain text to copy, without opening a note. File-level notes
-   and bookmarks are also available.
-3. Paste a screenshot straight into any note or reply, drop an image file on it, or pick one with **image**. It is
-   kept next to the review file and written into the note as ordinary Markdown, so the agent reading the review opens
-   the same picture you attached — the fastest way to say *this* is wrong is usually to show it.
-4. Use **Overall note** for anything about the review as a whole rather than about one place in it; add as many as you need. Then select **Save review**.
-5. `lcr` writes `.review/review-<timestamp>.md`. The default `.review/` directory is ignored by Git.
-6. Give that Markdown review to your coding agent.
+Start your app's development server, then run:
 
-**Open** beside **Hide** in each file header hands that working-tree file to the configured editor.
-Set its executable name or absolute path under **Settings → Code editor** — for example `code`,
-`cursor`, or `zed` — or leave it blank to use the operating system default. `lcr` passes the file as
-one argument and does not interpret editor arguments or shell commands.
+```sh
+lcr --web http://localhost:3000 --id checkout-ui
+lcr --web http://localhost:3000 main...HEAD  # Visual feedback alongside an explicit diff
+```
 
+![Live web annotation with a captured selection and review note](docs/web-annotation.png)
 
-When a change rewrites more than it keeps, **removed** in the page header folds every run of deleted lines into one line you can click open again, so the diff reads as the file the change leaves behind. A run a note is attached to stays open, and jumping to a note or bookmark inside a fold opens it. It sits in the header because it is answered while reading rather than while configuring, and it is only the default: **removed** in a file's own header folds or opens that one file, so you can read a single heavy rewrite as what it leaves behind and keep the rest of the diff as it was.
+Click an element or drag an area to comment. Click the **lcr** circle to switch between annotation and normal browsing; hold **Alt** to interact temporarily. Click a capture to draw arrows, boxes, or text on it.
 
-Pictures work in both directions. A screenshot in a note is kept in `.review/images/` and pointed at from the note as `![screenshot](images/<name>.png)` — a plain relative Markdown link, so it renders in any Markdown viewer and the agent can read the file straight off disk. The same picture pasted into several notes is stored once, and an image your agent leaves in that directory and links the same way is drawn on the page too.
+Visual and code notes share the same Markdown review. Captures include screenshots and element metadata; **Capture after** records the result after a fix. Requires an installed Chrome, Chromium, or Edge. [Web annotation guide →](docs/web-ui.md)
 
-Images under review are shown rather than reported. A changed picture is drawn as two panes — what was there on the left, what replaces it on the right — and one that was only added or only deleted is drawn as the single side it has, with each pane naming the size it turned out to be. An SVG gets the picture as well as its source, so a shape change is visible before you read the path data. Everything is read straight out of the repository the run is in; the page never fetches anything from the network.
+## Hand feedback to an agent
 
-A simple agent prompt is enough:
+Any agent can read the review directly:
 
 ```text
 Address the newest lcr review in .review/.
 ```
 
-The review contains file paths, line anchors, captured code, and note text, so the agent can still find the intended code after line numbers move.
-
-### Then keep talking
-
-The page stays on the diff after you save, and follows the agent while it works.
-
-- The agent answers each note in the review file as it finishes it, and its reply appears under that note on the page. So does the diff it just changed.
-- **Reply** under any note to answer back. Your message goes straight into the same file, where the agent picks it up.
-- Your own replies stay yours: **Edit** on one rewords it where it stands, **Delete** takes it back out of the file. The agent's messages are read-only — they are its account of what it did.
-- **image** in a note or a reply attaches a picture, and so does pasting or dropping one straight onto the box. It is kept beside the review file and linked from your text, so the agent sees exactly what you saw — a broken layout, a console, a design to match — instead of your description of it.
-- **reference** in a note or reply inserts a stable short `#id`. Click a note's tag to copy it, then paste it into another note to show the full referenced note, captured code, and expandable replies. Existing `lcr:` links and previously copied URLs keep working. References stay within the current review; ids survive reordering and restarting. Agent replies answer each note fully, with references as additional context. A saved note can be deleted while editing it.
-- The tree pane shows the current file and line. After scrolling settles, **Resume** remembers the first visible code line and its position below the sticky header; fast scrolling needs a longer pause, and navigation jumps do not move the marker. Scrollbar dragging and keyboard scrolling work too, and leaving the tab saves a pending position. The place survives reloads, follows uniquely matching code after edits, and falls back to the file header when the line is unavailable. It is an estimate of where to continue, separate from viewed marks.
-- **hide patterns** in the header switches saved patterns on or off together. Settings also has a checkbox for each pattern, so you can disable individual rules without deleting them. Manual per-file eye overrides still apply.
-- Agents can attach reply images in `assets/`, `images/`, or directly beside the review file. For `.review/review-2026-10-29T12-26-26-package-not-ready.png`, append `![Package not ready](review-2026-10-29T12-26-26-package-not-ready.png)` to the reply; for an asset use `![After fix](assets/after-fix.png)`. Create and inspect each image first, choose a unique safe filename, and never overwrite or delete existing pictures. Links are relative to the Markdown file, including with a custom output directory. Named agent images are revalidated so updates do not stay cached forever.
-- Notes stay attached as the code moves. When the change a note asked for removes the code it pointed at, the note is shown at the closest line left, or — when the file drops out of the diff entirely — at the end of the page, marked as unattached and still carrying the diff it was written against. You can keep replying to it either way.
-- One file holds the whole conversation, and each conversation knows its diff: the file records the range, the branch, and the base commit it was opened against. Restarting `lcr` on the same diff picks that conversation back up; a different range, branch, or base starts a fresh one, and the earlier files stay on disk as history. **Settings → New review** starts fresh by hand.
-- `lcr --id <name>` names the review instead, and the name is then what identifies it. Starting with the same name again continues that review however the diff has moved on — commit, rebase, or switch from `main...HEAD` to the working tree, and its notes and threads are still there. A name you have not used before starts an altogether new review, and a run with no `--id` leaves named reviews alone. The name shows in the header and beside the review in **Settings → Review file**.
-- **Settings → Review file** lists every saved review — when it was opened, its branch and range, and how many notes are still open. **Open** reopens one as the live conversation, with its notes shown against the current diff.
-- Notes from the branch's *other* reviews appear as dim markers on the lines they still match, so a remark made reviewing `main..HEAD` is not lost when you switch to reviewing the working tree. Hover the marker to read the note and its thread; **Continue in this review** carries it, history and all, into the review you are writing now.
-
-The page refreshes the diff whenever nothing is being typed. With a note editor open it waits, and shows a `diff changed` pill in the header until you are done.
-
-## Develop
-
-Development requires [Bun](https://bun.sh/) and Git.
-
-Run from source:
+Optionally install the included skill:
 
 ```sh
-bun ./src/index.ts --no-open
+npx skills add cjvnjde/local-code-review --skill apply-lcr
 ```
 
-Run checks:
+Then ask “Apply the newest lcr review” or use `/apply-lcr` if supported.
+
+For live delivery, see [Claude Code setup](docs/claude-channel.md), or attach an existing [Codex session](docs/codex-channel.md):
 
 ```sh
-bun test ./src
-bun build ./src/index.ts --target=bun --outdir /tmp/lcr-check
+lcr --codex-thread <session-uuid> --id checkout
 ```
 
-Build a standalone executable:
+Once the connection is verified, **Save & ask AI** saves and sends that note immediately. Without a connection, **Save note** keeps the manual workflow.
 
-```sh
-bun build ./src/index.ts --compile --minify --outfile lcr
-```
+## Other options
 
-The compiled executable contains the browser UI and needs only Git at runtime.
+| Command | Purpose |
+| --- | --- |
+| `lcr --no-open` | Start without opening a browser |
+| `lcr --port 8080` | Choose a starting port (`0` picks a free one) |
+| `lcr --out .feedback` | Change the review output directory |
+| `lcr --context 8` | Show more surrounding lines |
+| `lcr --help` | List options and examples |
+| `lcr --version` | Print the build stamp |
+
+Unrecognized arguments pass through to `git diff`. Working-tree comparisons include untracked files; commit-to-commit ranges do not.
+
+## Documentation
+
+- [Review workflow and controls](docs/usage.md) — notes, images, search, history, shortcuts, and saved conversations.
+- [Web annotation](docs/web-ui.md) — selection tools, drawings, before/after captures, and browser requirements.
+- Agent connections: [Claude Code](docs/claude-channel.md) · [Codex](docs/codex-channel.md).
+- [Development](docs/development.md) — run from source, checks, and standalone builds.
 
 ## License
 
-MIT
+[MIT](LICENSE)
