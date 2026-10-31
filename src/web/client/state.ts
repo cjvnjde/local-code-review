@@ -27,6 +27,11 @@ export const SVG={
   ref:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M9.6 2.2 14 6.5l-4.4 4.3V8.1H6.9a2.4 2.4 0 0 0-2.4 2.4v3.3H2.8v-3.3a4.1 4.1 0 0 1 4.1-4h2.7z"/></svg>',
   pic:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.2 2.8h11.6v10.4H2.2z" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M5.5 5.9a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6z"/><path d="M3.4 12.1l3.1-3.4 1.9 2.1 2.2-2.5 2.4 3.8z"/></svg>',
   ghost:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.6 2.6h10.8v7.2H7.2l-3 2.6v-2.6H2.6z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>',
+  cursor:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="m3 1.5 10 7-5 .8-2.5 4.2z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>',
+  text:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4V2.5h11V4M8 2.5v11M5 13.5h6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
+  fit:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>',
+  minus:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
+  hand:'<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 8V4.5a1 1 0 0 1 2 0V7 2.5a1 1 0 0 1 2 0V7 3.5a1 1 0 0 1 2 0V8 5a1 1 0 0 1 2 0v5c0 2-1.5 4-4 4h-1c-1.5 0-2.3-.8-3.2-2L2.5 9.5a1 1 0 0 1 1.5-1.3l.5.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
 };
 
 export const state: any={

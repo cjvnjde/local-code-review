@@ -7,7 +7,7 @@ const ACTIONS:[string,keyof typeof SVG,string][]=[
   ['button.rbtn','reply','Reply'],
   ['button.attb','pic','Attach image'],
   ['button[data-web-focus]','open','On page'],
-  ['button[data-web-annotate]','edit','Annotate screenshot'],
+  ['button[data-web-annotate]:not(.web-picture)','edit','Annotate screenshot'],
   ['[data-annotation-editor] button[data-command="undo"]','reply','Undo drawing'],
   ['[data-annotation-editor] button[data-command="redo"]','ref','Redo drawing'],
   ['[data-annotation-editor] button[data-command="delete"]','trash','Delete selected drawing'],

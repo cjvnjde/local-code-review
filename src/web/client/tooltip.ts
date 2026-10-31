@@ -12,6 +12,8 @@ export function watchTooltips(){
     active=null; tip.hidden=true;
   };
   const show=(target: HTMLElement)=>{
+    const layer=target.closest('dialog[open],[popover]:popover-open')||document.body;
+    if(tip.parentElement!==layer)layer.append(tip);
     if(active!==target){
       hide(); active=target; described=target.getAttribute('aria-describedby');
       target.setAttribute('aria-describedby',[described,tip.id].filter(Boolean).join(' '));

@@ -233,6 +233,7 @@ browserTest('one review: diff and visual notes share editors, attachments, links
     await frameJs('document.querySelector("#uiNote .rbtn").click()');
     await writeComment('Keep the rounded corners too.');await frameJs('document.querySelector("#uiNote .reply .primary").click()');
     await until(async()=>((await session.read()).notes.find(n=>n.id===note.id)!.messages.length===2),'shared follow-up');
+    await until(()=>frameJs('!document.querySelector("#uiNote .reply textarea")&&document.querySelector("#uiNote .thread").textContent.includes("Keep the rounded corners too.")'),'reply response adopted before editing the note');
     await frameJs('document.querySelector("#uiNote .edit").click()');await writeComment('Updated visual wording.');
     await frameJs('window.editedBox=document.querySelector("#uiNote textarea");editedBox.setSelectionRange(3,7)');
     const extraSubheading=await js('(()=>{const r=document.querySelector("h2").getBoundingClientRect();return {x:r.x+60,y:r.y+10}})()');

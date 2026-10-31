@@ -13,7 +13,7 @@ function fixture(){
   const tip: any={style:{},textContent:'',getBoundingClientRect:()=>({width:100,height:24})};
   const attrs=new Map([['aria-describedby','existing']]);
   const child={}, target: any={dataset:{tooltip:'Copy file path'},isConnected:true,
-    closest:()=>target,contains:(node: any)=>node===target||node===child,
+    closest:(selector: string)=>selector==='[data-tooltip]'?target:null,contains:(node: any)=>node===target||node===child,
     getAttribute:(name: string)=>attrs.get(name)??null,
     setAttribute:(name: string,value: string)=>attrs.set(name,value),removeAttribute:(name: string)=>attrs.delete(name),
     getBoundingClientRect:()=>({left:190,top:180,bottom:200,width:26})};

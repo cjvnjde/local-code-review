@@ -108,12 +108,14 @@ Screenshots remain on disk, and a cleared note can receive new selections.
 Common note actions use familiar icons, with immediate hover/focus tooltips and accessible labels.
 Compound actions such as **Save & ask AI** keep their text.
 
-Use the pencil on a capture to draw on its screenshot in a large editor: pen, arrow, rounded
-rectangle, or text, with palette/custom colors, stroke width, corner radius, undo/redo, and zoom.
-Blank drawable margins let arrows and labels extend beyond the selected area. **Apply drawing**
-keeps an annotated PNG beside the untouched original; **Cancel** leaves the capture unchanged.
-Reopen the pencil to move or edit saved drawings. The review file links both images, clearly
-separating captured UI from the proposed change, and retains editable drawing data.
+Click a capture image (or its pencil) to open a fullscreen drawing editor. A compact icon toolbar
+offers pen, arrow, rounded rectangle, text, undo/redo, and only the properties the current tool needs.
+The color swatch opens saved colors and a custom picker. Pen mode offers 0–100% smoothing for new
+strokes. Zoom with the floating −/+/Fit controls, the wheel or pinch gesture; use the hand tool
+to drag a zoomed image, or hold Space and drag. Blank drawable margins let arrows and labels
+extend beyond the selected area. The checkmark applies a separate annotated PNG; Close leaves
+unapplied changes behind after confirmation. Reopen the image to move or edit saved drawings.
+The review file links the untouched original and proposal separately and retains editable drawing data.
 
 Save a comment to keep an immutable viewport screenshot, a crop of the selection, the URL,
 viewport and scroll position, a selector, element text and attributes, selected CSS properties, and

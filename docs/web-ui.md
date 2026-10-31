@@ -116,33 +116,46 @@ its header's **Open page** control opens or focuses the application.
 
 ## Draw on a capture
 
-Use a capture's pencil action, **Annotate screenshot**, to open its original selected-area image
-in a drawing editor. It works for the first selection, additional selections, and comparison captures,
-from either the live page or the full review. On the live page the note window temporarily expands
-to give drawing room, then returns to its chosen size and position. The note's text and caret stay put.
+Click a capture's selected-area image, annotated proposal, or pencil to open the drawing editor
+without opening another tab. It works for the first selection, additional selections, and comparison
+captures, from either the live page or the full review. The editor uses the full viewport with one
+compact icon toolbar, no title header or footer, and floating zoom controls. On the live page the
+note window expands edge to edge, then returns to its chosen size and position. Text and caret stay put.
 
 The editor adds white, drawable padding around the screenshot: 64 CSS pixels per side at the
 capture's image scale. This is blank space for arrows and labels, not extra page context. The
 original screenshot stays unpadded and unchanged. A dashed outline identifies its bounds only in
 the editor; it is not exported.
 
-- **Pen** draws freehand strokes, including into the padding.
+- **Pen** draws freehand strokes, including into the padding. Its smoothing slider runs from 0%
+  (raw pointer input, the default) to 100% (stronger stabilization). The level is saved in browser
+  storage and affects new strokes only; it does not reshape existing drawings. Smoothing reduces
+  hand jitter at the cost of a little cursor lag while drawing, then preserves the release endpoint.
+  Filtered points are saved with the drawing, so reopening and PNG export retain the same result.
 - **Arrow** draws from the press to the release.
 - **Rectangle** draws a border with an adjustable corner radius.
 - **Text** places a label where clicked; type before placing it, or click first and then type.
-- Palette colors and **Custom color** set a drawing's color. Stroke width, radius, and text size use
-  screenshot image pixels, not CSS viewport coordinates.
-- **Select / move**, or the **Drawing** selector, picks an existing drawing to move, recolor,
-  reword, resize its stroke/text, or delete. **Clear drawings** removes marks, not the screenshot.
-- Undo/redo work across new changes and reopened drawings. Zoom and **Fit** change only the view.
+- The color swatch opens one popover containing saved colors and a custom picker. Custom choices
+  are saved in browser storage for later use; Escape closes the color popover before the editor.
+- Properties appear only for the active tool or selected drawing: stroke width for strokes, corner
+  radius for rectangles, text size and a floating text box for text. Values use screenshot image
+  pixels, not CSS viewport coordinates.
+- **Select / move** picks an existing drawing to move, recolor, reword, resize its stroke/text, or
+  delete. Its drawing selector also lists the marks. Clear-all removes marks, not the screenshot.
+- Undo/redo work across new changes and reopened drawings. Familiar actions are icons with
+  accessible names and immediate hover/focus tooltips.
+- Floating −/+ controls zoom out/in; the percentage resets to 100%, and the Fit icon fits the canvas.
+  The wheel and trackpad pinch zoom around the pointer. `+`/`−` zoom, `0` fits, and `1` restores 100%.
+  Choose the **Hand** icon and drag to move around a zoomed image. Space-drag and middle-button
+  drag remain shortcuts. Navigation never changes the PNG.
 
-**Apply drawing** uploads a separate PNG containing the original pixels, padding, and marks.
+The checkmark, **Apply drawing**, uploads a separate PNG containing the original pixels, padding, and marks.
 It also keeps the editable marks, so reopening never requires drawing over a flattened proposal.
 An applied drawing on a draft stays with that draft until the note is saved; on a saved note it is
 persisted immediately, without changing the wording, agent thread, or verdict. Applying with no
 marks removes that capture's annotation. Existing image assets are never deleted.
 
-**Cancel**, the close icon, and Escape discard unapplied changes after confirmation when needed.
+The close icon and Escape discard unapplied changes after confirmation when needed.
 Image or save failures leave the editor available for correction or retry. A stale edit from
 another tab is rejected rather than overwriting a newer proposal or attaching it to another capture.
 

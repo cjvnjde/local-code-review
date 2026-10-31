@@ -39,6 +39,8 @@ export function installPageReview(config: {key:string;binding:string;origin:stri
     .resize:is(:hover,:focus-visible)::before{content:attr(title);position:absolute;right:calc(var(--tap) / 4);bottom:100%;width:calc(var(--tap) * 9);padding:calc(var(--tap) / 4);border:1px solid #444858;border-radius:7px;background:#242733;font-size:var(--fs-small);pointer-events:none;cursor:default}
     .bar[hidden],.dock[hidden],.selection-tools[hidden]{display:none}.head{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid #363a47;cursor:move;touch-action:none;user-select:none}.head b{flex:1;min-width:0}.head button{flex:none}.content{display:flex;flex-direction:column;flex:1;min-height:0;overflow:auto}.content iframe{width:100%;flex:1;min-height:0;border:0;background:#191c26}.status,.error{padding:10px 14px;margin:0}
     .dock.annotating .head,.dock.annotating .resize{display:none}
+    .dock.annotating{border:0;border-radius:0;box-shadow:none}
+    .dock.annotating~.launcher,.dock.annotating~.bar{display:none}
     .pin{pointer-events:auto;position:fixed;border-radius:16px;background:#7554df;border:2px solid #fff;box-shadow:0 2px 8px #0007;color:white;font-weight:700;padding:0 6px;min-width:28px;min-height:28px}
     .selected{position:fixed;pointer-events:none;border:2px solid #9f7cff;background:#9f7cff19;border-radius:3px}
     .selection-tools{pointer-events:auto;position:fixed;bottom:18px;left:50%;transform:translateX(-50%);display:flex;gap:5px;align-items:center;padding:8px;border:1px solid #444858;border-radius:13px;background:#191c26;max-width:calc(100vw - 24px)}
@@ -66,8 +68,8 @@ export function installPageReview(config: {key:string;binding:string;origin:stri
   }
   function positionDock(){
     if(annotationOpen){
-      dock.style.left='12px';dock.style.right='auto';dock.style.top='12px';
-      dock.style.width=Math.max(1,innerWidth-24)+'px';dock.style.height=Math.max(1,innerHeight-24)+'px';return;
+      dock.style.left='0';dock.style.right='auto';dock.style.top='0';
+      dock.style.width=innerWidth+'px';dock.style.height=innerHeight+'px';return;
     }
     const width=Math.max(1,Math.min(dockSize?.width??560,innerWidth-24));
     const expandedHeight=Math.max(1,Math.min(dockSize?.height??innerHeight-96,innerHeight-24));
