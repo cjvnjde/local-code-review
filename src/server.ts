@@ -76,6 +76,7 @@ export const repoId = (repoRoot: string) => fingerprint(repoRoot);
 const activeChannel = (options: ServerOptions) =>
   options.channel && (options.channel.available?.() ?? true) ? options.channel : undefined;
 const channelState = (options: ServerOptions) => options.channel ? {
+  ...(options.channel.snapshot ? { queue: options.channel.snapshot() } : {}),
   connection: options.channel.status?.() ?? { agent: options.channel.agent,
     state: activeChannel(options) ? "ready" : "unavailable", detail: "Agent connection status." },
   ...(activeChannel(options) ? { agent: options.channel.agent } : {}),
@@ -159,6 +160,20 @@ function serve(options: ServerOptions, port: number) {
           settings = payload as Record<string, unknown>;
           options.hub.emit({ type: "settings" });
           return Response.json({ ok: true }, { headers });
+        }
+        if (url.pathname === "/api/agent/queue") {
+          if (!options.channel?.control) return Response.json({ error: "This connection has no managed execution lifecycle." }, { status: 404 });
+          if (request.method === "GET") return Response.json(channelState(options));
+          if (request.method !== "POST") return new Response("method not allowed", { status: 405 });
+          if (!isJsonRequest(request)) return Response.json({ error: "JSON body required." }, { status: 415 });
+          const origin = request.headers.get("origin");
+          if (origin && ![`http://localhost:${server.port}`, `http://127.0.0.1:${server.port}`].includes(origin))
+            return Response.json({ error: "Use queue controls from the review page." }, { status: 403 });
+          const payload = await readJson(request) as { action?: unknown; id?: unknown; option?: unknown } | null;
+          if (typeof payload?.action !== "string" || (payload.id !== undefined && typeof payload.id !== "string") ||
+              (payload.option !== undefined && typeof payload.option !== "string")) return Response.json({ error: "A queue action is required." }, { status: 400 });
+          await options.channel.control(payload.action, payload.id as string | undefined, payload.option as string | undefined);
+          return Response.json(channelState(options));
         }
         if (url.pathname === "/api/agent" && request.method === "GET") {
           await options.channel?.check?.();
@@ -326,16 +341,17 @@ function serve(options: ServerOptions, port: number) {
             if (request.method === "PUT" && !at) {
               return Response.json({ error: "A message stamp is required." }, { status: 400 });
             }
+            const review = options.session.file;
             const note = request.method === "POST"
-              ? await options.session.reply(id, body)
-              : await options.session.editReply(id, at, body);
+              ? await options.session.reply(id, body, review)
+              : await options.session.editReply(id, at, body, review);
             if (!note) return Response.json({ error: missing(request.method) }, { status: 404 });
             console.log(
               `\n  ${request.method === "POST" ? "replied" : "reworded a reply"} on ${note.key} in ${options.session.shownFile}\n`,
             );
             options.hub.emit({ type: "review", file: options.session.file });
-            const channel = await activeChannel(options)?.publish(options.session.file, [note]);
-            return Response.json({ file: options.session.shownFile, note, ...(channel ? { channel } : {}) });
+            const channel = await activeChannel(options)?.publish(review, [note]);
+            return Response.json({ file: options.session.shownFile, note, ...channelState(options), ...(channel ? { channel } : {}) });
           }
           if (request.method === "DELETE") {
             const id = url.searchParams.get("id") ?? "";
@@ -343,8 +359,10 @@ function serve(options: ServerOptions, port: number) {
             if (!id || !at) {
               return Response.json({ error: "A note id and a message stamp are required." }, { status: 400 });
             }
-            const note = await options.session.dropReply(id, at);
+            const review = options.session.file;
+            const note = await options.session.dropReply(id, at, review);
             if (!note) return Response.json({ error: missing(request.method) }, { status: 404 });
+            await options.channel?.revise?.(review, note);
             console.log(`\n  took a reply back on ${note.key} in ${options.session.shownFile}\n`);
             options.hub.emit({ type: "review", file: options.session.file });
             return Response.json({ file: options.session.shownFile, note });
@@ -360,7 +378,8 @@ function serve(options: ServerOptions, port: number) {
               !Number.isInteger(comment.start) || !Number.isInteger(comment.end) || comment.start < 0 || comment.end < comment.start) {
             return Response.json({ error: "A complete note with an id, body, file and line range is required." }, { status: 400 });
           }
-          const { file, changed } = await options.session.save({ comments: [comment] }, payload?.replace === true);
+          const { file, changed, removed } = await options.session.save({ comments: [comment] }, payload?.replace === true);
+          for (const old of removed) await options.channel?.withdraw?.(old);
           const review = path.basename(file);
           const notify = changed.length ? changed : payload?.retry ? [await options.session.readNote(review, comment.id)].filter((note): note is ReviewNote => !!note) : [];
           const channel = activeChannel(options);
@@ -372,7 +391,9 @@ function serve(options: ServerOptions, port: number) {
           // Many ids in one request: clearing the page is one withdrawal, not one per note.
           const ids = url.searchParams.getAll("id").filter((id) => id);
           if (!ids.length) return Response.json({ error: "A note id is required." }, { status: 400 });
-          const removed = await options.session.remove(ids);
+          const review = options.session.file;
+          const removed = await options.session.remove(ids, review);
+          if (removed) await options.channel?.withdraw?.(review, ids);
           if (removed) options.hub.emit({ type: "review", file: options.session.file });
           return Response.json({ removed });
         }
@@ -389,8 +410,9 @@ function serve(options: ServerOptions, port: number) {
           if (removed.length) console.log(`  replaced ${plural(removed.length, "earlier review file")}`);
           if (!activeChannel(options)) console.log(`  next: ask the agent to "address the notes in ${file}"\n`);
           options.hub.emit({ type: "review", file: options.session.file });
+          for (const old of removed) await options.channel?.withdraw?.(old);
           const channel = await activeChannel(options)?.publish(path.basename(file), changed);
-          return Response.json({ file, count: submission.comments.length, removed, ...(channel ? { channel } : {}) });
+          return Response.json({ file, count: submission.comments.length, removed, ...channelState(options), ...(channel ? { channel } : {}) });
         }
         if (url.pathname === "/api/ghosts") {
           return Response.json({ ghosts: await options.getGhosts() });
@@ -434,6 +456,7 @@ function serve(options: ServerOptions, port: number) {
               options.session.startFresh();
               return names;
             });
+            for (const old of removed) await options.channel?.withdraw?.(old);
             console.log(`\n  deleted ${plural(removed.length, "review file")} from ${options.outDir}/\n`);
             options.hub.emit({ type: "review", file: "" });
             return Response.json({ removed });

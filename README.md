@@ -65,7 +65,16 @@ npx skills add cjvnjde/local-code-review --skill apply-lcr
 
 Then ask “Apply the newest lcr review” or use `/apply-lcr` if supported.
 
-For live delivery, see [Claude Code setup](docs/claude-channel.md), or attach an existing [Codex session](docs/codex-channel.md):
+For managed sequential work with any compatible ACP agent, see [ACP connections and queue](docs/agent-connections.md):
+
+```sh
+lcr --acp /path/to/agent.json --id checkout
+```
+
+Saving a comment starts the selected agent; further comments queue until that turn ends. Queue state
+survives restarts, and permissions appear in the page's **Queue** control.
+
+For delivery into an existing session, see [Claude Code setup](docs/claude-channel.md), or attach an existing [Codex session](docs/codex-channel.md):
 
 ```sh
 lcr --codex-thread <session-uuid> --id checkout
@@ -90,7 +99,7 @@ Unrecognized arguments pass through to `git diff`. Working-tree comparisons incl
 
 - [Review workflow and controls](docs/usage.md) — notes, images, search, history, shortcuts, and saved conversations.
 - [Web annotation](docs/web-ui.md) — selection tools, drawings, before/after captures, and browser requirements.
-- Agent connections: [Claude Code](docs/claude-channel.md) · [Codex](docs/codex-channel.md).
+- Agent connections: [Managed ACP queue](docs/agent-connections.md) · [Claude Code](docs/claude-channel.md) · [Codex](docs/codex-channel.md).
 - [Development](docs/development.md) — run from source, checks, and standalone builds.
 
 ## License

@@ -83,6 +83,8 @@ export interface CliOptions {
   claudeChannel: boolean;
   /** Existing Codex session to notify through its installed CLI; empty without an adapter. */
   codexThread: string;
+  /** JSON configuration of an external ACP v1 executable. */
+  acp?: string;
   /** Local page to annotate instead of a Git diff. */
   web?: string;
   diffArgs: string[];

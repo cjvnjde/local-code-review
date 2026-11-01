@@ -69,7 +69,7 @@ export function createCodexChannel(options: CodexChannelOptions, run: RunQueue =
   return {
     agent: "codex",
     available: () => state === "ready",
-    status: () => ({ agent: "codex", state, detail }),
+    status: () => ({ agent: "codex", mode: "attachment", state, detail: state === "ready" ? detail + " Delivery only; lcr cannot observe turn completion." : detail }),
     check(force=false) {
       if (checking) return checking;
       if (!force && Date.now() - checkedAt < 10_000) return Promise.resolve();

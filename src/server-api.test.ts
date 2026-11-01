@@ -1410,3 +1410,39 @@ describe('live UI browser API', () => {
     expect(captured).toBe('|@|@|#note');
   });
 });
+
+describe('managed queue API', () => {
+  test('read-only state and same-origin explicit controls expose permissions without granting by polling', async () => {
+    const calls: any[] = [];
+    const started = await startTestServer({ channel: {
+      agent: 'Any external agent', managed: true, available: () => true,
+      status: () => ({ agent: 'Any external agent', state: 'unavailable', mode: 'managed', detail: 'Queued locally' }),
+      snapshot: () => ({ paused: true, tasks: [], permissions: [{ id: 'permission-1' }] }),
+      control: async (...args) => { calls.push(args); }, publish: () => ({ state: 'queued', count: 1 }),
+    } });
+    const state = await (await request(started, '/api/agent/queue')).json();
+    expect(state.queue.permissions).toHaveLength(1); expect(calls).toEqual([]);
+    const body = JSON.stringify({ action: 'permission', id: 'permission-1', option: 'allow-once' });
+    expect((await request(started, '/api/agent/queue', { method: 'POST', body })).status).toBe(415);
+    expect((await request(started, '/api/agent/queue', { method: 'POST', headers: { 'content-type': 'application/json', origin: 'https://unrelated.example' }, body })).status).toBe(403);
+    expect(calls).toEqual([]);
+    expect((await request(started, '/api/agent/queue', { method: 'POST', headers: { 'content-type': 'application/json', origin: started.base }, body })).status).toBe(200);
+    expect(calls).toEqual([['permission', 'permission-1', 'allow-once']]);
+  });
+  test('attachment connections do not expose managed controls', async () => {
+    const started = await startTestServer();
+    expect((await request(started, '/api/agent/queue')).status).toBe(404);
+  });
+  test('note deletion and reply withdrawal notify only the original review queue', async () => {
+    const withdrawn: any[] = [], revised: any[] = [];
+    const started = await startTestServer({ channel: { agent: 'ACP', managed: true,
+      publish: () => ({ state: 'queued', count: 1 }), withdraw: async (...args) => { withdrawn.push(args); }, revise: async (...args) => { revised.push(args); },
+    } });
+    await started.options.session.save({ comments: [comment] }); const review = started.options.session.file;
+    const note = await started.options.session.reply(comment.id!, 'Later withdrawn');
+    await request(started, '/api/reply?id=' + encodeURIComponent(comment.id!) + '&at=' + encodeURIComponent(note!.messages[0]!.at), { method: 'DELETE' });
+    expect(revised[0][0]).toBe(review); expect(revised[0][1].messages).toEqual([]);
+    await request(started, '/api/note?id=' + encodeURIComponent(comment.id!), { method: 'DELETE' });
+    expect(withdrawn).toEqual([[review, [comment.id]]]);
+  });
+});

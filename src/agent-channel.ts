@@ -7,14 +7,21 @@ export interface ChannelDelivery {
 }
 
 export interface AgentConnection {
-  agent: "claude" | "codex";
+  agent: string;
   state: "checking" | "ready" | "unavailable";
   detail: string;
+  mode?: "managed" | "attachment";
 }
 
 /** A saved reviewer action can wake an agent; file-watch events never do. */
 export interface AgentChannel {
-  agent: "claude" | "codex";
+  agent: string;
+  managed?: boolean;
+  snapshot?: () => any;
+  control?: (action: string, id?: string, option?: string) => Promise<void>;
+  withdraw?: (review: string, ids?: string[]) => Promise<void>;
+  revise?: (review: string, note: ReviewNote) => Promise<void>;
+  close?: () => void | Promise<void>;
   available?: () => boolean;
   status?: () => AgentConnection;
   check?: (force?: boolean) => Promise<void>;

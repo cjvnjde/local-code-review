@@ -5,7 +5,7 @@ import { placeOf } from './anchor.ts';
 import { imageRegion, regionLabel } from '../../image-region.ts';
 import { imageCaptureHtml } from './image-capture.ts';
 import { paintImageNotes } from './image-comments.ts';
-import { noteSaveLabel } from './agent.ts';
+import { managedNoteTask, noteSaveLabel } from './agent.ts';
 import { openHistory } from './history-ui.ts';
 import { attachButton, wireAttach } from './attach.ts';
 import { NOTE_MAX, autogrow } from './autogrow.ts';
@@ -560,6 +560,8 @@ async function sendNote(note: any,retry=false){
 }
 
 function deliveryHtml(note: any){
+  const task=managedNoteTask(note.id);
+  if(task) return '<span class="stat" title="'+esc(task.detail||'Managed execution state, separate from the note verdict')+'">'+esc(task.state)+'</span>';
   const delivery=state.noteDelivery.get(note.id);
   if(!delivery) return '';
   const label=state.noteSending.has(note.id)?'sending…':delivery.state==='forwarded'?'sent to AI':

@@ -1,4 +1,6 @@
 #!/usr/bin/env bun
+import { readAcpConfig } from "./acp.ts";
+import { createManagedAgent } from "./managed-agent.ts";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { readAttachment, saveAttachment } from "./attach.ts";
@@ -10,7 +12,7 @@ import { createCodexChannel } from "./codex-channel.ts";
 import { diffBase, diffRangeLabel, diffSides, fingerprint, getDiff, getFileContext, resolveWorktreeBase, validateDiff } from "./diff.ts";
 import { openInEditor } from "./editor.ts";
 import { createHub } from "./events.ts";
-import { currentBranch, findRepoRoot } from "./git.ts";
+import { currentBranch, findRepoRoot, runGit } from "./git.ts";
 import { collectGhosts, describeReviews } from "./history.ts";
 import { deleteReviews, excludeRelativeOutput, listReviews } from "./output.ts";
 import { createSession } from "./session.ts";
@@ -82,15 +84,20 @@ async function main() {
   }
   const hub = createHub();
   let webUrl = "";
-  const claudeLink = options.codexThread ? undefined
+  const claudeLink = options.codexThread || options.acp ? undefined
     : await startClaudeLink(session, hub, () => webUrl, await claudeEndpoint(repoRoot)).catch((error) => {
       console.error(`  Claude link unavailable: ${error instanceof Error ? error.message : error}`);
       return undefined;
     });
-  const channel = options.codexThread
+  const managed = options.acp ? createManagedAgent({ repoRoot, outDir: options.outDir, session,
+    directory: path.resolve(repoRoot, (await runGit(["rev-parse", "--git-path", "lcr-managed"], repoRoot)).trim()),
+    config: await readAcpConfig(path.resolve(repoRoot, options.acp)),
+    notify: () => hub.emit({ type: "review", file: session.file }),
+  }) : undefined;
+  const channel = managed ?? (options.codexThread
     ? createCodexChannel({ repoRoot, outDir: options.outDir, thread: options.codexThread, session,
       notify: () => hub.emit({ type: "review", file: session.file }) })
-    : claudeLink;
+    : claudeLink);
 
   /** One saved review parsed back, for reading a ghost note's thread out of its own file. */
   async function readReview(name: string) {
@@ -199,6 +206,7 @@ async function main() {
     stopping = true;
     clearInterval(heartbeat);
     for (const watcher of watchers) watcher.close();
+    await managed?.close();
     claudeLink?.close();
     await web?.close();
     server.stop(true);

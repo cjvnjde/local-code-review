@@ -1,5 +1,9 @@
 # Interactive Claude Code channel
 
+This is an existing-session attachment mode. lcr cannot observe its turn completion, so it does not
+provide the persistent sequential execution guarantees of the [managed ACP queue](agent-connections.md).
+
+
 The globally registered MCP process is a lightweight bridge. It waits for a review you start
 explicitly and never opens a browser or starts the review web server when Claude starts.
 You choose the diff through the usual lcr command.

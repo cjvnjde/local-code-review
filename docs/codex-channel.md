@@ -1,5 +1,9 @@
 # Interactive Codex session
 
+This is an existing-session attachment mode. lcr cannot observe its turn completion, so it does not
+provide the persistent sequential execution guarantees of the [managed ACP queue](agent-connections.md).
+
+
 The Codex adapter forwards saved review feedback to an existing session with the installed
 `codex queue` command. The command talks to Codex's local app server and uses the target session's
 login, model, context and tool permissions. lcr has no model API client, API key, or remote endpoint.

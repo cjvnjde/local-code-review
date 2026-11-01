@@ -109,9 +109,9 @@ export async function startClaudeLink(
     agent: "claude",
     available: () => !!channel,
     status: () => ({
-      agent: "claude",
+      agent: "claude", mode: "attachment",
       state: channel ? "ready" : candidates.size && Date.now() - checkingSince < 15_000 ? "checking" : "unavailable",
-      detail: channel ? "Claude confirmed that channel messages reach this session."
+      detail: channel ? "Claude confirmed that channel messages reach this session. Delivery only; lcr cannot observe turn completion."
         : candidates.size ? "No channel delivery confirmation yet. Claude may be busy, missing channel opt-in, or blocked by organization policy."
         : "No Claude bridge is connected to this repository.",
     }),

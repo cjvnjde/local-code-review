@@ -95,3 +95,12 @@ describe("normalizeId", () => {
     expect(normalizeId("auth\trework")).toBe("auth rework");
   });
 });
+
+test('ACP configuration stays out of Git arguments and cannot be combined with attachment modes', () => {
+  expect(parseArgs(['--acp', '/tmp/agent.json', '--id', 'managed', 'main...HEAD']).acp).toBe('/tmp/agent.json');
+  expect(parseArgs(['--acp', '/tmp/agent.json', 'main...HEAD']).diffArgs).toEqual(['main...HEAD']);
+  expect(parseArgs(['--', '--acp']).acp).toBeUndefined();
+  expect(() => parseArgs(['--acp'])).toThrow('configuration');
+  expect(() => parseArgs(['--acp', 'agent.json', '--codex-thread', 'existing'])).toThrow('attachment');
+  expect(() => parseArgs(['--acp', 'agent.json', '--claude-channel'])).toThrow('attachment');
+});

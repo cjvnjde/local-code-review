@@ -947,3 +947,9 @@
   .annotation-message{color:var(--ink-dim)}
   .annotation-error{color:var(--del);background:var(--del-bg)}
   [data-annotation-editor] [data-command="retry"]{width:auto;pointer-events:auto}
+
+#agentQueue { position:fixed; top:52px; right:16px; width:min(580px,calc(100vw - 32px)); max-height:80vh; overflow:auto; z-index:100; background:var(--bg); color:var(--ink); border:1px solid var(--edge); border-radius:8px; padding:16px; box-shadow:0 8px 32px #0005; font-size:13px; }
+#agentQueue[hidden] { display:none; }
+#agentQueue pre { white-space:pre-wrap; overflow-wrap:anywhere; max-height:220px; overflow:auto; }
+#agentQueue .queue-task { border-top:1px solid var(--edge); padding:10px 0; overflow-wrap:anywhere; }
+#agentQueue button { margin:4px; }

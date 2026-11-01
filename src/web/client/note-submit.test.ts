@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { submitNote, submitReview, withdrawNotes } from "./persistence.ts";
 import { state } from "./state.ts";
-import { adoptAgent, noteSaveLabel } from "./agent.ts";
+import { adoptAgent, managedNoteTask, noteSaveLabel } from "./agent.ts";
 
 const originalFetch=globalThis.fetch;
 const documentDescriptor=Object.getOwnPropertyDescriptor(globalThis,"document");
 const storageDescriptor=Object.getOwnPropertyDescriptor(globalThis,"localStorage");
 const saved={notes:state.notes,noteSending:state.noteSending,noteDelivery:state.noteDelivery,
-  sessionFile:state.sessionFile,agent:state.agent,connection:state.connection,soloKeys:state.soloKeys};
+  sessionFile:state.sessionFile,agent:state.agent,connection:state.connection,agentQueue:state.agentQueue,soloKeys:state.soloKeys};
 const file=".review/review-2026-10-28T12-00-00.md";
 const first={id:"a.ts|n1|n1|#first",file:"a.ts",body:"Why?",start:1,end:1,label:"1"};
 const second={...first,id:"a.ts|n2|n2|#second",start:2,end:2,label:"2",body:"Keep this draft local."};
@@ -15,7 +15,7 @@ const second={...first,id:"a.ts|n2|n2|#second",start:2,end:2,label:"2",body:"Kee
 beforeEach(()=>{
   state.notes=new Map([[first.id,{...first}],[second.id,{...second}]]);
   state.noteSending=new Map(); state.noteDelivery=new Map(); state.soloKeys=new Set();
-  state.sessionFile=""; state.agent="Claude"; state.connection=null;
+  state.sessionFile=""; state.agent="Claude"; state.connection=null; state.agentQueue=null;
   Object.defineProperty(globalThis,"document",{configurable:true,value:{getElementById:()=>null,querySelectorAll:()=>[]}});
   Object.defineProperty(globalThis,"localStorage",{configurable:true,value:{setItem:()=>{}}});
 });
@@ -130,4 +130,15 @@ describe("whole review saving",()=>{
     await expect(submitReview()).rejects.toThrow("Offline");
     expect(state.noteSending.size).toBe(0);
   });
+});
+
+test('a configured generic managed agent accepts work while unavailable and retains its own name', () => {
+  adoptAgent({connection:{agent:'External ACP adapter',mode:'managed',state:'unavailable',detail:'Queued locally'},queue:{paused:true,tasks:[],permissions:[]}});
+  expect(state.agent).toBe('External ACP adapter');
+  expect(noteSaveLabel()).toBe('Save & ask AI');
+});
+
+test('queue badges match the exact review path even when two output directories reuse a filename', () => {
+  state.agentQueue={review:'second/review-same.md',tasks:[{noteId:first.id,review:'first/review-same.md',state:'running'},{noteId:first.id,review:'second/review-same.md',state:'queued'}]};
+  expect(managedNoteTask(first.id)?.state).toBe('queued');
 });
