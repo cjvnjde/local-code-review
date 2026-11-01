@@ -1,0 +1,8 @@
+{
+  "name": "Codex ACP",
+  "command": "bunx",
+  "args": ["@agentclientprotocol/codex-acp@2.5.0"],
+  "env": {
+    "CODEX_PATH": "codex"
+  }
+}

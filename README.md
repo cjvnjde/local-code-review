@@ -65,13 +65,38 @@ npx skills add cjvnjde/local-code-review --skill apply-lcr
 
 Then ask “Apply the newest lcr review” or use `/apply-lcr` if supported.
 
-For managed sequential work with any compatible ACP agent, see [ACP connections and queue](docs/agent-connections.md):
+For managed sequential work, use the included [Codex profile](examples/agents/codex.json) or
+[OMP profile](examples/agents/omp.json). Codex requires Bun and an installed, authenticated `codex`;
+its profile runs the ACP adapter through `bunx`. OMP uses an installed, authenticated `omp` directly.
+
+From this checkout, copy the profiles into your user configuration directory:
 
 ```sh
-lcr --acp /path/to/agent.json --id checkout
+lcr_config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/lcr"
+mkdir -p "$lcr_config_dir/agents"
+cp -n examples/agents/codex.json examples/agents/omp.json "$lcr_config_dir/agents/"
 ```
 
-You can select a default profile in `~/.config/lcr/config.json` to use plain `lcr`; see the guide above.
+Select the agent in `~/.config/lcr/config.json` (or `$XDG_CONFIG_HOME/lcr/config.json` when
+`XDG_CONFIG_HOME` is an absolute path):
+
+```json
+{
+  "acp": "agents/codex.json"
+}
+```
+
+Use `"agents/omp.json"` to select OMP instead. Profile paths resolve relative to this settings file.
+Plain `lcr` uses whichever profile you configured; no agent is built in as the default.
+
+```sh
+lcr                                                # Use the configured agent
+lcr --acp "$lcr_config_dir/agents/omp.json" --id ui   # Override it for this run
+lcr --no-agent                                     # Review manually
+```
+
+Keep credentials in the agent's own authentication store. See [ACP connections and queue](docs/agent-connections.md)
+for other agents, configuration fields, permissions and restart recovery.
 
 Saving a comment starts the selected agent; further comments queue until that turn ends. Queue state
 survives restarts, and permissions appear in the page's **Queue** control.

@@ -8,7 +8,8 @@ interrupting that turn. Without a configured agent, manual Markdown review still
 
 ## Configure and select an agent
 
-Create a JSON file outside the files you intend to review:
+Start with the repository's [Codex](../examples/agents/codex.json) or [OMP](../examples/agents/omp.json)
+profile, or create a JSON file outside the files you intend to review:
 
 ```json
 {
