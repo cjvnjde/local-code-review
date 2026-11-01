@@ -31,7 +31,7 @@ lcr --id checkout              # Continue a named review, even after commits or 
 The browser opens at `http://localhost:7777`; if the port is taken, lcr prints the next available address.
 
 1. Click a line, drag a range, or select part of a line to comment. Use a file's **Comment** or the header's **Comment** for broader feedback.
-2. Save notes, then **Save review** to write `.review/review-<timestamp>.md`. The output directory is ignored by Git.
+2. **Save note** writes that note to `.review/review-<timestamp>.md` without starting an agent. The output directory is ignored by Git.
 3. Ask your agent to address that file. Replies and status changes appear live; keep the conversation going under each note.
 
 ## Annotate a web app
@@ -181,11 +181,10 @@ These connections start managed agent sessions; they do not attach to an already
 See [ACP connections and queue](docs/agent-connections.md) for other agents, configuration fields,
 permissions and restart recovery.
 
-Saving a comment starts the selected agent; further comments queue until that turn ends. Queue state
-survives restarts, and permissions appear in the page's **Queue** control.
-
-With an ACP configuration, **Save & ask AI** saves and queues that note immediately. Without one,
-**Save note** keeps the manual Markdown workflow.
+**Save & ask AI** saves a comment and queues the selected agent; further requests wait until that turn
+ends. **Save note** persists without starting the agent. Without an ACP configuration, only Save is
+offered. Queue state survives restarts, and permissions appear in the page's **Queue** control.
+Working indicators appear beside the agent and on the active note; approval waits are shown separately.
 
 ## Other options
 

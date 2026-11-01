@@ -15,6 +15,7 @@ import {
   setWebAnnotation,
   webAnnotationTarget,
   WebAnnotationInvalid,
+  WebSelectionConflict,
   webCapture,
   type WebAnnotationTarget,
   type WebCapture,
@@ -66,6 +67,16 @@ export function matchesContext(
   return true;
 }
 
+function assertEditableNote(note: ReviewNote) {
+  if (
+    note.messages.some((message) => message.role === "agent") ||
+    ["applied", "answered", "skipped"].includes(note.status)
+  )
+    throw new WebSelectionConflict(
+      "This note has been answered. Add a follow-up instead of changing the original.",
+    );
+}
+
 /**
  * A stamp no message in this thread already carries. The stamp in a message's marker is the only
  * name it has — it is how the page says which message to rewrite or take back — so two messages
@@ -86,10 +97,16 @@ function freeStamp(note: ReviewNote): string {
 function ownMessage(doc: ReviewDoc, id: string, at: string) {
   if (!at) return null;
   const note = doc.notes.find((entry) => entry.id === id);
-  const message = note?.messages.find(
-    (entry) => entry.role === "reviewer" && entry.at === at,
-  );
-  return note && message ? { note, message } : null;
+  const index =
+    note?.messages.findIndex(
+      (entry) => entry.role === "reviewer" && entry.at === at,
+    ) ?? -1;
+  if (!note || index < 0) return null;
+  if (note.messages.slice(index + 1).some((entry) => entry.role === "agent"))
+    throw new WebSelectionConflict(
+      "This reply has been answered. Add a follow-up instead of changing it.",
+    );
+  return { note, message: note.messages[index]! };
 }
 
 /** Only reviewer-owned fields: an agent reply or verdict must never wake the agent again. */
@@ -309,9 +326,9 @@ export function createSession(
     },
 
     /**
-     * Folds the page's notes into the conversation. Notes already in the file keep the agent's thread
-     * and verdict and take the reviewer's current wording; notes the page no longer holds are left
-     * alone, because handing a note over is not the same as withdrawing it.
+     * Folds the page's notes into the conversation. Unanswered notes take the reviewer's current
+     * wording; answered originals retain their wording, evidence, thread and verdict. Notes the page
+     * no longer holds are left alone: handing a note over is not the same as withdrawing it.
      */
     save(submission: ReviewSubmission, replace = false): Promise<SaveResult> {
       return serialise(async () => {
@@ -328,8 +345,10 @@ export function createSession(
           const kept = known.get(comment.id);
           if (kept) {
             const next = applyComment(kept, comment);
-            if (reviewerFields(kept) !== reviewerFields(next))
+            if (reviewerFields(kept) !== reviewerFields(next)) {
+              assertEditableNote(kept);
               changed.push(next);
+            }
             Object.assign(kept, next);
           } else {
             const note = noteFromComment(comment);
@@ -430,6 +449,7 @@ export function createSession(
         const doc = await read();
         const note = doc.notes.find((entry) => entry.id === id);
         if (!note?.web) return null;
+        assertEditableNote(note);
         if (note.web.after.length >= 100)
           throw new Error("This note already has 100 comparison captures.");
         note.web.after.push(clean);
@@ -449,6 +469,7 @@ export function createSession(
         const doc = await read();
         const note = doc.notes.find((entry) => entry.id === id);
         if (!note || note.scope !== "global") return null;
+        assertEditableNote(note);
         if (!note.web) note.web = { before: clean, after: [] };
         else {
           if ((note.web.additional?.length ?? 0) >= 100)
@@ -474,6 +495,7 @@ export function createSession(
         const doc = await read(),
           note = doc.notes.find((entry) => entry.id === id);
         if (!note?.web || note.scope !== "global") return null;
+        assertEditableNote(note);
         const web = setWebAnnotation(note.web, where, clean);
         if (clean) {
           const capture =
@@ -507,6 +529,7 @@ export function createSession(
         const doc = await read();
         const note = doc.notes.find((entry) => entry.id === id);
         if (!note?.web || note.scope !== "global") return null;
+        assertEditableNote(note);
         const web = dropWebSelection(note.web, index, key);
         if (web) note.web = web;
         else delete note.web;

@@ -74,25 +74,27 @@ keeps the editor, draft, selection, and iframe viewport intact. The size carries
 the page reloads. **×** intentionally discards a new unsaved draft, so that editor has no second Cancel
 button. Closing a saved note keeps its conversation; unsubmitted wording changes are discarded.
 
-While a note window is open, selecting more of the page adds captures to **that same note**, including
-while it is minimized. Move the window aside to reach the area underneath. New captures keep separate
-screenshots and metadata rather than replacing the first selection; the text box and caret stay put.
-They remain draft-only for a new note until Save. Additions to an already-saved note are persisted
-immediately and survive a stale editor save. A note supports up to 100 additional captures. Saving is
-disabled during a capture, and selection is disabled while a save is being sent.
+While a note window is open, selecting more of the page adds separate screenshots and metadata,
+including while minimized. Move the window aside to reach the area underneath; the text and caret stay put.
+Captures remain draft-only for a new note until Save. When viewing a saved note, new selections go to the
+next reply instead of changing the original capture or wording, including after an agent has answered.
+Only explicitly editing an unanswered original adds evidence to that original. A note supports up to
+100 additional captures. Saving is disabled during a capture, and selection is disabled while a note
+or reply save is being sent.
 
-Each captured selection has a trash-button **Remove** action in its caption, both in a draft and in
-the main review or a saved note's page window. It removes that capture, not the note's wording or
+Each captured selection has a trash-button **Remove** action while it belongs to a new draft, an
+explicit unanswered-note edit, or a reply draft. It removes that capture, not the note's wording or
 conversation. Removing the first capture promotes the next selection and drops comparisons tied to
 the removed capture. Removing the last leaves an ordinary overall note; a new draft can still be
 saved without captures or receive another selection. A multi-element crop or an area's automatically
 collected DOM metadata belongs to one capture, so removing it removes that whole selection.
-Saved-note removal is persisted immediately. Image files and the read-only history are never deleted.
-Reference previews and history show evidence without destructive controls. A stale removal from
-another tab is rejected rather than deleting a different selection.
+Submitted originals have no removal control while being viewed; answered originals cannot be edited.
+Image files and the read-only history are never deleted. Reference previews and history show evidence
+without destructive controls. A stale removal from another tab is rejected rather than deleting a
+different selection.
 
 Familiar actions use icons instead of redundant labels: trash for remove/delete, pencil for edit,
-an arrow for reply, a clock for history, and a picture for attaching an image. Hover or focus one to
+a clock for history, and a picture for attaching an image. Replies have an always-open input. Hover or focus an icon to
 read its immediate tooltip; every icon also has a descriptive accessible name. Compound commands
 such as **Save & ask AI** retain text, as do content-bearing labels such as note references.
 
@@ -150,10 +152,12 @@ the editor; it is not exported.
   drag remain shortcuts. Navigation never changes the PNG.
 
 The checkmark, **Apply drawing**, uploads a separate PNG containing the original pixels, padding, and marks.
-It also keeps the editable marks, so reopening never requires drawing over a flattened proposal.
-An applied drawing on a draft stays with that draft until the note is saved; on a saved note it is
-persisted immediately, without changing the wording, agent thread, or verdict. Applying with no
-marks removes that capture's annotation. Existing image assets are never deleted.
+Editable draft captures keep their marks, so reopening those drawings does not flatten the proposal.
+An applied drawing on a new draft stays with that draft until the note is saved. When viewing a saved
+note, applying a drawing adds the original selected-area image and the annotated proposal to the reply
+input; it never changes the answered image. Reply-draft captures keep their drawings until the reply
+is saved. An explicit edit of an unanswered original persists its drawing in place. Applying with no
+marks removes an editable draft's annotation. Existing image assets are never deleted.
 
 The close icon and Escape discard unapplied changes after confirmation when needed.
 Image or save failures leave the editor available for correction or retry. A stale edit from

@@ -31,7 +31,8 @@ export async function startWebNote() {
       | "review"
       | "ready"
       | "remove-selection"
-      | "annotation",
+      | "annotation"
+      | "reply-sent",
     value: {
       dirty?: boolean;
       saving?: boolean;
@@ -39,6 +40,8 @@ export async function startWebNote() {
       index?: number;
       key?: string;
       open?: boolean;
+      editOriginal?: boolean;
+      draftId?: string;
     } = {},
   ) =>
     window.parent.postMessage(
@@ -61,27 +64,46 @@ export async function startWebNote() {
   let activeId = noteId || "";
   let capturing = false,
     closing = false,
-    pendingWeb: WebReview | null | undefined = undefined;
+    pendingWeb: WebReview | null | undefined = undefined,
+    pendingReply = false,
+    replyDraftId: string | undefined;
   let annotationOpen = false,
     annotationDirty = false;
   function dirty() {
     if (closing) return false;
-    if (capturing || annotationDirty) return true;
-    if (state.noteSending.size || state.noteDelivery.get(activeId)?.error)
+    if (
+      capturing ||
+      annotationDirty ||
+      host.querySelector(".reply[data-evidence]")
+    )
       return true;
-    const ta = host.querySelector<HTMLTextAreaElement>("textarea");
-    if (!ta) return false;
-    const original =
-      ta.dataset.was ??
-      (ta.closest(".nedit") ? state.notes.get(activeId)?.body : "") ??
-      "";
-    return ta.value.trim() !== original.trim();
+    if (pendingReply && pendingWeb) return true;
+    if (
+      state.noteSending.size ||
+      state.noteDelivery.get(activeId)?.error ||
+      host.querySelector(".reply[data-sending]")
+    )
+      return true;
+    return [...host.querySelectorAll<HTMLTextAreaElement>("textarea")].some(
+      (ta) => {
+        const original =
+          ta.dataset.was ??
+          (ta.closest(".nedit") ? state.notes.get(activeId)?.body : "") ??
+          "";
+        return ta.value.trim() !== original.trim();
+      },
+    );
   }
   const changed = () => {
     setWebNoteCapturing(body, capturing);
     tell("dirty", {
       dirty: dirty(),
-      saving: !!state.noteSending.size || annotationOpen,
+      saving:
+        !!state.noteSending.size ||
+        annotationOpen ||
+        !!host.querySelector(".reply[data-sending]"),
+      editOriginal: !!body.querySelector(".nedit"),
+      draftId: replyDraftId,
     });
   };
   host.addEventListener("input", changed);
@@ -107,11 +129,28 @@ export async function startWebNote() {
   new MutationObserver(changed).observe(body, {
     childList: true,
     subtree: true,
+    attributes: true,
+    attributeFilter: ["data-sending", "data-evidence"],
   });
   const close = () => {
     closing = true;
     tell("dirty", { dirty: false, saving: false });
     tell("close");
+  };
+  document.addEventListener("lcr:reply-sent", (event) => {
+    if (!(event instanceof CustomEvent) || event.detail !== activeId) return;
+    pendingWeb = undefined;
+    pendingReply = false;
+    replyDraftId = undefined;
+    tell("reply-sent");
+    changed();
+  });
+  const applyEvidence = () => {
+    if (pendingWeb === undefined || !activeId) return;
+    updateWebNoteEvidence(body, activeId, pendingWeb, {
+      reply: pendingReply,
+      draftId: replyDraftId,
+    });
   };
   window.addEventListener("message", (event) => {
     if (event.source !== window.parent || event.origin !== parentOrigin) return;
@@ -142,8 +181,12 @@ export async function startWebNote() {
       const web = data.web === null ? null : webReview(data.web);
       if (data.web !== null && !web) return;
       pendingWeb = web;
+      pendingReply = "reply" in data && data.reply === true;
+      if (pendingReply && "draftId" in data && typeof data.draftId === "string")
+        replyDraftId = data.draftId;
       setWebNoteError(body, activeId);
-      if (activeId) updateWebNoteEvidence(body, activeId, web);
+      applyEvidence();
+      changed();
     }
   });
   document.addEventListener("lcr:note-saved", (event) => {
@@ -218,9 +261,20 @@ export async function startWebNote() {
       const note = state.notes.get(noteId);
       if (!note) throw new Error("This note is no longer in the review.");
       mountNoteIn(body, note);
+      if (pendingWeb === undefined) {
+        const response = await fetch(
+          "/api/web/draft?note=" + encodeURIComponent(noteId),
+        );
+        const result = await response.json();
+        const web = result.web === null ? null : webReview(result.web);
+        if (response.ok && web && typeof result.draftId === "string") {
+          pendingWeb = web;
+          pendingReply = true;
+          replyDraftId = result.draftId;
+        }
+      }
     }
-    if (pendingWeb !== undefined)
-      updateWebNoteEvidence(body, activeId, pendingWeb);
+    applyEvidence();
     link.href = state.notes.has(activeId)
       ? "/#note=" + encodeURIComponent(refOf(activeId))
       : "/";

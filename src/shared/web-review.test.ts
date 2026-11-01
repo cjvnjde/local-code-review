@@ -387,12 +387,6 @@ describe("editable screenshot annotations", () => {
         },
       ],
     };
-    await session.answer(
-      session.file,
-      c.id,
-      "Keep this conversation.",
-      "applied",
-    );
     const target = annotationTarget(second, "selection", 1);
     const writes = await Promise.allSettled([
       session.annotateWebCapture(c.id, target, proposal),
@@ -418,8 +412,8 @@ describe("editable screenshot annotations", () => {
     expect(note.web!.additional![0]!.annotation).toEqual(proposal);
     expect(note.web!.after[0]!.annotation).toEqual(proposal);
     expect(note.body).toBe("New wording from stale text editor.");
-    expect(note.status).toBe("applied");
-    expect(note.messages[0]!.body).toBe("Keep this conversation.");
+    expect(note.status).toBe("pending");
+    expect(note.messages).toEqual([]);
     expect(doc.notes.find((note) => note.id === "|@|@|#other")!.web).toEqual(
       comment().web,
     );
@@ -447,6 +441,19 @@ describe("editable screenshot annotations", () => {
     expect(
       await readFile(path.join(dir, ".review", "images", image)),
     ).toBeDefined();
+    await session.answer(
+      session.file,
+      c.id,
+      "Keep this conversation.",
+      "applied",
+    );
+    await expect(
+      restart.annotateWebCapture(
+        c.id,
+        annotationTarget(c.web.before),
+        proposal,
+      ),
+    ).rejects.toThrow("answered");
   });
   test("checks PNG signatures and exact original and padded dimensions before storage", async () => {
     const png = Buffer.from(
@@ -900,12 +907,6 @@ describe("UI review evidence", () => {
     await session.save({ comments: [comment()] });
     const agent = createSession(dir, ".review", "web");
     await agent.adoptMatching();
-    await agent.answer(
-      agent.file,
-      comment().id,
-      "The original button is fixed.",
-      "applied",
-    );
     const first = { ...multiCapture(), area: "images/second.png" },
       second = { ...structuredClone(capture), area: "images/third.png" };
     await Promise.all([
@@ -917,6 +918,12 @@ describe("UI review evidence", () => {
       session.addWebSelection(comment().id, second),
       session.reply(comment().id, "These are separate selections."),
     ]);
+    await agent.answer(
+      agent.file,
+      comment().id,
+      "The original button is fixed.",
+      "applied",
+    );
     const restart = createSession(dir, ".review", "web");
     await restart.adoptMatching();
     const note = (await restart.read()).notes[0]!;
@@ -926,12 +933,23 @@ describe("UI review evidence", () => {
     expect(note.body).toBe("Include the total too.");
     expect(note.status).toBe("applied");
     expect(note.messages.map((message) => message.body)).toEqual([
-      "The original button is fixed.",
       "These are separate selections.",
+      "The original button is fixed.",
     ]);
-    await restart.save({
-      comments: [{ ...comment(), body: "Saved by an older editor." }],
-    });
+    await expect(
+      restart.save({
+        comments: [{ ...comment(), body: "Saved by an older editor." }],
+      }),
+    ).rejects.toThrow("answered");
+    await expect(restart.addWebSelection(note.id, capture)).rejects.toThrow(
+      "answered",
+    );
+    await expect(restart.addWebCapture(note.id, capture)).rejects.toThrow(
+      "answered",
+    );
+    await expect(
+      restart.removeWebSelection(note.id, 0, webSelectionKey(capture)),
+    ).rejects.toThrow("answered");
     expect((await restart.read()).notes[0]!.web!.additional).toEqual([
       first,
       second,
@@ -989,7 +1007,6 @@ describe("UI review evidence", () => {
     await writeFile(path.join(dir, ".review", capture.area), "area attachment");
     const agent = createSession(dir, ".review", "web");
     await agent.adoptMatching();
-    await agent.answer(agent.file, c.id, "Agent reply stays.", "applied");
     await Promise.all([
       session.save({ comments: [{ ...c, body: "Concurrent wording stays." }] }),
       session.removeWebSelection(c.id, 1, webSelectionKey(second)),
@@ -1021,6 +1038,7 @@ describe("UI review evidence", () => {
     await restart.save({
       comments: [{ ...c, body: "Updated after reopening stale editor." }],
     });
+    await agent.answer(agent.file, c.id, "Agent reply stays.", "applied");
     const note = (await restart.read()).notes[0]!;
     expect(note.web).toBeUndefined();
     expect(note.id).toBe(c.id);
@@ -1028,8 +1046,8 @@ describe("UI review evidence", () => {
     expect(note.body).toBe("Updated after reopening stale editor.");
     expect(note.status).toBe("applied");
     expect(note.messages.map((message) => message.body)).toEqual([
-      "Agent reply stays.",
       "Reviewer reply stays.",
+      "Agent reply stays.",
     ]);
     expect(
       await readFile(path.join(dir, ".review", capture.page), "utf8"),
@@ -1040,10 +1058,10 @@ describe("UI review evidence", () => {
     expect(
       await restart.removeWebSelection(c.id, 0, webSelectionKey(third)),
     ).toBeNull();
-    const reselected = await restart.addWebSelection(c.id, second);
-    expect(reselected!.web).toEqual({ before: second, after: [] });
-    expect(reselected!.messages).toEqual(note.messages);
-    expect(reselected!.status).toBe("applied");
+    await expect(restart.addWebSelection(c.id, second)).rejects.toThrow(
+      "answered",
+    );
+    expect((await restart.read()).notes[0]!.web).toBeUndefined();
     await Promise.all([
       restart.remove(c.id),
       restart.addWebSelection(c.id, capture),

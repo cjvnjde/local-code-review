@@ -653,7 +653,7 @@ browserTest(
       expect(
         Math.abs(area.readUInt32BE(20) - box.height * scale),
       ).toBeLessThanOrEqual(2);
-      expect(delivered).toBe(2);
+      expect(delivered).toBe(0);
       await until(
         () => reviewJs('!!document.querySelector(".web-capture")'),
         "visual note next to diff",
@@ -687,6 +687,31 @@ browserTest(
       await until(() => js('!!testRoot.querySelector(".pin")'), "saved pin");
       await click(".pin");
       await frame();
+      const submittedTarget = await js(
+        '(()=>{const r=document.querySelector("h2").getBoundingClientRect();return {x:r.x+60,y:r.y+10}})()',
+      );
+      await mouse("mousePressed", submittedTarget.x, submittedTarget.y);
+      await mouse("mouseReleased", submittedTarget.x, submittedTarget.y);
+      await until(
+        () =>
+          frameJs(
+            'document.querySelectorAll("#uiNote .reply .web-observation").length===1',
+          ),
+        "saved original routes new page selection to follow-up",
+      );
+      expect(
+        (await session.read()).notes.find((n) => n.id === note.id)!.web,
+      ).toEqual(note.web);
+      await frameJs(
+        'document.querySelector("#uiNote .reply [data-web-remove=\\"0\\"]").click()',
+      );
+      await until(
+        () =>
+          frameJs(
+            '!document.querySelector("#uiNote .reply").hasAttribute("data-evidence")&&!document.querySelector("#uiNote .reply [data-reply-save]").disabled',
+          ),
+        "empty follow-up retains original captures",
+      );
       await session.answer(
         session.file,
         note.id,
@@ -701,10 +726,9 @@ browserTest(
           ),
         "live agent reply",
       );
-      await frameJs('document.querySelector("#uiNote .rbtn").click()');
       await writeComment("Keep the rounded corners too.");
       await frameJs(
-        'document.querySelector("#uiNote .reply .primary").click()',
+        'document.querySelector("#uiNote [data-reply-save]").click()',
       );
       await until(
         async () =>
@@ -715,14 +739,20 @@ browserTest(
       await until(
         () =>
           frameJs(
-            '!document.querySelector("#uiNote .reply textarea")&&document.querySelector("#uiNote .thread").textContent.includes("Keep the rounded corners too.")',
+            'document.querySelector("#uiNote .reply textarea").value===""&&document.querySelector("#uiNote .thread").textContent.includes("Keep the rounded corners too.")',
           ),
-        "reply response adopted before editing the note",
+        "reply response adopted with an empty persistent composer",
       );
-      await frameJs('document.querySelector("#uiNote .edit").click()');
-      await writeComment("Updated visual wording.");
+      expect(await frameJs('!!document.querySelector("#uiNote .edit")')).toBe(
+        false,
+      );
+      expect(
+        await frameJs('!!document.querySelector("#uiNote .msg.r .rewrite")'),
+      ).toBe(true);
+      const originalEvidence = structuredClone(note.web);
+      await writeComment("Compare these new selections.");
       await frameJs(
-        'window.editedBox=document.querySelector("#uiNote textarea");editedBox.setSelectionRange(3,7)',
+        'window.editedBox=document.querySelector("#uiNote .reply textarea");editedBox.setSelectionRange(3,7)',
       );
       const extraSubheading = await js(
         '(()=>{const r=document.querySelector("h2").getBoundingClientRect();return {x:r.x+60,y:r.y+10}})()',
@@ -730,123 +760,87 @@ browserTest(
       await mouse("mousePressed", extraSubheading.x, extraSubheading.y);
       await mouse("mouseReleased", extraSubheading.x, extraSubheading.y);
       await until(
-        async () =>
-          (await session.read()).notes.find((n) => n.id === note.id)!.web!
-            .additional?.length === 2,
-        "selection appended to saved note",
-      );
-      await until(
         () =>
           frameJs(
-            'document.querySelectorAll("#uiNote .web-observation").length===3',
+            'document.querySelectorAll("#uiNote .reply .web-observation").length===1',
           ),
-        "saved note evidence adopted without repainting editor",
+        "answered note selection belongs to the next reply",
       );
+      const followup = web.replyDraft(note.id);
+      expect(followup.web!.before.element!.tag).toBe("h2");
       expect(
-        await frameJs(
-          'document.querySelector("#uiNote textarea")===window.editedBox',
-        ),
-      ).toBe(true);
-      expect(await frameJs("window.editedBox.value")).toBe(
-        "Updated visual wording.",
-      );
-      expect(
-        await frameJs("[editedBox.selectionStart,editedBox.selectionEnd]"),
-      ).toEqual([3, 7]);
-      expect(
-        await reviewJs(
-          'document.querySelectorAll(".refpreview [data-web-remove]").length',
-        ),
-      ).toBe(0);
-      await reviewJs(
-        `[...document.querySelectorAll('#loGlobal .nrow')].find(row=>row.dataset.nid===${JSON.stringify(note.id)}).querySelector('[data-web-remove="1"]').click()`,
-      );
-      await until(
-        async () =>
-          (await session.read()).notes.find((n) => n.id === note.id)!.web!
-            .additional?.length === 1,
-        "main review removed saved selection",
-      );
-      await until(
-        () =>
-          frameJs(
-            'document.querySelectorAll("#uiNote .web-observation").length===2&&!document.querySelector("#uiNote [data-save-note]").disabled',
-          ),
-        "external removal adopted by open editor",
-      );
-      expect(
-        await frameJs(
-          'document.querySelector("#uiNote textarea")===window.editedBox',
-        ),
-      ).toBe(true);
-      expect(
-        await frameJs("[editedBox.selectionStart,editedBox.selectionEnd]"),
-      ).toEqual([3, 7]);
+        (await session.read()).notes.find((n) => n.id === note.id)!.web,
+      ).toEqual(originalEvidence);
       await mouse("mousePressed", extraHeading.x, extraHeading.y);
       await mouse("mouseReleased", extraHeading.x, extraHeading.y);
       await until(
         () =>
           frameJs(
-            'document.querySelectorAll("#uiNote .web-observation").length===3&&!document.querySelector("#uiNote [data-save-note]").disabled',
+            'document.querySelectorAll("#uiNote .reply .web-observation").length===2',
           ),
-        "saved selection restored from page",
+        "next reply collects its own additional selection",
       );
       await frameJs(
-        'document.querySelector("#uiNote [data-web-remove=\\"1\\"]").click()',
-      );
-      await until(
-        async () =>
-          (await session.read()).notes.find((n) => n.id === note.id)!.web!
-            .additional?.length === 1,
-        "embedded editor removed saved selection",
+        'document.querySelector("#uiNote .reply [data-web-remove=\\"0\\"]").click()',
       );
       await until(
         () =>
           frameJs(
-            'document.querySelectorAll("#uiNote .web-observation").length===2&&!document.querySelector("#uiNote [data-save-note]").disabled',
+            'document.querySelectorAll("#uiNote .reply .web-observation").length===1&&!document.querySelector("#uiNote .reply [data-reply-save]").disabled',
           ),
-        "embedded removal finished",
+        "reply selection removed without changing original evidence",
       );
-      expect(await frameJs("editedBox.value")).toBe("Updated visual wording.");
-      await mouse("mousePressed", extraSubheading.x, extraSubheading.y);
-      await mouse("mouseReleased", extraSubheading.x, extraSubheading.y);
-      await until(
-        () =>
-          frameJs(
-            'document.querySelectorAll("#uiNote .web-observation").length===3&&!document.querySelector("#uiNote [data-save-note]").disabled',
-          ),
-        "saved captures restored before wording save",
-      );
+      expect(web.replyDraft(note.id).web!.before.element!.tag).toBe("h1");
+      expect(
+        await frameJs(
+          'document.querySelector("#uiNote .reply textarea")===window.editedBox',
+        ),
+      ).toBe(true);
+      expect(
+        await frameJs("[editedBox.selectionStart,editedBox.selectionEnd]"),
+      ).toEqual([3, 7]);
+      expect(
+        (await session.read()).notes.find((n) => n.id === note.id)!.web,
+      ).toEqual(originalEvidence);
       await frameJs(
         "editedBox.setSelectionRange(editedBox.value.length,editedBox.value.length)",
       );
-      // Paste a screenshot through the same native paste handler used on the main review.
+      // Pasted images are attachments on this follow-up, not edits to the opening note.
       await frameJs(
-        `(async()=>{const bytes=Uint8Array.from(atob(${JSON.stringify(area.toString("base64"))}),c=>c.charCodeAt(0));const data=new DataTransfer();data.items.add(new File([bytes],'screenshot.png',{type:'image/png'}));document.querySelector('#uiNote textarea').dispatchEvent(new ClipboardEvent('paste',{clipboardData:data,bubbles:true}));})()`,
+        `(async()=>{const bytes=Uint8Array.from(atob(${JSON.stringify(area.toString("base64"))}),c=>c.charCodeAt(0));const data=new DataTransfer();data.items.add(new File([bytes],'screenshot.png',{type:'image/png'}));editedBox.dispatchEvent(new ClipboardEvent('paste',{clipboardData:data,bubbles:true}));})()`,
       );
       await until(
         () =>
           frameJs(
-            'document.querySelector("#uiNote textarea").value.includes("images/")',
+            'document.querySelector("#uiNote .reply textarea").value.includes("images/")',
           ),
-        "pasted screenshot attachment",
+        "pasted screenshot attaches to follow-up",
       );
       await frameJs(
-        'document.querySelector("#uiNote [data-save-note]").click()',
-      );
-      await until(
-        () => js('testRoot.querySelector(".dock").hidden'),
-        "edited visual note closes",
+        'document.querySelector("#uiNote .reply [data-ask-note]").click()',
       );
       await until(
         () =>
-          reviewJs(
-            'document.querySelector("#loGlobal .nbody").textContent.includes("Updated visual wording.")',
+          frameJs(
+            'document.querySelector("#uiNote .reply textarea").value===""&&!document.querySelector("#uiNote .reply").hasAttribute("data-evidence")',
           ),
-        "external edit adopted in main review",
+        "follow-up submitted and composer cleared",
       );
-      await click(".pin");
-      await frame();
+      const answered = (await session.read()).notes.find(
+        (n) => n.id === note.id,
+      )!;
+      expect(answered.body).toBe(note.body);
+      expect(answered.web).toEqual(originalEvidence);
+      expect(answered.messages.at(-1)!.body).toContain(
+        "Compare these new selections.",
+      );
+      expect(answered.messages.at(-1)!.body).toContain("images/");
+      expect(answered.messages.at(-1)!.body).toContain("h1");
+      expect(web.draft(followup.draftId!)).toBeUndefined();
+      expect(delivered).toBe(1);
+      expect(
+        await readFile(path.join(dir, ".review", note.web!.before.area)),
+      ).toEqual(area);
       expect(
         await frameJs('!!document.querySelector("#uiNote .shot img")'),
       ).toBe(true);
@@ -872,15 +866,19 @@ browserTest(
       await js(
         'document.querySelector("#save").style.padding="16px 60px";document.querySelector("#save").style.background="#227d62"',
       );
-      await web.captureAfter(note.id).catch((error) => {
+      const comparison = await web.captureAfter(note.id).catch((error) => {
         throw new Error(
           "Comparison capture: " + String(error) + "; " + errors.join("\n"),
         );
       });
+      expect(comparison.reply).toBe(true);
+      expect(comparison.web.before.rect.width).toBeGreaterThan(
+        note.web!.before.rect.width,
+      );
       expect(
-        (await session.read()).notes.find((n) => n.id === note.id)!.web!
-          .after[0]!.rect.width,
-      ).toBeGreaterThan(note.web!.before.rect.width);
+        (await session.read()).notes.find((n) => n.id === note.id)!.web,
+      ).toEqual(note.web);
+      await web.discardDraft(comparison.draftId);
       // A new drag defaults to Area without opening the circle or preselecting Area.
       await js(`(()=>{
       const region=document.createElement('div');region.id='area-fixture';
@@ -1026,10 +1024,12 @@ browserTest(
           ),
         "unique area anchors restore circle",
       );
-      await web.captureAfter(areaNote.id);
-      const areaAfter = (await session.read()).notes.find(
-        (n) => n.id === areaNote.id,
-      )!.web!.after[0]!;
+      const areaComparison = await web.captureAfter(areaNote.id);
+      const areaAfter = areaComparison.web.before;
+      expect(
+        (await session.read()).notes.find((n) => n.id === areaNote.id)!.web!
+          .after,
+      ).toEqual([]);
       expect(areaAfter.rect).toEqual({
         ...areaNote.web!.before.rect,
         x: 260,
@@ -1038,6 +1038,7 @@ browserTest(
       expect(
         areaAfter.selections!.some((s) => s.selector === "button#area-target"),
       ).toBe(true);
+      await web.discardDraft(areaComparison.draftId);
       await js(
         'document.querySelector("#area-target").outerHTML="<button id=\\"area-replacement\\">New action</button>"',
       );
@@ -1064,8 +1065,11 @@ browserTest(
       await navigated.promise;
       await root();
       await until(
-        () => js('testRoot.querySelectorAll(".pin").length===3'),
-        "only matching element pins restored; stale area stays hidden",
+        () =>
+          js(
+            'testRoot.querySelectorAll(".pin").length===2&&![...testRoot.querySelectorAll(".pin")].some(pin=>pin.title==="Align this section with the heading.")',
+          ),
+        "only original button and heading pins restored; follow-up selections and stale area stay hidden",
       );
       expect(
         await js(
@@ -1105,7 +1109,7 @@ browserTest(
       await until(
         () =>
           js(
-            '(()=>{const p=[...testRoot.querySelectorAll(".pin")].find(p=>p.title.includes("Updated visual wording"));return p&&p.getBoundingClientRect().top<0})()',
+            '(()=>{const p=[...testRoot.querySelectorAll(".pin")].find(p=>p.title.includes("Give the save button"));return p&&p.getBoundingClientRect().top<0})()',
           ),
         "partly visible element pin scrolls past viewport edge",
       );
@@ -1156,12 +1160,16 @@ browserTest(
       expect(await js('testRoot.querySelectorAll(".pin").length')).toBe(
         shownPins,
       );
-      await web.captureAfter(multi.id);
+      const multiComparison = await web.captureAfter(multi.id);
       expect(
-        (await session.read()).notes
-          .find((n) => n.id === multi.id)!
-          .web!.after[0]!.selections!.map((s) => s.selector),
+        multiComparison.web.before.selections!.map(
+          (s: { selector?: string }) => s.selector,
+        ),
       ).toEqual(multi.web!.before.selections!.map((s) => s.selector));
+      expect(
+        (await session.read()).notes.find((n) => n.id === multi.id)!.web!.after,
+      ).toEqual([]);
+      await web.discardDraft(multiComparison.draftId);
       await until(
         () =>
           reviewJs(
@@ -1189,6 +1197,7 @@ browserTest(
       const multiBytes = await readFile(
         path.join(dir, ".review", multi.web!.before.area),
       );
+      await frameJs('document.querySelector("#uiNote .edit").click()');
       await frameJs(
         'document.querySelector("#uiNote [data-web-remove=\\"0\\"]").click()',
       );
@@ -1212,7 +1221,6 @@ browserTest(
       expect(
         await readFile(path.join(dir, ".review", multi.web!.before.area)),
       ).toEqual(multiBytes);
-      await frameJs('document.querySelector("#uiNote .edit").click()');
       await writeComment(
         "Selection replaced without deleting the conversation.",
       );

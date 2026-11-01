@@ -18,11 +18,13 @@ The default address is `http://localhost:7777`. If the port is occupied, lcr tri
 - **Overall:** use **Comment** in the permanent page header for feedback without a file anchor. A review can have several overall notes.
 - **Replacement:** insert a fenced `suggestion` block seeded from the selected lines. The page displays its difference from the captured code; the Markdown contains the replacement itself.
 
-Only one editor opens at a time. An editor with text keeps focus when you try to start another; an untouched draft can move to the next selection. Live replies update notes in place. A changed diff waits while an editor is open; the header's `diff changed` indicator lets you choose an early refresh after confirmation.
+Only one active editor keeps the floor at a time. An editor with text keeps focus when you try to start another; an untouched draft can move to the next selection. Empty reply inputs stay visible without blocking new notes or live updates. Live replies update notes in place and preserve a reply being written. A changed diff waits while an editor is active; the header's `diff changed` indicator lets you choose an early refresh after confirmation.
 
-Save notes, then choose **Save review**. The review is written to `.review/review-<timestamp>.md`; subsequent saves update that conversation rather than creating another file. The default directory is ignored by Git. Custom relative output directories set with `--out` are locally excluded too.
+**Save note** writes only that note to `.review/review-<timestamp>.md`, without starting an agent. Subsequent saves update that conversation rather than creating another file. The default directory is ignored by Git. Custom relative output directories set with `--out` are locally excluded too.
 
-With an [ACP agent configured](agent-connections.md), an editor's **Save & ask AI** persists and queues only that note immediately, even while the agent is disconnected or the queue is paused. The review-wide footer is not a required send step. Without an ACP configuration, the action remains **Save note** for manual handover.
+With an [ACP agent configured](agent-connections.md), the separate **Save & ask AI** action persists and queues only that note immediately, even while the agent is disconnected or the queue is paused. Without ACP, only **Save note** is offered. Agent and note indicators show working activity; waiting for approval is not shown as thinking.
+
+The footer's **Save review**, renamed **Update review** once a file exists, writes all current notes to that same conversation, preserving agent replies and verdicts. With ACP it queues notes whose saved reviewer content changed; unchanged notes are not rerun. It does not reload the diff, start a new conversation, or replace individual note actions.
 
 ## Continue the conversation
 
@@ -34,7 +36,7 @@ npx skills add cjvnjde/local-code-review --skill apply-lcr
 
 Ask “Apply the newest lcr review,” or use `/apply-lcr` when supported. The skill handles code and visual feedback, replies in the review file, runs project checks, and picks up follow-ups. Framework/source metadata are hints, not prerequisites.
 
-The page follows the agent's replies, status changes, and code edits. **Reply** under a note to answer back in the same file. With a live connection, sending or rewording a reply forwards the follow-up too. Your own stamped replies can be edited or deleted; agent messages remain read-only.
+The page follows the agent's replies, status changes, and code edits. Each saved note has an open reply input: **Save reply** appends without starting the agent, and **Save & ask AI** appends and queues the follow-up. With an empty reply input, **Save & ask AI** asks about the existing saved conversation instead. There is no duplicate Ask action in the note header. Original notes that have an agent answer or a completed verdict cannot be edited; use the reply input or **Resolve**. Your own stamped replies can be edited or deleted until an agent has answered them; agent messages remain read-only.
 
 A note's `Status:` can be pending, applied, answered, skipped, needs-input, or unknown. **Answered** means a question needed no code edit; it is not included in **Remove N applied**.
 

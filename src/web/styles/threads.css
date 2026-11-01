@@ -119,18 +119,6 @@
 .reply {
   padding: 9px 12px;
 }
-.reply.shut {
-  padding: 7px 12px;
-}
-.reply .rbtn {
-  padding: 5px 9px;
-  font-size: var(--fs-xs);
-  color: var(--ink-faint);
-}
-.reply .rbtn:hover {
-  color: var(--mauve);
-  border-color: var(--mauve);
-}
 .rhint {
   padding: 7px 12px;
   color: var(--ink-faint);

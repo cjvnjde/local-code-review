@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { submitNote, submitReview, withdrawNotes } from "../app/persistence.ts";
 import { state } from "../app/state.ts";
-import { adoptAgent, managedNoteTask, noteSaveLabel } from "../app/agent.ts";
+import {
+  adoptAgent,
+  managedNoteTask,
+  queueTaskStatusHtml,
+  startAgentStatus,
+} from "../app/agent.ts";
 
 const originalFetch = globalThis.fetch;
 const documentDescriptor = Object.getOwnPropertyDescriptor(
@@ -136,11 +141,25 @@ describe("individual note sending", () => {
     expect(state.noteSending.size).toBe(0);
   });
 
-  test("the note button follows the configured ACP queue, including an already open editor", () => {
+  test("connection changes reveal the separate ask action in an already open editor", () => {
     const button = { disabled: false, textContent: "" };
-    const status = { textContent: "", title: "" };
-    (globalThis as any).document.querySelectorAll = () => [button];
-    (globalThis as any).document.getElementById = () => status;
+    const ask = { hidden: true };
+    const status = {
+      textContent: "",
+      title: "",
+      dataset: {},
+      classList: { add: () => {} },
+      setAttribute: () => {},
+    };
+    document.querySelectorAll = ((selector: string) =>
+      selector === "[data-ask-note]"
+        ? [ask]
+        : [button]) as unknown as typeof document.querySelectorAll;
+    // Minimal DOM stand-ins expose only the status node used by this test.
+    document.getElementById = ((id: string) =>
+      id === "agentState"
+        ? status
+        : null) as unknown as typeof document.getElementById;
     for (const phase of ["checking", "ready", "unavailable"]) {
       adoptAgent({
         connection: {
@@ -149,13 +168,12 @@ describe("individual note sending", () => {
           detail: "Queue accepts saved work",
         },
       });
-      expect(noteSaveLabel()).toBe("Save & ask AI");
-      expect(button.textContent).toBe("Save & ask AI");
       expect(status.textContent).toBe("External ACP agent " + phase);
+      expect(ask.hidden).toBe(false);
     }
     adoptAgent({});
-    expect(noteSaveLabel()).toBe("Save note");
     expect(status.textContent).toBe("No agent connected");
+    expect(ask.hidden).toBe(true);
   });
 });
 
@@ -230,7 +248,6 @@ test("a configured generic managed agent accepts work while unavailable and reta
     queue: { paused: true, tasks: [], permissions: [] },
   });
   expect(state.agent).toBe("External ACP adapter");
-  expect(noteSaveLabel()).toBe("Save & ask AI");
 });
 
 test("queue badges match the exact review path even when two output directories reuse a filename", () => {
@@ -242,4 +259,159 @@ test("queue badges match the exact review path even when two output directories 
     ],
   };
   expect(managedNoteTask(first.id)?.state).toBe("queued");
+});
+
+test("a queued follow-up does not hide its note's active exact-review task", () => {
+  for (const taskState of ["running", "approval", "uncertain"]) {
+    state.agentQueue = {
+      review: "review.md",
+      tasks: [
+        { noteId: first.id, review: "other/review.md", state: "running" },
+        { noteId: first.id, review: "review.md", state: taskState },
+        { noteId: first.id, review: "review.md", state: "queued" },
+      ],
+    };
+    expect(managedNoteTask(first.id)?.state).toBe(taskState);
+  }
+});
+
+test("task badges distinguish execution, approval and terminal states without claiming a fix", () => {
+  state.connection = { agent: "ACP", state: "ready" };
+  for (const taskState of [
+    "queued",
+    "running",
+    "approval",
+    "uncertain",
+    "completed",
+    "needs-input",
+    "blocked",
+    "error",
+    "cancelled",
+  ] as const) {
+    const html = queueTaskStatusHtml({ state: taskState });
+    expect(html).toContain('class="stat agent-activity"');
+    expect(html).toContain('data-agent-state="' + taskState + '"');
+    if (taskState === "approval") {
+      expect(html).toContain("Waiting for approval");
+      expect(html).not.toContain("Working");
+    }
+    if (taskState === "completed") {
+      expect(html).toContain("Turn completed");
+      expect(html).not.toContain("applied");
+    }
+  }
+  expect(
+    queueTaskStatusHtml({
+      state: "running",
+      detail: 'Running <script>alert("bad")</script>',
+    }),
+  ).not.toContain("<script>");
+  state.connection.state = "unavailable";
+  const disconnected = queueTaskStatusHtml({ state: "running" });
+  expect(disconnected).toContain('data-agent-state="uncertain"');
+  expect(disconnected).toContain("execution unconfirmed");
+});
+
+test("agent and queue show live activity before opening the queue, and approvals stop the spinner", () => {
+  const node = () => ({
+    textContent: "",
+    title: "",
+    hidden: true,
+    innerHTML: "",
+    dataset: {} as Record<string, string>,
+    attributes: {} as Record<string, string>,
+    classList: { add: () => {} },
+    setAttribute(name: string, value: string) {
+      this.attributes[name] = value;
+    },
+    querySelectorAll: () => [],
+    appendChild: () => {},
+  });
+  const status = node(),
+    toggle = node(),
+    panel = node();
+  const nodes: Record<string, object> = {
+    agentState: status,
+    queueToggle: toggle,
+    agentQueue: panel,
+  };
+  // DOM stand-ins deliberately implement only the methods used by queue rendering.
+  document.getElementById = ((id: string) =>
+    nodes[id] || null) as unknown as typeof document.getElementById;
+  document.createElement = (() =>
+    node()) as unknown as typeof document.createElement;
+  const connection = { agent: "ACP", state: "ready", detail: "Connected" };
+  const task = { state: "running", review: "review.md", noteId: first.id };
+  const queue = {
+    paused: false,
+    activity: "Reading source",
+    permissions: [],
+    tasks: [task, { state: "queued", review: "review.md", noteId: second.id }],
+  };
+  adoptAgent({ connection, queue });
+  expect(panel.hidden).toBe(true);
+  expect(status.dataset.agentState).toBe("running");
+  expect(status.textContent).toContain("Working · Reading source");
+  expect(status.textContent).toContain("1 queued");
+  expect(status.attributes.role).toBe("status");
+  expect(status.attributes["aria-live"]).toBe("polite");
+  expect(toggle.dataset.agentState).toBe("running");
+  expect(toggle.attributes["aria-expanded"]).toBe("false");
+  expect(panel.innerHTML).toContain('data-agent-state="running"');
+  task.state = "approval";
+  adoptAgent({ connection, queue });
+  expect(status.dataset.agentState).toBe("approval");
+  expect(status.textContent).toContain("Waiting for approval");
+  expect(status.textContent).not.toContain("Reading source");
+  expect(toggle.dataset.agentState).toBe("approval");
+  task.state = "uncertain";
+  queue.paused = true;
+  adoptAgent({ connection, queue });
+  expect(status.dataset.agentState).toBe("uncertain");
+  expect(status.textContent).toContain("inspect before resuming");
+});
+
+test("status polling only reads the agent endpoint and repaints changed snapshots", async () => {
+  const intervalDescriptor = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "setInterval",
+  );
+  let poll: (() => Promise<void>) | undefined;
+  Object.defineProperty(globalThis, "setInterval", {
+    configurable: true,
+    value: (callback: () => Promise<void>) => {
+      poll = callback;
+      return 0;
+    },
+  });
+  const requests: { url: string; init: RequestInit | undefined }[] = [];
+  globalThis.fetch = (async (url, init) => {
+    requests.push({ url: String(url), init });
+    return Response.json({
+      connection: { agent: "ACP", state: "ready", detail: "Read-only status" },
+    });
+  }) as typeof originalFetch;
+  let repaints = 0;
+  try {
+    const painted = Promise.withResolvers<void>();
+    startAgentStatus(() => {
+      repaints++;
+      painted.resolve();
+    });
+    await painted.promise;
+    expect(poll).toBeDefined();
+    await poll!();
+    expect(requests).toHaveLength(2);
+    expect(
+      requests.every(
+        ({ url, init }) =>
+          url === "/api/agent" &&
+          (!init || !init.method || init.method === "GET"),
+      ),
+    ).toBe(true);
+    expect(repaints).toBe(1);
+  } finally {
+    if (intervalDescriptor)
+      Object.defineProperty(globalThis, "setInterval", intervalDescriptor);
+  }
 });

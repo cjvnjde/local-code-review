@@ -1,8 +1,107 @@
+import type { AgentTask, WorkState } from "../../../agent/agent-queue.ts";
 import { pathHtml } from "../components/path.ts";
 import { el, esc, state } from "./state.ts";
 
-export const noteSaveLabel = () =>
-  state.agent ? "Save & ask AI" : "Save note";
+export const noteSaveLabel = () => "Save note";
+
+type TaskActivity = Pick<AgentTask, "state" | "detail">;
+interface Activity {
+  state: string;
+  label: string;
+}
+interface QueueActivitySnapshot {
+  tasks: TaskActivity[];
+  permissions?: readonly unknown[];
+  activity?: string;
+  paused?: boolean;
+}
+
+const taskLabels: Record<WorkState, string> = {
+  queued: "Queued",
+  running: "Working",
+  approval: "Waiting for approval",
+  uncertain: "Execution uncertain — inspect before resuming",
+  completed: "Turn completed",
+  "needs-input": "Needs your input",
+  blocked: "Blocked",
+  error: "Error",
+  cancelled: "Cancelled",
+};
+
+function taskActivity(task: TaskActivity): Activity {
+  if (
+    task.state === "running" &&
+    state.connection &&
+    state.connection.state !== "ready"
+  )
+    return {
+      state: "uncertain",
+      label: "Connection unavailable — execution unconfirmed",
+    };
+  return {
+    state: task.state,
+    label:
+      task.detail === "Cancellation requested." && task.state === "running"
+        ? "Stopping — awaiting confirmation"
+        : taskLabels[task.state] || String(task.state),
+  };
+}
+
+/** Decorative motion is paired with explicit text; execution is not a note verdict. */
+export function queueTaskStatusHtml(task: TaskActivity) {
+  const activity = taskActivity(task);
+  return (
+    '<span class="stat agent-activity" data-agent-state="' +
+    esc(activity.state) +
+    '" title="' +
+    esc(
+      task.detail || "Managed execution state, separate from the note verdict",
+    ) +
+    '">' +
+    esc(activity.label) +
+    "</span>"
+  );
+}
+
+function queueActivity(queue: QueueActivitySnapshot): Activity {
+  const tasks = queue.tasks || [];
+  const queued = tasks.filter((task) => task.state === "queued").length;
+  const approval = tasks.find((task) => task.state === "approval");
+  const running = tasks.find((task) => task.state === "running");
+  let activity: Activity;
+  if (approval || queue.permissions?.length)
+    activity = { state: "approval", label: "Waiting for approval" };
+  else if (running) {
+    activity = taskActivity(running);
+    if (
+      activity.state === "running" &&
+      queue.activity &&
+      queue.activity !== "Working" &&
+      running.detail !== "Cancellation requested."
+    )
+      activity.label += " · " + queue.activity;
+  } else {
+    const uncertain = tasks.find((task) => task.state === "uncertain");
+    const latest = tasks.at(-1);
+    activity = uncertain
+      ? taskActivity(uncertain)
+      : queued
+        ? { state: "queued", label: "Queued" }
+        : latest
+          ? taskActivity(latest)
+          : { state: "idle", label: "Idle" };
+  }
+  if (queued) activity.label += " · " + queued + " queued";
+  if (queue.paused) activity.label += " · queue paused";
+  return activity;
+}
+
+function paintActivity(element: HTMLElement, activity: Activity) {
+  element.classList.add("agent-activity");
+  element.dataset.agentState = activity.state;
+  if (element.textContent !== activity.label)
+    element.textContent = activity.label;
+}
 
 /** A configured ACP queue accepts durable work even while disconnected. */
 export function adoptAgent(data: any) {
@@ -19,9 +118,16 @@ export function adoptAgent(data: any) {
   const indicator = el("agentState");
   if (indicator) {
     const name = connection?.agent || "";
-    indicator.textContent = name
-      ? name + " " + connection.state
-      : "No agent connected";
+    const activity = queue ? queueActivity(queue) : null;
+    paintActivity(indicator, {
+      state: activity?.state || connection?.state || "unavailable",
+      label:
+        (name ? name + " " + connection.state : "No agent connected") +
+        (activity ? " · " + activity.label : ""),
+    });
+    indicator.setAttribute("role", "status");
+    indicator.setAttribute("aria-live", "polite");
+    indicator.setAttribute("aria-atomic", "true");
     indicator.title =
       connection?.detail ||
       "Notes are saved locally; no automatic agent delivery is confirmed.";
@@ -30,6 +136,11 @@ export function adoptAgent(data: any) {
   document.querySelectorAll("[data-save-note]").forEach((button: any) => {
     if (!button.disabled) button.textContent = noteSaveLabel();
   });
+  document
+    .querySelectorAll<HTMLElement>("[data-ask-note]")
+    .forEach((button) => {
+      button.hidden = !label;
+    });
   return changed;
 }
 
@@ -65,13 +176,16 @@ export function startAgentStatus(repaint: () => void) {
 
 /** Execution state is independent of the Markdown verdict. Tasks stay scoped to their review. */
 export function managedNoteTask(id: string) {
-  const tasks = state.agentQueue?.tasks || [];
-  return tasks
-    .filter(
-      (task: any) =>
-        task.noteId === id && task.review === state.agentQueue.review,
-    )
-    .at(-1);
+  const tasks = (state.agentQueue?.tasks || []).filter(
+    (task: Pick<AgentTask, "noteId" | "review">) =>
+      task.noteId === id && task.review === state.agentQueue.review,
+  );
+  // A follow-up waiting behind this note must not hide its active execution.
+  return (
+    tasks.find((task: TaskActivity) =>
+      ["running", "approval", "uncertain"].includes(task.state),
+    ) || tasks.at(-1)
+  );
 }
 function drawQueue() {
   const toggle = el("queueToggle"),
@@ -86,14 +200,23 @@ function drawQueue() {
   const pending = queue.tasks.filter((task: any) =>
     ["queued", "running", "approval", "uncertain"].includes(task.state),
   );
-  toggle.textContent =
-    "Queue " + pending.length + (queue.paused ? " · paused" : "");
+  const activity = queueActivity(queue);
+  paintActivity(toggle, {
+    state: activity.state,
+    label: "Queue " + pending.length + " · " + activity.label,
+  });
+  toggle.setAttribute("aria-controls", "agentQueue");
+  toggle.setAttribute("aria-expanded", String(!panel.hidden));
   toggle.onclick = () => {
     panel.hidden = !panel.hidden;
     toggle.setAttribute("aria-expanded", String(!panel.hidden));
   };
   // Preserve focus on permission buttons while polling an unchanged queue.
-  const signature = JSON.stringify([queue, state.connection?.detail]);
+  const signature = JSON.stringify([
+    queue,
+    state.connection?.state,
+    state.connection?.detail,
+  ]);
   if (panel.dataset.signature === signature) return;
   panel.dataset.signature = signature;
   const button = (label: string, action: string, id = "", option = "") =>
@@ -109,8 +232,10 @@ function drawQueue() {
   panel.innerHTML =
     "<h4>Agent work queue</h4><p>" +
     esc(state.connection?.detail || "") +
-    "</p><p>" +
-    esc(queue.activity || "") +
+    '</p><p class="agent-activity" data-agent-state="' +
+    esc(activity.state) +
+    '">' +
+    esc(activity.label) +
     "</p>" +
     button(
       queue.paused ? "Resume queue" : "Pause queue",
@@ -135,9 +260,8 @@ function drawQueue() {
       .reverse()
       .map(
         (task: any) =>
-          '<div class="queue-task"><b>' +
-          esc(task.state) +
-          "</b>" +
+          '<div class="queue-task">' +
+          queueTaskStatusHtml(task) +
           pathHtml(task.review, { title: task.review }) +
           "<code>" +
           esc(task.noteId) +

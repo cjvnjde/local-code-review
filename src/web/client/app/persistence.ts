@@ -58,7 +58,7 @@ function finishSending(id: string) {
   else state.noteSending.delete(id);
 }
 
-export function submitNote(note: any, retry = false) {
+export function submitNote(note: any, retry = false, ask = true) {
   state.noteSending.set(note.id, (state.noteSending.get(note.id) || 0) + 1);
   return writeNotes(async () => {
     if (!state.notes.has(note.id)) return null;
@@ -68,6 +68,7 @@ export function submitNote(note: any, retry = false) {
       body: JSON.stringify({
         comment: note,
         retry,
+        ask,
         replace: !!state.cfg.single,
       }),
     });

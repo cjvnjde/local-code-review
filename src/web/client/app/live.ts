@@ -19,6 +19,7 @@ import {
 } from "./state.ts";
 import { paintActive } from "../navigation/tree.ts";
 import { noteByRef, refIn } from "../notes/note-ref.ts";
+import { activeEditor } from "../components/composer.ts";
 
 /* ---------- following the agent ---------- */
 /**
@@ -31,7 +32,7 @@ import { noteByRef, refIn } from "../notes/note-ref.ts";
  */
 
 const editing = () =>
-  !!document.querySelector(".nbox textarea,[data-annotation-editor]");
+  !!activeEditor() || !!document.querySelector("[data-annotation-editor]");
 
 export function startLive() {
   const source = new EventSource("/api/events");
@@ -237,10 +238,10 @@ el("unread").onclick = () => {
 };
 /** The wait is a courtesy, not a lock: the reader can take the refresh now and lose the draft. */
 el("pending").onclick = () => {
-  const ta: any = document.querySelector(".nbox textarea");
+  const ta: any = activeEditor();
   if (
     ta &&
-    ta.value.trim() &&
+    (ta.value.trim() || ta.closest("[data-evidence],[data-sending]")) &&
     !confirm("Refresh the diff now?\n\nThe note you are writing will be lost.")
   )
     return;

@@ -4,7 +4,6 @@ import { SVG } from "../app/state.ts";
 const ACTIONS: [string, keyof typeof SVG, string][] = [
   ["button.edit,button.rewrite", "edit", "Edit"],
   ["button.history,#showHistory", "history", "History"],
-  ["button.rbtn", "reply", "Reply"],
   ["button.attb", "pic", "Attach image"],
   ["button[data-web-focus]", "open", "On page"],
   [

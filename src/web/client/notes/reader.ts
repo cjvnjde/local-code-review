@@ -7,6 +7,7 @@ import { mountNoteIn } from "./notes.ts";
 import { save } from "../app/persistence.ts";
 import { filePathHtml, filePathTitle } from "../components/path.ts";
 import { el, esc, markRead, state, statusOf, unreadOf } from "../app/state.ts";
+import { activeEditor } from "../components/composer.ts";
 
 /* ---------- all notes: the review read as a conversation instead of as marks on a diff ---------- */
 /**
@@ -144,7 +145,7 @@ function renderReader() {
 /** Redraws one entry in place, for a note whose placement moved under it. A box being written in is
  *  left alone and the panel stays marked stale, exactly as the diff pane defers a refresh. */
 function repaintEntry(wrap: any) {
-  if (wrap.querySelector("textarea")) return false;
+  if (activeEditor(wrap)) return false;
   const n = state.notes.get(wrap.dataset.nid);
   if (!n) return false; // it has left the review; the next rebuild takes the wrapper with it
   wrap.textContent = "";
@@ -175,7 +176,7 @@ export function syncReader() {
     else state.rdrStale = true;
     return;
   }
-  if (el("reader").querySelector("textarea")) {
+  if (activeEditor(el("reader"))) {
     state.rdrStale = true;
     return;
   }
@@ -194,10 +195,10 @@ export function openReader() {
  *  it went, because a jump to the diff that the reader called off must not happen behind it. */
 export function closeReader() {
   if (!state.reader) return true;
-  const ta: any = el("reader").querySelector("textarea");
+  const ta: any = activeEditor(el("reader"));
   if (
     ta &&
-    ta.value.trim() &&
+    (ta.value.trim() || ta.closest("[data-evidence],[data-sending]")) &&
     !confirm("Close the notes panel?\n\nWhat you are writing in it is lost.")
   )
     return false;

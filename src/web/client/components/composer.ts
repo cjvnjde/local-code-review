@@ -17,7 +17,7 @@ export function wireComposer(
   host: HTMLElement,
   ta: HTMLTextAreaElement,
   id: string,
-  actions: { save: () => void; cancel: () => void },
+  actions: { save: () => void; cancel: () => void; focus?: boolean },
 ) {
   ta.classList.add("composer-input");
   const fit = autogrow(ta, NOTE_MAX);
@@ -35,6 +35,16 @@ export function wireComposer(
       actions.cancel();
     }
   };
-  ta.focus();
+  if (actions.focus !== false) ta.focus();
   return fit;
+}
+
+/** Idle, always-visible reply inputs are not active editors and must not hold live updates. */
+export function activeEditor(host: ParentNode = document) {
+  return [...host.querySelectorAll<HTMLTextAreaElement>(".nbox textarea")].find(
+    (ta) =>
+      !ta.closest(".reply") ||
+      !!ta.value.trim() ||
+      ta.closest(".reply")?.matches("[data-sending],[data-evidence]"),
+  );
 }

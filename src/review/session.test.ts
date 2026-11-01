@@ -16,7 +16,7 @@ const workspace = async (...names: string[]) => {
 };
 const note = (id: string, body = "Rename this."): ReviewComment => ({
   id,
-  file: "src/app.ts",
+  file: id.split("|")[0]!,
   body,
   start: 12,
   end: 12,
@@ -117,13 +117,16 @@ describe("createSession", () => {
     );
     await writeFile(path.join(dir, name), answered, "utf8");
 
-    // The reviewer edits the note and saves again while the agent is still working.
-    await session.save({
-      comments: [note("a|n12|n12|#1", "Rename this, and the fixture.")],
-    });
+    await expect(
+      session.save({
+        comments: [note("a|n12|n12|#1", "Rename this, and the fixture.")],
+      }),
+    ).rejects.toThrow("follow-up");
+    const unchanged = await session.save({ comments: [note("a|n12|n12|#1")] });
+    expect(unchanged.changed).toEqual([]);
     const doc = await read(dir, name);
     expect(doc.notes[0]).toMatchObject({
-      body: "Rename this, and the fixture.",
+      body: "Rename this.",
       status: "applied",
       detail: "renamed",
     });
@@ -226,6 +229,55 @@ describe("createSession", () => {
     expect(await session.editReply("a|n12|n12|#1", "", "nope")).toBeNull();
   });
 
+  test("answered replies are immutable while a new follow-up can still be corrected", async () => {
+    const dir = await workspace();
+    const session = createSession(dir, ".", "HEAD");
+    const id = "a|n12|n12|#1";
+    await session.save({ comments: [note(id)] });
+    const first = await session.reply(id, "Check the fixture too.");
+    const at = first!.messages[0]!.at;
+    await session.answer(session.file, id, "Checked.", "answered");
+    await expect(session.editReply(id, at, "Changed history.")).rejects.toThrow(
+      "answered",
+    );
+    await expect(session.dropReply(id, at)).rejects.toThrow("answered");
+    const next = await session.reply(id, "Now check the docs.");
+    const followupAt = next!.messages.at(-1)!.at;
+    expect(
+      await session.editReply(id, followupAt, "Check both docs."),
+    ).not.toBeNull();
+    expect(await session.dropReply(id, followupAt)).not.toBeNull();
+    const kept = (await session.read()).notes[0]!;
+    expect(kept.messages.map((message) => message.body)).toEqual([
+      "Check the fixture too.",
+      "Checked.",
+    ]);
+    expect(kept.status).toBe("answered");
+  });
+
+  test("a terminal verdict locks the original even without an agent message", async () => {
+    for (const status of ["applied", "answered", "skipped"]) {
+      const dir = await workspace();
+      const session = createSession(dir, ".", "HEAD");
+      const id = "a|n12|n12|#1";
+      await session.save({ comments: [note(id)] });
+      const file = path.join(dir, session.file);
+      await writeFile(
+        file,
+        (await readFile(file, "utf8")).replace(
+          "Status: pending",
+          "Status: " + status,
+        ),
+      );
+      await expect(
+        session.save({ comments: [note(id, "Replace the original.")] }),
+      ).rejects.toThrow("answered");
+      expect((await session.save({ comments: [note(id)] })).changed).toEqual(
+        [],
+      );
+    }
+  });
+
   test("the agent's own messages are not the page's to rewrite or take back", async () => {
     const dir = await workspace();
     const session = createSession(dir, ".", "HEAD");
@@ -322,13 +374,18 @@ describe("createSession", () => {
     );
     await writeFile(path.join(dir, name), answered, "utf8");
 
-    await session.save({
-      comments: [overall("|@|@|#g1", "This branch does two things. Split it.")],
-    });
+    await expect(
+      session.save({
+        comments: [
+          overall("|@|@|#g1", "This branch does two things. Split it."),
+        ],
+      }),
+    ).rejects.toThrow("follow-up");
+    await session.save({ comments: [overall("|@|@|#g1")] });
     const doc = await read(dir, name);
     expect(doc.notes[0]).toMatchObject({
       scope: "global",
-      body: "This branch does two things. Split it.",
+      body: "This branch does two things.",
       status: "answered",
       detail: "split in a follow-up",
     });
@@ -655,13 +712,15 @@ describe("reopening and continuing", () => {
       { role: "agent", at: "", body: "Renamed the local, not the field." },
     ]);
 
-    // The reviewer edits and saves the continued note: its provenance is not the page's to drop.
-    await session.save({
-      comments: [note("a|n30|n30|#9", "Rename this everywhere.")],
-    });
+    await expect(
+      session.save({
+        comments: [note("a|n30|n30|#9", "Rename this everywhere.")],
+      }),
+    ).rejects.toThrow("follow-up");
+    await session.reply("a|n30|n30|#9", "Rename this everywhere.");
     const after = await read(dir, session.file);
     expect(after.notes[0]).toMatchObject({
-      body: "Rename this everywhere.",
+      body: "Rename this.",
       from: "review-2026-01-01T00-00-00.md#a|n12|n12|#1",
     });
   });

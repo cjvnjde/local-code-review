@@ -19,6 +19,7 @@ import { webSelectionKey, type WebCapture } from "../shared/web-review.ts";
 import { createWebReview } from "../web-review/controller.ts";
 import { saveAttachment } from "../review/attach.ts";
 import type { WebAnnotation } from "../shared/web-annotation.ts";
+import type { ReviewNote } from "../review/thread.ts";
 import type {
   DiffFile,
   NoteStatus,
@@ -87,9 +88,16 @@ function webController(
     open: async () => {},
     review: async () => ({}),
     draft: () => undefined,
+    replyDraft: () => ({ reply: true, web: null }),
+    discardDraft: async () => ({}),
     removeSelection: async () => ({ web: null }),
     annotate: async () => ({ web: { before: webCapture, after: [] } }),
-    captureAfter: async () => ({ capture: webCapture, preview: "" }),
+    captureAfter: async () => ({
+      capture: webCapture,
+      web: { before: webCapture, after: [] },
+      draftId: "c57a083d-1559-4e06-9da8-a56d34788c63",
+      reply: true,
+    }),
     focus: async () => ({}),
     close: async () => {},
     ...overrides,
@@ -339,7 +347,12 @@ describe("combined Git and live-page routes", () => {
         },
         captureAfter: async () => {
           mutations++;
-          return { capture: webCapture, preview: "" };
+          return {
+            capture: webCapture,
+            web: { before: webCapture, after: [] },
+            draftId: token,
+            reply: true,
+          };
         },
       }),
     });
@@ -387,6 +400,117 @@ describe("combined Git and live-page routes", () => {
     );
   });
 
+  test("follow-up draft routes preserve original evidence and support independent removal and discard", async () => {
+    const token = "c57a083d-1559-4e06-9da8-a56d34788c63";
+    const web = { before: webCapture, after: [] };
+    let removed = false;
+    let discarded = false;
+    const started = await startTestServer({
+      web: webController({
+        draft: (id) => (id === token && !discarded ? web : undefined),
+        replyDraft: () => ({
+          web: removed ? null : web,
+          reply: true,
+          draftId: token,
+        }),
+        removeSelection: async (payload) => {
+          expect(payload).toEqual({
+            draftId: token,
+            index: 0,
+            key: webSelectionKey(webCapture),
+          });
+          removed = true;
+          return { web: null };
+        },
+        discardDraft: async (id) => {
+          expect(id).toBe(token);
+          discarded = true;
+          return {};
+        },
+      }),
+    });
+    const original: ReviewComment = {
+      ...comment,
+      id: "|@|@|#followup",
+      file: "",
+      scope: "global",
+      web,
+    };
+    await started.options.session.save({ comments: [original] });
+    const lookup = await request(
+      started,
+      "/api/web/draft?note=" + encodeURIComponent(original.id!),
+    );
+    expect(await lookup.json()).toEqual({ web, reply: true, draftId: token });
+    const remove = await request(started, "/api/web/selection", {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: started.base },
+      body: JSON.stringify({
+        draftId: token,
+        index: 0,
+        key: webSelectionKey(webCapture),
+      }),
+    });
+    expect(remove.status).toBe(200);
+    expect(await remove.json()).toEqual({ web: null });
+    expect((await started.options.session.read()).notes[0]!.web).toEqual(web);
+    const discard = await request(started, "/api/web/draft", {
+      method: "DELETE",
+      headers: { "content-type": "application/json", origin: started.base },
+      body: JSON.stringify({ draftId: token }),
+    });
+    expect(discard.status).toBe(200);
+    expect(discarded).toBe(true);
+    expect((await request(started, "/api/web/draft?id=" + token)).status).toBe(
+      404,
+    );
+    expect((await started.options.session.read()).notes[0]!.web).toEqual(web);
+  });
+
+  test("answered original evidence rejects annotation and selection mutations", async () => {
+    const started = await startTestServer();
+    const original: ReviewComment = {
+      ...comment,
+      id: "|@|@|#answered",
+      file: "",
+      scope: "global",
+      web: { before: webCapture, after: [] },
+    };
+    await started.options.session.save({ comments: [original] });
+    await started.options.session.answer(
+      started.options.session.file,
+      original.id!,
+      "Done.",
+      "applied",
+    );
+    for (const [route, body] of [
+      ["selection", { index: 0, key: webSelectionKey(webCapture) }],
+      [
+        "annotation",
+        {
+          target: {
+            kind: "selection",
+            index: 0,
+            key: webSelectionKey(webCapture),
+            expected: "",
+          },
+          annotation: null,
+        },
+      ],
+    ] as const) {
+      const response = await request(started, "/api/web/" + route, {
+        method: "POST",
+        headers: { "content-type": "application/json", origin: started.base },
+        body: JSON.stringify({ id: original.id, ...body }),
+      });
+      expect(response.status).toBe(409);
+      expect((await response.json()).error).toContain("follow-up");
+    }
+    expect((await started.options.session.read()).notes[0]!.web).toEqual(
+      original.web,
+    );
+  });
+
   test("saved selections can be removed without --web, with comparison ownership and stale-write protection", async () => {
     const started = await startTestServer();
     const second = { ...webCapture, page: "images/second.png" };
@@ -405,12 +529,6 @@ describe("combined Git and live-page routes", () => {
       },
     };
     await started.options.session.save({ comments: [visual, comment] });
-    await started.options.session.answer(
-      started.options.session.file,
-      visual.id!,
-      "Agent reply.",
-      "applied",
-    );
     const events: string[] = [],
       off = started.hub.add((event) => events.push(event));
     const remove = (index: number, key: string, id = visual.id!) =>
@@ -445,6 +563,12 @@ describe("combined Git and live-page routes", () => {
       }),
     });
     expect(save.status).toBe(200);
+    await started.options.session.answer(
+      started.options.session.file,
+      visual.id!,
+      "Agent reply.",
+      "applied",
+    );
     const restart = createSession(started.options.repoRoot, ".review", "HEAD");
     await restart.adoptMatching();
     const note = (await restart.read()).notes.find(
@@ -480,12 +604,6 @@ describe("combined Git and live-page routes", () => {
       web: { before: webCapture, after: [after], additional: [second] },
     };
     await started.options.session.save({ comments: [visual, comment] });
-    await started.options.session.answer(
-      started.options.session.file,
-      visual.id!,
-      "Agent conversation.",
-      "applied",
-    );
     const png = Buffer.from(
       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=",
       "base64",
@@ -582,6 +700,15 @@ describe("combined Git and live-page routes", () => {
     expect(
       (await annotate({ ...subject, expected: annotation.image }, null)).status,
     ).toBe(200);
+    await started.options.session.answer(
+      started.options.session.file,
+      visual.id!,
+      "Agent conversation.",
+      "applied",
+    );
+    expect(
+      (await annotate({ ...subject, expected: "" }, annotation)).status,
+    ).toBe(409);
     const restart = createSession(started.options.repoRoot, ".review", "HEAD");
     await restart.adoptMatching();
     const notes = (await restart.read()).notes,
@@ -1408,6 +1535,49 @@ describe("attachment APIs", () => {
 });
 
 describe("review conversation APIs", () => {
+  test("save-only notes and replies persist without starting ACP, then explicit ask submits the saved conversation", async () => {
+    const started = await startTestServer();
+    const dispatched: ReviewNote[][] = [];
+    started.options.agent = {
+      agent: "External ACP agent",
+      publish: (_review, notes) => {
+        dispatched.push(notes);
+        return { state: "queued", count: notes.length };
+      },
+    };
+    const post = async (route: string, payload: object) => {
+      const response = await request(started, route, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      expect(response.status).toBe(200);
+      return response.json();
+    };
+    const saved = await post("/api/note", { comment, ask: false });
+    expect(saved.delivery).toBeUndefined();
+    const reply = await post("/api/reply", {
+      id: comment.id,
+      body: "Keep this follow-up without running the agent.",
+      ask: false,
+    });
+    expect(reply.delivery).toBeUndefined();
+    expect(dispatched).toEqual([]);
+    const persisted = await started.options.session.readNote(
+      started.options.session.file,
+      comment.id!,
+    );
+    expect(persisted?.body).toBe(comment.body);
+    expect(persisted?.messages.at(-1)?.body).toBe(
+      "Keep this follow-up without running the agent.",
+    );
+    await post("/api/note", { comment, retry: true, ask: true });
+    expect(dispatched).toHaveLength(1);
+    expect(dispatched[0]![0]!.messages.at(-1)?.body).toBe(
+      "Keep this follow-up without running the agent.",
+    );
+  });
+
   test("one note is persisted and queued immediately, without submitting other notes or clicking the footer", async () => {
     const started = await startTestServer();
     const queued: string[][] = [];
@@ -1849,6 +2019,12 @@ describe("live UI browser API", () => {
       },
       captureAfter: async (id: string) => {
         captured = id;
+        return {
+          capture: webCapture,
+          web: { before: webCapture, after: [] },
+          draftId: "c57a083d-1559-4e06-9da8-a56d34788c63",
+          reply: true,
+        };
       },
       focus: async () => {},
       close: async () => {},

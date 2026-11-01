@@ -12,6 +12,7 @@ import {
   WebAnnotationInvalid,
   WebSelectionConflict,
   webCapture,
+  type WebCapture,
   type WebAnnotationTarget,
   type WebReview,
 } from "../shared/web-review.ts";
@@ -50,6 +51,34 @@ export function createWebReview(options: WebReviewOptions) {
   const key = "__lcr_" + crypto.randomUUID().replaceAll("-", ""),
     binding = key + "_send";
   const drafts = new Map<string, WebReview | null>();
+  const replyDrafts = new Map<string, string>();
+  const draftOwners = new Map<string, string>();
+  function discardDraft(id: string) {
+    const owner = draftOwners.get(id);
+    if (owner) replyDrafts.delete(owner);
+    draftOwners.delete(id);
+    return drafts.delete(id);
+  }
+  function createDraft(web: WebReview) {
+    if (drafts.size >= 30) discardDraft(drafts.keys().next().value!);
+    const draftId = crypto.randomUUID();
+    drafts.set(draftId, web);
+    return draftId;
+  }
+  function appendReplyCapture(id: string, capture: WebCapture) {
+    let draftId = replyDrafts.get(id);
+    const current = draftId ? drafts.get(draftId) : null;
+    if (current && (current.additional?.length ?? 0) >= 100)
+      throw new Error("This follow-up already has 100 additional selections.");
+    const web: WebReview = current ?? { before: capture, after: [] };
+    if (current) (web.additional ??= []).push(capture);
+    if (!draftId) {
+      draftId = createDraft(web);
+      replyDrafts.set(id, draftId);
+      draftOwners.set(draftId, id);
+    } else drafts.set(draftId, web);
+    return { web: structuredClone(web), draftId, reply: true };
+  }
   let listeners: (() => void)[] = [];
   const unbind = () => {
     for (const off of listeners) off();
@@ -384,31 +413,41 @@ export function createWebReview(options: WebReviewOptions) {
           ...result,
           web: structuredClone(web),
           draftId: payload.draftId,
+          ...(draftOwners.has(payload.draftId) ? { reply: true } : {}),
         };
       }
       if (hasNote) {
-        const note = await options.session.addWebSelection(
-          payload.id,
-          result.capture,
-        );
-        if (!note?.web)
-          throw new Error(
-            "That note was deleted before the selection was saved.",
+        if (payload.editOriginal !== true)
+          return {
+            ...result,
+            ...appendReplyCapture(payload.id, result.capture),
+          };
+        try {
+          const note = await options.session.addWebSelection(
+            payload.id,
+            result.capture,
           );
-        options.hub.emit({ type: "review", file: options.session.file });
-        return { ...result, web: note.web };
+          if (!note?.web)
+            throw new Error(
+              "That note was deleted before the selection was saved.",
+            );
+          options.hub.emit({ type: "review", file: options.session.file });
+          return { ...result, web: note.web };
+        } catch (error) {
+          // An answer arriving during an explicit edit closes that original's evidence.
+          if (!(error instanceof WebSelectionConflict)) throw error;
+          return {
+            ...result,
+            ...appendReplyCapture(payload.id, result.capture),
+          };
+        }
       }
-      if (drafts.size >= 30) drafts.delete(drafts.keys().next().value!);
-      const draftId = crypto.randomUUID(),
-        web: WebReview = { before: result.capture, after: [] };
-      drafts.set(draftId, web);
+      const web: WebReview = { before: result.capture, after: [] };
+      const draftId = createDraft(web);
       return { ...result, web: structuredClone(web), draftId };
     }
     if (name === "discard") {
-      if (
-        typeof payload.draftId !== "string" ||
-        !drafts.delete(payload.draftId)
-      )
+      if (typeof payload.draftId !== "string" || !discardDraft(payload.draftId))
         throw new Error("That captured selection no longer exists.");
       return {};
     }
@@ -420,12 +459,7 @@ export function createWebReview(options: WebReviewOptions) {
       await open(); // A background page can suspend the animation frame that locates its capture.
       const metadata = await api("prepare", note.web.before);
       const result = await screenshot(metadata);
-      if (!(await options.session.addWebCapture(note.id, result.capture)))
-        throw new Error(
-          "That note was deleted before the comparison was saved.",
-        );
-      options.hub.emit({ type: "review", file: options.session.file });
-      return result;
+      return { ...result, ...appendReplyCapture(note.id, result.capture) };
     }
     if (name === "review") return review(payload.id);
     throw new Error("Unknown web review action.");
@@ -629,6 +663,20 @@ export function createWebReview(options: WebReviewOptions) {
       const web = drafts.get(id);
       return web === undefined ? undefined : structuredClone(web);
     },
+    replyDraft(id: string) {
+      const draftId = replyDrafts.get(id);
+      return {
+        reply: true,
+        ...(draftId ? { draftId } : {}),
+        web: draftId ? structuredClone(drafts.get(draftId) ?? null) : null,
+      };
+    },
+    discardDraft(id: string) {
+      const work = () => action("discard", { draftId: id });
+      const next = queue.then(work, work);
+      queue = next.catch(() => {});
+      return next;
+    },
     removeSelection(payload: {
       draftId?: string;
       id?: string;
@@ -652,7 +700,12 @@ export function createWebReview(options: WebReviewOptions) {
       queue = next.catch(() => {});
       return next;
     },
-    async captureAfter(id: string) {
+    async captureAfter(id: string): Promise<{
+      capture: WebCapture;
+      web: WebReview;
+      draftId: string;
+      reply: true;
+    }> {
       const work = () => action("after", { id });
       const next = queue.then(work, work);
       queue = next.catch(() => {});

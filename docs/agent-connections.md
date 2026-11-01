@@ -2,8 +2,8 @@
 
 `lcr --acp <config.json>` runs an externally installed, authenticated ACP agent or adapter as a
 subprocess. lcr owns a persistent FIFO queue and waits for each prompt turn to finish before starting
-another. Saving a note starts its work immediately; later comments wait instead of steering or
-interrupting that turn. Without a configured agent, manual Markdown review still works.
+another. **Save & ask AI** starts the saved note's work immediately; later requests wait instead of
+steering or interrupting that turn. **Save note** persists without dispatch. Without a configured agent, manual Markdown review still works.
 `--no-agent` always offers a manual run.
 
 ## Configure and select an agent
@@ -70,9 +70,12 @@ remain available to bypass a broken default. `--help` and `--version` never read
 
 - **Save & ask AI** saves only that note and durably accepts its task before dispatch. A configured
   managed queue accepts work while paused or disconnected, so an unavailable agent does not lose it.
-- New notes run FIFO. Rewording a queued note updates its pending task without moving it. An edit or
-  reviewer follow-up to running work becomes subsequent work. Reviewer reply withdrawal revises pending
-  work without starting a new task. An unchanged save does not repeat a completed task.
+- **Save note** and **Save reply** write to the conversation without queueing work. The separate
+  **Save & ask AI** action is available in note editors and the always-open reply input, not duplicated
+  in note headers. With no reply text, it asks about the existing saved conversation.
+- New requests run FIFO. Rewording a queued, unanswered note updates its pending task without moving it.
+  An edit or reviewer follow-up to running work becomes subsequent work. An unchanged save does not repeat
+  a completed task. Once an agent has answered, the original stays read-only; follow-ups are new messages.
 - Each task records an id, exact absolute review filename, stable note id, submitted reviewer revision,
   submitted content, target configuration, session key/id, and execution state. At execution lcr reads
   the current thread but keeps the accepted reviewer revision. Later edits are never represented as
@@ -84,6 +87,9 @@ remain available to bypass a broken default. `--help` and `--version` never read
   note ids. Note badges show execution state separately from Markdown verdicts. **Pause queue** lets
   the current turn finish and prevents the next turn. **Cancel** cancels pending work or requests an
   active stop, retaining the execution slot until ACP confirms the turn has stopped.
+  The agent indicator, Queue control, and active note show a working spinner while a turn is running.
+  Approval waits, queued work, uncertain execution, and completed turns have distinct labels; disconnected
+  execution is not presented as confirmed activity. Empty reply inputs do not delay arriving answers.
 - Permission requests show the agent's tool details and exact choices in **Queue**. Only an explicit
   reviewer choice is sent back. Cancellation answers outstanding permission requests as cancelled.
   lcr neither implements unadvertised filesystem/terminal RPCs nor escalates an agent's permissions.

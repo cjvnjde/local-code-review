@@ -5,10 +5,13 @@ import {
   wireComposer,
 } from "../components/composer.ts";
 import { busyEditor } from "./notes.ts";
-import { save } from "../app/persistence.ts";
+import { save, submitNote } from "../app/persistence.ts";
 import { rememberPage } from "../history/history.ts";
-import { SVG, esc, markRead, msgsOf, state } from "../app/state.ts";
+import { esc, markRead, msgsOf, state } from "../app/state.ts";
 import { capturedLines } from "./suggest.ts";
+import { webReviewLines, type WebReview } from "../../../shared/web-review.ts";
+import { webCaptureHtml } from "../web-review/web-capture.ts";
+import { adoptAgent } from "../app/agent.ts";
 
 /* ---------- threads ---------- */
 /**
@@ -48,7 +51,10 @@ export function renderThread(host: any, note: any, done: () => void) {
   host.textContent = "";
   msgs.forEach((m: any, k: number) => {
     const agent = m.role === "agent";
-    const mine = !agent && !!m.at; // yours to change, and named by a stamp that says which one it is
+    const mine =
+      !agent &&
+      !!m.at &&
+      !msgs.slice(k + 1).some((next: any) => next.role === "agent");
     const box = document.createElement("div");
     box.className = "msg " + (agent ? "a" : "r") + (k >= read ? " fresh" : "");
     const head = document.createElement("div");
@@ -173,20 +179,6 @@ async function dropMessage(note: any, m: any, done: () => void) {
   done();
 }
 
-/** The reply box standing open anywhere on the page, if there is one. */
-const openReply = () => document.querySelector(".reply textarea");
-/**
- * An untouched reply box is disposable, exactly as an untouched note draft is: it must not be what
- * stops the next note from being written.
- */
-export function dropEmptyReply() {
-  const ta: any = openReply();
-  if (!ta || ta.value.trim()) return;
-  const box = ta.closest(".reply");
-  box.replaceWith(
-    replyButton(ta.dataset.nid || "", (box as any).__done || (() => {})),
-  );
-}
 /**
  * The same for a message opened for rewriting: one still holding exactly what it was opened with has
  * said nothing yet, so it steps aside rather than keeping the floor. A box is drawn from the note it
@@ -200,18 +192,34 @@ export function dropCleanEdit() {
   form.__shut?.();
 }
 
-function replyButton(id: string, done: () => void) {
-  const wrap: any = document.createElement("div");
-  wrap.className = "reply shut";
-  const button = document.createElement("button");
-  button.className = "rbtn";
-  button.innerHTML = SVG.plus + " Reply";
-  button.title = "Answer the agent in this note’s thread";
-  button.onclick = () => startReply(wrap, id, done);
-  wrap.append(button);
-  return wrap;
+/** New observations belong to the next message, never to the submitted note above it. */
+export function setReplyEvidence(
+  box: HTMLElement,
+  web: WebReview | null,
+  draftId?: string,
+) {
+  const reply: any = box.querySelector(".reply");
+  if (!reply) return;
+  reply.__web = web;
+  reply.dataset.draftId = draftId || "";
+  reply.toggleAttribute("data-evidence", !!web);
+  let preview = reply.querySelector("[data-reply-evidence]");
+  if (!preview) {
+    preview = document.createElement("div");
+    preview.dataset.replyEvidence = "";
+    reply.prepend(preview);
+  }
+  preview.innerHTML = webCaptureHtml(web, true);
+  reply.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
+export function appendReplyText(box: HTMLElement, body: string) {
+  const ta = box.querySelector<HTMLTextAreaElement>(".reply textarea");
+  if (!ta) return;
+  ta.value = [ta.value.trimEnd(), body].filter(Boolean).join("\n\n");
+  ta.dispatchEvent(new Event("input", { bubbles: true }));
+  ta.focus();
+}
 /** Mounts the reply affordance for a note that the agent can actually see: one that was handed over. */
 export function mountReply(host: any, note: any, done: () => void) {
   host.textContent = "";
@@ -222,7 +230,9 @@ export function mountReply(host: any, note: any, done: () => void) {
     host.append(hint);
     return;
   }
-  host.append(replyButton(note.id, done));
+  const placeholder = document.createElement("div");
+  host.append(placeholder);
+  startReply(placeholder, note.id, done);
 }
 
 function startReply(wrap: any, id: string, done: () => void) {
@@ -230,54 +240,100 @@ function startReply(wrap: any, id: string, done: () => void) {
   box.className = "reply";
   box.__done = done;
   box.innerHTML =
-    '<textarea placeholder="Reply to the agent"></textarea>' +
-    '<div class="acts"><button class="primary">Send reply</button><button class="cancel">Cancel</button>' +
+    '<textarea aria-label="Reply to the agent" placeholder="Reply to the agent"></textarea>' +
+    '<div class="acts"><button data-reply-save>Save reply</button>' +
+    '<button class="primary" data-ask-note' +
+    (state.agent ? "" : " hidden") +
+    ">Save &amp; ask AI</button>" +
     composerTools(id) +
-    composerHint("send") +
+    composerHint("save") +
     "</div>";
   const ta: any = box.querySelector("textarea");
   ta.dataset.nid = id;
   wrap.replaceWith(box);
-  wireComposer(box, ta, id, { save: () => send(), cancel: () => shut() });
-  const shut = () => box.replaceWith(replyButton(id, done));
+  wireComposer(box, ta, id, {
+    save: () => send(false),
+    cancel: () => shut(),
+    focus: false,
+  });
+  const shut = () => {
+    ta.value = "";
+    ta.dispatchEvent(new Event("input", { bubbles: true }));
+  };
   // The button disables itself, but enter still reaches the textarea mid-flight: one send at a time,
   // or a quick double enter would append the same message to the review file twice.
   let sending = false;
-  const send = async () => {
-    if (sending) return;
-    const body = ta.value.trim();
+  const send = async (ask = false) => {
+    if (sending || box.closest(".nbox")?.hasAttribute("data-web-busy")) return;
+    const body = [
+      ta.value.trim(),
+      box.__web ? webReviewLines(box.__web).slice(2).join("\n") : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
     if (!body) {
-      shut();
+      if (!ask) return;
+      const note = state.notes.get(id);
+      if (!note) return;
+      sending = true;
+      box.dataset.sending = "";
+      try {
+        const data = await submitNote(note, true, true);
+        state.noteDelivery.set(id, data?.delivery || { state: "saved" });
+      } catch (error) {
+        alert(
+          "Could not ask the agent: " +
+            (error instanceof Error ? error.message : String(error)),
+        );
+      } finally {
+        sending = false;
+        delete box.dataset.sending;
+        done();
+      }
       return;
     }
     sending = true;
-    const button: any = box.querySelector(".primary");
-    button.disabled = true;
-    button.textContent = "Sending…";
+    box.dataset.sending = "";
+    ta.disabled = true;
+    const buttons = [...box.querySelectorAll("button")];
+    buttons.forEach((button: any) => (button.disabled = true));
     const ok = await tell(
       id,
       "/api/reply",
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id, body }),
+        body: JSON.stringify({ id, body, ask }),
       },
       "send the reply",
     );
     if (!ok) {
       sending = false;
-      button.disabled = false;
-      button.textContent = "Send reply";
+      delete box.dataset.sending;
+      ta.disabled = false;
+      buttons.forEach((button: any) => (button.disabled = false));
       return;
     }
-    // The editor comes down first. Redrawing a note is refused while one of its boxes is being typed
-    // into — that is what keeps a live update from eating a half-written reply — so a box still
-    // standing here would refuse the very redraw that is meant to replace it.
+    // Keep the capture gesture blocked until the consumed draft is gone.
+    const draftId = box.dataset.draftId;
+    if (draftId) {
+      await fetch("/api/web/draft", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ draftId }),
+      }).catch(() => {});
+    }
+    sending = false;
+    delete box.dataset.sending;
+    ta.disabled = false;
+    buttons.forEach((button: any) => (button.disabled = false));
+    setReplyEvidence(box.closest(".nbox"), null);
     shut();
     done();
+    document.dispatchEvent(new CustomEvent("lcr:reply-sent", { detail: id }));
   };
-  box.querySelector(".primary").onclick = send;
-  box.querySelector(".cancel").onclick = shut;
+  box.querySelector("[data-reply-save]").onclick = () => send(false);
+  box.querySelector("[data-ask-note]").onclick = () => send(true);
 }
 
 /**
@@ -292,6 +348,7 @@ async function tell(id: string, url: string, init: any, what: string) {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || response.status);
     setThread(id, data.note && data.note.messages);
+    adoptAgent(data);
     const note = state.notes.get(id);
     if (note) markRead(note); // your own message is not news to you
     save();

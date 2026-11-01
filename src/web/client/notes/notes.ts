@@ -10,10 +10,15 @@ import { placeOf } from "../diff/anchor.ts";
 import { imageRegion, regionLabel } from "../../../shared/image-region.ts";
 import { imageCaptureHtml } from "../diff/image-capture.ts";
 import { paintImageNotes } from "../diff/image-comments.ts";
-import { managedNoteTask, noteSaveLabel } from "../app/agent.ts";
+import {
+  managedNoteTask,
+  noteSaveLabel,
+  queueTaskStatusHtml,
+} from "../app/agent.ts";
 import { openHistory } from "../history/history-ui.ts";
 import { renderBody } from "../components/body.ts";
 import {
+  activeEditor,
   composerHint,
   composerTools,
   wireComposer,
@@ -43,6 +48,7 @@ import {
   rowKey,
   state,
   statusOf,
+  msgsOf,
   unreadOf,
   noteVisible,
   canResolve,
@@ -56,8 +62,9 @@ import {
 } from "./suggest.ts";
 import {
   dropCleanEdit,
-  dropEmptyReply,
   mountReply,
+  appendReplyText,
+  setReplyEvidence,
   renderThread,
 } from "./thread.ts";
 import { renderTree } from "../navigation/tree.ts";
@@ -165,9 +172,8 @@ export function busyEditor() {
     return true;
   }
   dropEmptyDraft();
-  dropEmptyReply();
   dropCleanEdit();
-  const ta: any = document.querySelector(".nbox textarea");
+  const ta: any = activeEditor();
   if (!ta || !ta.isConnected) return false;
   const box = ta.closest(".nbox");
   if (box) {
@@ -431,15 +437,21 @@ function refreshWebControls(box: HTMLElement) {
     webCapturing.has(box) ||
     webRemoving.has(id) ||
     webAnnotating.has(id) ||
-    state.noteSending.has(id);
+    state.noteSending.has(id) ||
+    !!box.querySelector(".reply[data-sending]");
+  box.toggleAttribute("data-web-busy", busy);
   box
     .querySelectorAll<HTMLButtonElement>(
-      "[data-save-note],[data-web-remove],[data-web-annotate],.ask",
+      "[data-save-note],[data-reply-save],[data-ask-note],[data-web-remove],[data-web-annotate]",
     )
     .forEach((button) => {
       button.disabled = busy;
     });
   let error = box.querySelector<HTMLElement>("[data-web-error]");
+  if (state.notes.get(id)?.sentAt && !box.querySelector(".nedit"))
+    box
+      .querySelectorAll("[data-web-evidence] [data-web-remove]")
+      .forEach((button) => button.remove());
   const message = webRemovalErrors.get(id);
   if (message && !error) {
     error = document.createElement("p");
@@ -473,7 +485,17 @@ export function updateWebNoteEvidence(
   host: ParentNode,
   id: string,
   web: WebReview | null,
+  options?: { reply?: boolean; draftId?: string },
 ) {
+  if (options?.reply) {
+    host.querySelectorAll<HTMLElement>(".nrow").forEach((row) => {
+      if (row.dataset.nid === id) {
+        const box = row.querySelector<HTMLElement>(".nbox");
+        if (box) setReplyEvidence(box, web, options.draftId);
+      }
+    });
+    return;
+  }
   const note = state.notes.get(id);
   if (note) note.web = web;
   host.querySelectorAll<HTMLElement>(".nrow").forEach((row) => {
@@ -541,7 +563,8 @@ async function annotateWebCapture(box: HTMLElement, button: HTMLButtonElement) {
   )
     return;
   const ctx = noteContexts.get(box),
-    web = webReview(ctx?.web ?? state.notes.get(id)?.web);
+    reply: any = button.closest(".reply"),
+    web = webReview(reply?.__web ?? ctx?.web ?? state.notes.get(id)?.web);
   if (!web) return;
   const index = Number(button.dataset.webAnnotate),
     kind = button.dataset.webKind;
@@ -577,9 +600,24 @@ async function annotateWebCapture(box: HTMLElement, button: HTMLButtonElement) {
   document.querySelectorAll<HTMLElement>(".nbox").forEach(refreshWebControls);
   try {
     await openAnnotation(capture, async (annotation) => {
-      const draftId = state.uiEmbed
-        ? new URLSearchParams(location.search).get("ui-draft")
-        : null;
+      const note = state.notes.get(id);
+      if (note?.sentAt && !reply && !box.querySelector(".nedit")) {
+        if (annotation)
+          appendReplyText(
+            box,
+            "Annotated proposal for the original selected area:\n\n![Original selected area](" +
+              capture.area +
+              ")\n\n![Annotated proposal](" +
+              annotation.image +
+              ")",
+          );
+        return;
+      }
+      const draftId =
+        reply?.dataset.draftId ||
+        (state.uiEmbed
+          ? new URLSearchParams(location.search).get("ui-draft")
+          : null);
       const response = await fetch("/api/web/annotation", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -595,7 +633,12 @@ async function annotateWebCapture(box: HTMLElement, button: HTMLButtonElement) {
       const next = webReview(result.web);
       if (!next)
         throw new Error("The server returned invalid drawing evidence.");
-      updateWebNoteEvidence(document, id, next);
+      updateWebNoteEvidence(
+        document,
+        id,
+        next,
+        reply ? { reply: true, draftId } : undefined,
+      );
       save();
     });
   } catch (error) {
@@ -643,13 +686,15 @@ function wireWebRemoval(box: HTMLElement) {
     const index = Number(button.dataset.webRemove),
       key = button.dataset.webKey;
     if (key === undefined) return;
+    const reply = button.closest<HTMLElement>(".reply");
+    const draftId = reply?.dataset.draftId;
     webRemovalErrors.delete(id);
     if (state.uiEmbed) {
       setWebNoteCapturing(box.parentElement!, true);
       box.dispatchEvent(
         new CustomEvent("lcr:web-remove", {
           bubbles: true,
-          detail: { index, key },
+          detail: { index, key, ...(draftId ? { draftId } : {}) },
         }),
       );
       return;
@@ -660,7 +705,11 @@ function wireWebRemoval(box: HTMLElement) {
       const response = await fetch("/api/web/selection", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id, index, key }),
+        body: JSON.stringify({
+          ...(draftId ? { draftId } : { id }),
+          index,
+          key,
+        }),
       });
       const result = await response.json();
       if (!response.ok)
@@ -668,7 +717,12 @@ function wireWebRemoval(box: HTMLElement) {
       const web = result.web === null ? null : webReview(result.web);
       if (result.web !== null && !web)
         throw new Error("The server returned invalid selection evidence.");
-      updateWebNoteEvidence(document, id, web);
+      updateWebNoteEvidence(
+        document,
+        id,
+        web,
+        reply ? { reply: true, draftId } : undefined,
+      );
       save();
     } catch (error) {
       webRemovalErrors.set(
@@ -787,11 +841,13 @@ function editUI(box, ctx) {
               ? "What should change in this part of the line?"
               : "What should change here?") +
     '"></textarea>' +
-    '<div class="acts"><button class="primary" data-save-note' +
+    '<div class="acts"><button data-save-note' +
     (webCapturing.has(box) ? " disabled" : "") +
     ">" +
     esc(noteSaveLabel()) +
-    "</button>" +
+    '</button><button class="primary" data-ask-note' +
+    (state.agent ? "" : " hidden") +
+    ">Save &amp; ask AI</button>" +
     (state.uiEmbed && !state.notes.has(id)
       ? ""
       : '<button class="cancel">Cancel</button>') +
@@ -847,7 +903,7 @@ function editUI(box, ctx) {
       ta.focus();
       ta.setSelectionRange(to, to);
     };
-  const commit = () => {
+  const commit = (ask = false) => {
     if (
       webCapturing.has(box) ||
       webRemoving.has(id) ||
@@ -903,8 +959,6 @@ function editUI(box, ctx) {
     }
     if (ctx.image) note.image = { ...ctx.image };
     if (ctx.web) note.web = ctx.web;
-    // Start this note's write now; another browser-only note must not be submitted with it.
-    const ask = !!state.agent;
     // Editing a note that is already in the review file leaves it in the same conversation.
     if (kept && kept.sentAt) note.sentAt = kept.sentAt;
     state.notes.set(id, note);
@@ -948,7 +1002,7 @@ function editUI(box, ctx) {
     renderTree();
     updateCount();
     paintImageNotes();
-    if (ask || state.uiEmbed) void sendNote(note);
+    void sendNote(note, false, ask);
   };
   const drop = () => {
     // Emptying a saved note is deleting it, and deleting is what takes it out of the review file
@@ -965,7 +1019,8 @@ function editUI(box, ctx) {
     syncGlobals();
     ctx.onCancel?.();
   };
-  box.querySelector(".primary").onclick = commit;
+  box.querySelector("[data-save-note]").onclick = () => commit(false);
+  box.querySelector("[data-ask-note]").onclick = () => commit(true);
   const del = box.querySelector(".del");
   if (del) del.onclick = drop;
   const cancel = () => {
@@ -983,10 +1038,13 @@ function editUI(box, ctx) {
 }
 
 /** Keep the editor's save gesture local to this note, and repaint only its existing copies. */
-async function sendNote(note: any, retry = false) {
-  state.noteDelivery.set(note.id, { state: "sending", agent: state.agent });
-  const agent = state.agent;
-  const sending = submitNote(note, retry);
+async function sendNote(note: any, retry = false, ask = true) {
+  state.noteDelivery.set(note.id, {
+    state: "sending",
+    agent: ask ? state.agent : "",
+  });
+  const agent = ask ? state.agent : "";
+  const sending = submitNote(note, retry, ask);
   repaintNote(note.id);
   updateCount();
   try {
@@ -1024,17 +1082,7 @@ async function sendNote(note: any, retry = false) {
 
 function deliveryHtml(note: any) {
   const task = managedNoteTask(note.id);
-  if (task)
-    return (
-      '<span class="stat" title="' +
-      esc(
-        task.detail ||
-          "Managed execution state, separate from the note verdict",
-      ) +
-      '">' +
-      esc(task.state) +
-      "</span>"
-    );
+  if (task) return queueTaskStatusHtml(task);
   const delivery = state.noteDelivery.get(note.id);
   if (!delivery) return "";
   const label = state.noteSending.has(note.id)
@@ -1124,6 +1172,13 @@ function capturedHtml(note: any, how: string) {
     "</div></div>"
   );
 }
+function canEditNote(note: any) {
+  return (
+    !msgsOf(note).some((message: any) => message.role === "agent") &&
+    !["answered", "applied", "skipped"].includes(statusOf(note)?.status)
+  );
+}
+
 export function viewUI(box, note, ctx) {
   noteContexts.set(box, ctx);
   const st = statusOf(note);
@@ -1158,17 +1213,6 @@ export function viewUI(box, note, ctx) {
             (ctx.scope === "global" ? "show" : "in diff") +
             "</button>"
           : "") +
-        (state.agent || state.noteDelivery.get(note.id)?.error
-          ? '<button class="ask"' +
-            (state.noteSending.has(note.id) ? " disabled" : "") +
-            ">" +
-            (state.noteDelivery.get(note.id)?.error
-              ? state.agent
-                ? "Retry AI"
-                : "Retry save"
-              : "Ask AI") +
-            "</button>"
-          : "") +
         (isResolved(note) || canResolve(note)
           ? '<button class="resolve" data-resolve="' +
             esc(note.id) +
@@ -1190,7 +1234,8 @@ export function viewUI(box, note, ctx) {
             '">Capture after</button>'
           : "") +
         '<button class="history" title="See earlier versions of this note">History</button>' +
-        '<button class="edit">Edit</button><button class="danger del">Delete</button>',
+        (canEditNote(note) ? '<button class="edit">Edit</button>' : "") +
+        (!canResolve(note) ? '<button class="danger del">Delete</button>' : ""),
       ctx.scope,
       note.image,
       note.web,
@@ -1220,11 +1265,6 @@ export function viewUI(box, note, ctx) {
       st.status.replace("-", " ") + " — " + st.detail;
   renderThread(box.querySelector(".thread"), note, () => repaintNote(note.id));
   mountReply(box.querySelector(".replyhost"), note, () => repaintNote(note.id));
-  const ask = box.querySelector(".ask");
-  if (ask)
-    ask.onclick = () => {
-      void sendNote(state.notes.get(note.id) || note, true);
-    };
   box.querySelector(".history").onclick = () => openHistory(note.id);
   box.querySelector(".copyref").onclick = (e: any) =>
     copyText(e.currentTarget, refToken(note));
@@ -1249,26 +1289,29 @@ export function viewUI(box, note, ctx) {
         .forEach((m: any) => m.classList.remove("fresh"));
     });
   }
-  box.querySelector(".edit").onclick = () => {
-    if (busyEditor()) return;
-    if (lost) {
-      alert(
-        "This note has no lines to edit against any more. Reply to it instead, or delete it.",
+  const edit = box.querySelector(".edit");
+  if (edit)
+    edit.onclick = () => {
+      if (busyEditor()) return;
+      if (lost) {
+        alert(
+          "This note has no lines to edit against any more. Reply to it instead, or delete it.",
+        );
+        return;
+      }
+      const current = state.notes.get(note.id) || note;
+      editUI(
+        box,
+        Object.assign({}, ctx, {
+          id: current.id,
+          body: current.body,
+          image: current.image,
+          web: current.web,
+        }),
       );
-      return;
-    }
-    const current = state.notes.get(note.id) || note;
-    editUI(
-      box,
-      Object.assign({}, ctx, {
-        id: current.id,
-        body: current.body,
-        image: current.image,
-        web: current.web,
-      }),
-    );
-  };
-  box.querySelector(".del").onclick = () => removeNote(box, note, ctx);
+    };
+  const del = box.querySelector(".del");
+  if (del) del.onclick = () => removeNote(box, note, ctx);
   wireWebRemoval(box);
 }
 /** Deleting a note that was handed over takes it out of the review file too, thread and all. */
@@ -1434,7 +1477,23 @@ export function repaintNote(id: string, skip?: any) {
     if (row.dataset.nid !== id) return;
     const box = row.querySelector(".nbox");
     if (!box || box === skip) return;
-    if (box.querySelector("textarea")) {
+    const reply: any = box.querySelector(".reply");
+    if (reply && activeEditor(reply.closest(".nbox"))?.closest(".reply")) {
+      const focused = reply.contains(document.activeElement)
+        ? (document.activeElement as HTMLTextAreaElement)
+        : null;
+      const from = focused?.selectionStart,
+        to = focused?.selectionEnd;
+      reply.remove();
+      viewUI(box, n, ctx);
+      box.querySelector(".reply")?.replaceWith(reply);
+      if (focused) {
+        focused.focus({ preventScroll: true });
+        focused.setSelectionRange(from, to);
+      }
+      return;
+    }
+    if (activeEditor(box)) {
       const editing = noteContexts.get(box);
       if (editing && (editing.web ?? null) !== (n.web ?? null))
         updateWebNoteEvidence(row.parentElement, id, n.web ?? null);

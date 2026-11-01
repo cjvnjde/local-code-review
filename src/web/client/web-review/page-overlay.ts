@@ -42,7 +42,10 @@ export function installPageReview(config: {
   let frameKind: "draft" | "note" | "" = "",
     pendingWeb: any = undefined,
     minimized = false,
-    frameSaving = false;
+    frameSaving = false,
+    frameEditingOriginal = false,
+    replyDraftId = "",
+    pendingReply = false;
   let dockPosition = { x: innerWidth - 578, y: 18 },
     dockPress: {
       id: number;
@@ -276,6 +279,9 @@ export function installPageReview(config: {
     pendingWeb = undefined;
     frameDirty = false;
     frameSaving = false;
+    frameEditingOriginal = false;
+    replyDraftId = "";
+    pendingReply = false;
     resizePress = null;
     annotationOpen = false;
     dock.classList.remove("annotating");
@@ -676,6 +682,9 @@ export function installPageReview(config: {
     pendingWeb = undefined;
     frameDirty = false;
     frameSaving = false;
+    frameEditingOriginal = false;
+    replyDraftId = "";
+    pendingReply = false;
     const status = document.createElement("p");
     status.className = "status";
     status.textContent = "Loading review editor…";
@@ -704,19 +713,32 @@ export function installPageReview(config: {
     };
     content.append(editor);
   }
-  function showEvidence(web: any) {
+  function showEvidence(
+    web: typeof pendingWeb,
+    result: { reply?: boolean; draftId?: string } = {},
+  ) {
     pendingWeb = web;
-    tellFrame("evidence", { web });
+    pendingReply = result.reply === true;
+    if (pendingReply && typeof result.draftId === "string")
+      replyDraftId = result.draftId;
+    tellFrame("evidence", {
+      web,
+      ...(pendingReply ? { reply: true, draftId: replyDraftId } : {}),
+    });
     const count = web ? 1 + (web.additional?.length || 0) : 0;
     $(".head b").textContent =
-      (frameKind === "draft" ? "New note" : "Note") +
+      (pendingReply
+        ? "Follow-up"
+        : frameKind === "draft"
+          ? "New note"
+          : "Note") +
       " · " +
       count +
       " selection" +
       (count === 1 ? "" : "s");
     void refresh().catch(() => {});
   }
-  async function removeSelection(index: number, key: string) {
+  async function removeSelection(index: number, key: string, draftId?: string) {
     if (!frame || !activeToken) return;
     if (busy || frameSaving) {
       tellFrame("evidence", {
@@ -732,11 +754,14 @@ export function installPageReview(config: {
       const result = await rpc("remove-selection", {
         index,
         key,
-        ...(frameKind === "draft"
-          ? { draftId: activeToken }
-          : { id: activeToken }),
+        ...(draftId
+          ? { draftId }
+          : frameKind === "draft"
+            ? { draftId: activeToken }
+            : { id: activeToken }),
       });
-      if (generation === panelGeneration) showEvidence(result.web);
+      if (generation === panelGeneration)
+        showEvidence(result.web, draftId ? { reply: true, draftId } : result);
     } catch (e) {
       if (generation === panelGeneration)
         tellFrame("evidence", {
@@ -782,7 +807,7 @@ export function installPageReview(config: {
         ...(appending
           ? frameKind === "draft"
             ? { draftId: activeToken }
-            : { id: activeToken }
+            : { id: activeToken, editOriginal: frameEditingOriginal }
           : {}),
       });
       if (generation !== panelGeneration) {
@@ -791,7 +816,7 @@ export function installPageReview(config: {
         return;
       }
       clearSelections();
-      if (appending) showEvidence(result.web);
+      if (appending) showEvidence(result.web, result);
       else {
         if (typeof result.draftId !== "string" || !result.draftId)
           throw new Error("The page capture did not return a draft.");
@@ -830,6 +855,9 @@ export function installPageReview(config: {
     if (message.action === "dirty") {
       if (typeof message.dirty === "boolean") frameDirty = message.dirty;
       if (typeof message.saving === "boolean") frameSaving = message.saving;
+      if (typeof message.editOriginal === "boolean")
+        frameEditingOriginal = message.editOriginal;
+      if (typeof message.draftId === "string") replyDraftId = message.draftId;
     } else if (
       message.action === "annotation" &&
       typeof message.open === "boolean"
@@ -840,13 +868,26 @@ export function installPageReview(config: {
       positionDock();
     } else if (message.action === "ready") {
       tellFrame("capturing", { busy });
-      if (pendingWeb !== undefined) tellFrame("evidence", { web: pendingWeb });
+      if (pendingWeb !== undefined)
+        tellFrame("evidence", {
+          web: pendingWeb,
+          ...(pendingReply ? { reply: true, draftId: replyDraftId } : {}),
+        });
     } else if (
       message.action === "remove-selection" &&
       Number.isSafeInteger(message.index) &&
       typeof message.key === "string"
     ) {
-      void removeSelection(message.index, message.key);
+      void removeSelection(
+        message.index,
+        message.key,
+        typeof message.draftId === "string" ? message.draftId : undefined,
+      );
+    } else if (message.action === "reply-sent") {
+      replyDraftId = "";
+      pendingReply = false;
+      pendingWeb = undefined;
+      $(".head b").textContent = "Note";
     } else if (message.action === "close") {
       frameDirty = false;
       close();

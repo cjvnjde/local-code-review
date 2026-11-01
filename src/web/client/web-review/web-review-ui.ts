@@ -1,4 +1,6 @@
 import { el, state } from "../app/state.ts";
+import { updateWebNoteEvidence } from "../notes/notes.ts";
+import { webReview } from "../../../shared/web-review.ts";
 
 export function configureWebReview(value: unknown) {
   const web =
@@ -23,6 +25,37 @@ export function configureWebReview(value: unknown) {
   button.title = web ? "Open or focus " + web.url : "";
 }
 export function startWebReviewUI() {
+  const hydrated = new WeakSet<HTMLElement>();
+  const restoreReplyEvidence = () => {
+    if (state.uiEmbed || !state.web) return;
+    document.querySelectorAll<HTMLElement>(".nrow .reply").forEach((reply) => {
+      const id = reply.closest<HTMLElement>(".nrow")?.dataset.nid;
+      if (!id || hydrated.has(reply) || reply.dataset.draftId) return;
+      hydrated.add(reply);
+      void fetch("/api/web/draft?note=" + encodeURIComponent(id))
+        .then(async (response) => {
+          const result = await response.json();
+          const web = webReview(result.web);
+          if (
+            response.ok &&
+            web &&
+            typeof result.draftId === "string" &&
+            reply.isConnected &&
+            !reply.dataset.draftId
+          )
+            updateWebNoteEvidence(document, id, web, {
+              reply: true,
+              draftId: result.draftId,
+            });
+        })
+        .catch(() => {});
+    });
+  };
+  new MutationObserver(restoreReplyEvidence).observe(document.body, {
+    childList: true,
+    subtree: true,
+  });
+  restoreReplyEvidence();
   document.addEventListener("click", async (event) => {
     const button = (event.target as Element)?.closest?.(
       "[data-web-open],[data-web-after],[data-web-focus]",
@@ -47,6 +80,17 @@ export function startWebReviewUI() {
       if (!response.ok)
         throw new Error(result.error || "Could not reach the review browser.");
       if (!action) configureWebReview(result);
+      else if (action === "capture" && id && result.reply === true) {
+        const web = webReview(result.web);
+        if (!web || typeof result.draftId !== "string")
+          throw new Error(
+            "The comparison capture did not return follow-up evidence.",
+          );
+        updateWebNoteEvidence(document, id, web, {
+          reply: true,
+          draftId: result.draftId,
+        });
+      }
     } catch (error) {
       alert(error instanceof Error ? error.message : String(error));
     } finally {

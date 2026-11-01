@@ -405,9 +405,12 @@ function serve(options: ServerOptions, port: number) {
             key?: unknown;
           } | null;
           if (
-            typeof payload?.id !== "string" ||
-            !payload.id ||
-            payload.draftId !== undefined ||
+            !payload ||
+            (payload.id !== undefined) === (payload.draftId !== undefined) ||
+            (payload.id !== undefined &&
+              (typeof payload.id !== "string" || !payload.id)) ||
+            (payload.draftId !== undefined &&
+              (typeof payload.draftId !== "string" || !payload.draftId)) ||
             typeof payload.index !== "number" ||
             !Number.isInteger(payload.index) ||
             payload.index < 0 ||
@@ -417,12 +420,29 @@ function serve(options: ServerOptions, port: number) {
             return Response.json(
               {
                 error:
-                  "A note id, selection index and expected key are required.",
+                  "A note or draft id, selection index and expected key are required.",
               },
               { status: 400 },
             );
+          if (typeof payload.draftId === "string") {
+            if (
+              !options.web ||
+              options.web.draft(payload.draftId) === undefined
+            )
+              return Response.json(
+                { error: "That captured selection no longer exists." },
+                { status: 404 },
+              );
+            return Response.json(
+              await options.web.removeSelection({
+                draftId: payload.draftId,
+                index: payload.index,
+                key: payload.key,
+              }),
+            );
+          }
           const note = await options.session.removeWebSelection(
-            payload.id,
+            payload.id as string,
             payload.index,
             payload.key,
           );
@@ -450,9 +470,20 @@ function serve(options: ServerOptions, port: number) {
             );
           if (request.method === "GET" && url.pathname === "/api/web")
             return Response.json(options.web.status());
-          if (url.pathname === "/api/web/draft") {
-            if (request.method !== "GET")
-              return new Response("method not allowed", { status: 405 });
+          if (url.pathname === "/api/web/draft" && request.method === "GET") {
+            const noteId = url.searchParams.get("note");
+            if (noteId !== null) {
+              if (
+                !(await options.session.read()).notes.some(
+                  (note) => note.id === noteId,
+                )
+              )
+                return Response.json(
+                  { error: "That note no longer exists." },
+                  { status: 404 },
+                );
+              return Response.json(options.web.replyDraft(noteId));
+            }
             const id = url.searchParams.get("id") ?? "";
             const web = /^[a-zA-Z0-9_-]{1,128}$/.test(id)
               ? options.web.draft(id)
@@ -464,7 +495,10 @@ function serve(options: ServerOptions, port: number) {
                   { status: 404 },
                 );
           }
-          if (request.method !== "POST")
+          if (
+            request.method !== "POST" &&
+            !(url.pathname === "/api/web/draft" && request.method === "DELETE")
+          )
             return new Response("method not allowed", { status: 405 });
           if (!isJsonRequest(request))
             return Response.json(
@@ -484,7 +518,21 @@ function serve(options: ServerOptions, port: number) {
               { status: 403 },
             );
           server.timeout(request, 0); // Browser startup and capture own their bounded timeouts.
-          const payload = (await readJson(request)) as { id?: unknown } | null;
+          const payload = (await readJson(request)) as {
+            id?: unknown;
+            draftId?: unknown;
+          } | null;
+          if (url.pathname === "/api/web/draft") {
+            if (request.method !== "DELETE")
+              return new Response("method not allowed", { status: 405 });
+            if (typeof payload?.draftId !== "string")
+              return Response.json(
+                { error: "A draft id is required." },
+                { status: 400 },
+              );
+            await options.web.discardDraft(payload.draftId);
+            return Response.json({ ok: true });
+          }
           if (url.pathname === "/api/web") {
             await options.web.open();
             return Response.json(options.web.status());
@@ -507,8 +555,7 @@ function serve(options: ServerOptions, port: number) {
             await options.web.focus(payload.id);
             return Response.json({ ok: true });
           }
-          await options.web.captureAfter(payload.id);
-          return Response.json({ ok: true });
+          return Response.json(await options.web.captureAfter(payload.id));
         }
         if (url.pathname === "/api/context") {
           const path = url.searchParams.get("path") ?? "";
@@ -653,6 +700,7 @@ function serve(options: ServerOptions, port: number) {
               id?: unknown;
               at?: unknown;
               body?: unknown;
+              ask?: boolean;
             } | null;
             if (!payload)
               return Response.json(
@@ -688,7 +736,10 @@ function serve(options: ServerOptions, port: number) {
               `\n  ${request.method === "POST" ? "replied" : "reworded a reply"} on ${note.key} in ${options.session.shownFile}\n`,
             );
             options.hub.emit({ type: "review", file: options.session.file });
-            const delivery = await options.agent?.publish(review, [note]);
+            const delivery =
+              payload.ask === false
+                ? undefined
+                : await options.agent?.publish(review, [note]);
             return Response.json({
               file: options.session.shownFile,
               note,
@@ -734,6 +785,7 @@ function serve(options: ServerOptions, port: number) {
             comment?: ReviewComment;
             retry?: boolean;
             replace?: boolean;
+            ask?: boolean;
           } | null;
           const comment = payload?.comment;
           if (
@@ -769,7 +821,10 @@ function serve(options: ServerOptions, port: number) {
                   (note): note is ReviewNote => !!note,
                 )
               : [];
-          const delivery = await options.agent?.publish(review, notify);
+          const delivery =
+            payload?.ask === false
+              ? undefined
+              : await options.agent?.publish(review, notify);
           options.hub.emit({ type: "review", file: review });
           return Response.json({
             file,
