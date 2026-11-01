@@ -7,21 +7,19 @@ import { imageCaptureHtml } from './image-capture.ts';
 import { paintImageNotes } from './image-comments.ts';
 import { managedNoteTask, noteSaveLabel } from './agent.ts';
 import { openHistory } from './history-ui.ts';
-import { attachButton, wireAttach } from './attach.ts';
-import { NOTE_MAX, autogrow } from './autogrow.ts';
+import { renderBody } from './body.ts';
+import { composerHint, composerTools, wireComposer } from './composer.ts';
 import { copyText } from './clipboard.ts';
 import { refToken } from './note-ref.ts';
 import { globalHost, repaintRow, syncGlobals } from './diff-view.ts';
 import { reaims } from './drag.ts';
 import { updateCount } from './footer.ts';
 import { codeHtml, langOf } from './highlight.ts';
-import { editorAction } from './keys.ts';
 import { save, submitNote, withdrawNotes } from './persistence.ts';
-import { refButton, wireRefButton } from './ref-picker.ts';
 import { clearSel } from './selection.ts';
-import { FILE_ANCHOR, GLOBAL_ANCHOR, SVG, clip, el, esc, isFileNote, isGlobalNote, keyIndex, locKey, markRead, mintGlobalId, mintNoteId, rowKey, saveKeyHint, state, statusOf, unreadOf, noteVisible, canResolve, isResolved } from './state.ts';
+import { FILE_ANCHOR, GLOBAL_ANCHOR, SVG, clip, el, esc, isFileNote, isGlobalNote, keyIndex, locKey, markRead, mintGlobalId, mintNoteId, rowKey, state, statusOf, unreadOf, noteVisible, canResolve, isResolved } from './state.ts';
 import { capturedLines, insertBlock, suggestLines, suggestionBlock } from './suggest.ts';
-import { dropCleanEdit, dropEmptyReply, mountReply, renderBody, renderThread } from './thread.ts';
+import { dropCleanEdit, dropEmptyReply, mountReply, renderThread } from './thread.ts';
 import { renderTree } from './tree.ts';
 
 /* ---------- notes ---------- */
@@ -422,7 +420,7 @@ function editUI(box,ctx){
   const suggest=whole?'':'<button class="sug" title="Insert these lines as a suggested change">'+
     SVG.plus+' suggest</button>';
   box.innerHTML=headHtml(f,whole?null:sp.label,whole?null:sp.snippet,
-      suggest+attachButton()+refButton(id),ctx.scope,ctx.image,ctx.web)+
+      suggest+composerTools(id),ctx.scope,ctx.image,ctx.web)+
     (ctx.image?'<div class="image-preview">'+imageCaptureHtml(ctx.image)+'</div>':'')+
     '<div data-web-evidence>'+webCaptureHtml(ctx.web,true)+'</div>'+
     '<div class="nedit"><textarea placeholder="'+
@@ -432,16 +430,11 @@ function editUI(box,ctx){
     '<div class="acts"><button class="primary" data-save-note'+(webCapturing.has(box)?' disabled':'')+'>'+esc(noteSaveLabel())+'</button>'+
     (state.uiEmbed&&!state.notes.has(id)?'':'<button class="cancel">Cancel</button>')+
     (state.notes.has(id)?'<button class="danger del">Delete</button>':'')+
-    '<span class="spacer"></span><span class="tip">'+saveKeyHint()+' save &middot; esc cancel</span></div></div>';
+    composerHint('save')+'</div></div>';
   wireWebRemoval(box);
   const ta=box.querySelector('textarea');
   ta.value=ctx.body||'';
-  const fit=autogrow(ta,NOTE_MAX); // after the value, so reopening a long note opens it at full height
-  ta.focus();
-  // Pointing at another note is writing in this one, so the picker writes into the box like the rest.
-  wireRefButton(box,ta,id);
-  // A picture is written in as well: the link lands in the prose, and the box grows to hold it.
-  wireAttach(box,ta);
+  const fit=wireComposer(box,ta,id,{save:()=>commit(),cancel:()=>cancel()});
   if(ctx.capture&&!ctx.image.capture){
     const start=()=>{
       const button=box.querySelector('[data-save-note]'), preview=box.querySelector('.image-preview');
@@ -535,11 +528,6 @@ function editUI(box,ctx){
   };
   const cancelButton=box.querySelector('.cancel');
   if(cancelButton) cancelButton.onclick=cancel;
-  ta.onkeydown=e=>{
-    const action=editorAction(e,state.cfg.enterSaves);
-    if(action==='save'){ e.preventDefault(); commit(); }
-    if(action==='cancel'){ e.preventDefault(); cancel(); }
-  };
 }
 
 /** Keep the editor's save gesture local to this note, and repaint only its existing copies. */

@@ -10,7 +10,7 @@ import { startHistory } from './history-ui.ts';
 import { watchAudio } from "./audio.ts";
 import { followNoteLink, jumpToNote, startLive } from "./live.ts";
 import { watchPreviews } from './ref-preview.ts';
-import { renderBody } from './thread.ts';
+import { renderBody } from './body.ts';
 import { startReadingPosition } from './reading-position.ts';
 import { watchImages } from "./images.ts";
 import { watchImageComments } from './image-comments.ts';

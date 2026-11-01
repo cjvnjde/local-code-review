@@ -23,9 +23,7 @@ jobs:
           bun-version: latest
 
       - name: Test and bundle
-        run: |
-          bun test ./src
-          bun build ./src/index.ts --target=bun --outdir /tmp/lcr-check
+        run: bun run check
 
   build:
     name: Build ${{ matrix.platform }}

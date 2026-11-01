@@ -2,7 +2,7 @@ import { placeNote } from './anchor.ts';
 import { load } from './load.ts';
 import { span } from './notes.ts';
 import { capturedLines } from './suggest.ts';
-import { renderBody } from './thread.ts';
+import { renderBody } from './body.ts';
 import { SVG, el, esc, mintNoteId, reviewTime, rowKey, state } from './state.ts';
 
 /* ---------- ghosts: notes from the other reviews of this branch ---------- */

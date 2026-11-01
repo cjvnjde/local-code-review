@@ -1,15 +1,10 @@
-import { attachButton, wireAttach } from './attach.ts';
-import { NOTE_MAX, autogrow } from './autogrow.ts';
-import { codeHtml, langOf } from './highlight.ts';
-import { editorAction } from './keys.ts';
-import { mdHtml } from './markdown.ts';
+import { renderBody } from './body.ts';
+import { composerHint, composerTools, wireComposer } from './composer.ts';
 import { busyEditor } from './notes.ts';
 import { save } from './persistence.ts';
 import { rememberPage } from './history.ts';
-import { refButton, wireRefButton } from './ref-picker.ts';
-import { appendPreviews } from './ref-preview.ts';
-import { SVG, esc, markRead, msgsOf, saveKeyHint, state } from './state.ts';
-import { bodyParts, capturedLines, lineDiff } from './suggest.ts';
+import { SVG, esc, markRead, msgsOf, state } from './state.ts';
+import { capturedLines } from './suggest.ts';
 
 /* ---------- threads ---------- */
 /**
@@ -23,49 +18,6 @@ import { bodyParts, capturedLines, lineDiff } from './suggest.ts';
  * account of what it did. A message is named by the stamp in its marker, so one written without a
  * stamp — an agent's, or a `**Reviewer**` line put in the file by hand — is shown and left alone.
  */
-
-/**
- * A message body, either side's: the reviewer's note and the agent's answer are the same kind of
- * writing and are drawn by the same code. Prose is Markdown — `mdHtml` escapes it and emits only its
- * own tags, so a body that contains markup shows it rather than running it — and a suggestion block
- * is lifted out ahead of that and shown as the code it is rather than as the backticks around it.
- *
- * `base` is the code the note was written on, and a suggestion is read against it: a replacement says
- * what it takes away as well as what it puts there, which is the difference between reading a
- * proposal and guessing at it. What reaches the review file is unchanged — the block there is the
- * replacement alone, which is what an agent applies. A note that captured no lines has nothing to
- * read against, so its suggestion is shown as the code it is.
- */
-export function renderBody(host: any,body: string,path: string,base?: string[],previews=true){
-  host.textContent='';
-  const lang=langOf(path);
-  bodyParts(body||'').forEach(part=>{
-    if(part.t==='text'){
-      const md=document.createElement('div'); md.className='md';
-      md.innerHTML=mdHtml(part.v,path);
-      host.append(md);
-      return;
-    }
-    const wrap=document.createElement('div'); wrap.className='sugb';
-    const head=document.createElement('div'); head.className='sugh'; head.textContent='suggested change';
-    // Coloured by the diff's own tokeniser, line by line as the diff does it; it escapes as it goes.
-    if(!base||!base.length){
-      const code=document.createElement('pre'); code.className='c';
-      code.innerHTML=part.v.split('\n').map(line=>codeHtml(line,lang)).join('\n');
-      wrap.append(head,code); host.append(wrap);
-      return;
-    }
-    // The token styles hang off class `c`, which each line's code span carries, exactly as a capture does.
-    const code=document.createElement('div'); code.className='sugc';
-    code.innerHTML=lineDiff(base,part.v.split('\n')).map(line=>
-      '<div class="cl '+line.t+'"><span class="cm">'+MARK[line.t]+'</span>'+
-      '<span class="c">'+codeHtml(line.v,lang)+'</span></div>').join('');
-    wrap.append(head,code); host.append(wrap);
-  });
-  if(previews) appendPreviews(host,renderBody);
-}
-/** The gutter mark each kind of line carries, exactly as a note's captured code carries it. */
-const MARK={ctx:' ',del:'-',add:'+'};
 
 /** Clock time for a message written today, and the date as well for an older one. */
 function when(at: string){
@@ -119,16 +71,12 @@ function editMessage(box: any,note: any,m: any,done: ()=>void){
   const form: any=document.createElement('div'); form.className='medit';
   form.innerHTML='<textarea></textarea>'+
     '<div class="acts"><button class="primary">Save reply</button><button class="cancel">Cancel</button>'+
-    attachButton()+refButton(note.id)+
-    '<span class="spacer"></span><span class="tip">'+saveKeyHint()+' save &middot; esc cancel</span></div>';
+    composerTools(note.id)+composerHint('save')+'</div>';
   const ta: any=form.querySelector('textarea');
   ta.value=m.body||'';
   ta.dataset.was=m.body||''; // what says the box is untouched and may step aside for the next one
   body.replaceWith(form);
-  autogrow(ta,NOTE_MAX); // after the value, so a long message opens at full height
-  wireRefButton(form,ta,note.id);
-  wireAttach(form,ta);
-  ta.focus();
+  wireComposer(form,ta,note.id,{save:()=>commit(),cancel:()=>shut()});
   const shut=()=>form.replaceWith(body);
   form.__shut=shut;
   let sending=false;
@@ -156,11 +104,6 @@ function editMessage(box: any,note: any,m: any,done: ()=>void){
   };
   form.querySelector('.primary').onclick=commit;
   form.querySelector('.cancel').onclick=shut;
-  ta.onkeydown=(e: any)=>{
-    const action=editorAction(e,state.cfg.enterSaves);
-    if(action==='save'){ e.preventDefault(); commit(); }
-    if(action==='cancel'){ e.preventDefault(); shut(); }
-  };
 }
 
 /**
@@ -227,15 +170,11 @@ function startReply(wrap: any,id: string,done: ()=>void){
   box.__done=done;
   box.innerHTML='<textarea placeholder="Reply to the agent"></textarea>'+
     '<div class="acts"><button class="primary">Send reply</button><button class="cancel">Cancel</button>'+
-    attachButton()+refButton(id)+
-    '<span class="spacer"></span><span class="tip">'+saveKeyHint()+' send &middot; esc cancel</span></div>';
+    composerTools(id)+composerHint('send')+'</div>';
   const ta: any=box.querySelector('textarea');
   ta.dataset.nid=id;
   wrap.replaceWith(box);
-  autogrow(ta,NOTE_MAX);
-  wireRefButton(box,ta,id);
-  wireAttach(box,ta);
-  ta.focus();
+  wireComposer(box,ta,id,{save:()=>send(),cancel:()=>shut()});
   const shut=()=>box.replaceWith(replyButton(id,done));
   // The button disables itself, but enter still reaches the textarea mid-flight: one send at a time,
   // or a quick double enter would append the same message to the review file twice.
@@ -263,11 +202,6 @@ function startReply(wrap: any,id: string,done: ()=>void){
   };
   box.querySelector('.primary').onclick=send;
   box.querySelector('.cancel').onclick=shut;
-  ta.onkeydown=(e: any)=>{
-    const action=editorAction(e,state.cfg.enterSaves);
-    if(action==='save'){ e.preventDefault(); send(); }
-    if(action==='cancel'){ e.preventDefault(); shut(); }
-  };
 }
 
 /**

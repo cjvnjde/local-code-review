@@ -1,3 +1,5 @@
+@import "./conversation.css";
+
   /* catppuccin mocha */
   :root{
     --base:#1e1e2e; --mantle:#181825; --crust:#11111b;
@@ -486,26 +488,8 @@
   .nbox.done{opacity:.7}
   .nbox.done:hover{opacity:1}
   .nbody{padding:10px 12px;font-family:var(--sans);font-size:var(--fs-code);line-height:1.55}
-  /* the replacement a note proposes, set apart from the prose around it and read as code */
-  .nbody .sugb{margin:8px 0;border:1px solid var(--edge-hi);border-radius:5px;background:var(--crust);overflow:hidden}
-  .nbody .sugb:first-child{margin-top:0}
-  .nbody .sugb:last-child{margin-bottom:0}
-  .nbody .sugh{padding:3px 10px;background:var(--add-gut);color:var(--add);font:var(--fs-xs)/1.6 var(--mono);
-    text-transform:uppercase;letter-spacing:.05em}
-  .nbody .sugb pre{margin:0;padding:8px 10px;overflow-x:auto;white-space:pre;
-    font:var(--fs-code)/1.55 var(--mono);color:var(--ink)}
-  /* a replacement read as the change it makes: the lines it takes away above the lines it puts there */
-  .sugb .sugc{padding:5px 0;font:var(--fs-code)/1.5 var(--mono);color:var(--ink)}
-  .sugb .sugc .cl{display:flex;gap:6px;padding:0 10px;white-space:pre-wrap;word-break:break-word}
-  .sugb .sugc .cl .cm{flex:none;width:8px;color:var(--ink-faint)}
-  .sugb .sugc .cl .c{flex:1;min-width:0}
-  .sugb .sugc .cl.add{background:var(--add-bg)} .sugb .sugc .cl.add .cm{color:var(--add)}
-  .sugb .sugc .cl.del{background:var(--del-bg)} .sugb .sugc .cl.del .cm{color:var(--del)}
   .nstat{padding:0 12px 9px;color:var(--ink-faint);font-family:var(--sans);font-size:var(--fs-sm)}
   .nedit{padding:10px}
-  .nedit textarea{width:100%;background:var(--crust);color:var(--ink);border:1px solid var(--edge-hi);border-radius:5px;
-    padding:8px 10px;font:var(--fs-code)/1.55 var(--sans);resize:none;min-height:76px;display:block;overflow-y:hidden}
-  .nedit textarea:focus{outline:none;border-color:var(--accent)}
   .acts{display:flex;gap:8px;margin-top:8px;align-items:center}
   .acts .spacer{flex:1}
   .acts .tip{color:var(--ink-faint);font-size:var(--fs-xs);font-family:var(--sans)}
@@ -555,17 +539,8 @@
   .msg .who button{padding:4px 8px;min-height:var(--tap);font-size:var(--fs-xs);flex:none}
   .msg .who .rewrite:hover{color:var(--mauve);border-color:var(--mauve)}
   .msg .medit{padding:10px 12px}
-  .msg .medit textarea{width:100%;background:var(--crust);color:var(--ink);border:1px solid var(--edge-hi);
-    border-radius:5px;padding:8px 10px;font:var(--fs-code)/1.55 var(--sans);resize:none;min-height:62px;
-    display:block;overflow-y:hidden}
-  .msg .medit textarea:focus{outline:none;border-color:var(--mauve)}
   .msg .mb{padding:10px 12px;font-family:var(--sans);font-size:var(--fs-code);
     line-height:1.55;color:var(--ink)}
-  .msg .mb .sugb{margin:8px 0;border:1px solid var(--edge-hi);border-radius:5px;background:var(--crust);overflow:hidden}
-  .msg .mb .sugb:first-child{margin-top:0}
-  .msg .mb .sugb:last-child{margin-bottom:0}
-  .msg .mb .sugh{padding:3px 10px;background:var(--add-gut);color:var(--add);font:var(--fs-xs)/1.6 var(--mono);
-    text-transform:uppercase;letter-spacing:.05em}
   .msg .mb pre{margin:0;padding:8px 10px;overflow-x:auto;white-space:pre;font:var(--fs-code)/1.55 var(--mono);color:var(--ink)}
   /* a message that arrived while the page was open, until the note is looked at */
   .msg.fresh{border-color:var(--mark)}
@@ -577,9 +552,6 @@
   .reply.shut{padding:7px 12px}
   .reply .rbtn{padding:5px 9px;font-size:var(--fs-xs);color:var(--ink-faint)}
   .reply .rbtn:hover{color:var(--mauve);border-color:var(--mauve)}
-  .reply textarea{width:100%;background:var(--crust);color:var(--ink);border:1px solid var(--edge-hi);border-radius:5px;
-    padding:8px 10px;font:var(--fs-code)/1.55 var(--sans);resize:none;min-height:62px;display:block;overflow-y:hidden}
-  .reply textarea:focus{outline:none;border-color:var(--mauve)}
   .rhint{padding:7px 12px;color:var(--ink-faint);font-family:var(--sans);font-size:var(--fs-sm)}
   .nhead .unread{font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.05em;padding:2px 7px;border-radius:9px;
     background:var(--mark);color:var(--crust);font-weight:700}
