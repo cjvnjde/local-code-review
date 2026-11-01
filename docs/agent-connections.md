@@ -3,7 +3,7 @@
 `lcr --acp <config.json>` runs an externally installed, authenticated ACP agent or adapter as a
 subprocess. lcr owns a persistent FIFO queue and waits for each prompt turn to finish before starting
 another. Saving a note starts its work immediately; later comments wait instead of steering or
-interrupting that turn. Without `--acp`, manual Markdown review and existing attachment modes still work.
+interrupting that turn. Without `--acp`, manual Markdown review still works.
 
 ## Configure and select an agent
 
@@ -39,8 +39,8 @@ The standalone lcr binary includes its transport and scheduler; no SDK, runtime 
 or application changes are required. The external agent executable is still required.
 
 ACP creates or loads sessions it manages. It does **not** attach to an arbitrary running terminal.
-`--codex-thread` and the Claude channel bridge remain separate attachment modes. They cannot be
-combined with `--acp` and do not provide lcr-managed execution sequencing or durable delivery.
+ACP is the only automatic connection mode; the old agent-specific attachment flags and bridges have
+been removed. An agent operating manually can still read and answer the Markdown review directly.
 
 ## Using the queue
 
@@ -79,8 +79,7 @@ use the normal live Markdown update path. Individual response tokens are not ren
 State is private to the working tree under `git rev-parse --git-path lcr-managed`, outside the reviewed
 output directory. Writes use an atomic rename and file fsync before dispatch, plus directory fsync on POSIX. A storage failure stops
 further dispatch. A lifetime owner lock prevents two managed lcr runs from working on the same tree,
-even on different ports or output directories. The queue cannot serialize manual agents or attachment
-modes working independently on that tree.
+even on different ports or output directories. The queue cannot serialize manual agents working independently on that tree.
 
 On a clean restart, queued tasks resume with their saved pause state. lcr reuses one agent session per
 exact review and target configuration. It calls `session/load` only when the agent advertises support.
@@ -148,3 +147,18 @@ Real-agent approval rejection, cancellation, crash recovery and session restorat
 those scheduler paths use deterministic protocol tests. No real Claude ACP run or Windows/Linux
 runtime check was performed. No
 executables, generated reviews, adapter packages or browser profiles are included in this change.
+
+### Verification for build 2026-11-01.2
+
+Agent-specific attachment implementations, CLI options, IPC bridges and setup guides were removed.
+ACP is now the sole automatic connection; the manual Markdown workflow remains available.
+
+- `bun test ./src`: 677 passed, with the opt-in browser test skipped by default. Startup regressions
+  verify that removed options are absent from help and fail without starting a review server.
+- The opt-in browser regression passed separately (103 assertions), and both Bun build commands above passed.
+- The compiled ACP queue UI smoke again completed two sequential comments through explicit approval
+  choices, with live replies and no browser runtime exceptions.
+- A separate compiled manual UI smoke showed **Save note**, saved through **Save review**, exposed no
+  agent or queue, and ignored the obsolete bridge-specific project environment variable.
+
+The real-agent integration record above belongs to build 2026-11-01.1; it was not repeated for this removal.

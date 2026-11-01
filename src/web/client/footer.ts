@@ -129,22 +129,21 @@ function handover(d: any){
   const host=el('toasts');
   const gone=(d.removed||[]).length;
   const toast=document.createElement('div');
-  const channel=d.channel;
+  const delivery=d.delivery;
   const agent=state.agent||'the agent';
-  const hint=channel
-    ?channel.state==='forwarded'?'Forwarded '+channel.count+' note'+(channel.count===1?'':'s')+' to '+esc(agent)+'. Answers appear in their threads.'
-      :channel.state==='queued'?'Queued for '+esc(agent)+' to connect.'
-      :channel.state==='failed'?'Saved, but forwarding failed: '+esc(channel.error||'Check the agent session.')+' Retry from the note once the agent is ready.'
-      :'No new or changed notes to forward.'
+  const hint=delivery
+    ?delivery.state==='queued'?'Queued for '+esc(agent)+'. Comments run one at a time; answers appear in their threads.'
+      :delivery.state==='failed'?'Saved, but queueing failed: '+esc(delivery.error||'Check the agent connection.')+' Retry from the note once the connection is ready.'
+      :'No new or changed notes to queue.'
     :'Ask the agent: <code>Address the notes in '+esc(d.file)+'</code>';
   toast.className='toast saved';
   toast.innerHTML='<span class="ic">'+SVG.check+'</span>'+
     '<span class="tx">Saved <code>'+esc(d.file)+'</code> — '+d.count+
     (d.count===1?' note':' notes')+(gone?', replaced '+gone+' earlier file'+(gone===1?'':'s'):'')+
     '<br><span class="sub">'+hint+'</span></span>'+
-    '<button class="undo" title="'+(channel?'Dismiss':'Copy the prompt')+'">'+(channel?'close':'copy')+'</button>';
+    '<button class="undo" title="'+(delivery?'Dismiss':'Copy the prompt')+'">'+(delivery?'close':'copy')+'</button>';
   toast.querySelector('.undo').onclick=async()=>{
-    if(channel){ toast.remove(); return; }
+    if(delivery){ toast.remove(); return; }
     try{ await navigator.clipboard.writeText('Address the notes in '+d.file); }catch{}
     toast.remove();
   };

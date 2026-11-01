@@ -27,6 +27,9 @@ test("help and version exit successfully outside a repository", async () => {
       const result = await cli(cwd, [flag]);
       expect(result.code).toBe(0);
       expect(result.stdout).toContain("Usage: lcr");
+      expect(result.stdout).toContain("--acp");
+      expect(result.stdout).not.toContain("--claude-channel");
+      expect(result.stdout).not.toContain("--codex-thread");
       expect(result.stdout).not.toContain("http://localhost:");
       expect(result.stderr).toBe("");
     }
@@ -46,7 +49,7 @@ test("invalid options and revisions exit before starting a server or writing exc
     expect(await git.exited).toBe(0);
     const exclude = path.join(cwd, ".git/info/exclude");
     const before = await readFile(exclude, "utf8");
-    for (const args of [["--not-an-lcr-option"], ["no-such-revision"], ["--port", "oops"]]) {
+    for (const args of [["--claude-channel"], ["--codex-thread", "old-session"], ["--not-an-lcr-option"], ["no-such-revision"], ["--port", "oops"]]) {
       const result = await cli(cwd, [...args, "--no-open", "--out", ".feedback"]);
       expect(result.code).toBe(1);
       expect(result.stdout).toBe("");

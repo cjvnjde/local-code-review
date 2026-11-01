@@ -15,7 +15,7 @@ export interface SaveResult {
   file: string;
   /** Names of the earlier review files pruned by `replace`. */
   removed: string[];
-  /** New or reworded notes, for an optional agent channel to announce after the write. */
+  /** New or reworded notes, for an optional ACP connection to queue after the write. */
   changed: ReviewNote[];
 }
 
@@ -112,7 +112,7 @@ export function createSession(repoRoot: string, outDir: string, range: string, c
     return text ? parseReview(text) : fresh();
   }
 
-  /** Channel calls name their original file, even after the page has opened another conversation. */
+  /** Agent tasks name their original file, even after the page has opened another conversation. */
   async function readNamed(file: string): Promise<ReviewDoc | null> {
     if (!(await listReviews(repoRoot, outDir)).includes(file)) return null;
     const text = await readFile(path.join(dir(), file), "utf8").catch(() => "");
@@ -204,7 +204,7 @@ export function createSession(repoRoot: string, outDir: string, range: string, c
       return serialise(async () => (await readNamed(file))?.notes.find((note) => note.id === id) ?? null);
     },
 
-    /** The channel's agent side; never changes which conversation the page is reading. */
+    /** The managed agent's reply path; never changes which conversation the page is reading. */
     answer(file: string, id: string, body: string, status?: NoteStatusKind): Promise<ReviewNote | null> {
       return serialise(async () => {
         const doc = await readNamed(file);

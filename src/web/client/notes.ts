@@ -551,7 +551,7 @@ async function sendNote(note: any,retry=false){
   try{
     const data=await sending;
     if(state.notes.has(note.id)) state.noteDelivery.set(note.id,
-      {...(data?.channel||{state:'saved'}),agent,error:data?.channel?.error||(!data?.channel&&agent?'Saved, but no working agent connection was confirmed.':'')});
+      {...(data?.delivery||{state:'saved'}),agent,error:data?.delivery?.error||(!data?.delivery&&agent?'Saved locally without an ACP connection.':'')});
     if(!state.noteDelivery.get(note.id)?.error)
       document.dispatchEvent(new CustomEvent('lcr:note-saved',{detail:note.id}));
   }catch(error){
@@ -564,8 +564,7 @@ function deliveryHtml(note: any){
   if(task) return '<span class="stat" title="'+esc(task.detail||'Managed execution state, separate from the note verdict')+'">'+esc(task.state)+'</span>';
   const delivery=state.noteDelivery.get(note.id);
   if(!delivery) return '';
-  const label=state.noteSending.has(note.id)?'sending…':delivery.state==='forwarded'?'sent to AI':
-    delivery.state==='queued'?'queued':delivery.state==='unchanged'?'saved':delivery.error?'not sent':'saved';
+  const label=state.noteSending.has(note.id)?'sending…':delivery.state==='queued'?'queued':delivery.state==='unchanged'?'saved':delivery.error?'not sent':'saved';
   return '<span class="stat" title="'+esc(delivery.error||'This note’s delivery to the agent')+'">'+esc(label)+'</span>';
 }
 /**

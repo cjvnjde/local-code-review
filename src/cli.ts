@@ -22,8 +22,6 @@ export function parseArgs(argv: string[]): CliOptions {
   let id = "";
   let version = false;
   let help = false;
-  let claudeChannel = false;
-  let codexThread = "";
   let web = "";
   let acp = "";
   const diffArgs: string[] = [];
@@ -43,16 +41,9 @@ export function parseArgs(argv: string[]): CliOptions {
     else if (arg === "--open") open = true;
     else if (arg === "--help" || arg === "-h") help = true;
     else if (arg === "--version" || arg === "-v") version = true;
-    else if (arg === "--claude-channel") claudeChannel = true;
     else if (arg === "--acp") {
       acp = argv[++i]?.trim() ?? "";
       if (!acp || acp.startsWith("-")) throw new Error("--acp requires a JSON configuration file.");
-    }
-    else if (arg === "--codex-thread") {
-      codexThread = argv[++i]?.trim() ?? "";
-      if (!codexThread || codexThread.startsWith("-") || /[\x00-\x1f]/.test(codexThread)) {
-        throw new Error("--codex-thread requires a Codex session UUID or exact name.");
-      }
     }
     else diffArgs.push(arg);
   }
@@ -62,10 +53,7 @@ export function parseArgs(argv: string[]): CliOptions {
     if (!Number.isInteger(context) || context < 0) throw new Error("--context requires a non-negative integer.");
     if (!outDir || outDir.startsWith("-")) throw new Error("--out requires a directory.");
   }
-  if (claudeChannel && codexThread) throw new Error("Choose either --claude-channel or --codex-thread for this run.");
-  if (acp && (claudeChannel || codexThread)) throw new Error("Choose --acp or an existing-session attachment mode, not both.");
-  if (web && claudeChannel) throw new Error("--web cannot be combined with --claude-channel.");
-  return { ...(acp ? { acp } : {}), ...(web ? { web } : {}), port, outDir, context, open, id, version, help, claudeChannel, codexThread, diffArgs };
+  return { ...(acp ? { acp } : {}), ...(web ? { web } : {}), port, outDir, context, open, id, version, help, diffArgs };
 }
 
 /** Help is local to the CLI: it needs neither Git nor a running review. */
@@ -86,8 +74,6 @@ Options:
   --no-open                  Do not open the browser
   --open                     Open the browser (default)
   --acp <config.json>        Manage an external ACP agent with a durable sequential queue
-  --codex-thread <session>   Forward feedback to an existing Codex session
-  --claude-channel           Run the stdio bridge; no review server or browser
 
 Examples:
   lcr

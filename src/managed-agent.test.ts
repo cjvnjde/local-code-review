@@ -2,12 +2,12 @@ import { afterEach, expect, test } from 'bun:test';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { acpAnswer, createManagedAgent, type ManagedChannel } from './managed-agent.ts';
+import { acpAnswer, createManagedAgent, type ManagedAgent } from './managed-agent.ts';
 import { createSession } from './session.ts';
 import { reviewerRevision } from './agent-queue.ts';
 const fixture = path.join(import.meta.dir, 'fixtures/acp-agent.ts');
-const roots: string[] = []; const channels: ManagedChannel[] = [];
-afterEach(async () => { for (const channel of channels.splice(0)) await channel.close(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+const roots: string[] = []; const agents: ManagedAgent[] = [];
+afterEach(async () => { for (const agent of agents.splice(0)) await agent.close(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 async function until(check: () => boolean, label = 'condition') { const end = Date.now() + 5000; while (!check()) { if (Date.now() > end) throw new Error('Timed out: ' + label); await Bun.sleep(10); } }
 const comment = (name: string, body = 'Question ' + name) => ({ id: `a.ts|n1|n1|#${name}`, file: 'a.ts', start: 1, end: 1, body, label: '1', code: '+line' });
 async function setup(mode = '') {
@@ -15,15 +15,15 @@ async function setup(mode = '') {
   const session = createSession(root, '.review', 'HEAD');
   const config = { name: 'Any ACP peer', command: process.execPath, args: [fixture], env: { LCR_ACP_FIXTURE: root, LCR_ACP_MODE: mode } };
   const options = { repoRoot: root, session, outDir: '.review', directory: path.join(root, 'git-state'), config, notify() {} };
-  const make = () => { const channel = createManagedAgent(options); channels.push(channel); return channel; };
-  const channel = make(); await channel.check!();
+  const make = () => { const agent = createManagedAgent(options); agents.push(agent); return agent; };
+  const agent = make(); await agent.check!();
   const save = async (name: string, body?: string) => { const saved = await session.save({ comments: [comment(name, body)] }); return saved.changed[0]!; };
-  const send = async (name: string, body?: string) => { const note = await save(name, body); await channel.publish(session.file, [note]); return note; };
+  const send = async (name: string, body?: string) => { const note = await save(name, body); await agent.publish(session.file, [note]); return note; };
   const release = (n: number) => writeFileSync(path.join(root, 'release-' + n), '');
   const started = (n: number) => existsSync(path.join(root, 'started-' + n));
-  const tasks = () => channel.snapshot().tasks;
+  const tasks = () => agent.snapshot().tasks;
   const rpc = () => readFileSync(path.join(root, 'rpc.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line));
-  return { root, session, channel, make, send, save, release, started, tasks, rpc };
+  return { root, session, agent, make, send, save, release, started, tasks, rpc };
 }
 test('ACP runs sequentially, coalesces queued edits, and reuses one review session', async () => {
   const f = await setup(); const a = await f.send('a'); await until(() => f.started(1));
@@ -42,7 +42,7 @@ test('ACP runs sequentially, coalesces queued edits, and reuses one review sessi
 });
 test('deleted pending notes cancel; a late active result cannot recreate a deleted note', async () => {
   const f = await setup(); const a = await f.send('a'); await until(() => f.started(1)); const b = await f.send('b');
-  const review = f.session.file; await f.session.remove([a.id, b.id]); await f.channel.withdraw(review, [a.id, b.id]);
+  const review = f.session.file; await f.session.remove([a.id, b.id]); await f.agent.withdraw(review, [a.id, b.id]);
   await until(() => f.tasks().every((task: any) => task.state === 'cancelled'));
   expect(f.started(2)).toBe(false); expect((await f.session.read()).notes).toEqual([]);
 });
@@ -56,25 +56,25 @@ test('review switches keep prompts and answers in the original exact review', as
   expect(f.rpc().filter((message: any) => message.method === 'session/new')).toHaveLength(2);
 });
 test('permission requests wait for explicit choices, reject invalid options and cancel outstanding approvals', async () => {
-  const f = await setup('permission'); await f.send('a'); await until(() => f.channel.snapshot().permissions.length === 1);
-  expect(f.tasks()[0].state).toBe('approval'); const approval = f.channel.snapshot().permissions[0];
-  await expect(f.channel.control('permission', approval.id, 'invented')).rejects.toThrow();
+  const f = await setup('permission'); await f.send('a'); await until(() => f.agent.snapshot().permissions.length === 1);
+  expect(f.tasks()[0].state).toBe('approval'); const approval = f.agent.snapshot().permissions[0];
+  await expect(f.agent.control('permission', approval.id, 'invented')).rejects.toThrow();
   expect(existsSync(path.join(f.root, 'permission-1'))).toBe(false);
-  await f.channel.control('cancel', f.tasks()[0].id);
+  await f.agent.control('cancel', f.tasks()[0].id);
   await until(() => f.tasks()[0].state === 'cancelled');
   expect(JSON.parse(readFileSync(path.join(f.root, 'permission-1'), 'utf8'))).toEqual({ outcome: { outcome: 'cancelled' } });
 });
 test('rejected permission leads to needs-input and pauses subsequent work', async () => {
   const f = await setup('permission'); await f.send('a'); await f.send('b');
-  await until(() => f.channel.snapshot().permissions.length === 1);
-  await f.channel.control('permission', f.channel.snapshot().permissions[0].id, 'no'); f.release(1);
+  await until(() => f.agent.snapshot().permissions.length === 1);
+  await f.agent.control('permission', f.agent.snapshot().permissions[0].id, 'no'); f.release(1);
   await until(() => f.tasks()[0].state === 'needs-input');
-  expect(f.started(2)).toBe(false); expect(f.channel.snapshot().paused).toBe(true);
+  expect(f.started(2)).toBe(false); expect(f.agent.snapshot().paused).toBe(true);
 });
 test('transport loss during a prompt is uncertain and restart never automatically repeats it', async () => {
   const f = await setup('crash'); await f.send('a'); await until(() => f.tasks()[0].state === 'uncertain');
-  await f.save('b').then(note => f.channel.publish(f.session.file, [note]));
-  await f.channel.close(); const reopened = f.make(); await reopened.check!();
+  await f.save('b').then(note => f.agent.publish(f.session.file, [note]));
+  await f.agent.close(); const reopened = f.make(); await reopened.check!();
   expect(reopened.snapshot().tasks.map((task: any) => task.state)).toEqual(['uncertain', 'queued']);
   await expect(reopened.control('resume')).rejects.toThrow('acknowledge');
   expect(f.rpc().filter((message: any) => message.method === 'session/prompt')).toHaveLength(1);
@@ -83,7 +83,7 @@ test('transport loss during a prompt is uncertain and restart never automaticall
 });
 test('restart restores queued work and loads the negotiated saved session without replaying history as a reply', async () => {
   const f = await setup(); const a = await f.send('a'); await until(() => f.started(1)); f.release(1); await until(() => f.tasks()[0].state === 'completed');
-  await f.channel.control('pause'); await f.send('b'); await f.channel.close();
+  await f.agent.control('pause'); await f.send('b'); await f.agent.close();
   const reopened = f.make(); await reopened.check!(); await reopened.control('resume');
   await until(() => f.rpc().filter((message: any) => message.method === 'session/prompt').length === 2);
   await until(() => reopened.snapshot().tasks[1].state === 'completed');
@@ -93,7 +93,7 @@ test('restart restores queued work and loads the negotiated saved session withou
 });
 test('a session that cannot be loaded requires explicit new-session consent', async () => {
   const f = await setup('no-load'); await f.send('a'); await until(() => f.started(1)); f.release(1); await until(() => f.tasks()[0].state === 'completed');
-  await f.channel.control('pause'); await f.send('b'); await f.channel.close(); const reopened = f.make(); await reopened.check!(); await reopened.control('resume');
+  await f.agent.control('pause'); await f.send('b'); await f.agent.close(); const reopened = f.make(); await reopened.check!(); await reopened.control('resume');
   await until(() => reopened.snapshot().tasks[1].state === 'error');
   expect(f.rpc().filter((message: any) => message.method === 'session/load')).toHaveLength(0);
   await reopened.control('new-session', reopened.snapshot().tasks[1].id);
@@ -123,23 +123,23 @@ test('real ACP streams can include progress prose before a final explicit verdic
 });
 
 test('cancelling while the pre-dispatch file read is pending never starts the task', async () => {
-  const f = await setup(); await f.channel.control('pause'); await f.send('a');
+  const f = await setup(); await f.agent.control('pause'); await f.send('a');
   const read = f.session.readNote;
   let release!: () => void; const gate = new Promise<void>(resolve => { release = resolve; });
   let entered = false;
   f.session.readNote = async (...args) => { entered = true; await gate; return read(...args); };
-  await f.channel.control('resume'); await until(() => entered);
-  await f.channel.control('cancel', f.tasks()[0].id); release();
+  await f.agent.control('resume'); await until(() => entered);
+  await f.agent.control('cancel', f.tasks()[0].id); release();
   await Bun.sleep(30);
   expect(f.tasks()[0].state).toBe('cancelled'); expect(f.started(1)).toBe(false);
   f.session.readNote = read;
 });
 
 test('reviewer reply withdrawal updates pending work without minting a new task', async () => {
-  const f = await setup(); await f.channel.control('pause'); const a = await f.send('a');
-  const reply = await f.session.reply(a.id, 'Follow-up to withdraw'); await f.channel.publish(f.session.file, [reply!]);
+  const f = await setup(); await f.agent.control('pause'); const a = await f.send('a');
+  const reply = await f.session.reply(a.id, 'Follow-up to withdraw'); await f.agent.publish(f.session.file, [reply!]);
   const at = reply!.messages[0]!.at;
-  const revised = await f.session.dropReply(a.id, at); await f.channel.revise(f.session.file, revised!);
+  const revised = await f.session.dropReply(a.id, at); await f.agent.revise(f.session.file, revised!);
   expect(f.tasks()).toHaveLength(1);
   expect(f.tasks()[0].revision).toBe(reviewerRevision(revised!));
   const before = f.tasks().length;
@@ -149,9 +149,9 @@ test('reviewer reply withdrawal updates pending work without minting a new task'
 
 test('a missing installed agent keeps its actionable startup error visible after cleanup', async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'lcr-missing-agent-')); roots.push(root);
-  const channel = createManagedAgent({ repoRoot: root, outDir: '.review', directory: path.join(root, 'state'), session: createSession(root, '.review', 'HEAD'),
+  const agent = createManagedAgent({ repoRoot: root, outDir: '.review', directory: path.join(root, 'state'), session: createSession(root, '.review', 'HEAD'),
     config: { name: 'Missing', command: path.join(root, 'no-such-agent'), args: [] }, notify() {} });
-  channels.push(channel); await channel.check!();
-  expect(channel.status!().state).toBe('unavailable');
-  expect(channel.status!().detail).toContain('no-such-agent');
+  agents.push(agent); await agent.check!();
+  expect(agent.status!().state).toBe('unavailable');
+  expect(agent.status!().detail).toContain('no-such-agent');
 });

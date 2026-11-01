@@ -79,10 +79,6 @@ export interface CliOptions {
   version: boolean;
   /** Print usage without touching Git or starting a server. */
   help: boolean;
-  /** Run the lightweight Claude Code stdio bridge; the review page is started separately. */
-  claudeChannel: boolean;
-  /** Existing Codex session to notify through its installed CLI; empty without an adapter. */
-  codexThread: string;
   /** JSON configuration of an external ACP v1 executable. */
   acp?: string;
   /** Local page to annotate instead of a Git diff. */

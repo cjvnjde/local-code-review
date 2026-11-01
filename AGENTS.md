@@ -74,10 +74,11 @@
   snippet in the reviewer's own note, which the format keeps verbatim on disk.
 - Default `.review/` output remains ignored. Custom relative output directories remain locally excluded through `.git/info/exclude`.
 - Start opens the page in the default browser unless `--no-open` is passed. Launch stays best-effort: failure prints a hint and never blocks the server.
-- Global `--claude-channel` registration is a lightweight bridge only: it never starts the review web
-  server or opens a browser. The reviewer starts `lcr` with their chosen Git diff arguments, and the
-  bridge attaches through a private per-repository local link. The manual run owns the range, port,
-  output directory and page lifecycle; closing Claude must leave that run serving.
+- ACP is the only automatic agent connection. No agent-specific bridges, existing-session CLI
+  attachment modes, or implicit background links are started by a manual run.
+- Managed work is persisted before dispatch and runs one turn at a time per working tree. Queue
+  state and note verdicts stay separate. An interrupted turn is uncertain until the reviewer
+  reconciles it; never automatically replay it or treat end-of-turn as proof of an applied fix.
 - A taken port is not a failure: start walks up from the requested port over a bounded range and reports the one it
   landed on. Everything downstream, the printed URL and the browser launch included, reads `server.port` rather than the
   requested one. Port 0 is left to the OS and never walked.
@@ -85,12 +86,11 @@
   the diff moved; the page fetches what it needs itself, so a dropped or repeated event costs a fetch rather
   than correctness. Watchers stay idle while no page is listening, and a tree change is only announced once the
   diff's own fingerprint actually differs.
-- With a verified agent connection, saving in an individual note editor persists and forwards only that
-  note immediately. The review-wide footer is never a required send step. An unconfirmed or unavailable
-  adapter leaves the editor at **Save note**. Claude readiness requires acknowledging a pushed probe;
-  MCP initialization alone does not prove channel delivery. Codex health checks read session metadata
-  without creating a model turn. Partial saves stamp only the note actually submitted, and deletion
-  waits for in-flight note writes so a late save cannot resurrect a withdrawn note.
+- With an ACP configuration, saving in an individual note editor persists and queues only that
+  note immediately, including while disconnected or paused. The review-wide footer is never a
+  required send step. Without ACP, the editor stays at **Save note**. Connection checks never
+  start model turns. Partial saves stamp only the note actually submitted, and deletion waits
+  for in-flight note writes so a late save cannot resurrect a withdrawn note.
 - A live update must never discard what is being written. Replies repaint one note in place and skip a box with
   an open editor. A diff refresh rebuilds the pane, so it waits for the last editor to close; the pill in the
   header is what says so, and taking the refresh early is the reader's choice and asks first. The pane goes back

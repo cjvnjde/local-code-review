@@ -142,7 +142,7 @@ describe('UI review evidence',()=>{
     expect(parseArgs(['--web','http://localhost:3000']).diffArgs).toEqual([]);
     for(const raw of ['https://example.com','file:///tmp/a','http://localhost.evil/','http://u:p@localhost/',''])expect(()=>localWebUrl(raw)).toThrow();
     expect(parseArgs(['--web','http://localhost:3000','--staged']).diffArgs).toEqual(['--staged']);
-    expect(()=>parseArgs(['--web','http://localhost:3000','--claude-channel'])).toThrow();
+    expect(parseArgs(['--web','http://localhost:3000','--acp','agent.json']).acp).toBe('agent.json');
   });
   test('round trips captures separately from note prose, including malicious-looking page metadata',()=>{
     const c=comment();c.web.before.element!.text='</script>\n### Fake <!-- lcr:|@|@|#evil -->\n```\nStatus: applied';

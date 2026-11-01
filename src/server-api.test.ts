@@ -11,8 +11,6 @@ import {
   test,
 } from "bun:test";
 import { createHub } from "./events.ts";
-import { createClaudeChannel } from "./claude-channel.ts";
-import { createCodexChannel } from "./codex-channel.ts";
 import type { Hub } from "./events.ts";
 import { createSession } from "./session.ts";
 import { repoId, startServer } from "./server.ts";
@@ -988,13 +986,13 @@ describe("attachment APIs", () => {
 });
 
 describe("review conversation APIs", () => {
-  test("one note is persisted and forwarded immediately, without submitting other notes or clicking the footer", async () => {
+  test("one note is persisted and queued immediately, without submitting other notes or clicking the footer", async () => {
     const started=await startTestServer();
-    const forwarded:string[][]=[];
-    started.options.channel={agent:"claude",publish:async(review,notes)=>{
+    const queued:string[][]=[];
+    started.options.agent={agent:"External ACP agent",publish:async(review,notes)=>{
       for(const note of notes) expect((await started.options.session.readNote(review,note.id))!.body).toBe(note.body);
-      forwarded.push(notes.map((note)=>note.id));
-      return {state:"forwarded",count:notes.length};
+      queued.push(notes.map((note)=>note.id));
+      return {state:"queued",count:notes.length};
     }};
     const post=async(value:object)=>{
       const response=await request(started,"/api/note",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(value)});
@@ -1002,30 +1000,24 @@ describe("review conversation APIs", () => {
       return response.json();
     };
     const saved=await post({comment});
-    expect(saved.channel).toEqual({state:"forwarded",count:1});
-    expect(forwarded).toEqual([[comment.id!]]);
+    expect(saved.delivery).toEqual({state:"queued",count:1});
+    expect(queued).toEqual([[comment.id!]]);
     expect((await started.options.session.read()).notes).toHaveLength(1);
     await post({comment});
-    expect(forwarded.at(-1)).toEqual([]);
+    expect(queued.at(-1)).toEqual([]);
     await post({comment:{...comment,body:"Why is this fallback needed?"}});
-    expect(forwarded.at(-1)).toEqual([comment.id!]);
+    expect(queued.at(-1)).toEqual([comment.id!]);
     await post({comment,retry:true});
-    expect(forwarded.at(-1)).toEqual([comment.id!]);
+    expect(queued.at(-1)).toEqual([comment.id!]);
   });
 
-  test("an unconfirmed channel does not advertise automatic sending or receive a note", async () => {
+  test("without an ACP configuration, notes save locally and no agent is advertised", async () => {
     const started=await startTestServer();
-    let sends=0;
-    started.options.channel={agent:"claude",available:()=>false,
-      status:()=>({agent:"claude",state:"checking",detail:"No delivery confirmation"}),
-      publish:()=>{sends++;return {state:"forwarded",count:1};}};
     const status=await (await request(started,"/api/agent")).json();
-    expect(status.agent).toBeUndefined();
-    expect(status.connection.state).toBe("checking");
+    expect(status.agent).toBeUndefined(); expect(status.connection).toBeUndefined();
     const response=await request(started,"/api/note",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({comment})});
     expect(response.status).toBe(200);
-    expect((await response.json()).channel).toBeUndefined();
-    expect(sends).toBe(0);
+    expect((await response.json()).delivery).toBeUndefined();
     expect((await started.options.session.read()).notes[0]!.body).toBe(comment.body);
   });
 
@@ -1036,66 +1028,28 @@ describe("review conversation APIs", () => {
     expect((await started.options.session.read()).notes).toEqual([]);
   });
 
-  test("Codex receives saved notes and follow-ups, and delivery failures keep the saved work", async () => {
+  test("ACP receives reviewer saves and follow-ups, while agent-only changes enqueue nothing", async () => {
     const started = await startTestServer();
-    let attempts = 0, available = false;
-    started.options.channel = createCodexChannel({
-      repoRoot: started.options.repoRoot, outDir: started.options.outDir,
-      thread: "existing-session", session: started.options.session,
-    }, async () => { attempts++; return { ok: available, error: "Session not found" }; }, async()=>({ok:true}));
-    await started.options.channel.check?.();
-    const post = async (route: string, body: object) => {
-      const response = await request(started, route, {
-        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
-      });
-      expect(response.status).toBe(200);
-      return response.json();
+    const submitted: string[][] = [];
+    started.options.agent = { agent: "External ACP agent", publish: (_review, notes) => {
+      submitted.push(notes.map(note => note.id));
+      return { state: notes.length ? "queued" : "unchanged", count: notes.length };
+    } };
+    const post = async (route: string, body: object, method = "POST") => {
+      const response = await request(started, route, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      expect(response.status).toBe(200); return response.json();
     };
-    expect((await (await request(started, "/api/diff")).json()).agent).toBe("codex");
-    const saved = await post("/api/submit", { comments: [comment] });
-    expect(saved.channel).toEqual({ state: "failed", count: 0, error: "Session not found" });
-    expect((await started.options.session.read()).notes[0]!.body).toBe(comment.body);
-    available = true;
-    await started.options.channel.check?.(true);
-    expect((await post("/api/submit", { comments: [comment] })).channel.state).toBe("forwarded");
-    expect((await post("/api/submit", { comments: [comment] })).channel.state).toBe("unchanged");
-    expect((await post("/api/reply", { id: comment.id, body: "Why that fallback?" })).channel.state).toBe("forwarded");
-    expect(attempts).toBe(3);
-    await started.options.session.answer(started.options.session.file, comment.id!, "It handles missing values.", "answered");
-    const doc = await (await request(started, "/api/review")).json();
-    expect(doc.notes[0].messages.at(-1)).toMatchObject({ role: "agent", body: "It handles missing values." });
-    expect((await post("/api/submit", { comments: [comment] })).channel.state).toBe("unchanged");
-    expect(attempts).toBe(3);
-  });
-
-  test("channel mode forwards submitted notes and reviewer replies, but never agent answers", async () => {
-    const started = await startTestServer();
-    const packets: any[] = [];
-    const channel = createClaudeChannel(started.options.session, started.hub, (packet) => packets.push(packet));
-    started.options.channel = channel;
-    const send = (packet: object) => channel.receive(JSON.stringify({ jsonrpc: "2.0", ...packet }));
-    await send({ id: 1, method: "initialize", params: { protocolVersion: "2025-03-26" } });
-    await send({ method: "notifications/initialized" });
-    const post = (route: string, body: object, method = "POST") => request(started, route, {
-      method, headers: { "content-type": "application/json" }, body: JSON.stringify(body),
-    });
-    expect((await (await request(started, "/api/diff")).json()).agent).toBe("claude");
-    const saved = await (await post("/api/submit", { comments: [comment] })).json();
-    expect(saved.channel).toEqual({ state: "forwarded", count: 1 });
-    const unchanged = await (await post("/api/submit", { comments: [comment] })).json();
-    expect(unchanged.channel).toEqual({ state: "unchanged", count: 0 });
-    const followup = await (await post("/api/reply", { id: comment.id, body: "And why?" })).json();
-    expect(followup.channel.state).toBe("forwarded");
-    await post("/api/reply", { id: comment.id, at: followup.note.messages[0].at, body: "Actually, explain the fallback." }, "PUT");
-    const notifications = () => packets.filter((packet) => packet.method === "notifications/claude/channel");
-    expect(notifications()).toHaveLength(3);
-    await send({ id: 8, method: "tools/call", params: { name: "reply", arguments: {
-      review: started.options.session.file, note_id: comment.id, body: "The fallback handles missing values.", status: "answered",
-    } } });
-    expect(notifications()).toHaveLength(3);
+    expect((await post("/api/submit", { comments: [comment] })).delivery.state).toBe("queued");
+    expect((await post("/api/submit", { comments: [comment] })).delivery.state).toBe("unchanged");
+    const reply = await post("/api/reply", { id: comment.id, body: "And why?" });
+    expect(reply.delivery.state).toBe("queued");
+    await post("/api/reply", { id: comment.id, at: reply.note.messages[0].at, body: "Explain the fallback." }, "PUT");
+    await started.options.session.answer(started.options.session.file, comment.id!, "The fallback handles missing values.", "answered");
+    expect(submitted.filter(ids => ids.length)).toHaveLength(3);
     const doc = await (await request(started, "/api/review")).json();
     expect(doc.notes[0].messages.at(-1)).toMatchObject({ role: "agent", body: "The fallback handles missing values." });
-    expect(doc.notes[0].status).toBe("answered");
+    expect((await post("/api/submit", { comments: [comment] })).delivery.state).toBe("unchanged");
+    expect(submitted.filter(ids => ids.length)).toHaveLength(3);
   });
 
   test("review GET returns the current file, notes, and statuses", async () => {
@@ -1414,9 +1368,9 @@ describe('live UI browser API', () => {
 describe('managed queue API', () => {
   test('read-only state and same-origin explicit controls expose permissions without granting by polling', async () => {
     const calls: any[] = [];
-    const started = await startTestServer({ channel: {
-      agent: 'Any external agent', managed: true, available: () => true,
-      status: () => ({ agent: 'Any external agent', state: 'unavailable', mode: 'managed', detail: 'Queued locally' }),
+    const started = await startTestServer({ agent: {
+      agent: 'Any external agent',
+      status: () => ({ agent: 'Any external agent', state: 'unavailable', detail: 'Queued locally' }),
       snapshot: () => ({ paused: true, tasks: [], permissions: [{ id: 'permission-1' }] }),
       control: async (...args) => { calls.push(args); }, publish: () => ({ state: 'queued', count: 1 }),
     } });
@@ -1428,14 +1382,19 @@ describe('managed queue API', () => {
     expect(calls).toEqual([]);
     expect((await request(started, '/api/agent/queue', { method: 'POST', headers: { 'content-type': 'application/json', origin: started.base }, body })).status).toBe(200);
     expect(calls).toEqual([['permission', 'permission-1', 'allow-once']]);
+    const saved=await request(started,'/api/note',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({comment})});
+    expect(saved.status).toBe(200);
+    const note=await saved.json();
+    expect(note.connection.state).toBe('unavailable');
+    expect(note.delivery).toEqual({state:'queued',count:1});
   });
-  test('attachment connections do not expose managed controls', async () => {
+  test('manual mode does not expose managed controls', async () => {
     const started = await startTestServer();
     expect((await request(started, '/api/agent/queue')).status).toBe(404);
   });
   test('note deletion and reply withdrawal notify only the original review queue', async () => {
     const withdrawn: any[] = [], revised: any[] = [];
-    const started = await startTestServer({ channel: { agent: 'ACP', managed: true,
+    const started = await startTestServer({ agent: { agent: 'ACP',
       publish: () => ({ state: 'queued', count: 1 }), withdraw: async (...args) => { withdrawn.push(args); }, revise: async (...args) => { revised.push(args); },
     } });
     await started.options.session.save({ comments: [comment] }); const review = started.options.session.file;

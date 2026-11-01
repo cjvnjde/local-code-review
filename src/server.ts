@@ -10,7 +10,7 @@ import type { ReviewSession } from "./session.ts";
 import type { ReviewNote } from "./thread.ts";
 import type { DiffFile, DiffRow, NoteStatus, ReviewComment, ReviewSubmission } from "./types.ts";
 import { VERSION } from "./version.ts";
-import type { AgentChannel } from "./agent-channel.ts";
+import type { AgentAdapter } from "./agent-connection.ts";
 import { webAnnotationTarget, WebAnnotationInvalid, WebSelectionConflict } from "./web-review-model.ts";
 import { webAnnotation } from "./web-annotation.ts";
 
@@ -50,8 +50,8 @@ export interface ServerOptions {
   session: ReviewSession;
   /** Open pages, told whenever the review file or the diff moved. */
   hub: Hub;
-  /** Optional adapter that forwards saved reviewer feedback into an agent session. */
-  channel?: AgentChannel;
+  /** Optional ACP connection that queues saved reviewer feedback for managed work. */
+  agent?: AgentAdapter;
 }
 
 /**
@@ -73,13 +73,11 @@ export const PORT_ATTEMPTS = 10;
  */
 export const repoId = (repoRoot: string) => fingerprint(repoRoot);
 
-const activeChannel = (options: ServerOptions) =>
-  options.channel && (options.channel.available?.() ?? true) ? options.channel : undefined;
-const channelState = (options: ServerOptions) => options.channel ? {
-  ...(options.channel.snapshot ? { queue: options.channel.snapshot() } : {}),
-  connection: options.channel.status?.() ?? { agent: options.channel.agent,
-    state: activeChannel(options) ? "ready" : "unavailable", detail: "Agent connection status." },
-  ...(activeChannel(options) ? { agent: options.channel.agent } : {}),
+const agentState = (options: ServerOptions) => options.agent ? {
+  ...(options.agent.snapshot ? { queue: options.agent.snapshot() } : {}),
+  connection: options.agent.status?.() ?? { agent: options.agent.agent,
+    state: "ready", detail: "ACP agent connection." },
+  agent: options.agent.agent,
 } : {};
 
 export function startServer(options: ServerOptions) {
@@ -162,8 +160,8 @@ function serve(options: ServerOptions, port: number) {
           return Response.json({ ok: true }, { headers });
         }
         if (url.pathname === "/api/agent/queue") {
-          if (!options.channel?.control) return Response.json({ error: "This connection has no managed execution lifecycle." }, { status: 404 });
-          if (request.method === "GET") return Response.json(channelState(options));
+          if (!options.agent?.control) return Response.json({ error: "This connection has no managed execution lifecycle." }, { status: 404 });
+          if (request.method === "GET") return Response.json(agentState(options));
           if (request.method !== "POST") return new Response("method not allowed", { status: 405 });
           if (!isJsonRequest(request)) return Response.json({ error: "JSON body required." }, { status: 415 });
           const origin = request.headers.get("origin");
@@ -172,12 +170,12 @@ function serve(options: ServerOptions, port: number) {
           const payload = await readJson(request) as { action?: unknown; id?: unknown; option?: unknown } | null;
           if (typeof payload?.action !== "string" || (payload.id !== undefined && typeof payload.id !== "string") ||
               (payload.option !== undefined && typeof payload.option !== "string")) return Response.json({ error: "A queue action is required." }, { status: 400 });
-          await options.channel.control(payload.action, payload.id as string | undefined, payload.option as string | undefined);
-          return Response.json(channelState(options));
+          await options.agent.control(payload.action, payload.id as string | undefined, payload.option as string | undefined);
+          return Response.json(agentState(options));
         }
         if (url.pathname === "/api/agent" && request.method === "GET") {
-          await options.channel?.check?.();
-          return Response.json(channelState(options));
+          await options.agent?.check?.();
+          return Response.json(agentState(options));
         }
         if (url.pathname === "/api/diff") {
           const [files, statuses] = await Promise.all([options.getDiff(), options.getStatuses()]);
@@ -189,7 +187,7 @@ function serve(options: ServerOptions, port: number) {
             ...(options.web ? { web: options.web.status() } : {}),
             files,
             statuses,
-            ...channelState(options),
+            ...agentState(options),
           });
         }
         if (url.pathname === '/api/web/annotation') {
@@ -300,7 +298,7 @@ function serve(options: ServerOptions, port: number) {
               file: options.session.shownFile,
               notes: doc.notes,
               statuses,
-              ...channelState(options),
+              ...agentState(options),
             });
           }
           // Starting fresh only forgets which file we were in; the old one stays on disk as history.
@@ -350,8 +348,8 @@ function serve(options: ServerOptions, port: number) {
               `\n  ${request.method === "POST" ? "replied" : "reworded a reply"} on ${note.key} in ${options.session.shownFile}\n`,
             );
             options.hub.emit({ type: "review", file: options.session.file });
-            const channel = await activeChannel(options)?.publish(review, [note]);
-            return Response.json({ file: options.session.shownFile, note, ...channelState(options), ...(channel ? { channel } : {}) });
+            const delivery = await options.agent?.publish(review, [note]);
+            return Response.json({ file: options.session.shownFile, note, ...agentState(options), ...(delivery ? { delivery } : {}) });
           }
           if (request.method === "DELETE") {
             const id = url.searchParams.get("id") ?? "";
@@ -362,7 +360,7 @@ function serve(options: ServerOptions, port: number) {
             const review = options.session.file;
             const note = await options.session.dropReply(id, at, review);
             if (!note) return Response.json({ error: missing(request.method) }, { status: 404 });
-            await options.channel?.revise?.(review, note);
+            await options.agent?.revise?.(review, note);
             console.log(`\n  took a reply back on ${note.key} in ${options.session.shownFile}\n`);
             options.hub.emit({ type: "review", file: options.session.file });
             return Response.json({ file: options.session.shownFile, note });
@@ -379,13 +377,12 @@ function serve(options: ServerOptions, port: number) {
             return Response.json({ error: "A complete note with an id, body, file and line range is required." }, { status: 400 });
           }
           const { file, changed, removed } = await options.session.save({ comments: [comment] }, payload?.replace === true);
-          for (const old of removed) await options.channel?.withdraw?.(old);
+          for (const old of removed) await options.agent?.withdraw?.(old);
           const review = path.basename(file);
           const notify = changed.length ? changed : payload?.retry ? [await options.session.readNote(review, comment.id)].filter((note): note is ReviewNote => !!note) : [];
-          const channel = activeChannel(options);
-          const delivery = channel ? await channel.publish(review, notify) : undefined;
+          const delivery = await options.agent?.publish(review, notify);
           options.hub.emit({ type: "review", file: review });
-          return Response.json({ file, id: comment.id, ...channelState(options), ...(delivery ? { channel: delivery } : {}) });
+          return Response.json({ file, id: comment.id, ...agentState(options), ...(delivery ? { delivery } : {}) });
         }
         if (url.pathname === "/api/note" && request.method === "DELETE") {
           // Many ids in one request: clearing the page is one withdrawal, not one per note.
@@ -393,7 +390,7 @@ function serve(options: ServerOptions, port: number) {
           if (!ids.length) return Response.json({ error: "A note id is required." }, { status: 400 });
           const review = options.session.file;
           const removed = await options.session.remove(ids, review);
-          if (removed) await options.channel?.withdraw?.(review, ids);
+          if (removed) await options.agent?.withdraw?.(review, ids);
           if (removed) options.hub.emit({ type: "review", file: options.session.file });
           return Response.json({ removed });
         }
@@ -408,11 +405,11 @@ function serve(options: ServerOptions, port: number) {
           );
           console.log(`\n  saved ${file}  (${submission.comments.length} notes)`);
           if (removed.length) console.log(`  replaced ${plural(removed.length, "earlier review file")}`);
-          if (!activeChannel(options)) console.log(`  next: ask the agent to "address the notes in ${file}"\n`);
+          if (!options.agent) console.log(`  next: ask the agent to "address the notes in ${file}"\n`);
           options.hub.emit({ type: "review", file: options.session.file });
-          for (const old of removed) await options.channel?.withdraw?.(old);
-          const channel = await activeChannel(options)?.publish(path.basename(file), changed);
-          return Response.json({ file, count: submission.comments.length, removed, ...channelState(options), ...(channel ? { channel } : {}) });
+          for (const old of removed) await options.agent?.withdraw?.(old);
+          const delivery = await options.agent?.publish(path.basename(file), changed);
+          return Response.json({ file, count: submission.comments.length, removed, ...agentState(options), ...(delivery ? { delivery } : {}) });
         }
         if (url.pathname === "/api/ghosts") {
           return Response.json({ ghosts: await options.getGhosts() });
@@ -456,7 +453,7 @@ function serve(options: ServerOptions, port: number) {
               options.session.startFresh();
               return names;
             });
-            for (const old of removed) await options.channel?.withdraw?.(old);
+            for (const old of removed) await options.agent?.withdraw?.(old);
             console.log(`\n  deleted ${plural(removed.length, "review file")} from ${options.outDir}/\n`);
             options.hub.emit({ type: "review", file: "" });
             return Response.json({ removed });

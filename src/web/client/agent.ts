@@ -2,19 +2,18 @@ import { el, esc, state } from './state.ts';
 
 export const noteSaveLabel=()=>state.agent?'Save & ask AI':'Save note';
 
-/** Only a confirmed/checked adapter is offered as an automatic destination. */
+/** A configured ACP queue accepts durable work even while disconnected. */
 export function adoptAgent(data: any){
   const connection=data.connection||null;
-  const agent=connection?(connection.mode==='managed'||connection.state==='ready')?connection.agent:'':data.agent;
-  const label=agent==='claude'?'Claude':agent==='codex'?'Codex':agent||'';
+  const label=connection?.agent||data.agent||'';
   const queue=data.queue??null;
   const changed=state.agent!==label||JSON.stringify(state.connection)!==JSON.stringify(connection)||JSON.stringify(state.agentQueue)!==JSON.stringify(queue);
   state.agentQueue=queue;
   state.agent=label; state.connection=connection;
   const indicator=el('agentState');
   if(indicator){
-    const name=connection?.agent==='claude'?'Claude':connection?.agent==='codex'?'Codex':connection?.agent||'';
-    indicator.textContent=name?name+' '+connection.state+(connection.mode==='attachment'?' · attached':''):'No agent connected';
+    const name=connection?.agent||'';
+    indicator.textContent=name?name+' '+connection.state:'No agent connected';
     indicator.title=connection?.detail||'Notes are saved locally; no automatic agent delivery is confirmed.';
   }
   drawQueue();
@@ -24,7 +23,7 @@ export function adoptAgent(data: any){
   return changed;
 }
 
-/** Read-only health checks do not create model turns. Claude confirms itself through its probe tool. */
+/** Read-only connection checks do not create model turns. */
 export function startAgentStatus(repaint: ()=>void){
   let checking=false;
   const check=async()=>{

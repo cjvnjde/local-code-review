@@ -15,7 +15,7 @@ const second={...first,id:"a.ts|n2|n2|#second",start:2,end:2,label:"2",body:"Kee
 beforeEach(()=>{
   state.notes=new Map([[first.id,{...first}],[second.id,{...second}]]);
   state.noteSending=new Map(); state.noteDelivery=new Map(); state.soloKeys=new Set();
-  state.sessionFile=""; state.agent="Claude"; state.connection=null; state.agentQueue=null;
+  state.sessionFile=""; state.agent="External ACP agent"; state.connection=null; state.agentQueue=null;
   Object.defineProperty(globalThis,"document",{configurable:true,value:{getElementById:()=>null,querySelectorAll:()=>[]}});
   Object.defineProperty(globalThis,"localStorage",{configurable:true,value:{setItem:()=>{}}});
 });
@@ -31,7 +31,7 @@ describe("individual note sending",()=>{
     let posted:any;
     globalThis.fetch=(async(url,init)=>{
       expect(url).toBe("/api/note"); posted=JSON.parse(init!.body as string);
-      return Response.json({file,id:first.id,connection:{agent:"claude",state:"ready",detail:"Confirmed"},channel:{state:"forwarded",count:1}});
+      return Response.json({file,id:first.id,connection:{agent:"External ACP agent",state:"ready",detail:"Confirmed"},delivery:{state:"queued",count:1}});
     }) as any;
     await submitNote(state.notes.get(first.id));
     expect(posted.comment.id).toBe(first.id);
@@ -70,21 +70,20 @@ describe("individual note sending",()=>{
     expect(state.noteSending.size).toBe(0);
   });
 
-  test("the note button follows confirmed agent status, including an already open editor",()=>{
+  test("the note button follows the configured ACP queue, including an already open editor",()=>{
     const button={disabled:false,textContent:""};
     const status={textContent:"",title:""};
     (globalThis as any).document.querySelectorAll=()=>[button];
     (globalThis as any).document.getElementById=()=>status;
-    adoptAgent({connection:{agent:"claude",state:"checking",detail:"Waiting for confirmation"}});
+    for(const phase of ["checking","ready","unavailable"]){
+      adoptAgent({connection:{agent:"External ACP agent",state:phase,detail:"Queue accepts saved work"}});
+      expect(noteSaveLabel()).toBe("Save & ask AI");
+      expect(button.textContent).toBe("Save & ask AI");
+      expect(status.textContent).toBe("External ACP agent "+phase);
+    }
+    adoptAgent({});
     expect(noteSaveLabel()).toBe("Save note");
-    expect(button.textContent).toBe("Save note");
-    adoptAgent({connection:{agent:"claude",state:"ready",detail:"Confirmed"}});
-    expect(button.textContent).toBe("Save & ask AI");
-    adoptAgent({connection:{agent:"codex",state:"ready",detail:"Session found"}});
-    expect(button.textContent).toBe("Save & ask AI");
-    adoptAgent({connection:{agent:"claude",state:"unavailable",detail:"No confirmation; policy may block it"}});
-    expect(button.textContent).toBe("Save note");
-    expect(status.textContent).toBe("Claude unavailable");
+    expect(status.textContent).toBe("No agent connected");
   });
 });
 
@@ -133,7 +132,7 @@ describe("whole review saving",()=>{
 });
 
 test('a configured generic managed agent accepts work while unavailable and retains its own name', () => {
-  adoptAgent({connection:{agent:'External ACP adapter',mode:'managed',state:'unavailable',detail:'Queued locally'},queue:{paused:true,tasks:[],permissions:[]}});
+  adoptAgent({connection:{agent:'External ACP adapter',state:'unavailable',detail:'Queued locally'},queue:{paused:true,tasks:[],permissions:[]}});
   expect(state.agent).toBe('External ACP adapter');
   expect(noteSaveLabel()).toBe('Save & ask AI');
 });

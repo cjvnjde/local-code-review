@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { AcpClient, acpTarget, type AcpConfig, type Permission } from './acp.ts';
 import { AgentQueue, activeWork, reviewerRevision, type AgentTask } from './agent-queue.ts';
-import type { AgentChannel, ChannelDelivery } from './agent-channel.ts';
+import type { AgentAdapter, AgentDelivery } from './agent-connection.ts';
 import { createSession, type ReviewSession } from './session.ts';
 import type { ReviewNote } from './thread.ts';
 import type { NoteStatusKind } from './types.ts';
@@ -40,7 +40,7 @@ export function acpAnswer(text: string): { body: string; status?: NoteStatusKind
   return { body };
 }
 
-export interface ManagedChannel extends AgentChannel {
+export interface ManagedAgent extends AgentAdapter {
   snapshot(): any;
   control(action: string, id?: string, option?: string): Promise<void>;
   withdraw(review: string, ids?: string[]): Promise<void>;
@@ -49,7 +49,7 @@ export interface ManagedChannel extends AgentChannel {
 }
 
 /** lcr owns scheduling; only a settled prompt response frees the worktree for another turn. */
-export function createManagedAgent(options: Options): ManagedChannel {
+export function createManagedAgent(options: Options): ManagedAgent {
   const queue = new AgentQueue(options.directory);
   const target = acpTarget(options.config);
   let client: AcpClient | undefined;
@@ -163,13 +163,10 @@ export function createManagedAgent(options: Options): ManagedChannel {
   }
   return {
     agent: options.config.name,
-    managed: true,
-    // A configured managed queue accepts durable work even while disconnected or paused.
-    available: () => true,
-    status: () => ({ agent: options.config.name, mode: 'managed', state: connected ? 'ready' : checking ? 'checking' : 'unavailable',
+    status: () => ({ agent: options.config.name, state: connected ? 'ready' : checking ? 'checking' : 'unavailable',
       detail: !queue.healthy ? 'Managed queue storage failed; dispatch is stopped. Repair storage and restart lcr.' : fault || (queue.data.paused ? 'Managed queue paused.' : 'ACP managed session; comments run sequentially.') }),
     check,
-    async publish(review, notes): Promise<ChannelDelivery> {
+    async publish(review, notes): Promise<AgentDelivery> {
       const count = queue.accept(exact(review), notes, target);
       changed(); pump();
       return { state: count ? 'queued' : 'unchanged', count };

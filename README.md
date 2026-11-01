@@ -74,13 +74,8 @@ lcr --acp /path/to/agent.json --id checkout
 Saving a comment starts the selected agent; further comments queue until that turn ends. Queue state
 survives restarts, and permissions appear in the page's **Queue** control.
 
-For delivery into an existing session, see [Claude Code setup](docs/claude-channel.md), or attach an existing [Codex session](docs/codex-channel.md):
-
-```sh
-lcr --codex-thread <session-uuid> --id checkout
-```
-
-Once the connection is verified, **Save & ask AI** saves and sends that note immediately. Without a connection, **Save note** keeps the manual workflow.
+With an ACP configuration, **Save & ask AI** saves and queues that note immediately. Without one,
+**Save note** keeps the manual Markdown workflow.
 
 ## Other options
 
@@ -99,7 +94,7 @@ Unrecognized arguments pass through to `git diff`. Working-tree comparisons incl
 
 - [Review workflow and controls](docs/usage.md) — notes, images, search, history, shortcuts, and saved conversations.
 - [Web annotation](docs/web-ui.md) — selection tools, drawings, before/after captures, and browser requirements.
-- Agent connections: [Managed ACP queue](docs/agent-connections.md) · [Claude Code](docs/claude-channel.md) · [Codex](docs/codex-channel.md).
+- [Agent connections and sequential queue](docs/agent-connections.md).
 - [Development](docs/development.md) — run from source, checks, and standalone builds.
 
 ## License
