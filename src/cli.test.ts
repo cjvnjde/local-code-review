@@ -81,3 +81,12 @@ test('ACP configuration stays out of Git arguments', () => {
   expect(parseArgs(['--', '--acp']).acp).toBeUndefined();
   expect(() => parseArgs(['--acp'])).toThrow('configuration');
 });
+
+test('no-agent selects manual operation and the last explicit agent flag wins', () => {
+  expect(parseArgs(['--no-agent', '--staged'])).toMatchObject({ noAgent: true, diffArgs: ['--staged'] });
+  expect(parseArgs(['--acp', 'agent.json', '--no-agent']).acp).toBeUndefined();
+  expect(parseArgs(['--acp', 'agent.json', '--no-agent']).noAgent).toBe(true);
+  expect(parseArgs(['--no-agent', '--acp', 'agent.json']).acp).toBe('agent.json');
+  expect(parseArgs(['--no-agent', '--acp', 'agent.json']).noAgent).toBeUndefined();
+  expect(parseArgs(['--', '--no-agent']).diffArgs).toEqual(['--', '--no-agent']);
+});

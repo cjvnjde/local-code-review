@@ -71,6 +71,8 @@ For managed sequential work with any compatible ACP agent, see [ACP connections 
 lcr --acp /path/to/agent.json --id checkout
 ```
 
+You can select a default profile in `~/.config/lcr/config.json` to use plain `lcr`; see the guide above.
+
 Saving a comment starts the selected agent; further comments queue until that turn ends. Queue state
 survives restarts, and permissions appear in the page's **Queue** control.
 
@@ -81,6 +83,7 @@ With an ACP configuration, **Save & ask AI** saves and queues that note immediat
 
 | Command | Purpose |
 | --- | --- |
+| `lcr --no-agent` | Review manually, ignoring the default agent |
 | `lcr --no-open` | Start without opening a browser |
 | `lcr --port 8080` | Choose a starting port (`0` picks a free one) |
 | `lcr --out .feedback` | Change the review output directory |

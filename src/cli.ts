@@ -24,6 +24,7 @@ export function parseArgs(argv: string[]): CliOptions {
   let help = false;
   let web = "";
   let acp = "";
+  let noAgent = false;
   const diffArgs: string[] = [];
 
   for (let i = 0; i < argv.length; i++) {
@@ -41,7 +42,9 @@ export function parseArgs(argv: string[]): CliOptions {
     else if (arg === "--open") open = true;
     else if (arg === "--help" || arg === "-h") help = true;
     else if (arg === "--version" || arg === "-v") version = true;
+    else if (arg === "--no-agent") { noAgent = true; acp = ""; }
     else if (arg === "--acp") {
+      noAgent = false;
       acp = argv[++i]?.trim() ?? "";
       if (!acp || acp.startsWith("-")) throw new Error("--acp requires a JSON configuration file.");
     }
@@ -53,7 +56,7 @@ export function parseArgs(argv: string[]): CliOptions {
     if (!Number.isInteger(context) || context < 0) throw new Error("--context requires a non-negative integer.");
     if (!outDir || outDir.startsWith("-")) throw new Error("--out requires a directory.");
   }
-  return { ...(acp ? { acp } : {}), ...(web ? { web } : {}), port, outDir, context, open, id, version, help, diffArgs };
+  return { ...(noAgent ? { noAgent: true } : {}), ...(acp ? { acp } : {}), ...(web ? { web } : {}), port, outDir, context, open, id, version, help, diffArgs };
 }
 
 /** Help is local to the CLI: it needs neither Git nor a running review. */
@@ -62,6 +65,7 @@ export const HELP = `Usage: lcr [options] [git diff arguments]
 Review working-tree, staged, and untracked changes against HEAD by default.
 Other arguments are passed to git diff and checked before the server starts.
 Use -- to separate file paths from options and revisions.
+The default agent comes from $XDG_CONFIG_HOME/lcr/config.json (or ~/.config/lcr/config.json).
 
 Options:
   -h, --help                 Show this help and exit
@@ -73,7 +77,8 @@ Options:
   --id <name>                Name a review to continue it across diff changes
   --no-open                  Do not open the browser
   --open                     Open the browser (default)
-  --acp <config.json>        Manage an external ACP agent with a durable sequential queue
+  --acp <config.json>        Override the default ACP agent profile
+  --no-agent                 Run manually, ignoring the default agent
 
 Examples:
   lcr

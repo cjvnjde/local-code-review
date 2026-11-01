@@ -3,7 +3,8 @@
 `lcr --acp <config.json>` runs an externally installed, authenticated ACP agent or adapter as a
 subprocess. lcr owns a persistent FIFO queue and waits for each prompt turn to finish before starting
 another. Saving a note starts its work immediately; later comments wait instead of steering or
-interrupting that turn. Without `--acp`, manual Markdown review still works.
+interrupting that turn. Without a configured agent, manual Markdown review still works.
+`--no-agent` always offers a manual run.
 
 ## Configure and select an agent
 
@@ -28,8 +29,9 @@ newline-delimited JSON-RPC on stdio can be selected. `command` is a single execu
 string array, with no shell evaluation. Optional `env` is a string-to-string object merged into the
 inherited environment. Install and authenticate the agent yourself. lcr never installs an adapter,
 reads login secrets, selects a model, or adds permission-bypass flags. Keep credentials out of config
-files; use the agent's own authenticated environment. Configuration paths are resolved from the
-repository root. Switching agents means restarting lcr with another config.
+files; use the agent's own authenticated environment. Explicit `--acp` paths are resolved from the
+repository root; defaults resolve beside the user settings. Switching agents means restarting lcr
+with another config.
 
 For example, use an installed `codex-acp` or `claude-agent-acp` executable as `command`. See the official
 [Codex adapter](https://github.com/agentclientprotocol/codex-acp),
@@ -41,6 +43,27 @@ or application changes are required. The external agent executable is still requ
 ACP creates or loads sessions it manages. It does **not** attach to an arbitrary running terminal.
 ACP is the only automatic connection mode; the old agent-specific attachment flags and bridges have
 been removed. An agent operating manually can still read and answer the Markdown review directly.
+
+### Default agent for all repositories
+
+Keep profiles in `~/.config/lcr/agents/`, then select one in `~/.config/lcr/config.json`:
+
+```json
+{
+  "acp": "agents/omp.json"
+}
+```
+
+With that setting, plain `lcr` starts the selected agent connection and comment queue. If
+`XDG_CONFIG_HOME` is an absolute path, settings live at `$XDG_CONFIG_HOME/lcr/config.json` instead.
+Profile paths in settings resolve relative to `config.json`; absolute paths and `~/` paths also work.
+Only user settings are discovered automatically; repository files never select an executable by themselves.
+
+An explicit `lcr --acp /path/to/another-agent.json` overrides the default. `lcr --no-agent` bypasses user
+settings and keeps the review manual. When both flags are given, the last one wins. Set `"acp": null`
+or remove the setting to disable the default globally. A missing settings file also means manual mode.
+Invalid settings or a missing configured profile produce an error; `--no-agent` and explicit `--acp`
+remain available to bypass a broken default. `--help` and `--version` never read user settings.
 
 ## Using the queue
 
@@ -162,3 +185,14 @@ ACP is now the sole automatic connection; the manual Markdown workflow remains a
   agent or queue, and ignored the obsolete bridge-specific project environment variable.
 
 The real-agent integration record above belongs to build 2026-11-01.1; it was not repeated for this removal.
+
+### Verification for build 2026-11-01.3
+
+- `bun test ./src`: 687 passed; the opt-in browser test skipped by default. Added regressions cover
+  XDG lookup, profile paths across repositories, overrides, manual opt-out, invalid settings, and
+  help/version remaining independent of configuration. Default startup never submits a model prompt.
+- Both Bun build commands above passed. The compiled browser smoke selected its profile through user
+  settings without `--acp`, completed two sequential comments with explicit approvals, and showed
+  live replies without browser runtime exceptions.
+- The installed binary selected the existing OMP profile automatically and reached **OMP ready**;
+  `--no-agent` returned to manual review. This installed-default check submitted no model prompt.

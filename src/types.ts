@@ -81,6 +81,8 @@ export interface CliOptions {
   help: boolean;
   /** JSON configuration of an external ACP v1 executable. */
   acp?: string;
+  /** Skip the user default and run a manual review. */
+  noAgent?: boolean;
   /** Local page to annotate instead of a Git diff. */
   web?: string;
   diffArgs: string[];

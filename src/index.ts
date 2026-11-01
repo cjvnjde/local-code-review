@@ -7,6 +7,7 @@ import { readAttachment, saveAttachment } from "./attach.ts";
 import { readBlob } from "./blob.ts";
 import { openInBrowser } from "./browser.ts";
 import { HELP, parseArgs } from "./cli.ts";
+import { resolveAcpPath } from "./config.ts";
 import { diffBase, diffRangeLabel, diffSides, fingerprint, getDiff, getFileContext, resolveWorktreeBase, validateDiff } from "./diff.ts";
 import { openInEditor } from "./editor.ts";
 import { createHub } from "./events.ts";
@@ -34,6 +35,8 @@ async function main() {
   }
   const repoRoot = await findRepoRoot();
   process.chdir(repoRoot);
+  const acpFile = await resolveAcpPath(options, repoRoot);
+  const agentConfig = acpFile ? await readAcpConfig(acpFile) : undefined;
 
   const range = diffRangeLabel(options.diffArgs);
   const diffSource = {
@@ -71,9 +74,9 @@ async function main() {
   }
   const hub = createHub();
   let webUrl = "";
-  const agent = options.acp ? createManagedAgent({ repoRoot, outDir: options.outDir, session,
+  const agent = agentConfig ? createManagedAgent({ repoRoot, outDir: options.outDir, session,
     directory: path.resolve(repoRoot, (await runGit(["rev-parse", "--git-path", "lcr-managed"], repoRoot)).trim()),
-    config: await readAcpConfig(path.resolve(repoRoot, options.acp)),
+    config: agentConfig,
     notify: () => hub.emit({ type: "review", file: session.file }),
   }) : undefined;
 

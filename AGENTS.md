@@ -74,6 +74,8 @@
   snippet in the reviewer's own note, which the format keeps verbatim on disk.
 - Default `.review/` output remains ignored. Custom relative output directories remain locally excluded through `.git/info/exclude`.
 - Start opens the page in the default browser unless `--no-open` is passed. Launch stays best-effort: failure prints a hint and never blocks the server.
+- The default ACP profile is selected only by user-owned XDG settings, never a discovered repository config.
+  Explicit `--acp` overrides the default and `--no-agent` bypasses it; help and version never read settings.
 - ACP is the only automatic agent connection. No agent-specific bridges, existing-session CLI
   attachment modes, or implicit background links are started by a manual run.
 - Managed work is persisted before dispatch and runs one turn at a time per working tree. Queue
