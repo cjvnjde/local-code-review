@@ -1,26 +1,39 @@
 #!/usr/bin/env bun
-import { readAcpConfig } from "./acp.ts";
-import { createManagedAgent } from "./managed-agent.ts";
+import { readAcpConfig } from "./agent/acp.ts";
+import { createManagedAgent } from "./agent/managed-agent.ts";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { readAttachment, saveAttachment } from "./attach.ts";
-import { readBlob } from "./blob.ts";
-import { openInBrowser } from "./browser.ts";
-import { HELP, parseArgs } from "./cli.ts";
-import { resolveAcpPath } from "./config.ts";
-import { diffBase, diffRangeLabel, diffSides, fingerprint, getDiff, getFileContext, resolveWorktreeBase, validateDiff } from "./diff.ts";
-import { openInEditor } from "./editor.ts";
-import { createHub } from "./events.ts";
-import { currentBranch, findRepoRoot, runGit } from "./git.ts";
-import { collectGhosts, describeReviews } from "./history.ts";
-import { deleteReviews, excludeRelativeOutput, listReviews } from "./output.ts";
-import { createSession } from "./session.ts";
-import { startServer } from "./server.ts";
-import { collectStatuses } from "./status.ts";
-import { parseReview } from "./thread.ts";
+import { readAttachment, saveAttachment } from "./review/attach.ts";
+import { readBlob } from "./git/blob.ts";
+import { openInBrowser } from "./browser/open.ts";
+import { HELP, parseArgs } from "./cli/args.ts";
+import { resolveAcpPath } from "./agent/config.ts";
+import {
+  diffBase,
+  diffRangeLabel,
+  diffSides,
+  fingerprint,
+  getDiff,
+  getFileContext,
+  resolveWorktreeBase,
+  validateDiff,
+} from "./git/diff.ts";
+import { openInEditor } from "./cli/editor.ts";
+import { createHub } from "./server/events.ts";
+import { currentBranch, findRepoRoot, runGit } from "./git/commands.ts";
+import { collectGhosts, describeReviews } from "./review/history.ts";
+import {
+  deleteReviews,
+  excludeRelativeOutput,
+  listReviews,
+} from "./review/output.ts";
+import { createSession } from "./review/session.ts";
+import { startServer } from "./server/http.ts";
+import { collectStatuses } from "./review/status.ts";
+import { parseReview } from "./review/thread.ts";
 import { VERSION } from "./version.ts";
-import { createWebReview } from "./web-review.ts";
-import { isNoise, watchDir, watchTree } from "./watch.ts";
+import { createWebReview } from "./web-review/controller.ts";
+import { isNoise, watchDir, watchTree } from "./server/watch.ts";
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
@@ -43,7 +56,9 @@ async function main() {
     repoRoot,
     context: options.context,
     diffArgs: options.diffArgs,
-    ...(options.diffArgs.length === 0 ? { worktreeBase: await resolveWorktreeBase(repoRoot) } : {}),
+    ...(options.diffArgs.length === 0
+      ? { worktreeBase: await resolveWorktreeBase(repoRoot) }
+      : {}),
   };
 
   // Reject invalid Git options, revisions and paths before opening any review resources.
@@ -69,29 +84,57 @@ async function main() {
   // that did not match are history, reachable from the page's review picker.
   if (!(await session.adoptMatching())) {
     const others = (await listReviews(repoRoot, options.outDir)).length;
-    if (others && options.id) console.log(`\n  nothing saved under "${options.id}" yet; starting that review`);
-    else if (others) console.log(`\n  ${others} earlier review file${others === 1 ? " is" : "s are"} for other diffs; starting fresh`);
+    if (others && options.id)
+      console.log(
+        `\n  nothing saved under "${options.id}" yet; starting that review`,
+      );
+    else if (others)
+      console.log(
+        `\n  ${others} earlier review file${others === 1 ? " is" : "s are"} for other diffs; starting fresh`,
+      );
   }
   const hub = createHub();
   let webUrl = "";
-  const agent = agentConfig ? createManagedAgent({ repoRoot, outDir: options.outDir, session,
-    directory: path.resolve(repoRoot, (await runGit(["rev-parse", "--git-path", "lcr-managed"], repoRoot)).trim()),
-    config: agentConfig,
-    notify: () => hub.emit({ type: "review", file: session.file }),
-  }) : undefined;
+  const agent = agentConfig
+    ? createManagedAgent({
+        repoRoot,
+        outDir: options.outDir,
+        session,
+        directory: path.resolve(
+          repoRoot,
+          (
+            await runGit(["rev-parse", "--git-path", "lcr-managed"], repoRoot)
+          ).trim(),
+        ),
+        config: agentConfig,
+        notify: () => hub.emit({ type: "review", file: session.file }),
+      })
+    : undefined;
 
   /** One saved review parsed back, for reading a ghost note's thread out of its own file. */
   async function readReview(name: string) {
-    if (!(await listReviews(repoRoot, options.outDir)).includes(name)) return null;
-    const text = await readFile(path.resolve(repoRoot, options.outDir, name), "utf8").catch(() => "");
+    if (!(await listReviews(repoRoot, options.outDir)).includes(name))
+      return null;
+    const text = await readFile(
+      path.resolve(repoRoot, options.outDir, name),
+      "utf8",
+    ).catch(() => "");
     return text ? parseReview(text) : null;
   }
 
   let web: ReturnType<typeof createWebReview> | undefined;
   let server: ReturnType<typeof startServer>;
   try {
-    web = options.web ? createWebReview({ url: options.web, repoRoot, outDir: options.outDir,
-      session, hub, reviewUrl: () => webUrl }) : undefined;
+    web = options.web
+      ? createWebReview({
+          url: options.web,
+          repoRoot,
+          outDir: options.outDir,
+          session,
+          hub,
+          reviewUrl: () => webUrl,
+        })
+      : undefined;
     server = startServer({
       port: options.port,
       repoRoot,
@@ -100,10 +143,13 @@ async function main() {
       reviewId: options.id,
       context: options.context,
       getDiff: () => getDiff(diffSource),
-      getContext: (file, start, end) => getFileContext(diffSource, file, start, end),
-      readBlob: (side, file) => readBlob(repoRoot, side === "old" ? sides.old : sides.new, file),
+      getContext: (file, start, end) =>
+        getFileContext(diffSource, file, start, end),
+      readBlob: (side, file) =>
+        readBlob(repoRoot, side === "old" ? sides.old : sides.new, file),
       // Beside the review file, because that is what a note's link to one resolves against.
-      saveAttachment: (bytes, type) => saveAttachment(repoRoot, options.outDir, bytes, type),
+      saveAttachment: (bytes, type) =>
+        saveAttachment(repoRoot, options.outDir, bytes, type),
       readAttachment: (name) => readAttachment(repoRoot, options.outDir, name),
       openFile: (file, editor) => openInEditor(repoRoot, file, editor),
       getStatuses: () => collectStatuses(repoRoot, options.outDir),
@@ -114,7 +160,11 @@ async function main() {
       // another one out mid-run, and the ghosts on offer should follow them there.
       getGhosts: async () => {
         const doc = await session.read();
-        const taken = new Set(doc.notes.map((note) => note.from).filter((from): from is string => !!from));
+        const taken = new Set(
+          doc.notes
+            .map((note) => note.from)
+            .filter((from): from is string => !!from),
+        );
         return collectGhosts(repoRoot, options.outDir, {
           except: session.file,
           branch: await currentBranch(repoRoot),
@@ -125,7 +175,11 @@ async function main() {
         const doc = await readReview(from.file);
         const source = doc?.notes.find((note) => note.id === from.id);
         if (!source) return null;
-        return session.import(comment, source.messages, `${from.file}#${from.id}`);
+        return session.import(
+          comment,
+          source.messages,
+          `${from.file}#${from.id}`,
+        );
       },
       session,
       hub,
@@ -149,12 +203,17 @@ async function main() {
   const ignoreTree = (file: string) => {
     const relative = file.split("\\").join("/");
     if (isNoise(relative)) return true;
-    return !!outRelative && !outRelative.startsWith("..") &&
-      (relative === outRelative || relative.startsWith(`${outRelative}/`));
+    return (
+      !!outRelative &&
+      !outRelative.startsWith("..") &&
+      (relative === outRelative || relative.startsWith(`${outRelative}/`))
+    );
   };
 
   /** Fingerprint of the whole diff, so a save that changes nothing does not repaint the page. */
-  let digest = fingerprint(initialDiff.map((file) => `${file.path}:${file.hash}`).join("\n"));
+  let digest = fingerprint(
+    initialDiff.map((file) => `${file.path}:${file.hash}`).join("\n"),
+  );
   let checking = false;
   let recheck = false;
   async function checkDiff(): Promise<void> {
@@ -168,7 +227,9 @@ async function main() {
     checking = true;
     try {
       const files = await getDiff(diffSource);
-      const next = fingerprint(files.map((file) => `${file.path}:${file.hash}`).join("\n"));
+      const next = fingerprint(
+        files.map((file) => `${file.path}:${file.hash}`).join("\n"),
+      );
       if (digest && next !== digest) hub.emit({ type: "diff" });
       digest = next;
     } catch {
@@ -201,15 +262,21 @@ async function main() {
     server.stop(true);
     process.exit(0);
   }
-  for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, shutdown);
+  for (const signal of ["SIGINT", "SIGTERM"] as const)
+    process.on(signal, shutdown);
 
   if (options.open) {
     let opened = false;
     if (web) {
-      opened = await web.open().then(() => true).catch(error => {
-        console.error('  '+error.message+' Open the review URL to retry.');
-        return false;
-      });
+      opened = await web
+        .open()
+        .then(() => true)
+        .catch((error) => {
+          console.error(
+            "  " + error.message + " Open the review URL to retry.",
+          );
+          return false;
+        });
     }
     if (!opened && !openInBrowser(webUrl)) {
       console.log("  could not open browser; open the URL above manually\n");

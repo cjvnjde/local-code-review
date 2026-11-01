@@ -1,0 +1,147 @@
+/* ---- notes the diff can no longer hold where they were written ---- */
+.lost {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  padding: 6px 12px;
+  background: rgba(250, 179, 135, 0.09);
+  border-bottom: 1px solid var(--edge);
+  font-family: var(--sans);
+  font-size: var(--fs-sm);
+  color: var(--ink-dim);
+}
+.lost .tag {
+  flex: none;
+  font: 700 var(--fs-xs)/1.6 var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--peach);
+}
+.lost .why {
+  min-width: 0;
+}
+.nbox.adrift {
+  border-color: var(--peach);
+  border-style: dashed;
+  background: var(--panel);
+}
+.nbox.adrift .lost {
+  background: rgba(243, 139, 168, 0.12);
+}
+.nbox.adrift .lost .tag {
+  color: var(--red);
+}
+/* the lines a note was written on, framed like the suggestion block so a note reads as one thing */
+.cap {
+  margin: 10px 12px 0;
+  border: 1px solid var(--edge-hi);
+  border-radius: 5px;
+  background: var(--crust);
+  overflow: hidden;
+}
+.cap .caph {
+  padding: 3px 10px;
+  background: var(--s0);
+  color: var(--ink-dim);
+  font: var(--fs-xs)/1.6 var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+/* a long capture is still just context for the note, so it scrolls rather than pushing the text away */
+.cap .capc {
+  max-height: 38vh;
+  overflow: auto;
+  padding: 5px 0;
+}
+.cap .cl {
+  display: flex;
+  gap: 6px;
+  padding: 0 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+  font-size: var(--fs-code);
+}
+.cap .cl .cm {
+  flex: none;
+  width: 8px;
+  color: var(--ink-faint);
+}
+.cap .cl .c {
+  flex: 1;
+  min-width: 0;
+}
+.cap .cl.add {
+  background: var(--add-bg);
+}
+.cap .cl.add .cm {
+  color: var(--add);
+}
+.cap .cl.del {
+  background: var(--del-bg);
+}
+.cap .cl.del .cm {
+  color: var(--del);
+}
+/* code that has since been rewritten: shown as a record, not as what is in the file now */
+.cap.was .caph {
+  background: rgba(250, 179, 135, 0.16);
+  color: var(--peach);
+}
+.cap.was .capc {
+  opacity: 0.82;
+}
+.loose[hidden] {
+  display: none;
+}
+.loose {
+  border-top: 1px solid var(--edge-hi);
+  background: var(--base);
+  padding: 2px 0 8px;
+}
+.looseh {
+  padding: 7px 12px 2px;
+  color: var(--peach);
+  font: var(--fs-xs)/1.6 var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.loose .nrow {
+  display: block;
+}
+.loose .nbox {
+  margin: 8px 12px;
+}
+/* notes about the review as a whole: the same card as a file's, above the first of them */
+#diff .gcard {
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+  margin: 12px 14px;
+  overflow: clip;
+  background: var(--panel);
+  border-left: 3px solid var(--mark);
+}
+#diff .gcard .fh .p {
+  color: var(--mark);
+}
+#diff .gcard .loose {
+  border-top: none;
+  padding: 2px 0 4px;
+}
+#diff .file.stray {
+  border-color: var(--peach);
+  border-style: dashed;
+}
+#diff .file.stray .fh .p {
+  color: var(--peach);
+}
+.strayw {
+  padding: 2px 0 6px;
+}
+.strayw .note {
+  margin: 9px 12px 0;
+  color: var(--ink-faint);
+  font-family: var(--sans);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+}

@@ -224,7 +224,7 @@ The ordinary suite runs without a browser. With Chrome installed, exercise the r
 screenshot, framework-hint, conversation, comparison, reload, and shared-review workflow with:
 
 ```sh
-LCR_TEST_BROWSER=1 bun test src/web-review-browser.test.ts
+LCR_TEST_BROWSER=1 bun test src/web-review/browser.test.ts
 ```
 
 The test uses a temporary local application and its own temporary browser profile.

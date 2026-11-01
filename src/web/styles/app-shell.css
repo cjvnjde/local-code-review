@@ -1,0 +1,100 @@
+#toasts {
+  position: fixed;
+  right: 16px;
+  bottom: 70px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  align-items: flex-end;
+}
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--panel2);
+  border: 1px solid var(--edge-hi);
+  border-left: 3px solid var(--green);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-family: var(--sans);
+  font-size: var(--fs-ui);
+  color: var(--ink);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45);
+  max-width: 460px;
+}
+.toast.off {
+  border-left-color: var(--peach);
+}
+.toast .ic {
+  display: flex;
+  color: var(--green);
+}
+.toast.off .ic {
+  color: var(--peach);
+}
+.toast .tx {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono);
+}
+.toast .lbl {
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  font-size: var(--fs-xs);
+  letter-spacing: 0.05em;
+}
+.toast button {
+  padding: 5px 9px;
+  font-size: var(--fs-xs);
+  min-height: var(--tap);
+}
+.toast.out {
+  opacity: 0;
+  transform: translateY(4px);
+  transition:
+    opacity 0.18s,
+    transform 0.18s;
+}
+header b {
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: var(--fs-sm);
+}
+/* a long revision spec gives way rather than wrapping the strip onto a second line */
+header .range {
+  color: var(--mark);
+  font-size: var(--fs-sm);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* the name a run was started under, when it has one: which review this is, ahead of which diff */
+header .rvid {
+  flex: none;
+  color: var(--mauve);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border: 1px solid var(--mauve);
+  border-radius: 9px;
+  padding: 1px 8px;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+header .rvid[hidden] {
+  display: none;
+}
+header .spacer {
+  flex: 1;
+}
+main {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}

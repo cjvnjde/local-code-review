@@ -113,14 +113,14 @@ Opening history adds one navigation entry: Back closes it, Forward restores its 
 
 ## Keyboard shortcuts
 
-| Shortcut | Action |
-| --- | --- |
-| Cmd/Ctrl+K | Search the review |
-| Alt+J / Alt+K | Next / previous note outside a text field |
-| Alt+C | Toggle the all-notes panel |
-| J / K | Step through the open all-notes panel outside a text field |
-| Alt+Down / Alt+Up | Next / previous bookmark outside a text field |
-| Alt/Option + drag | Select code as ordinary text without commenting |
-| Escape | Cancel an editor or close an overlay; unsaved work may require confirmation |
+| Shortcut          | Action                                                                      |
+| ----------------- | --------------------------------------------------------------------------- |
+| Cmd/Ctrl+K        | Search the review                                                           |
+| Alt+J / Alt+K     | Next / previous note outside a text field                                   |
+| Alt+C             | Toggle the all-notes panel                                                  |
+| J / K             | Step through the open all-notes panel outside a text field                  |
+| Alt+Down / Alt+Up | Next / previous bookmark outside a text field                               |
+| Alt/Option + drag | Select code as ordinary text without commenting                             |
+| Escape            | Cancel an editor or close an overlay; unsaved work may require confirmation |
 
 The editor shows its current save shortcut; the Enter behavior is configurable in settings. Live-page selection and drawing shortcuts are listed in the [web annotation guide](web-ui.md).

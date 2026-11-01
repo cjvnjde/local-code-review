@@ -1,0 +1,45 @@
+#agentQueue {
+  position: fixed;
+  top: calc(var(--tap) * 2);
+  right: calc(var(--tap) / 2);
+  width: min(calc(var(--tap) * 22), calc(100vw - var(--tap)));
+  max-height: 80vh;
+  overflow: auto;
+  z-index: 100;
+  background: var(--bg);
+  color: var(--ink);
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  padding: calc(var(--tap) / 2);
+  box-shadow: 0 8px 32px #0005;
+  font-size: var(--fs-ui);
+}
+#agentQueue[hidden] {
+  display: none;
+}
+#agentQueue pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: calc(var(--row) * 9);
+  overflow: auto;
+}
+#agentQueue .queue-task {
+  border-top: 1px solid var(--edge);
+  padding: calc(var(--tap) / 3) 0;
+  overflow-wrap: anywhere;
+}
+#agentQueue .queue-task .pth {
+  margin: calc(var(--tap) / 5) 0;
+}
+#agentQueue button {
+  margin: calc(var(--tap) / 6);
+  font-size: var(--fs-sm);
+}
+#agentQueue button,
+#queueToggle {
+  min-width: var(--tap);
+  min-height: var(--tap);
+}
+#queueToggle {
+  flex: none;
+}

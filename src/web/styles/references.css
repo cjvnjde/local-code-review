@@ -1,0 +1,97 @@
+/* one note pointing at another: the chip says where that note is now, and clicking it goes there.
+     A reference the review no longer holds keeps the words it was written with and strikes them. */
+.md .nref {
+  display: inline-block;
+  white-space: nowrap;
+  font: var(--fs-sm)/1.5 var(--mono);
+  letter-spacing: 0;
+  text-transform: none;
+  padding: 0 calc(var(--tap) / 4);
+  min-height: var(--tap);
+  min-width: var(--tap);
+  border: 1px solid var(--edge-hi);
+  border-radius: 9px;
+  background: var(--s0);
+  color: var(--mark);
+  cursor: pointer;
+}
+.md .nref .i {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  vertical-align: -2px;
+  margin-right: 4px;
+  color: var(--ink-faint);
+}
+.md button.nref:hover {
+  color: var(--mark);
+  border-color: var(--mark);
+  background: var(--s1);
+}
+.md button.nref:hover .i {
+  color: var(--mark);
+}
+.md .nref.gone {
+  color: var(--ink-faint);
+  cursor: default;
+}
+.md .nref.gone .t {
+  text-decoration: line-through;
+}
+.refpreview {
+  margin: calc(var(--tap) / 2) 0;
+  border: 1px solid var(--edge-hi);
+  border-left: 3px solid var(--teal);
+  border-radius: 5px;
+  background: var(--panel);
+  overflow: hidden;
+}
+.refhead {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: calc(var(--tap) / 3);
+  padding: calc(var(--tap) / 3);
+  border-bottom: 1px solid var(--edge);
+  font-size: var(--fs-sm);
+  color: var(--ink-dim);
+}
+.refhead .pth {
+  flex: 1;
+  min-width: 0;
+}
+.refhead button {
+  min-height: var(--tap);
+  min-width: var(--tap);
+  font: var(--fs-sm) var(--mono);
+}
+.refbody,
+.refmessage {
+  padding: calc(var(--tap) / 2);
+}
+.refcapture pre {
+  margin: 0;
+  max-height: 38vh;
+  overflow: auto;
+  padding: calc(var(--tap) / 3);
+  font-size: var(--fs-code);
+}
+.refreplies summary {
+  cursor: pointer;
+  min-height: var(--tap);
+  padding: calc(var(--tap) / 3);
+  color: var(--teal);
+  font-size: var(--fs-sm);
+  border-top: 1px solid var(--edge);
+}
+.refmessage + .refmessage {
+  border-top: 1px solid var(--edge);
+}
+.refmessage > b {
+  font: 600 var(--fs-sm) var(--sans);
+  color: var(--ink-dim);
+}
+.refpreview.gone {
+  padding: calc(var(--tap) / 2);
+  color: var(--ink-faint);
+}

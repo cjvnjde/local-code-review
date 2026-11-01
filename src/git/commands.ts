@@ -1,0 +1,109 @@
+const MAX_GIT_OUTPUT_BYTES = 64 * 1024 * 1024;
+
+export class GitError extends Error {
+  constructor(
+    message: string,
+    readonly args: string[],
+    readonly exitCode: number,
+  ) {
+    super(message);
+    this.name = "GitError";
+  }
+}
+
+export async function runGit(
+  args: string[],
+  cwd?: string,
+  input?: string,
+): Promise<string> {
+  const process = Bun.spawn(["git", ...args], {
+    cwd,
+    stdin: input === undefined ? "ignore" : new Blob([input]),
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([
+    readOutput(process.stdout, MAX_GIT_OUTPUT_BYTES),
+    readOutput(process.stderr, MAX_GIT_OUTPUT_BYTES),
+    process.exited,
+  ]);
+
+  if (exitCode !== 0) {
+    throw new GitError(
+      stderr.trim() || `git exited with status ${exitCode}`,
+      args,
+      exitCode,
+    );
+  }
+  return stdout;
+}
+
+/**
+ * The bytes a git command wrote, undecoded. Blobs are the one thing lcr reads out of git that is not
+ * text — an image is served to the page exactly as the repository holds it — so this stays apart
+ * from `runGit` rather than decoding and re-encoding a PNG through UTF-8.
+ */
+export async function runGitBytes(
+  args: string[],
+  cwd?: string,
+): Promise<Uint8Array> {
+  const process = Bun.spawn(["git", ...args], {
+    cwd,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(process.stdout).bytes(),
+    readOutput(process.stderr, MAX_GIT_OUTPUT_BYTES),
+    process.exited,
+  ]);
+
+  if (exitCode !== 0) {
+    throw new GitError(
+      stderr.trim() || `git exited with status ${exitCode}`,
+      args,
+      exitCode,
+    );
+  }
+  if (stdout.byteLength > MAX_GIT_OUTPUT_BYTES) {
+    throw new Error(`git output exceeded ${MAX_GIT_OUTPUT_BYTES} bytes`);
+  }
+  return stdout;
+}
+
+async function readOutput(
+  stream: ReadableStream<Uint8Array>,
+  maxBytes: number,
+): Promise<string> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let size = 0;
+  let output = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) return output + decoder.decode();
+    size += value.byteLength;
+    if (size > maxBytes) {
+      await reader.cancel();
+      throw new Error(`git output exceeded ${maxBytes} bytes`);
+    }
+    output += decoder.decode(value, { stream: true });
+  }
+}
+
+export async function findRepoRoot(): Promise<string> {
+  return (await runGit(["rev-parse", "--show-toplevel"])).trim();
+}
+
+/** Name of the checked-out branch, or empty on a detached HEAD or when git cannot say. */
+export async function currentBranch(cwd?: string): Promise<string> {
+  try {
+    const name = (
+      await runGit(["rev-parse", "--abbrev-ref", "HEAD"], cwd)
+    ).trim();
+    return name === "HEAD" ? "" : name;
+  } catch {
+    return "";
+  }
+}

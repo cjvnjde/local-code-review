@@ -1,0 +1,355 @@
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { describe, expect, test } from "bun:test";
+import {
+  contextRows,
+  diffBase,
+  diffRangeLabel,
+  fingerprint,
+  getDiff,
+  getFileContext,
+  parseDiff,
+  resolveWorktreeBase,
+} from "./diff.ts";
+import { runGit } from "./commands.ts";
+
+async function committedRepo() {
+  const root = await mkdtemp(path.join(tmpdir(), "lcr-diff-"));
+  await runGit(["init", "-q", "-b", "main"], root);
+  await runGit(["config", "user.email", "lcr@example.com"], root);
+  await runGit(["config", "user.name", "lcr"], root);
+  await writeFile(
+    path.join(root, "app.ts"),
+    "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\n",
+  );
+  await runGit(["add", "-A"], root);
+  await runGit(["commit", "-qm", "initial"], root);
+  return root;
+}
+
+const source = (repoRoot: string, diffArgs: string[] = []) => ({
+  repoRoot,
+  context: 1,
+  diffArgs,
+});
+
+describe("diff metadata", () => {
+  test("labels the default working-tree read and preserves explicit arguments", () => {
+    expect(diffRangeLabel([])).toBe("working tree vs HEAD (incl. untracked)");
+    expect(diffRangeLabel(["main...HEAD", "--", "src"])).toBe(
+      "main...HEAD -- src",
+    );
+  });
+
+  test("uses Git's empty tree before the first commit and HEAD afterward", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "lcr-base-"));
+    await runGit(["init", "-q", "-b", "main"], root);
+    const emptyTree = (
+      await runGit(["hash-object", "-t", "tree", "--stdin"], root, "")
+    ).trim();
+
+    expect(await resolveWorktreeBase(root)).toBe(emptyTree);
+
+    await runGit(["config", "user.email", "lcr@example.com"], root);
+    await runGit(["config", "user.name", "lcr"], root);
+    await writeFile(path.join(root, "app.ts"), "one\n");
+    await runGit(["add", "-A"], root);
+    await runGit(["commit", "-qm", "initial"], root);
+
+    expect(await resolveWorktreeBase(root)).toBe("HEAD");
+  });
+
+  test("fingerprints are stable and change with the diff content", () => {
+    expect(fingerprint("same diff")).toBe(fingerprint("same diff"));
+    expect(fingerprint("same diff")).not.toBe(fingerprint("changed diff"));
+    expect(fingerprint("same diff")).toMatch(/^[a-z0-9]+$/);
+  });
+});
+
+describe("diffBase", () => {
+  test("an ordinary range records its old revision", async () => {
+    const root = await committedRepo();
+    const expected = (
+      await runGit(["rev-parse", "--short=12", "HEAD"], root)
+    ).trim();
+
+    expect(await diffBase(source(root, ["HEAD..HEAD"]))).toBe(expected);
+  });
+
+  test("a symmetric range records the merge base", async () => {
+    const root = await committedRepo();
+    const expected = (
+      await runGit(["rev-parse", "--short=12", "HEAD"], root)
+    ).trim();
+    await runGit(["checkout", "-qb", "work"], root);
+    await writeFile(path.join(root, "app.ts"), "changed\n");
+    await runGit(["commit", "-qam", "work"], root);
+
+    expect(await diffBase(source(root, ["main...work"]))).toBe(expected);
+  });
+
+  test("options and pathspecs do not become the recorded base", async () => {
+    const root = await committedRepo();
+    const expected = (
+      await runGit(["rev-parse", "--short=12", "HEAD"], root)
+    ).trim();
+
+    expect(await diffBase(source(root, ["--stat", "--", "app.ts"]))).toBe(
+      expected,
+    );
+  });
+
+  test("an unresolvable revision leaves the base unknown", async () => {
+    const root = await committedRepo();
+
+    expect(await diffBase(source(root, ["missing..HEAD"]))).toBe("");
+  });
+});
+
+describe("getFileContext", () => {
+  test("re-diffs one file and returns only unchanged lines in the range", async () => {
+    const root = await committedRepo();
+    await writeFile(
+      path.join(root, "app.ts"),
+      "one\ntwo\nthree\nFOUR\nfive\nsix\nseven\neight\n",
+    );
+
+    expect(await getFileContext(source(root), "app.ts", 2, 6)).toEqual([
+      { t: "ctx", o: 2, n: 2, text: "two" },
+      { t: "ctx", o: 3, n: 3, text: "three" },
+      { t: "ctx", o: 5, n: 5, text: "five" },
+      { t: "ctx", o: 6, n: 6, text: "six" },
+    ]);
+  });
+
+  test("rejects invalid ranges before invoking Git", async () => {
+    expect(
+      await getFileContext(source("/not/a/repository"), "app.ts", 0, 3),
+    ).toEqual([]);
+    expect(
+      await getFileContext(source("/not/a/repository"), "app.ts", 4, 3),
+    ).toEqual([]);
+    expect(await getFileContext(source("/not/a/repository"), "", 1, 3)).toEqual(
+      [],
+    );
+  });
+});
+
+describe("getDiff", () => {
+  test("default mode reads staged, unstaged, and untracked files before the first commit", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "lcr-unborn-"));
+    await runGit(["init", "-q", "-b", "main"], root);
+    await writeFile(path.join(root, "staged.txt"), "staged\n");
+    await writeFile(path.join(root, "mixed.txt"), "index\n");
+    await runGit(["add", "-A"], root);
+    await writeFile(path.join(root, "mixed.txt"), "working\n");
+    await writeFile(path.join(root, "untracked.txt"), "untracked\n");
+
+    const files = await getDiff({ repoRoot: root, context: 3, diffArgs: [] });
+
+    expect(
+      files.map((file) => [
+        file.path,
+        file.rows.find((row) => row.t === "add")?.text,
+      ]),
+    ).toEqual([
+      ["mixed.txt", "working"],
+      ["staged.txt", "staged"],
+      ["untracked.txt", "untracked"],
+    ]);
+  });
+
+  test("an explicit worktree base includes files not yet added to Git", async () => {
+    const root = await committedRepo();
+    await writeFile(path.join(root, "untracked.txt"), "untracked\n");
+
+    const files = await getDiff(source(root, ["main"]));
+
+    expect(files.map((file) => file.path)).toEqual(["untracked.txt"]);
+  });
+
+  test("a commit range leaves untracked files outside the index", async () => {
+    const root = await committedRepo();
+    await writeFile(path.join(root, "untracked.txt"), "untracked\n");
+
+    expect(await getDiff(source(root, ["main...HEAD"]))).toEqual([]);
+    expect((await runGit(["status", "--porcelain"], root)).trim()).toBe(
+      "?? untracked.txt",
+    );
+  });
+});
+
+describe("parseDiff", () => {
+  test("parses line numbers, counts, status, and fingerprint", () => {
+    const files = parseDiff(
+      [
+        "diff --git a/src/example.ts b/src/example.ts",
+        "index 1111111..2222222 100644",
+        "--- a/src/example.ts",
+        "+++ b/src/example.ts",
+        "@@ -1,2 +1,2 @@",
+        "-const oldValue = 1;",
+        "+const newValue = 2;",
+        " unchanged();",
+        "",
+      ].join("\n"),
+    );
+
+    expect(files).toHaveLength(1);
+    expect(files[0]).toMatchObject({
+      path: "src/example.ts",
+      status: "modified",
+      added: 1,
+      removed: 1,
+      rows: [
+        { t: "hunk", text: "@@ -1,2 +1,2 @@" },
+        { t: "del", o: 1, text: "const oldValue = 1;" },
+        { t: "add", n: 1, text: "const newValue = 2;" },
+        { t: "ctx", o: 2, n: 2, text: "unchanged();" },
+      ],
+    });
+    expect(files[0].hash).toMatch(/^[a-z0-9]+$/);
+  });
+
+  test("body lines starting +++/--- are content, not file headers", () => {
+    const files = parseDiff(
+      [
+        "diff --git a/notes.sql b/notes.sql",
+        "--- a/notes.sql",
+        "+++ b/notes.sql",
+        "@@ -1,3 +1,3 @@",
+        " select 1;",
+        "--- old comment",
+        "+++ new content",
+        " select 2;",
+        "",
+      ].join("\n"),
+    );
+
+    expect(files).toHaveLength(1);
+    expect(files[0].path).toBe("notes.sql");
+    expect(files[0].rows).toEqual([
+      { t: "hunk", text: "@@ -1,3 +1,3 @@" },
+      { t: "ctx", o: 1, n: 1, text: "select 1;" },
+      { t: "del", o: 2, text: "-- old comment" },
+      { t: "add", n: 2, text: "++ new content" },
+      { t: "ctx", o: 3, n: 3, text: "select 2;" },
+    ]);
+  });
+
+  test("binary changes, pure renames, and mode-only changes keep their file entry", () => {
+    const files = parseDiff(
+      [
+        "diff --git a/bin.dat b/bin.dat",
+        "index 1111111..2222222 100644",
+        "Binary files a/bin.dat and b/bin.dat differ",
+        "diff --git a/old name.txt b/new name.txt",
+        "similarity index 100%",
+        "rename from old name.txt",
+        "rename to new name.txt",
+        "diff --git a/run.sh b/run.sh",
+        "old mode 100644",
+        "new mode 100755",
+        "",
+      ].join("\n"),
+    );
+
+    expect(files.map((file) => file.path)).toEqual([
+      "bin.dat",
+      "new name.txt",
+      "run.sh",
+    ]);
+    expect(files[0].binary).toBe(true);
+    expect(files[1].status).toBe("renamed");
+    // The old side of a rename is still under the name it had then, which is how its blob is found.
+    expect(files[1].from).toBe("old name.txt");
+    expect(files[0].from).toBeUndefined();
+  });
+
+  test("undoes the tab and quoting git puts around unusual paths", () => {
+    const files = parseDiff(
+      [
+        "diff --git a/spaced name.txt b/spaced name.txt",
+        "--- a/spaced name.txt\t",
+        "+++ b/spaced name.txt\t",
+        "@@ -1,1 +1,1 @@",
+        "-a",
+        "+b",
+        'diff --git "a/na\\303\\257ve.txt" "b/na\\303\\257ve.txt"',
+        '--- "a/na\\303\\257ve.txt"',
+        '+++ "b/na\\303\\257ve.txt"',
+        "@@ -1,1 +1,1 @@",
+        "-x",
+        "+y",
+        "",
+      ].join("\n"),
+    );
+
+    expect(files.map((file) => file.path)).toEqual([
+      "spaced name.txt",
+      "naïve.txt",
+    ]);
+  });
+
+  test("keeps the section heading of a hunk header, so it can be rebuilt after expansion", () => {
+    const files = parseDiff(
+      [
+        "diff --git a/src/example.ts b/src/example.ts",
+        "--- a/src/example.ts",
+        "+++ b/src/example.ts",
+        "@@ -8,1 +8,1 @@ export function run() {",
+        "-old();",
+        "+next();",
+        "@@ -40,1 +40,1 @@",
+        " kept();",
+        "",
+      ].join("\n"),
+    );
+
+    expect(files[0].rows[0]).toEqual({
+      t: "hunk",
+      text: "@@ -8,1 +8,1 @@ export function run() {",
+      head: " export function run() {",
+    });
+    expect(files[0].rows[3]).toEqual({ t: "hunk", text: "@@ -40,1 +40,1 @@" });
+  });
+});
+
+describe("contextRows", () => {
+  const files = parseDiff(
+    [
+      "diff --git a/a.ts b/a.ts",
+      "--- a/a.ts",
+      "+++ b/a.ts",
+      "@@ -1,5 +1,5 @@",
+      " one",
+      " two",
+      "-three",
+      "+THREE",
+      " four",
+      " five",
+      "diff --git a/b.ts b/b.ts",
+      "--- a/b.ts",
+      "+++ b/b.ts",
+      "@@ -1,1 +1,1 @@",
+      " only",
+      "",
+    ].join("\n"),
+  );
+
+  test("returns the unchanged lines of one file inside an inclusive new-side range", () => {
+    expect(contextRows(files, "a.ts", 2, 4)).toEqual([
+      { t: "ctx", o: 2, n: 2, text: "two" },
+      { t: "ctx", o: 4, n: 4, text: "four" },
+    ]);
+  });
+
+  test("changed lines and other files never leak into the answer", () => {
+    expect(contextRows(files, "a.ts", 3, 3)).toEqual([]);
+    expect(contextRows(files, "b.ts", 1, 99)).toEqual([
+      { t: "ctx", o: 1, n: 1, text: "only" },
+    ]);
+    expect(contextRows(files, "../outside.ts", 1, 99)).toEqual([]);
+  });
+});

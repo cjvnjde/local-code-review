@@ -1,0 +1,64 @@
+/* catppuccin mocha */
+:root {
+  --base: #1e1e2e;
+  --mantle: #181825;
+  --crust: #11111b;
+  --s0: #313244;
+  --s1: #45475a;
+  --s2: #585b70;
+  --ov0: #6c7086;
+  --ov1: #7f849c;
+  --ov2: #9399b2;
+  --text: #cdd6f4;
+  --sub1: #bac2de;
+  --sub0: #a6adc8;
+  --green: #a6e3a1;
+  --red: #f38ba8;
+  --yellow: #f9e2af;
+  --blue: #89b4fa;
+  --mauve: #cba6f7;
+  --peach: #fab387;
+  --teal: #94e2d5;
+  --sky: #89dceb;
+  --sapphire: #74c7ec;
+  --lav: #b4befe;
+  --pink: #f5c2e7;
+
+  --bg: var(--base);
+  --panel: var(--base);
+  --panel2: var(--mantle);
+  --edge: var(--s0);
+  --edge-hi: var(--s1);
+  --ink: var(--text);
+  --ink-dim: var(--sub0);
+  --ink-faint: var(--ov0);
+  --add: var(--green);
+  --del: var(--red);
+  --mark: var(--yellow);
+  --accent: var(--blue);
+  --add-bg: rgba(166, 227, 161, 0.08);
+  --add-gut: rgba(166, 227, 161, 0.16);
+  --add-w: rgba(166, 227, 161, 0.28);
+  --del-bg: rgba(243, 139, 168, 0.08);
+  --del-gut: rgba(243, 139, 168, 0.16);
+  --del-w: rgba(243, 139, 168, 0.28);
+  --sel: rgba(137, 180, 250, 0.14);
+  --csel: rgba(137, 180, 250, 0.34);
+  --cnote: rgba(249, 226, 175, 0.24);
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+
+  /* One size scale for the whole page. --fs-xs is the floor: nothing reads smaller than this.
+       --tap and --tap-lg are minimum square hit areas, so an icon button is never just its icon:
+       --tap for controls that sit inside a row, --tap-lg for standalone ones. --row is the code
+       row height and must stay in step with ROW_H in client/diff/diff-view.ts, which estimates the
+       height of a block that has not been mounted yet. */
+  --fs-code: 14px;
+  --fs-ui: 13px;
+  --fs-sm: 12px;
+  --fs-xs: 11px;
+  --icon: 14px;
+  --tap: 26px;
+  --tap-lg: 30px;
+  --row: 24px;
+}

@@ -150,6 +150,9 @@ installed adapter/model and browser smoke checks run in its environment.
 
 ### Verification for build 2026-11-01.1
 
+The commands below record that build's layout; the browser workflow now lives at
+`src/web-review/browser.test.ts`.
+
 Validated on macOS with Bun 1.4.4:
 
 - `bun test ./src`: 706 passed; the one opt-in browser test skipped by default.

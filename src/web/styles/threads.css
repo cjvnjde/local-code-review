@@ -1,0 +1,155 @@
+/* ---- the conversation on a note ----
+     A reply carries as much as the note it answers, so it is set as a comment in its own right rather
+     than as a footnote under one: same body size as the note, a named speaker on every message, and a
+     badge on the agent's, because the one thing that must never be missed is who wrote what. */
+.thread:empty {
+  display: none;
+}
+.thread {
+  border-top: 1px solid var(--edge);
+  background: var(--panel2);
+  padding: 11px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.msg {
+  border: 1px solid var(--edge-hi);
+  border-radius: 6px;
+  background: var(--panel);
+  overflow: hidden;
+}
+.msg.a {
+  border-left: 3px solid var(--sapphire);
+}
+.msg.r {
+  border-left: 3px solid var(--mauve);
+}
+.msg .who {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 11px;
+  border-bottom: 1px solid var(--edge);
+  font-family: var(--sans);
+  font-size: var(--fs-sm);
+  color: var(--ink-dim);
+}
+.msg.a .who {
+  background: rgba(116, 199, 236, 0.13);
+}
+.msg.r .who {
+  background: rgba(203, 166, 247, 0.11);
+}
+.msg .who b {
+  font-weight: 600;
+  color: var(--ink);
+}
+.msg .bot {
+  font: 700 var(--fs-xs)/1.5 var(--mono);
+  letter-spacing: 0.08em;
+  padding: 2px 7px;
+  border-radius: 9px;
+  background: var(--sapphire);
+  color: var(--crust);
+  flex: none;
+}
+.msg .newtag {
+  font: 700 var(--fs-xs)/1.5 var(--mono);
+  letter-spacing: 0.06em;
+  padding: 2px 7px;
+  border-radius: 9px;
+  background: var(--mark);
+  color: var(--crust);
+  flex: none;
+}
+.msg .when {
+  margin-left: auto;
+  color: var(--ink-faint);
+  font-size: var(--fs-xs);
+  flex: none;
+}
+/* your own words stay yours: reword or withdraw one from the strip that names its speaker */
+.msg .who button {
+  padding: 4px 8px;
+  min-height: var(--tap);
+  font-size: var(--fs-xs);
+  flex: none;
+}
+.msg .who .rewrite:hover {
+  color: var(--mauve);
+  border-color: var(--mauve);
+}
+.msg .medit {
+  padding: 10px 12px;
+}
+.msg .mb {
+  padding: 10px 12px;
+  font-family: var(--sans);
+  font-size: var(--fs-code);
+  line-height: 1.55;
+  color: var(--ink);
+}
+.msg .mb pre {
+  margin: 0;
+  padding: 8px 10px;
+  overflow-x: auto;
+  white-space: pre;
+  font: var(--fs-code)/1.55 var(--mono);
+  color: var(--ink);
+}
+/* a message that arrived while the page was open, until the note is looked at */
+.msg.fresh {
+  border-color: var(--mark);
+}
+.msg.fresh.a {
+  border-left-color: var(--sapphire);
+}
+.msg.fresh.r {
+  border-left-color: var(--mauve);
+}
+.replyhost {
+  border-top: 1px solid var(--edge);
+  background: var(--panel2);
+}
+.thread:not(:empty) + .replyhost {
+  border-top: none;
+  padding-top: 0;
+}
+.reply {
+  padding: 9px 12px;
+}
+.reply.shut {
+  padding: 7px 12px;
+}
+.reply .rbtn {
+  padding: 5px 9px;
+  font-size: var(--fs-xs);
+  color: var(--ink-faint);
+}
+.reply .rbtn:hover {
+  color: var(--mauve);
+  border-color: var(--mauve);
+}
+.rhint {
+  padding: 7px 12px;
+  color: var(--ink-faint);
+  font-family: var(--sans);
+  font-size: var(--fs-sm);
+}
+.nhead .unread {
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 7px;
+  border-radius: 9px;
+  background: var(--mark);
+  color: var(--crust);
+  font-weight: 700;
+}
+.nhead .unread[hidden] {
+  display: none;
+}
+.nbox.unread-on {
+  border-color: var(--mark);
+}

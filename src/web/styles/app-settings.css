@@ -1,0 +1,205 @@
+/* anchored to the header rather than a fixed offset, so it keeps sitting just below it. The panel is
+     taller than most viewports, so it scrolls itself: 100% is the header height it hangs below, and the
+     rest of the subtraction is the 6px gap above plus a 12px margin off the bottom of the screen. */
+#settings {
+  position: absolute;
+  right: 12px;
+  top: calc(100% + 6px);
+  z-index: 10;
+  width: 380px;
+  background: var(--panel2);
+  border: 1px solid var(--edge-hi);
+  border-radius: 8px;
+  padding: 13px 15px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.5);
+  font-family: var(--sans);
+  font-size: var(--fs-ui);
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  max-height: calc(100dvh - 100% - 18px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+/* the sections keep their own height instead of being squeezed to fit the capped panel */
+#settings > * {
+  flex: none;
+}
+#settings[hidden] {
+  display: none;
+}
+#settings h4 {
+  margin: 0;
+  font: 600 var(--fs-xs)/1 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+#settings label {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  min-height: 24px;
+  color: var(--ink);
+  cursor: pointer;
+}
+#settings input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  flex: none;
+  cursor: pointer;
+}
+#settings select {
+  background: var(--crust);
+  color: var(--ink);
+  border: 1px solid var(--edge-hi);
+  border-radius: 4px;
+  padding: 5px 8px;
+  font: var(--fs-ui) var(--sans);
+  margin-left: auto;
+  cursor: pointer;
+}
+#settings textarea {
+  width: 100%;
+  background: var(--crust);
+  color: var(--ink);
+  border: 1px solid var(--edge-hi);
+  border-radius: 4px;
+  padding: 7px 9px;
+  font: var(--fs-ui)/1.5 var(--mono);
+  resize: vertical;
+}
+#settings textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+#settings .note {
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+}
+#settings .note code {
+  color: var(--mark);
+  font-family: var(--mono);
+}
+#settings .sub label {
+  color: var(--ink-dim);
+  padding-left: 25px;
+}
+#settings .settings-section {
+  border-top: 1px solid var(--edge);
+  padding-top: 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+#settings #cfgEditor {
+  margin-left: auto;
+  width: 210px;
+  min-width: 0;
+  background: var(--crust);
+  color: var(--ink);
+  border: 1px solid var(--edge-hi);
+  border-radius: 4px;
+  padding: 5px 8px;
+  font: var(--fs-ui) var(--mono);
+}
+#settings #cfgEditor:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+#settings .settings-section button {
+  align-self: flex-start;
+}
+
+/* saved reviews, newest first: the history matching adoption leaves behind, each reopenable */
+#settings .rvlist {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+  background: var(--crust);
+  max-height: 220px;
+  overflow-y: auto;
+}
+#settings .rvitem {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--edge);
+}
+#settings .rvitem:last-child {
+  border-bottom: none;
+}
+#settings .rvitem.cur {
+  background: var(--s0);
+}
+#settings .rvitem .rvtx {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+#settings .rvitem .rvwhen {
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+}
+#settings .rvitem .rvwhere {
+  color: var(--mark);
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#settings .rvitem .rvct {
+  color: var(--ink-faint);
+  font-size: var(--fs-xs);
+}
+#settings .rvitem button {
+  flex: none;
+  align-self: center;
+  padding: 5px 10px;
+  font-size: var(--fs-xs);
+  min-height: var(--tap);
+}
+#settings .rvitem .rvcur {
+  flex: none;
+  color: var(--green);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+#settings .skill-command {
+  display: flex;
+  gap: 7px;
+  width: 100%;
+}
+#settings .skill-command input {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--tap-lg);
+  background: var(--crust);
+  color: var(--mark);
+  border: 1px solid var(--edge-hi);
+  border-radius: 4px;
+  padding: 7px 9px;
+  font: var(--fs-sm)/1.4 var(--mono);
+  cursor: text;
+}
+#settings .skill-command input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+#settings .skill-command button {
+  align-self: stretch;
+  flex: none;
+}
