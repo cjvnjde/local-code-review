@@ -35,13 +35,13 @@ browserTest('one review: diff and visual notes share editors, attachments, links
     </script></body></html>`,{headers:{'content-type':'text/html'}})});
   const session=createSession(dir,'.review','HEAD');
   const hub=createHub();let reviewUrl='',delivered=0;
-  const channel={agent:'codex' as const,available:()=>true,publish:async()=>{delivered++;return {state:'forwarded' as const,count:1};}};
+  const agent={agent:'External ACP agent',publish:async()=>{delivered++;return {state:'queued' as const,count:1};}};
   const web=createWebReview({url:'http://127.0.0.1:'+app.port,repoRoot:dir,outDir:'.review',session,hub,reviewUrl:()=>reviewUrl,browserArgs:['--headless=new','--window-size=1280,900','--force-device-scale-factor=2']});
   const server=startServer({port:0,repoRoot:dir,outDir:'.review',range:'HEAD',reviewId:'',context:5,
     getDiff:()=>getDiff(source),getContext:(file,start,end)=>getFileContext(source,file,start,end),readBlob:async()=>null,
     saveAttachment:(b,t)=>saveAttachment(dir,'.review',b,t),readAttachment:n=>readAttachment(dir,'.review',n),
     openFile:async()=>false,getStatuses:()=>collectStatuses(dir,'.review'),listReviews:async()=>[],deleteReviews:async()=>[],
-    describeReviews:async()=>[],getGhosts:async()=>[],importNote:async()=>null,session,hub,channel,web});
+    describeReviews:async()=>[],getGhosts:async()=>[],importNote:async()=>null,session,hub,agent,web});
   reviewUrl='http://127.0.0.1:'+server.port;
   let cdp:Cdp|null=null;
   try{

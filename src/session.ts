@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { reviewerRevision } from "./agent-queue.ts";
 import { deleteReviews, listReviews } from "./output.ts";
 import { renderMarkdown } from "./review.ts";
 import { applyComment, noteFromComment, parseReview } from "./thread.ts";
@@ -14,7 +15,7 @@ export interface SaveResult {
   file: string;
   /** Names of the earlier review files pruned by `replace`. */
   removed: string[];
-  /** New or reworded notes, for an optional agent channel to announce after the write. */
+  /** New or reworded notes, for an optional ACP connection to queue after the write. */
   changed: ReviewNote[];
 }
 
@@ -111,7 +112,7 @@ export function createSession(repoRoot: string, outDir: string, range: string, c
     return text ? parseReview(text) : fresh();
   }
 
-  /** Channel calls name their original file, even after the page has opened another conversation. */
+  /** Agent tasks name their original file, even after the page has opened another conversation. */
   async function readNamed(file: string): Promise<ReviewDoc | null> {
     if (!(await listReviews(repoRoot, outDir)).includes(file)) return null;
     const text = await readFile(path.join(dir(), file), "utf8").catch(() => "");
@@ -203,7 +204,7 @@ export function createSession(repoRoot: string, outDir: string, range: string, c
       return serialise(async () => (await readNamed(file))?.notes.find((note) => note.id === id) ?? null);
     },
 
-    /** The channel's agent side; never changes which conversation the page is reading. */
+    /** The managed agent's reply path; never changes which conversation the page is reading. */
     answer(file: string, id: string, body: string, status?: NoteStatusKind): Promise<ReviewNote | null> {
       return serialise(async () => {
         const doc = await readNamed(file);
@@ -211,6 +212,21 @@ export function createSession(repoRoot: string, outDir: string, range: string, c
         if (!doc || !note) return null;
         note.messages.push({ role: "agent", at: freeStamp(note), body });
         if (status) { note.status = status; note.detail = ""; }
+        await writeFile(path.join(dir(), file), renderMarkdown(doc), "utf8");
+        return note;
+      });
+    },
+
+    /** Managed results cannot resurrect a note or award a verdict to a later reviewer edit. */
+    answerRevision(file: string, id: string, body: string, revision: string, status?: NoteStatusKind): Promise<ReviewNote | null> {
+      return serialise(async () => {
+        const doc = await readNamed(file);
+        const note = doc?.notes.find(entry => entry.id === id);
+        if (!doc || !note) return null;
+        const same = reviewerRevision(note) === revision;
+        note.messages.push({ role: "agent", at: freeStamp(note), body: same ? body :
+          `Response to submitted revision ${revision.slice(0, 12)}. Later reviewer edits or follow-ups were not part of this turn.\n\n${body}` });
+        if (same && status) { note.status = status; note.detail = ""; }
         await writeFile(path.join(dir(), file), renderMarkdown(doc), "utf8");
         return note;
       });
@@ -271,14 +287,15 @@ export function createSession(repoRoot: string, outDir: string, range: string, c
     },
 
     /** Appends the reviewer's follow-up to one note's thread, so the agent finds it where it is working. */
-    reply(id: string, body: string): Promise<ReviewNote | null> {
+    reply(id: string, body: string, file = name): Promise<ReviewNote | null> {
       return serialise(async () => {
-        const doc = await read();
+        const doc = await readNamed(file);
+        if (!doc) return null;
         const note = doc.notes.find((entry) => entry.id === id);
         if (!note) return null;
         const message: ReviewMessage = { role: "reviewer", at: freeStamp(note), body };
         note.messages.push(message);
-        await write(doc);
+        await writeFile(path.join(dir(), file), renderMarkdown(doc), "utf8");
         return note;
       });
     },
@@ -288,25 +305,27 @@ export function createSession(repoRoot: string, outDir: string, range: string, c
      * without a second one contradicting it. Its stamp and its place in the thread are kept: the
      * message is the one the agent was already reading, saying something else.
      */
-    editReply(id: string, at: string, body: string): Promise<ReviewNote | null> {
+    editReply(id: string, at: string, body: string, file = name): Promise<ReviewNote | null> {
       return serialise(async () => {
-        const doc = await read();
+        const doc = await readNamed(file);
+        if (!doc) return null;
         const found = ownMessage(doc, id, at);
         if (!found) return null;
         found.message.body = body;
-        await write(doc);
+        await writeFile(path.join(dir(), file), renderMarkdown(doc), "utf8");
         return found.note;
       });
     },
 
     /** Withdraws one of the reviewer's own messages, the way deleting a note withdraws the note. */
-    dropReply(id: string, at: string): Promise<ReviewNote | null> {
+    dropReply(id: string, at: string, file = name): Promise<ReviewNote | null> {
       return serialise(async () => {
-        const doc = await read();
+        const doc = await readNamed(file);
+        if (!doc) return null;
         const found = ownMessage(doc, id, at);
         if (!found) return null;
         found.note.messages = found.note.messages.filter((entry) => entry !== found.message);
-        await write(doc);
+        await writeFile(path.join(dir(), file), renderMarkdown(doc), "utf8");
         return found.note;
       });
     },
@@ -384,15 +403,16 @@ export function createSession(repoRoot: string, outDir: string, range: string, c
      * the page is never told about a half-cleared file and never adopts the notes still in it back
      * onto the page that has just let them go.
      */
-    remove(ids: string | string[]): Promise<boolean> {
+    remove(ids: string | string[], file = name): Promise<boolean> {
       return serialise(async () => {
         const gone = new Set(typeof ids === "string" ? [ids] : ids);
-        const doc = await read();
+        const doc = await readNamed(file);
+        if (!doc) return false;
         const next = doc.notes.filter((note) => !gone.has(note.id));
         // Nothing to take out: leave the file untouched, so a session with none never mints one.
         if (next.length === doc.notes.length) return false;
         doc.notes = next;
-        await write(doc);
+        await writeFile(path.join(dir(), file), renderMarkdown(doc), "utf8");
         return true;
       });
     },

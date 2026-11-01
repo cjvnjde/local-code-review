@@ -1,16 +1,17 @@
 #!/usr/bin/env bun
+import { readAcpConfig } from "./acp.ts";
+import { createManagedAgent } from "./managed-agent.ts";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { readAttachment, saveAttachment } from "./attach.ts";
 import { readBlob } from "./blob.ts";
 import { openInBrowser } from "./browser.ts";
 import { HELP, parseArgs } from "./cli.ts";
-import { claudeEndpoint, runClaudeBridge, startClaudeLink } from "./claude-link.ts";
-import { createCodexChannel } from "./codex-channel.ts";
+import { resolveAcpPath } from "./config.ts";
 import { diffBase, diffRangeLabel, diffSides, fingerprint, getDiff, getFileContext, resolveWorktreeBase, validateDiff } from "./diff.ts";
 import { openInEditor } from "./editor.ts";
 import { createHub } from "./events.ts";
-import { currentBranch, findRepoRoot } from "./git.ts";
+import { currentBranch, findRepoRoot, runGit } from "./git.ts";
 import { collectGhosts, describeReviews } from "./history.ts";
 import { deleteReviews, excludeRelativeOutput, listReviews } from "./output.ts";
 import { createSession } from "./session.ts";
@@ -32,19 +33,10 @@ async function main() {
     console.log(VERSION);
     process.exit(0);
   }
-  // stdout belongs exclusively to MCP in channel mode; startup and save messages remain on stderr.
-  if (options.claudeChannel) console.log = console.error;
-  // MCP servers can start from another directory; Claude Code supplies its stable project root.
-  if (options.claudeChannel && process.env.CLAUDE_PROJECT_DIR) process.chdir(process.env.CLAUDE_PROJECT_DIR);
-  const repoRoot = options.claudeChannel
-    ? await findRepoRoot().catch(() => process.cwd())
-    : await findRepoRoot();
+  const repoRoot = await findRepoRoot();
   process.chdir(repoRoot);
-  // Global MCP registration is only a bridge. It never starts a page, writes excludes or watches Git.
-  if (options.claudeChannel) {
-    await runClaudeBridge(repoRoot);
-    process.exit(0);
-  }
+  const acpFile = await resolveAcpPath(options, repoRoot);
+  const agentConfig = acpFile ? await readAcpConfig(acpFile) : undefined;
 
   const range = diffRangeLabel(options.diffArgs);
   const diffSource = {
@@ -82,15 +74,11 @@ async function main() {
   }
   const hub = createHub();
   let webUrl = "";
-  const claudeLink = options.codexThread ? undefined
-    : await startClaudeLink(session, hub, () => webUrl, await claudeEndpoint(repoRoot)).catch((error) => {
-      console.error(`  Claude link unavailable: ${error instanceof Error ? error.message : error}`);
-      return undefined;
-    });
-  const channel = options.codexThread
-    ? createCodexChannel({ repoRoot, outDir: options.outDir, thread: options.codexThread, session,
-      notify: () => hub.emit({ type: "review", file: session.file }) })
-    : claudeLink;
+  const agent = agentConfig ? createManagedAgent({ repoRoot, outDir: options.outDir, session,
+    directory: path.resolve(repoRoot, (await runGit(["rev-parse", "--git-path", "lcr-managed"], repoRoot)).trim()),
+    config: agentConfig,
+    notify: () => hub.emit({ type: "review", file: session.file }),
+  }) : undefined;
 
   /** One saved review parsed back, for reading a ghost note's thread out of its own file. */
   async function readReview(name: string) {
@@ -99,50 +87,59 @@ async function main() {
     return text ? parseReview(text) : null;
   }
 
-  const web = options.web ? createWebReview({ url: options.web, repoRoot, outDir: options.outDir,
-    session, hub, reviewUrl: () => webUrl }) : undefined;
-  const server = startServer({
-    port: options.port,
-    repoRoot,
-    outDir: options.outDir,
-    range,
-    reviewId: options.id,
-    context: options.context,
-    getDiff: () => getDiff(diffSource),
-    getContext: (file, start, end) => getFileContext(diffSource, file, start, end),
-    readBlob: (side, file) => readBlob(repoRoot, side === "old" ? sides.old : sides.new, file),
-    // Beside the review file, because that is what a note's link to one resolves against.
-    saveAttachment: (bytes, type) => saveAttachment(repoRoot, options.outDir, bytes, type),
-    readAttachment: (name) => readAttachment(repoRoot, options.outDir, name),
-    openFile: (file, editor) => openInEditor(repoRoot, file, editor),
-    getStatuses: () => collectStatuses(repoRoot, options.outDir),
-    listReviews: () => listReviews(repoRoot, options.outDir),
-    deleteReviews: () => deleteReviews(repoRoot, options.outDir),
-    describeReviews: () => describeReviews(repoRoot, options.outDir),
-    // The branch is asked for per request rather than kept from startup: the reviewer can check
-    // another one out mid-run, and the ghosts on offer should follow them there.
-    getGhosts: async () => {
-      const doc = await session.read();
-      const taken = new Set(doc.notes.map((note) => note.from).filter((from): from is string => !!from));
-      return collectGhosts(repoRoot, options.outDir, {
-        except: session.file,
-        branch: await currentBranch(repoRoot),
-        taken,
-      });
-    },
-    importNote: async (from, comment) => {
-      const doc = await readReview(from.file);
-      const source = doc?.notes.find((note) => note.id === from.id);
-      if (!source) return null;
-      return session.import(comment, source.messages, `${from.file}#${from.id}`);
-    },
-    session,
-    hub,
-    channel,
-    web,
-  });
+  let web: ReturnType<typeof createWebReview> | undefined;
+  let server: ReturnType<typeof startServer>;
+  try {
+    web = options.web ? createWebReview({ url: options.web, repoRoot, outDir: options.outDir,
+      session, hub, reviewUrl: () => webUrl }) : undefined;
+    server = startServer({
+      port: options.port,
+      repoRoot,
+      outDir: options.outDir,
+      range,
+      reviewId: options.id,
+      context: options.context,
+      getDiff: () => getDiff(diffSource),
+      getContext: (file, start, end) => getFileContext(diffSource, file, start, end),
+      readBlob: (side, file) => readBlob(repoRoot, side === "old" ? sides.old : sides.new, file),
+      // Beside the review file, because that is what a note's link to one resolves against.
+      saveAttachment: (bytes, type) => saveAttachment(repoRoot, options.outDir, bytes, type),
+      readAttachment: (name) => readAttachment(repoRoot, options.outDir, name),
+      openFile: (file, editor) => openInEditor(repoRoot, file, editor),
+      getStatuses: () => collectStatuses(repoRoot, options.outDir),
+      listReviews: () => listReviews(repoRoot, options.outDir),
+      deleteReviews: () => deleteReviews(repoRoot, options.outDir),
+      describeReviews: () => describeReviews(repoRoot, options.outDir),
+      // The branch is asked for per request rather than kept from startup: the reviewer can check
+      // another one out mid-run, and the ghosts on offer should follow them there.
+      getGhosts: async () => {
+        const doc = await session.read();
+        const taken = new Set(doc.notes.map((note) => note.from).filter((from): from is string => !!from));
+        return collectGhosts(repoRoot, options.outDir, {
+          except: session.file,
+          branch: await currentBranch(repoRoot),
+          taken,
+        });
+      },
+      importNote: async (from, comment) => {
+        const doc = await readReview(from.file);
+        const source = doc?.notes.find((note) => note.id === from.id);
+        if (!source) return null;
+        return session.import(comment, source.messages, `${from.file}#${from.id}`);
+      },
+      session,
+      hub,
+      agent,
+      web,
+    });
+  } catch (error) {
+    // The queue already owns its lock; a failed HTTP bind must release that ownership.
+    await agent?.close();
+    await web?.close();
+    throw error;
+  }
   webUrl = `http://localhost:${server.port}`;
-  void channel?.check?.();
+  void agent?.check?.();
 
   /* ---------- following the agent ---------- */
 
@@ -199,7 +196,7 @@ async function main() {
     stopping = true;
     clearInterval(heartbeat);
     for (const watcher of watchers) watcher.close();
-    claudeLink?.close();
+    await agent?.close();
     await web?.close();
     server.stop(true);
     process.exit(0);
@@ -218,7 +215,6 @@ async function main() {
       console.log("  could not open browser; open the URL above manually\n");
     }
   }
-  if (options.codexThread) console.log(`  Codex feedback target: ${options.codexThread}\n`);
 }
 
 main().catch((error) => {

@@ -22,7 +22,7 @@ Only one editor opens at a time. An editor with text keeps focus when you try to
 
 Save notes, then choose **Save review**. The review is written to `.review/review-<timestamp>.md`; subsequent saves update that conversation rather than creating another file. The default directory is ignored by Git. Custom relative output directories set with `--out` are locally excluded too.
 
-With a verified [Claude](claude-channel.md) or [Codex](codex-channel.md) connection, an editor's **Save & ask AI** persists and forwards only that note immediately. The review-wide footer is not a required send step. Without a verified connection, the action remains **Save note** for manual handover.
+With an [ACP agent configured](agent-connections.md), an editor's **Save & ask AI** persists and queues only that note immediately, even while the agent is disconnected or the queue is paused. The review-wide footer is not a required send step. Without an ACP configuration, the action remains **Save note** for manual handover.
 
 ## Continue the conversation
 

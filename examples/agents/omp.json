@@ -1,0 +1,5 @@
+{
+  "name": "OMP",
+  "command": "omp",
+  "args": ["acp"]
+}

@@ -52,7 +52,7 @@ describe('review history revisions',()=>{
   test('no-op reloads, note ordering, submission stamps and reading marks make no revision',()=>{
     const other={...note,id:'other',body:'Other'};
     const first=snapshot([note,other]);
-    const next=snapshot([{...other,seen:7},{...note,sentAt:123,unread:4,delivery:'forwarded'}]);
+    const next=snapshot([{...other,seen:7},{...note,sentAt:123,unread:4,delivery:'queued'}]);
     expect(next).toEqual(first);
     expect(historyRevision({scope:'r',source:'page',snapshot:next},first)).toBeNull();
   });

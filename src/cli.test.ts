@@ -11,8 +11,6 @@ describe("parseArgs", () => {
       id: "",
       version: false,
       help: false,
-      claudeChannel: false,
-      codexThread: "",
       diffArgs: ["HEAD~2", "--staged", "--", "*.ts"],
     });
   });
@@ -31,31 +29,12 @@ describe("parseArgs", () => {
     expect(options.id).toBe("combined");
     expect(options.context).toBe(8);
     expect(options.open).toBe(false);
-    expect(() => parseArgs(["--web", "http://localhost:3000", "--claude-channel"])).toThrow("--claude-channel");
-  });
-
-  test("channel mode is opt-in and preserves the diff arguments", () => {
-    const options = parseArgs(["--claude-channel", "--id", "chat", "main...HEAD"]);
-    expect(options.claudeChannel).toBe(true);
-    expect(options.id).toBe("chat");
-    expect(options.diffArgs).toEqual(["main...HEAD"]);
-    expect(parseArgs([]).claudeChannel).toBe(false);
   });
 
   test("--id names the review and stays out of the git arguments", () => {
     const options = parseArgs(["--id", "auth rework", "main...HEAD"]);
     expect(options.id).toBe("auth rework");
     expect(options.diffArgs).toEqual(["main...HEAD"]);
-  });
-
-  test("--codex-thread targets an existing session without changing the Git range", () => {
-    const options = parseArgs(["--codex-thread", "session-123", "--id", "chat", "main...HEAD"]);
-    expect(options.codexThread).toBe("session-123");
-    expect(options.diffArgs).toEqual(["main...HEAD"]);
-    expect(parseArgs([]).codexThread).toBe("");
-    expect(() => parseArgs(["--codex-thread"])).toThrow("requires a Codex session");
-    expect(() => parseArgs(["--codex-thread", "--staged"])).toThrow("requires a Codex session");
-    expect(() => parseArgs(["--codex-thread", "x", "--claude-channel"])).toThrow("Choose either");
   });
 
   test("--id with nothing after it leaves the review unnamed", () => {
@@ -94,4 +73,20 @@ describe("normalizeId", () => {
     expect(normalizeId("auth`rework")).toBe("auth rework");
     expect(normalizeId("auth\trework")).toBe("auth rework");
   });
+});
+
+test('ACP configuration stays out of Git arguments', () => {
+  expect(parseArgs(['--acp', '/tmp/agent.json', '--id', 'managed', 'main...HEAD']).acp).toBe('/tmp/agent.json');
+  expect(parseArgs(['--acp', '/tmp/agent.json', 'main...HEAD']).diffArgs).toEqual(['main...HEAD']);
+  expect(parseArgs(['--', '--acp']).acp).toBeUndefined();
+  expect(() => parseArgs(['--acp'])).toThrow('configuration');
+});
+
+test('no-agent selects manual operation and the last explicit agent flag wins', () => {
+  expect(parseArgs(['--no-agent', '--staged'])).toMatchObject({ noAgent: true, diffArgs: ['--staged'] });
+  expect(parseArgs(['--acp', 'agent.json', '--no-agent']).acp).toBeUndefined();
+  expect(parseArgs(['--acp', 'agent.json', '--no-agent']).noAgent).toBe(true);
+  expect(parseArgs(['--no-agent', '--acp', 'agent.json']).acp).toBe('agent.json');
+  expect(parseArgs(['--no-agent', '--acp', 'agent.json']).noAgent).toBeUndefined();
+  expect(parseArgs(['--', '--no-agent']).diffArgs).toEqual(['--', '--no-agent']);
 });

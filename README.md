@@ -65,18 +65,50 @@ npx skills add cjvnjde/local-code-review --skill apply-lcr
 
 Then ask “Apply the newest lcr review” or use `/apply-lcr` if supported.
 
-For live delivery, see [Claude Code setup](docs/claude-channel.md), or attach an existing [Codex session](docs/codex-channel.md):
+For managed sequential work, use the included [Codex profile](examples/agents/codex.json) or
+[OMP profile](examples/agents/omp.json). Codex requires Bun and an installed, authenticated `codex`;
+its profile runs the ACP adapter through `bunx`. OMP uses an installed, authenticated `omp` directly.
+
+From this checkout, copy the profiles into your user configuration directory:
 
 ```sh
-lcr --codex-thread <session-uuid> --id checkout
+lcr_config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/lcr"
+mkdir -p "$lcr_config_dir/agents"
+cp -n examples/agents/codex.json examples/agents/omp.json "$lcr_config_dir/agents/"
 ```
 
-Once the connection is verified, **Save & ask AI** saves and sends that note immediately. Without a connection, **Save note** keeps the manual workflow.
+Select the agent in `~/.config/lcr/config.json` (or `$XDG_CONFIG_HOME/lcr/config.json` when
+`XDG_CONFIG_HOME` is an absolute path):
+
+```json
+{
+  "acp": "agents/codex.json"
+}
+```
+
+Use `"agents/omp.json"` to select OMP instead. Profile paths resolve relative to this settings file.
+Plain `lcr` uses whichever profile you configured; no agent is built in as the default.
+
+```sh
+lcr                                                # Use the configured agent
+lcr --acp "$lcr_config_dir/agents/omp.json" --id ui   # Override it for this run
+lcr --no-agent                                     # Review manually
+```
+
+Keep credentials in the agent's own authentication store. See [ACP connections and queue](docs/agent-connections.md)
+for other agents, configuration fields, permissions and restart recovery.
+
+Saving a comment starts the selected agent; further comments queue until that turn ends. Queue state
+survives restarts, and permissions appear in the page's **Queue** control.
+
+With an ACP configuration, **Save & ask AI** saves and queues that note immediately. Without one,
+**Save note** keeps the manual Markdown workflow.
 
 ## Other options
 
 | Command | Purpose |
 | --- | --- |
+| `lcr --no-agent` | Review manually, ignoring the default agent |
 | `lcr --no-open` | Start without opening a browser |
 | `lcr --port 8080` | Choose a starting port (`0` picks a free one) |
 | `lcr --out .feedback` | Change the review output directory |
@@ -90,7 +122,7 @@ Unrecognized arguments pass through to `git diff`. Working-tree comparisons incl
 
 - [Review workflow and controls](docs/usage.md) — notes, images, search, history, shortcuts, and saved conversations.
 - [Web annotation](docs/web-ui.md) — selection tools, drawings, before/after captures, and browser requirements.
-- Agent connections: [Claude Code](docs/claude-channel.md) · [Codex](docs/codex-channel.md).
+- [Agent connections and sequential queue](docs/agent-connections.md).
 - [Development](docs/development.md) — run from source, checks, and standalone builds.
 
 ## License

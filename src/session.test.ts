@@ -461,3 +461,15 @@ describe("reopening and continuing", () => {
     });
   });
 });
+
+test('reviewer mutations retain the review they named while another review is adopted', async () => {
+  const root = await workspace(); const session = createSession(root, '.review', 'HEAD');
+  await session.save({ comments: [note('src/app.ts|n12|n12|#routing')] }); const original = session.file;
+  session.startFresh(); await session.save({ comments: [note('src/app.ts|n12|n12|#routing', 'Another review')] }); const other = session.file;
+  await session.reply('src/app.ts|n12|n12|#routing', 'Answer the original', original);
+  expect((await session.readNote(original, 'src/app.ts|n12|n12|#routing'))!.messages[0]!.body).toBe('Answer the original');
+  expect((await session.readNote(other, 'src/app.ts|n12|n12|#routing'))!.messages).toEqual([]);
+  await session.remove(['src/app.ts|n12|n12|#routing'], original);
+  expect(await session.readNote(original, 'src/app.ts|n12|n12|#routing')).toBeNull();
+  expect((await session.read()).notes).toHaveLength(1);
+});
