@@ -118,6 +118,9 @@ agent/tool processes, then use **I inspected this work; do not replay**. This ac
 without resubmitting it. Resume the queue explicitly afterwards. If work remains, send a follow-up
 stating what is still needed. There is no exactly-once execution guarantee across crashes.
 
+If the review server cannot start, lcr releases its queue lock and closes startup resources. Fix the
+port or server error and retry; a normal bind failure does not require lock-file recovery.
+
 A hard crash can leave `owner.lock` in that directory. Its JSON records the owner pid and start time.
 Only after verifying that the owner **and its agent/tool processes** have stopped, remove that exact
 lock file and restart with the same configuration. Do not delete `queue.json`: it holds the recovery

@@ -139,3 +139,43 @@ test('startup selects the user default, permits an explicit override and keeps n
     await rm(settings); await run([], null);
   } finally { await rm(root, { recursive: true, force: true }); }
 }, 15000);
+
+test('a server bind failure releases the managed owner lock so startup can be retried', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'lcr-startup-lock-'));
+  const cwd = path.join(root, 'repo'); await mkdir(cwd);
+  const profile = path.join(root, 'agent.json');
+  await writeFile(profile, JSON.stringify({ name: 'Startup test', command: process.execPath,
+    args: [path.join(import.meta.dir, 'fixtures/acp-agent.ts')], env: { LCR_ACP_FIXTURE: root } }));
+  for (const args of [['init', '--quiet'], ['-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '--allow-empty', '-qm', 'baseline']]) {
+    const git = Bun.spawn(['git', ...args], { cwd, stdout: 'ignore', stderr: 'pipe' });
+    expect(await git.exited).toBe(0);
+  }
+  let blocker: ReturnType<typeof Bun.serve> | undefined;
+  let retry: ReturnType<typeof Bun.spawn> | undefined;
+  try {
+    try { blocker = Bun.serve({ hostname: '127.0.0.1', port: 65535, fetch: () => new Response('occupied') }); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EADDRINUSE') throw error; }
+    const failed = await cli(cwd, ['--acp', profile, '--port', '65535', '--no-open']);
+    expect(failed.code).toBe(1); expect(failed.stderr).toContain('ports 65535-65535 are all in use');
+    const lockExists = () => Bun.file(path.join(cwd, '.git/lcr-managed/owner.lock')).exists();
+    expect(await lockExists()).toBe(false);
+    expect(await Bun.file(path.join(root, 'rpc.jsonl')).exists()).toBe(false);
+    blocker?.stop(true); blocker = undefined;
+    retry = Bun.spawn([process.execPath, entry, '--acp', profile, '--port', '0', '--no-open'], {
+      cwd, env: { ...process.env, XDG_CONFIG_HOME: path.join(root, 'config') }, stdout: 'pipe', stderr: 'pipe',
+    });
+    const errors = new Response(retry.stderr).text(); let output = '';
+    const outputDone = (async () => { for await (const chunk of retry!.stdout as ReadableStream<Uint8Array>) output += new TextDecoder().decode(chunk); })();
+    try {
+      for (let attempt = 0; attempt < 100 && !output.includes('http://localhost:'); attempt++) {
+        if (retry.exitCode !== null) throw new Error(await errors);
+        await Bun.sleep(25);
+      }
+      expect(output).toContain('http://localhost:');
+      const url = output.match(/http:\/\/localhost:\d+/)![0];
+      expect((await fetch(url + '/api/agent')).status).toBe(200);
+      expect(await lockExists()).toBe(true);
+    } finally { retry.kill('SIGTERM'); await retry.exited; await outputDone; }
+    expect(await errors).toBe(''); expect(await lockExists()).toBe(false);
+  } finally { blocker?.stop(true); retry?.kill(); await retry?.exited; await rm(root, { recursive: true, force: true }); }
+}, 10000);

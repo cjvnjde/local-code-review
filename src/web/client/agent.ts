@@ -1,3 +1,4 @@
+import { pathHtml } from './path.ts';
 import { el, esc, state } from './state.ts';
 
 export const noteSaveLabel=()=>state.agent?'Save & ask AI':'Save note';
@@ -63,7 +64,7 @@ function drawQueue(){
     button(queue.paused?'Resume queue':'Pause queue',queue.paused?'resume':'pause')+
     '<p class="note">Pause stops the next task. Cancel requests a stop and waits for confirmation. Completed means the turn ended; the note’s verdict is separate.</p>'+
     queue.permissions.map((permission: any)=>'<div class="queue-task"><strong>Approval required</strong><pre>'+esc(JSON.stringify(permission.toolCall,null,2))+'</pre>'+permission.options.map((option: any)=>button(option.name,'permission',permission.id,option.optionId)).join('')+'</div>').join('')+
-    [...queue.tasks].reverse().map((task: any)=>'<div class="queue-task"><b>'+esc(task.state)+'</b> '+esc(task.review)+'<br><code>'+esc(task.noteId)+'</code><p>'+esc(task.detail||'')+'</p>'+
+    [...queue.tasks].reverse().map((task: any)=>'<div class="queue-task"><b>'+esc(task.state)+'</b>'+pathHtml(task.review,{title:task.review})+'<code>'+esc(task.noteId)+'</code><p>'+esc(task.detail||'')+'</p>'+
       (['queued','running','approval'].includes(task.state)?button('Cancel','cancel',task.id):'')+
       (task.state==='uncertain'?button('I inspected this work; do not replay','acknowledge',task.id):'')+
       (task.state==='error'?button('Use a new session for later tasks','new-session',task.id):'')+'</div>').join('');

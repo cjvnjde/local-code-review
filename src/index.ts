@@ -87,48 +87,57 @@ async function main() {
     return text ? parseReview(text) : null;
   }
 
-  const web = options.web ? createWebReview({ url: options.web, repoRoot, outDir: options.outDir,
-    session, hub, reviewUrl: () => webUrl }) : undefined;
-  const server = startServer({
-    port: options.port,
-    repoRoot,
-    outDir: options.outDir,
-    range,
-    reviewId: options.id,
-    context: options.context,
-    getDiff: () => getDiff(diffSource),
-    getContext: (file, start, end) => getFileContext(diffSource, file, start, end),
-    readBlob: (side, file) => readBlob(repoRoot, side === "old" ? sides.old : sides.new, file),
-    // Beside the review file, because that is what a note's link to one resolves against.
-    saveAttachment: (bytes, type) => saveAttachment(repoRoot, options.outDir, bytes, type),
-    readAttachment: (name) => readAttachment(repoRoot, options.outDir, name),
-    openFile: (file, editor) => openInEditor(repoRoot, file, editor),
-    getStatuses: () => collectStatuses(repoRoot, options.outDir),
-    listReviews: () => listReviews(repoRoot, options.outDir),
-    deleteReviews: () => deleteReviews(repoRoot, options.outDir),
-    describeReviews: () => describeReviews(repoRoot, options.outDir),
-    // The branch is asked for per request rather than kept from startup: the reviewer can check
-    // another one out mid-run, and the ghosts on offer should follow them there.
-    getGhosts: async () => {
-      const doc = await session.read();
-      const taken = new Set(doc.notes.map((note) => note.from).filter((from): from is string => !!from));
-      return collectGhosts(repoRoot, options.outDir, {
-        except: session.file,
-        branch: await currentBranch(repoRoot),
-        taken,
-      });
-    },
-    importNote: async (from, comment) => {
-      const doc = await readReview(from.file);
-      const source = doc?.notes.find((note) => note.id === from.id);
-      if (!source) return null;
-      return session.import(comment, source.messages, `${from.file}#${from.id}`);
-    },
-    session,
-    hub,
-    agent,
-    web,
-  });
+  let web: ReturnType<typeof createWebReview> | undefined;
+  let server: ReturnType<typeof startServer>;
+  try {
+    web = options.web ? createWebReview({ url: options.web, repoRoot, outDir: options.outDir,
+      session, hub, reviewUrl: () => webUrl }) : undefined;
+    server = startServer({
+      port: options.port,
+      repoRoot,
+      outDir: options.outDir,
+      range,
+      reviewId: options.id,
+      context: options.context,
+      getDiff: () => getDiff(diffSource),
+      getContext: (file, start, end) => getFileContext(diffSource, file, start, end),
+      readBlob: (side, file) => readBlob(repoRoot, side === "old" ? sides.old : sides.new, file),
+      // Beside the review file, because that is what a note's link to one resolves against.
+      saveAttachment: (bytes, type) => saveAttachment(repoRoot, options.outDir, bytes, type),
+      readAttachment: (name) => readAttachment(repoRoot, options.outDir, name),
+      openFile: (file, editor) => openInEditor(repoRoot, file, editor),
+      getStatuses: () => collectStatuses(repoRoot, options.outDir),
+      listReviews: () => listReviews(repoRoot, options.outDir),
+      deleteReviews: () => deleteReviews(repoRoot, options.outDir),
+      describeReviews: () => describeReviews(repoRoot, options.outDir),
+      // The branch is asked for per request rather than kept from startup: the reviewer can check
+      // another one out mid-run, and the ghosts on offer should follow them there.
+      getGhosts: async () => {
+        const doc = await session.read();
+        const taken = new Set(doc.notes.map((note) => note.from).filter((from): from is string => !!from));
+        return collectGhosts(repoRoot, options.outDir, {
+          except: session.file,
+          branch: await currentBranch(repoRoot),
+          taken,
+        });
+      },
+      importNote: async (from, comment) => {
+        const doc = await readReview(from.file);
+        const source = doc?.notes.find((note) => note.id === from.id);
+        if (!source) return null;
+        return session.import(comment, source.messages, `${from.file}#${from.id}`);
+      },
+      session,
+      hub,
+      agent,
+      web,
+    });
+  } catch (error) {
+    // The queue already owns its lock; a failed HTTP bind must release that ownership.
+    await agent?.close();
+    await web?.close();
+    throw error;
+  }
   webUrl = `http://localhost:${server.port}`;
   void agent?.check?.();
 
