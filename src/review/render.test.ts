@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { renderMarkdown } from "./render.ts";
-import { noteFromComment } from "./thread.ts";
+import { noteFromComment, parseReview } from "./thread.ts";
 import type { ReviewComment } from "../shared/review-types.ts";
 
 const write = (comments: ReviewComment[], range = "HEAD") =>
@@ -155,4 +155,42 @@ describe("renderMarkdown", () => {
     expect(markdown).toContain("**Agent** <!-- lcr:m -->");
     expect(markdown).toContain("one at a time");
   });
+});
+
+test("file notes lead, line notes sort numerically, and whole-line notes precede character selections", () => {
+  const at = (suffix: string, start: number, ca?: number): ReviewComment => ({
+    id: `src/app.ts|n${start}|n${start}|${ca === undefined ? "" : `${ca}-${ca + 2}|`}#${suffix}`,
+    file: "src/app.ts",
+    start,
+    end: start,
+    ...(ca === undefined ? {} : { ca, cb: ca + 2 }),
+    body: suffix,
+  });
+  const notes = [
+    at("late", 20),
+    at("right", 2, 5),
+    at("left", 2, 0),
+    at("whole-line", 2),
+    {
+      id: "src/app.ts|*|*|#file",
+      scope: "file" as const,
+      file: "src/app.ts",
+      start: 0,
+      end: 0,
+      body: "File-wide concern.",
+    },
+    overall("|@|@|#overall", "Overall concern."),
+  ].map(noteFromComment);
+  const originalOrder = notes.map((note) => note.id);
+  const doc = parseReview(renderMarkdown({ range: "HEAD", notes }));
+  expect(doc.notes.map((note) => note.body)).toEqual([
+    "Overall concern.",
+    "File-wide concern.",
+    "whole-line",
+    "left",
+    "right",
+    "late",
+  ]);
+  expect(doc.notes.slice(3, 5).map((note) => note.ca)).toEqual([0, 5]);
+  expect(notes.map((note) => note.id)).toEqual(originalOrder);
 });

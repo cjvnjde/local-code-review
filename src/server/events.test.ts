@@ -63,3 +63,55 @@ describe("createHub", () => {
     expect(hub.size).toBe(1);
   });
 });
+
+describe("hub subscription transitions", () => {
+  test("subscribers added during delivery start with the next event, while a page may detach itself", () => {
+    const hub = createHub();
+    const first: string[] = [];
+    const stable: string[] = [];
+    const later: string[] = [];
+    let detachFirst: () => void;
+    const receiveLater = (chunk: string) => {
+      later.push(chunk);
+    };
+    detachFirst = hub.add((chunk) => {
+      first.push(chunk);
+      hub.add(receiveLater);
+      detachFirst();
+    });
+    const detachStable = hub.add((chunk) => stable.push(chunk));
+    hub.emit({ type: "diff" });
+    expect(first).toEqual(['data: {"type":"diff"}\n\n']);
+    expect(stable).toEqual(first);
+    expect(later).toEqual([]);
+    expect(hub.size).toBe(2);
+    hub.emit({ type: "settings" });
+    expect(first).toHaveLength(1);
+    expect(stable).toHaveLength(2);
+    expect(later).toEqual(['data: {"type":"settings"}\n\n']);
+    detachFirst();
+    detachStable();
+    detachStable();
+    expect(hub.size).toBe(1);
+  });
+
+  test("a heartbeat failure evicts a page permanently even if its next write would succeed", () => {
+    const hub = createHub();
+    let attempts = 0;
+    const chunks: string[] = [];
+    hub.add(() => {
+      if (++attempts === 1) throw new Error("disconnected during heartbeat");
+    });
+    hub.add((chunk) => chunks.push(chunk));
+    hub.ping();
+    hub.emit({ type: "review", file: "review.md" });
+    hub.ping();
+    expect(attempts).toBe(1);
+    expect(chunks).toEqual([
+      ": ping\n\n",
+      'data: {"type":"review","file":"review.md"}\n\n',
+      ": ping\n\n",
+    ]);
+    expect(hub.size).toBe(1);
+  });
+});

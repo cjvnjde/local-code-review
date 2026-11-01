@@ -1,5 +1,12 @@
 import type { Server } from "bun";
-import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
@@ -30,6 +37,7 @@ import type {
 const originalLog = console.log;
 const originalError = console.error;
 const servers = new Set<Server>();
+const serverRoots: string[] = [];
 
 const status: NoteStatus = {
   id: "assets/logo.png|n1|n1|#note",
@@ -107,6 +115,7 @@ function webController(
 
 async function startTestServer(overrides: Partial<ServerOptions> = {}) {
   const root = await mkdtemp(path.join(tmpdir(), "lcr-server-"));
+  serverRoots.push(root);
   const session = createSession(root, ".review", "HEAD");
   const hub = createHub();
   const options: ServerOptions = {
@@ -162,11 +171,13 @@ beforeAll(() => {
   console.error = () => {};
 });
 
-afterEach(() => {
+afterEach(async () => {
   for (const server of servers) {
     server.stop(true);
   }
   servers.clear();
+  for (const root of serverRoots.splice(0))
+    await rm(root, { recursive: true, force: true });
 });
 
 afterAll(() => {
@@ -869,6 +880,7 @@ describe("combined Git and live-page routes", () => {
     };
     await started.options.session.save({ comments: [visual] });
     const outside = await mkdtemp(path.join(tmpdir(), "lcr-outside-"));
+    serverRoots.push(outside);
     const png = Buffer.from(
       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=",
       "base64",
@@ -2220,5 +2232,421 @@ describe("managed queue API", () => {
       method: "DELETE",
     });
     expect(withdrawn).toEqual([[review, [comment.id]]]);
+  });
+});
+
+describe("HTTP state preservation and stream lifetimes", () => {
+  test("SSE announces the active review, delivers changes and detaches immediately on disconnect", async () => {
+    const hub = createHub();
+    const disconnected = Promise.withResolvers<void>();
+    const add = hub.add;
+    hub.add = (send) => {
+      const detach = add(send);
+      return () => {
+        detach();
+        disconnected.resolve();
+      };
+    };
+    const started = await startTestServer({ hub });
+    await started.options.session.save({ comments: [comment] });
+    const abort = new AbortController();
+    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+    try {
+      const response = await request(started, "/api/events", {
+        signal: abort.signal,
+      });
+      expect(response.headers.get("content-type")).toBe("text/event-stream");
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      reader = response.body!.getReader();
+      expect(new TextDecoder().decode((await reader.read()).value)).toBe(
+        `data: ${JSON.stringify({ type: "hello", file: started.options.session.shownFile })}\n\n`,
+      );
+      expect(hub.size).toBe(1);
+      hub.emit({ type: "review", file: "review\nwith-unicode-雪.md" });
+      expect(new TextDecoder().decode((await reader.read()).value)).toBe(
+        'data: {"type":"review","file":"review\\nwith-unicode-雪.md"}\n\n',
+      );
+      abort.abort();
+      await disconnected.promise;
+      expect(hub.size).toBe(0);
+    } finally {
+      abort.abort();
+      await reader?.cancel().catch(() => {});
+    }
+  });
+
+  test("invalid note objects cannot change a saved conversation or notify listeners", async () => {
+    const started = await startTestServer();
+    await started.options.session.save({ comments: [comment] });
+    const before = await started.options.session.read();
+    const file = started.options.session.file;
+    const events: string[] = [];
+    const detach = started.hub.add((chunk) => events.push(chunk));
+    try {
+      for (const invalid of [
+        { id: "" },
+        { id: 3 },
+        { file: null },
+        { body: " \n " },
+        { body: false },
+        { start: -1 },
+        { start: 1.5 },
+        { end: 0 },
+        { end: 1.5 },
+      ]) {
+        const response = await request(started, "/api/note", {
+          method: "POST",
+          headers: { "content-type": "application/json; charset=utf-8" },
+          body: JSON.stringify({ comment: { ...comment, ...invalid } }),
+        });
+        expect(response.status).toBe(400);
+      }
+      for (const body of ["{", "null", "false", "42", '""', "[]"]) {
+        const response = await request(started, "/api/note", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body,
+        });
+        expect(response.status).toBe(400);
+      }
+      expect(started.options.session.file).toBe(file);
+      expect(await started.options.session.read()).toEqual(before);
+      expect(events).toEqual([]);
+    } finally {
+      detach();
+    }
+  });
+
+  test("failed review adoption cannot discard the active conversation", async () => {
+    const started = await startTestServer();
+    await started.options.session.save({ comments: [comment] });
+    const before = await started.options.session.read();
+    const file = started.options.session.file;
+    const events: string[] = [];
+    const detach = started.hub.add((chunk) => events.push(chunk));
+    try {
+      for (const name of ["missing.md", "../outside.md", "/tmp/outside.md"]) {
+        const response = await request(started, "/api/review", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ file: name }),
+        });
+        expect(response.status).toBe(404);
+        expect(started.options.session.file).toBe(file);
+      }
+      expect(await started.options.session.read()).toEqual(before);
+      expect(events).toEqual([]);
+    } finally {
+      detach();
+    }
+  });
+
+  test("deleting an absent note is a silent no-op and does not allocate a review file", async () => {
+    const started = await startTestServer();
+    const events: string[] = [];
+    const detach = started.hub.add((chunk) => events.push(chunk));
+    try {
+      const response = await request(started, "/api/note?id=missing", {
+        method: "DELETE",
+      });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ removed: false });
+      expect(started.options.session.file).toBe("");
+      expect(await readdir(started.options.repoRoot)).toEqual([]);
+      expect(events).toEqual([]);
+    } finally {
+      detach();
+    }
+  });
+
+  test("unanswered follow-up edits preserve their timestamp and withdrawal preserves the agent's earlier message", async () => {
+    const started = await startTestServer();
+    await started.options.session.save({ comments: [comment] });
+    await started.options.session.answer(
+      started.options.session.file,
+      comment.id!,
+      "Agent evidence stays.",
+      "answered",
+    );
+    const reply = await request(started, "/api/reply", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: comment.id, body: "original", ask: false }),
+    });
+    const original = (await reply.json()).note.messages.at(-1);
+    const edited = await request(started, "/api/reply", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        id: comment.id,
+        at: original.at,
+        body: "  revised  ",
+        ask: false,
+      }),
+    });
+    expect(edited.status).toBe(200);
+    const editedNote = (await edited.json()).note;
+    expect(editedNote.messages[1]).toMatchObject({
+      at: original.at,
+      role: "reviewer",
+      body: "revised",
+    });
+    expect(editedNote.messages[0]).toMatchObject({
+      role: "agent",
+      body: "Agent evidence stays.",
+    });
+    const deleted = await request(
+      started,
+      `/api/reply?id=${encodeURIComponent(comment.id!)}&at=${encodeURIComponent(original.at)}`,
+      { method: "DELETE" },
+    );
+    expect(deleted.status).toBe(200);
+    const remaining = (await started.options.session.read()).notes[0]!;
+    expect(remaining.body).toBe(comment.body);
+    expect(remaining.messages).toHaveLength(1);
+    expect(remaining.messages[0]).toMatchObject({
+      role: "agent",
+      body: "Agent evidence stays.",
+    });
+  });
+
+  test("answered reviewer replies reject edits and withdrawal without changing the saved thread", async () => {
+    const started = await startTestServer();
+    await started.options.session.save({ comments: [comment] });
+    const reply = await started.options.session.reply(
+      comment.id!,
+      "Original question.",
+    );
+    const at = reply!.messages.at(-1)!.at;
+    await started.options.session.answer(
+      started.options.session.file,
+      comment.id!,
+      "Answer to the original question.",
+      "answered",
+    );
+    const before = await started.options.session.read();
+    const events: string[] = [];
+    const detach = started.hub.add((chunk) => events.push(chunk));
+    try {
+      const edit = await request(started, "/api/reply", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: comment.id, at, body: "Changed history." }),
+      });
+      const remove = await request(
+        started,
+        `/api/reply?id=${encodeURIComponent(comment.id!)}&at=${encodeURIComponent(at)}`,
+        { method: "DELETE" },
+      );
+      expect(edit.status).toBe(409);
+      expect(remove.status).toBe(409);
+      expect(await started.options.session.read()).toEqual(before);
+      expect(events).toEqual([]);
+    } finally {
+      detach();
+    }
+  });
+
+  test("agent replies cannot be edited or withdrawn through reviewer reply routes", async () => {
+    const started = await startTestServer();
+    await started.options.session.save({ comments: [comment] });
+    await started.options.session.answer(
+      started.options.session.file,
+      comment.id!,
+      "Agent-owned message.",
+      "answered",
+    );
+    const before = await started.options.session.read();
+    const at = before.notes[0]!.messages[0]!.at;
+    const events: string[] = [];
+    const detach = started.hub.add((chunk) => events.push(chunk));
+    try {
+      const edit = await request(started, "/api/reply", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          id: comment.id,
+          at,
+          body: "forged reviewer rewrite",
+        }),
+      });
+      const remove = await request(
+        started,
+        `/api/reply?id=${encodeURIComponent(comment.id!)}&at=${encodeURIComponent(at)}`,
+        { method: "DELETE" },
+      );
+      expect(edit.status).toBe(404);
+      expect(remove.status).toBe(404);
+      expect(await started.options.session.read()).toEqual(before);
+      expect(events).toEqual([]);
+    } finally {
+      detach();
+    }
+  });
+
+  test("settings accept only the review port and exact loopback origins without mutating state on rejection", async () => {
+    const started = await startTestServer();
+    const before = await (await request(started, "/api/settings")).json();
+    for (const origin of [
+      "null",
+      "http://localhost",
+      "http://localhost:1",
+      `${started.base}.evil.example`,
+      "https://localhost:" + started.server.port,
+      `http://127.0.0.2:${started.server.port}`,
+    ]) {
+      const response = await request(started, "/api/settings", {
+        method: "PUT",
+        headers: { "content-type": "application/json", origin },
+        body: JSON.stringify({ single: true }),
+      });
+      expect(response.status).toBe(403);
+      expect(response.headers.get("access-control-allow-origin")).toBeNull();
+    }
+    expect(await (await request(started, "/api/settings")).json()).toEqual(
+      before,
+    );
+    const allowed = await request(started, "/api/settings", {
+      method: "PUT",
+      headers: {
+        "content-type": "Application/JSON; charset=utf-8",
+        origin: `http://localhost:${started.server.port}`,
+      },
+      body: JSON.stringify({ single: true }),
+    });
+    expect(allowed.status).toBe(200);
+    expect(
+      (await (await request(started, "/api/settings")).json()).settings.single,
+    ).toBe(true);
+  });
+
+  test("queue controls reject malformed optional identifiers before calling the agent", async () => {
+    let controls = 0;
+    const started = await startTestServer({
+      agent: {
+        agent: "test connection",
+        publish: () => ({ state: "unchanged", count: 0 }),
+        control: async () => {
+          controls++;
+        },
+      },
+    });
+    for (const body of [
+      "{",
+      "null",
+      "[]",
+      "{}",
+      '{"action":2}',
+      '{"action":"cancel","id":false}',
+      '{"action":"permission","option":{}}',
+    ]) {
+      const response = await request(started, "/api/agent/queue", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body,
+      });
+      expect(response.status).toBe(400);
+    }
+    expect(controls).toBe(0);
+    expect(
+      (await request(started, "/api/agent/queue", { method: "DELETE" })).status,
+    ).toBe(405);
+  });
+
+  test("blob revalidation distinguishes sides and invalidates when the diff changes", async () => {
+    let hash = "first-hash";
+    const reads: string[] = [];
+    const started = await startTestServer({
+      getDiff: async () => [diffFile({ hash })],
+      readBlob: async (side) => {
+        reads.push(side);
+        return new TextEncoder().encode(`${hash}-${side}`);
+      },
+    });
+    const first = await request(
+      started,
+      "/api/blob?path=assets/logo.png&side=new",
+    );
+    const tag = first.headers.get("etag")!;
+    expect(await first.text()).toBe("first-hash-new");
+    const old = await request(
+      started,
+      "/api/blob?path=assets/logo.png&side=old",
+      { headers: { "if-none-match": tag } },
+    );
+    expect(old.status).toBe(200);
+    expect(await old.text()).toBe("first-hash-old");
+    expect(old.headers.get("etag")).not.toBe(tag);
+    hash = "changed-hash";
+    const changed = await request(
+      started,
+      "/api/blob?path=assets/logo.png&side=new",
+      { headers: { "if-none-match": tag } },
+    );
+    expect(changed.status).toBe(200);
+    expect(await changed.text()).toBe("changed-hash-new");
+    expect(changed.headers.get("etag")).not.toBe(tag);
+    expect(reads).toEqual(["new", "old", "new"]);
+  });
+
+  test("an empty media blob is still present but a missing blob returns 404 for GET and HEAD", async () => {
+    let bytes: Uint8Array | null = new Uint8Array();
+    const started = await startTestServer({ readBlob: async () => bytes });
+    const empty = await request(started, "/api/blob?path=assets/logo.png");
+    expect(empty.status).toBe(200);
+    expect(empty.headers.get("content-length")).toBe("0");
+    expect(await empty.bytes()).toEqual(new Uint8Array());
+    bytes = null;
+    for (const method of ["GET", "HEAD"]) {
+      const missing = await request(started, "/api/blob?path=assets/logo.png", {
+        method,
+      });
+      expect(missing.status).toBe(404);
+    }
+  });
+
+  test("renamed media chooses each side's extension and new-side path independently", async () => {
+    const reads: string[][] = [];
+    const started = await startTestServer({
+      getDiff: async () => [
+        diffFile({ path: "new.png", from: "old.svg", status: "renamed" }),
+      ],
+      readBlob: async (side, file) => {
+        reads.push([side, file]);
+        return new Uint8Array([1, 2, 3]);
+      },
+    });
+    const old = await request(started, "/api/blob?path=new.png&side=old");
+    const current = await request(started, "/api/blob?path=new.png&side=new");
+    expect(old.headers.get("content-type")).toBe("image/svg+xml");
+    expect(current.headers.get("content-type")).toBe("image/png");
+    expect(reads).toEqual([
+      ["old", "old.svg"],
+      ["new", "new.png"],
+    ]);
+    expect(
+      (await request(started, "/api/blob?path=old.svg&side=old")).status,
+    ).toBe(404);
+  });
+
+  test("attachment HEAD returns media metadata without bytes and ref overrides an unrelated name", async () => {
+    const names: string[] = [];
+    const started = await startTestServer({
+      readAttachment: async (name) => {
+        names.push(name);
+        return { bytes: new Uint8Array([0, 128, 255]), type: "image/png" };
+      },
+    });
+    const response = await request(
+      started,
+      "/api/attachment?ref=images%2Fcomparison.png&name=unrelated.png",
+      { method: "HEAD" },
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-length")).toBe("3");
+    expect(response.headers.get("content-type")).toBe("image/png");
+    expect(response.headers.get("cache-control")).toBe("no-cache");
+    expect(await response.bytes()).toEqual(new Uint8Array());
+    expect(names).toEqual(["images/comparison.png"]);
   });
 });

@@ -8,6 +8,9 @@ function database() {
   let values = new Map<string, Map<any, any>>(),
     opened = false,
     failWrite = false;
+  let opening: "blocked" | Error | null | undefined;
+  let readError: Error | null = null;
+  let closed = false;
   const schemas = new Map<string, any>(),
     queue: any[] = [];
   let scheduled = false,
@@ -32,13 +35,17 @@ function database() {
     });
   };
   const db = {
+    onversionchange: null as (() => void) | null,
     createObjectStore(name: string, options: any) {
       schemas.set(name, options);
       values.set(name, new Map());
       return { createIndex() {} };
     },
-    close() {},
+    close() {
+      closed = true;
+    },
     transaction() {
+      if (closed) throw new Error("Database connection is closed");
       const tx: any = {
         jobs: [],
         objectStore(name: string) {
@@ -74,9 +81,14 @@ function database() {
               }),
             index: (field: string) => ({
               getAll: (scope: string) =>
-                request((s) =>
-                  [...s.values()].filter((v) => v[field] === scope),
-                ),
+                request((s) => {
+                  if (readError) {
+                    const error = readError;
+                    readError = null;
+                    throw error;
+                  }
+                  return [...s.values()].filter((v) => v[field] === scope);
+                }),
             }),
           };
         },
@@ -90,6 +102,18 @@ function database() {
     open() {
       const r: any = {};
       queueMicrotask(() => {
+        const failure = opening;
+        opening = undefined;
+        if (failure === "blocked") {
+          r.onblocked?.();
+          return;
+        }
+        if (failure !== undefined) {
+          r.error = failure;
+          r.onerror?.();
+          return;
+        }
+        closed = false;
         r.result = db;
         if (!opened) {
           opened = true;
@@ -105,6 +129,16 @@ function database() {
     failNextWrite: () => {
       failWrite = true;
     },
+    blockNextOpen: () => {
+      opening = "blocked";
+    },
+    failNextOpen: (error: Error | null) => {
+      opening = error;
+    },
+    failNextRead: (error: Error) => {
+      readError = error;
+    },
+    changeVersion: () => db.onversionchange?.(),
   };
 }
 const note = {
@@ -249,5 +283,55 @@ describe("append-only browser history storage", () => {
     await expect(store.append(input())).rejects.toThrow("Access denied");
     denied = false;
     expect(await store.append(input())).not.toBeNull();
+  });
+
+  test.each(["blocked", "error", "missing error"] as const)(
+    "an asynchronous %s opening failure can recover without dropping the first revision",
+    async (failure) => {
+      const db = database();
+      if (failure === "blocked") db.blockNextOpen();
+      else
+        db.failNextOpen(
+          failure === "error" ? new Error("Access refused") : null,
+        );
+      const store = new HistoryStore(() => db.factory);
+      await expect(store.append(input("First attempt"))).rejects.toThrow();
+      await store.append(input("Recovered"));
+      const entries = await store.list("repo:HEAD");
+      expect(entries.map((entry) => entry.snapshot.notes[0]!.body)).toEqual([
+        "Recovered",
+      ]);
+      expect(entries[0]!.changes[0]!.before).toBeUndefined();
+    },
+  );
+
+  test("a version change closes the old connection and reopens without losing the journal baseline", async () => {
+    const db = database();
+    const store = new HistoryStore(() => db.factory);
+    await store.append(input("Before upgrade"));
+    db.changeVersion();
+    await store.append(input("After upgrade"));
+    const entries = await store.list("repo:HEAD");
+    expect(entries.map((entry) => entry.snapshot.notes[0]!.body)).toEqual([
+      "After upgrade",
+      "Before upgrade",
+    ]);
+    expect(entries[0]!.changes[0]!.before?.body).toBe("Before upgrade");
+  });
+
+  test("a failed read does not discard committed history or poison the next read", async () => {
+    const db = database();
+    const store = new HistoryStore(() => db.factory);
+    await store.append(input("Committed"));
+    const original = await store.list("repo:HEAD");
+    db.failNextRead(new Error("Read temporarily denied"));
+    await expect(store.list("repo:HEAD")).rejects.toThrow(
+      "Read temporarily denied",
+    );
+    expect(await store.list("repo:HEAD")).toEqual(original);
+    await store.append(input("Later"));
+    const entries = await store.list("repo:HEAD");
+    expect(entries[0]!.changes[0]!.before?.body).toBe("Committed");
+    expect(entries[1]).toEqual(original[0]);
   });
 });

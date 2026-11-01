@@ -121,4 +121,31 @@ describe("charRange", () => {
     expect(charRange(text, 0, text.length)).toBe(null);
     expect(charRange(text, -1, text.length + 4)).toBe(null);
   });
+
+  test("clamped disjoint ranges and whitespace at either end do not become fragments", () => {
+    for (const [a, b] of [
+      [-8, -1],
+      [100, 200],
+      [0, 0],
+      [text.length, text.length],
+    ])
+      expect(charRange(text, a!, b!)).toBeNull();
+    expect(charRange("a \t ", 1, 4)).toBeNull();
+    expect(charRange("", -2, 2)).toBeNull();
+    expect(charRange(" \t ", 0, 2)).toBeNull();
+  });
+
+  test("fragments preserve exact whitespace and UTF-16 offsets rather than trimming their subject", () => {
+    expect(charRange("  alpha  ", 1, 8)).toEqual({ a: 1, b: 8 });
+    expect(charRange("a😀z", 1, 3)).toEqual({ a: 1, b: 3 });
+    expect(charRange("a😀z", 3, 1)).toEqual({ a: 1, b: 3 });
+  });
+});
+
+test("reaiming treats both draft endpoints as inclusive but rejects adjacent nonoverlapping rows", () => {
+  const draft = { fi: 2, i: 4, j: 6 };
+  expect(reaims(draft, 2, 1, 4)).toBe(true);
+  expect(reaims(draft, 2, 6, 8)).toBe(true);
+  expect(reaims(draft, 2, 1, 3)).toBe(false);
+  expect(reaims(draft, 2, 7, 8)).toBe(false);
 });

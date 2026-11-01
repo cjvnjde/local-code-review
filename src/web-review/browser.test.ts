@@ -10,6 +10,7 @@ import { startServer } from "../server/http.ts";
 import { getDiff, getFileContext } from "../git/diff.ts";
 import { readAttachment, saveAttachment } from "../review/attach.ts";
 import { collectStatuses } from "../review/status.ts";
+import { webSelectionKey } from "../shared/web-review.ts";
 
 // Opt-in because the ordinary suite and released executable require no installed browser.
 const browserTest = process.env.LCR_TEST_BROWSER === "1" ? test : test.skip;
@@ -161,15 +162,31 @@ browserTest(
       ).sessionId;
       const send = (method: string, params: Record<string, unknown> = {}) =>
         cdp!.send(method, params, sid);
+      let acceptingDrawingDiscard = false;
       const errors: string[] = [];
       cdp.on("Runtime.exceptionThrown", (p) =>
         errors.push(
           p.exceptionDetails.exception?.description || p.exceptionDetails.text,
         ),
       );
-      cdp.on("Page.javascriptDialogOpening", (event) =>
-        errors.push("Unexpected dialog: " + event.type + " " + event.message),
-      );
+      cdp.on("Page.javascriptDialogOpening", (event, eventSid) => {
+        if (acceptingDrawingDiscard) {
+          acceptingDrawingDiscard = false;
+          if (
+            event.type !== "confirm" ||
+            !event.message.includes("Discard your drawing changes?")
+          )
+            errors.push(
+              "Wrong drawing dialog: " + event.type + " " + event.message,
+            );
+          void cdp!.send(
+            "Page.handleJavaScriptDialog",
+            { accept: true },
+            eventSid,
+          );
+        } else
+          errors.push("Unexpected dialog: " + event.type + " " + event.message);
+      });
       await send("Runtime.enable");
       await cdp.send("Runtime.enable", {}, reviewSid);
       await send("Page.enable");
@@ -271,7 +288,7 @@ browserTest(
         });
       }
       let frameContext = 0;
-      async function frame() {
+      async function frame(expectedNoteId?: string) {
         await until(
           () => js('!!testRoot.querySelector("iframe")'),
           "shared note frame",
@@ -282,7 +299,11 @@ browserTest(
             await send("Page.getFrameTree");
           id =
             tree.frameTree.childFrames?.find((f) =>
-              f.frame.url.includes("?ui-"),
+              expectedNoteId
+                ? f.frame.url.includes("?ui-note=") &&
+                  new URL(f.frame.url).searchParams.get("ui-note") ===
+                    expectedNoteId
+                : f.frame.url.includes("?ui-"),
             )?.frame.id || "";
           return id;
         }, "loaded note frame");
@@ -293,7 +314,12 @@ browserTest(
           })
         ).executionContextId;
         await until(
-          () => frameJs('!!document.querySelector("#uiNote .nbox")'),
+          () =>
+            frameJs(
+              expectedNoteId
+                ? `document.querySelector("#uiNote [data-nid]")?.dataset.nid===${JSON.stringify(expectedNoteId)}&&!!document.querySelector("#uiNote .nbox")`
+                : '!!document.querySelector("#uiNote .nbox")',
+            ),
           "shared note editor",
         );
       }
@@ -454,6 +480,129 @@ browserTest(
       expect(await frameJs('!!document.querySelector("#uiNote .attb")')).toBe(
         true,
       );
+      // Drawing is a proposal beside immutable captured pixels, not a replacement screenshot.
+      const drawingDraft = await js(
+        'new URL(testRoot.querySelector("iframe").src).searchParams.get("ui-draft")',
+      );
+      const originalDrawingCapture = web.draft(drawingDraft)!.before;
+      await frameJs(
+        'window.drawingTextarea=document.querySelector("#uiNote textarea");drawingTextarea.value="Keep this text and selection while drawing.";drawingTextarea.dispatchEvent(new Event("input",{bubbles:true}));drawingTextarea.setSelectionRange(5,9);document.querySelector("#uiNote button[data-web-annotate]").click()',
+      );
+      await until(
+        () =>
+          frameJs(
+            '!!document.querySelector("[data-annotation-editor] canvas")&&!document.querySelector("[data-command=apply]").disabled',
+          ),
+        "drawing editor loads original PNG",
+      );
+      await frameJs('document.querySelector("[data-tool=rectangle]").click()');
+      const drawingBounds = await frameJs(
+        '(()=>{const r=document.querySelector("[data-annotation-editor] canvas").getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height}})()',
+      );
+      const drawingFrame = await js(
+        '(()=>{const r=testRoot.querySelector("iframe").getBoundingClientRect();return {x:r.x,y:r.y}})()',
+      );
+      const drawX =
+        drawingFrame.x + drawingBounds.x + drawingBounds.width * 0.3;
+      const drawY =
+        drawingFrame.y + drawingBounds.y + drawingBounds.height * 0.3;
+      await mouse("mouseMoved", drawX, drawY);
+      await mouse("mousePressed", drawX, drawY);
+      await mouse(
+        "mouseMoved",
+        drawX + drawingBounds.width * 0.3,
+        drawY + drawingBounds.height * 0.3,
+      );
+      await mouse(
+        "mouseReleased",
+        drawX + drawingBounds.width * 0.3,
+        drawY + drawingBounds.height * 0.3,
+      );
+      expect(
+        await frameJs('document.querySelector("[data-command=undo]").disabled'),
+      ).toBe(false);
+      await frameJs('document.querySelector("[data-command=undo]").click()');
+      expect(
+        await frameJs(
+          'document.querySelectorAll("[data-field=mark] option").length',
+        ),
+      ).toBe(1);
+      await frameJs('document.querySelector("[data-command=redo]").click()');
+      expect(
+        await frameJs(
+          'document.querySelectorAll("[data-field=mark] option").length',
+        ),
+      ).toBe(2);
+      await frameJs('document.querySelector("[data-command=apply]").click()');
+      await until(
+        () => frameJs('!document.querySelector("[data-annotation-editor]")'),
+        "drawing saves and returns to the same note editor",
+      );
+      const annotatedDraft = web.draft(drawingDraft)!;
+      const proposal = annotatedDraft.before.annotation!;
+      expect(proposal.marks).toHaveLength(1);
+      expect(proposal.marks[0]!.tool).toBe("rectangle");
+      expect({ ...annotatedDraft.before, annotation: undefined }).toEqual({
+        ...originalDrawingCapture,
+        annotation: undefined,
+      });
+      const proposalBytes = await readAttachment(
+        dir,
+        ".review",
+        proposal.image,
+      );
+      expect(proposalBytes?.type).toBe("image/png");
+      const proposalPng = Buffer.from(proposalBytes!.bytes);
+      expect(proposalPng.readUInt32BE(16)).toBe(
+        proposal.width + 2 * proposal.padding,
+      );
+      expect(proposalPng.readUInt32BE(20)).toBe(
+        proposal.height + 2 * proposal.padding,
+      );
+      expect(
+        await frameJs(
+          'document.querySelector("#uiNote textarea")===drawingTextarea',
+        ),
+      ).toBe(true);
+      expect(
+        await frameJs(
+          "[drawingTextarea.value,drawingTextarea.selectionStart,drawingTextarea.selectionEnd]",
+        ),
+      ).toEqual(["Keep this text and selection while drawing.", 5, 9]);
+      await frameJs(
+        'document.querySelector("#uiNote button[data-web-annotate]").click()',
+      );
+      await until(
+        () =>
+          frameJs(
+            '!!document.querySelector("[data-annotation-editor]")&&!document.querySelector("[data-command=clear]").disabled',
+          ),
+        "saved drawing reopens for editing",
+      );
+      await frameJs('document.querySelector("[data-command=clear]").click()');
+      acceptingDrawingDiscard = true;
+      // Defer in Chrome so its modal dialog cannot block the CDP evaluate response.
+      await frameJs(
+        'setTimeout(()=>document.querySelector("[data-command=cancel]").click(),0);void 0',
+      );
+      await until(
+        () => frameJs('!document.querySelector("[data-annotation-editor]")'),
+        "canceling a changed drawing closes only the drawing editor",
+      );
+      expect(web.draft(drawingDraft)!.before.annotation).toEqual(proposal);
+      await expect(
+        web.annotate({
+          draftId: drawingDraft,
+          target: {
+            kind: "selection",
+            index: 0,
+            key: webSelectionKey(originalDrawingCapture),
+            expected: "",
+          },
+          annotation: null,
+        }),
+      ).rejects.toThrow("changed");
+      expect(web.draft(drawingDraft)!.before.annotation).toEqual(proposal);
       await frameJs('document.querySelector("#uiNote .refb").click()');
       expect(
         await frameJs('document.querySelector("#refpop").textContent'),
@@ -1333,6 +1482,170 @@ browserTest(
       ).toHaveLength(1);
       expect((await session.read()).notes.filter((n) => n.web)).toHaveLength(5);
       expect(errors).toEqual([]);
+      // History is read-only navigation over the same page, even above a dirty note editor.
+      const beforeHistory = (await session.read()).notes;
+      await reviewJs(`location.hash=${JSON.stringify("#note=" + diffRef)}`);
+      await until(
+        () =>
+          reviewJs(
+            `[...document.querySelectorAll('.nrow')].some(row=>row.dataset.nid===${JSON.stringify(diffNote.id)}&&row.querySelector('.edit'))`,
+          ),
+        "diff note is mounted before opening its editor",
+      );
+      await reviewJs(
+        `(()=>{const row=[...document.querySelectorAll('.nrow')].find(row=>row.dataset.nid===${JSON.stringify(diffNote.id)});row.querySelector('.edit').click();window.historyDraft=row.querySelector('textarea');historyDraft.value='Unsent text must survive history navigation';historyDraft.dispatchEvent(new Event('input',{bubbles:true}));historyDraft.setSelectionRange(4,11);historyDraft.focus();})()`,
+      );
+      const historyDepth = await reviewJs("history.length");
+      await reviewJs('document.querySelector("#showHistory").click()');
+      await until(
+        () =>
+          reviewJs(
+            '!document.querySelector("#historyPanel").hidden&&!!document.querySelector("#historyList [data-revision]")',
+          ),
+        "persisted browser history opens",
+      );
+      expect(await reviewJs("history.length")).toBe(historyDepth + 1);
+      await reviewJs(
+        '(()=>{const search=document.querySelector("#historySearch");search.value="Match the visual result";search.dispatchEvent(new Event("input",{bubbles:true}));document.querySelector("#historyMode").click();})()',
+      );
+      await until(
+        () =>
+          reviewJs(
+            'history.state.lcrHistory.mode==="snapshot"&&document.querySelector("#historyDetail").textContent.includes("Match the visual result")',
+          ),
+        "history snapshot contains the saved note rather than the open draft",
+      );
+      expect(
+        await reviewJs(
+          'document.querySelector("#historyDetail").textContent.includes(historyDraft.value)',
+        ),
+      ).toBe(false);
+      expect(
+        await reviewJs(
+          'document.querySelector("#historyDetail textarea,[contenteditable=true]")===null',
+        ),
+      ).toBe(true);
+      const historyView = await reviewJs("history.state.lcrHistory");
+      expect(await reviewJs("history.length")).toBe(historyDepth + 1);
+      await reviewJs("history.back()");
+      await until(
+        () => reviewJs('document.querySelector("#historyPanel").hidden'),
+        "Back closes history without closing the note editor",
+      );
+      expect(
+        await reviewJs(
+          "historyDraft.isConnected&&document.activeElement===historyDraft",
+        ),
+      ).toBe(true);
+      expect(
+        await reviewJs(
+          "[historyDraft.value,historyDraft.selectionStart,historyDraft.selectionEnd]",
+        ),
+      ).toEqual(["Unsent text must survive history navigation", 4, 11]);
+      await reviewJs("history.forward()");
+      await until(
+        () =>
+          reviewJs(
+            '!document.querySelector("#historyPanel").hidden&&document.querySelector("#historySearch").value==="Match the visual result"',
+          ),
+        "Forward restores the selected history view",
+      );
+      expect(await reviewJs("history.state.lcrHistory")).toEqual(historyView);
+      await reviewJs(
+        'document.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}))',
+      );
+      await until(
+        () => reviewJs('document.querySelector("#historyPanel").hidden'),
+        "Escape closes only the history overlay",
+      );
+      expect(
+        await reviewJs("historyDraft.isConnected&&historyDraft.value"),
+      ).toBe("Unsent text must survive history navigation");
+      await reviewJs(
+        'historyDraft.closest(".nbox").querySelector(".cancel").click()',
+      );
+      expect((await session.read()).notes).toEqual(beforeHistory);
+      // Losing the whole browser process must reconnect to a fresh profile connection,
+      // not retain dead target/session IDs from the previous instance.
+      const persistedBeforeRestart = (await session.read()).notes;
+      await cdp.send("Browser.close").catch(() => {});
+      await until(
+        async () => web.status().state === "closed",
+        "browser process exit notification",
+      );
+      cdp.close();
+      await Promise.all([web.open(), web.open()]);
+      expect(web.status().state).toBe("ready");
+      const reopenedPort = (
+        await readFile(
+          path.join(dir, ".review/.browser/DevToolsActivePort"),
+          "utf8",
+        )
+      )
+        .trim()
+        .split("\n");
+      cdp = await Cdp.connect(
+        "ws://127.0.0.1:" + reopenedPort[0] + reopenedPort[1],
+      );
+      appTarget = (await targets()).find((t) => t.url === web.status().url)!;
+      sid = (
+        await cdp.send("Target.attachToTarget", {
+          targetId: appTarget.targetId,
+          flatten: true,
+        })
+      ).sessionId;
+      await root();
+      expect(
+        (await targets()).filter(
+          (t) => t.type === "page" && t.url.startsWith(reviewUrl),
+        ),
+      ).toHaveLength(1);
+      expect((await session.read()).notes).toEqual(persistedBeforeRestart);
+      const reopenedNote = persistedBeforeRestart.find(
+        (saved) => saved.id === note.id,
+      )!;
+      await web.focus(note.id);
+      await frame(reopenedNote.id);
+      expect(
+        await frameJs('document.querySelector("#uiNote .nbody").textContent'),
+      ).toContain(reopenedNote.body.split("#" + diffRef)[0]!);
+      expect(
+        await frameJs(
+          'document.querySelector("#uiNote .nbody .nref").dataset.nref',
+        ),
+      ).toBe(diffNote.id);
+      // Comparisons never silently navigate to an old URL or attach evidence from another route.
+      const otherRoute = new URL("/another-workspace", web.status().url).href;
+      await send("Page.navigate", { url: otherRoute });
+      await root();
+      await expect(web.captureAfter(note.id)).rejects.toThrow(
+        "cannot be matched",
+      );
+      expect(await js("location.href")).toBe(otherRoute);
+      expect(web.replyDraft(note.id)).toEqual({ reply: true, web: null });
+      expect((await session.read()).notes).toEqual(persistedBeforeRestart);
+      // The new-document injection is restricted to the reviewed origin, even in the owned tab.
+      await send("Page.navigate", { url: reviewUrl });
+      await until(
+        () =>
+          js(
+            `location.origin===${JSON.stringify(reviewUrl)}&&document.readyState==="complete"`,
+          ),
+        "cross-origin navigation finishes",
+      );
+      expect(await js('!!document.querySelector("[id^=__lcr_]")')).toBe(false);
+      await send("Page.navigate", { url: web.status().url });
+      await root();
+      await web.focus(note.id);
+      await frame(reopenedNote.id);
+      expect(
+        await frameJs('document.querySelector("#uiNote .nbody").textContent'),
+      ).toContain(reopenedNote.body.split("#" + diffRef)[0]!);
+      expect(
+        await frameJs(
+          'document.querySelector("#uiNote .nbody .nref").dataset.nref',
+        ),
+      ).toBe(diffNote.id);
     } finally {
       cdp?.close();
       await web.close();
@@ -1346,5 +1659,5 @@ browserTest(
       });
     }
   },
-  90_000,
+  120_000,
 );

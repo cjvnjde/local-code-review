@@ -118,3 +118,159 @@ test("folded rows are skipped and a lazy placeholder cannot claim a visible line
     ),
   ).toBeNull();
 });
+
+test("an unchanged hash may keep an exact repeated anchor but stale text still relocates safely", () => {
+  const original = file(["same", "middle", "same"]);
+  const place = readingPlace(original, 2);
+  expect(readingRow(original, place)).toBe(2);
+  expect(readingRow(file(["same", "middle", "replacement"]), place)).toBe(0);
+  expect(
+    readingRow(file(["same", "middle", "same"], "changed"), {
+      ...place,
+      before: undefined,
+      after: undefined,
+    }),
+  ).toBe(-1);
+});
+
+test("either remembered neighbour can identify a repeated line but conflicting neighbours remain ambiguous", () => {
+  const place = readingPlace(file(["before", "target", "after"]), 1);
+  expect(
+    readingRow(
+      file(["other", "target", "after", "else", "target", "end"], "new"),
+      place,
+    ),
+  ).toBe(1);
+  expect(
+    readingRow(
+      file(["before", "target", "else", "other", "target", "end"], "new"),
+      place,
+    ),
+  ).toBe(1);
+  expect(
+    readingRow(
+      file(["before", "target", "else", "other", "target", "after"], "new"),
+      place,
+    ),
+  ).toBe(-1);
+  expect(
+    readingRow(
+      file(["other", "target", "else", "other", "target", "end"], "new"),
+      place,
+    ),
+  ).toBe(-1);
+});
+
+test("hunk titles never satisfy captured text and empty anchors never resume an arbitrary blank row", () => {
+  const place = readingPlace(file(["target"]), 0);
+  const changed = {
+    ...file([], "new"),
+    rows: [
+      { t: "hunk", text: "target" },
+      { t: "ctx", n: 2, o: 2, text: "other" },
+    ],
+  };
+  expect(readingRow(changed, place)).toBe(-1);
+  expect(
+    readingRow(file(["", "target"], "new"), { ...place, anchor: "", text: "" }),
+  ).toBe(-1);
+  const old = {
+    path: "deleted.ts",
+    hash: "old",
+    rows: [{ t: "del", o: 9, text: "removed" }],
+  };
+  expect(readingPlace(old, 0)).toMatchObject({
+    path: "deleted.ts",
+    anchor: "o9",
+    text: "removed",
+  });
+  expect(readingRow(old, readingPlace(old, 0))).toBe(0);
+});
+
+test("resume offsets remain finite and below the header even when the pane is shorter than it", () => {
+  for (const bad of [undefined, NaN, Infinity, -Infinity])
+    expect(resumeOffset(bad, 40, 200)).toBe(40);
+  expect(resumeOffset(160, 40, 200)).toBe(160);
+  expect(resumeOffset(161, 40, 200)).toBe(160);
+  expect(resumeOffset(100, 40, 50)).toBe(40);
+  expect(resumeOffset(-100, 40, 50)).toBe(40);
+});
+
+test("scroll speed is direction independent, caps idle time and uses the strict settle threshold", () => {
+  expect(scrollVelocity(-100, 50)).toBe(scrollVelocity(100, 50));
+  expect(scrollVelocity(100, 0)).toBe(100000);
+  expect(scrollVelocity(100, 250)).toBe(400);
+  expect(scrollVelocity(100, 10000)).toBe(400);
+  expect(scrollVelocity(0, 0)).toBe(0);
+  expect(settleDelay(900, 900)).toBe(1200);
+  expect(settleDelay(900.01, 900)).toBe(2800);
+  expect(settleDelay(1800, 0)).toBe(1200);
+  expect(settleDelay(1800.01, 0)).toBe(2800);
+});
+
+test("only an unchanged diff can resolve an otherwise indistinguishable repeated anchor", () => {
+  const original = file(["x", "target", "y", "x", "target", "y"]);
+  const place = readingPlace(original, 4);
+  expect(readingRow(original, place)).toBe(4);
+  expect(readingRow({ ...original, hash: "changed" }, place)).toBe(-1);
+  expect(readingRow(original, { ...place, anchor: "n99" })).toBe(-1);
+});
+
+test("matching at a file edge does not require a nonexistent neighbour", () => {
+  const place = readingPlace(
+    file(["unique-before", "target", "unique-after"]),
+    1,
+  );
+  expect(
+    readingRow(
+      file(["target", "unique-after", "other", "target"], "new"),
+      place,
+    ),
+  ).toBe(0);
+  expect(
+    readingRow(
+      file(["target", "other", "unique-before", "target"], "new"),
+      place,
+    ),
+  ).toBe(3);
+  expect(readingPlace(file([]), -1)).toMatchObject({ anchor: "", text: "" });
+});
+
+test("reading geometry skips unregistered cards and keeps the first visible fallback", () => {
+  const at = readingAt(
+    { top: 100, bottom: 600 },
+    [
+      card("unknown", 80, 150, 100, [110]),
+      card("first", 160, 300, 200, [], true),
+      card("second", 310, 590, 350, [], true),
+    ],
+    (path) => (path === "unknown" ? null : lookup(path)),
+  )!;
+  expect(at.file.path).toBe("first");
+  expect(at.index).toBe(-1);
+  expect(at.offset).toBe(0);
+});
+
+test("cards touching but not crossing pane edges cannot claim a reading row", () => {
+  expect(
+    readingAt(
+      { top: 100, bottom: 600 },
+      [card("first", 0, 100, 0, [100])],
+      lookup,
+    ),
+  ).toBeNull();
+  expect(
+    readingAt(
+      { top: 100, bottom: 600 },
+      [card("first", 600, 900, 600, [601])],
+      lookup,
+    ),
+  ).toBeNull();
+  const withoutHeader = {
+    ...card("first", 80, 900, 0, [100, 124]),
+    querySelector: () => null,
+  };
+  expect(
+    readingAt({ top: 100, bottom: 600 }, [withoutHeader], lookup),
+  ).toMatchObject({ index: 0, offset: 0 });
+});

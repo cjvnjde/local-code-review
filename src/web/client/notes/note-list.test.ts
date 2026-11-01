@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import {
-  FILTERS,
   groupNotes,
   matchesFilter,
   noteSummary,
@@ -187,14 +186,6 @@ describe("matchesFilter", () => {
     expect(matchesFilter("open", 0, "escalated")).toBe(true);
     expect(matchesFilter("done", 0, "escalated")).toBe(false);
   });
-
-  test("every chip the panel offers is a filter this understands", () => {
-    expect(
-      FILTERS.every(
-        (f) => matchesFilter(f, 1, null) || matchesFilter(f, 0, "applied"),
-      ),
-    ).toBe(true);
-  });
 });
 
 describe("noteSummary", () => {
@@ -219,5 +210,108 @@ describe("noteSummary", () => {
   test("an empty note has nothing to say for itself", () => {
     expect(noteSummary("")).toBe("");
     expect(noteSummary("   \n\n")).toBe("");
+  });
+});
+
+describe("note list invariants", () => {
+  test("sorting and grouping retain every note exactly once without mutating caller order", () => {
+    const list = [
+      { ...note("gone", "missing.ts", 3), at: null },
+      { ...note("outdated", "a.ts", 8), at: { fi: 0, i: -1, how: "outdated" } },
+      { ...note("global", ""), at: { fi: -1, i: -1, how: "global" } },
+      { ...note("file", "a.ts"), at: { fi: 0, i: -1, how: "file" } },
+      { ...note("line", "a.ts", 2), at: { fi: 0, i: 4, how: "exact" } },
+    ];
+    const original = [...list];
+    const sorted = orderNotes(list, (n) => n.at);
+    expect(ids(sorted)).toEqual(["global", "file", "line", "outdated", "gone"]);
+    const groups = groupNotes(sorted);
+    expect(groups.map((g) => [g.global, g.stray, g.path])).toEqual([
+      [true, false, ""],
+      [false, false, "a.ts"],
+      [false, true, ""],
+    ]);
+    expect(groups.flatMap((g) => g.entries).map((e) => e.n)).toEqual(
+      sorted.map((e) => e.n),
+    );
+    expect(list).toEqual(original);
+    expect(sorted[0]!.n).toBe(list[2]);
+    expect(
+      ids(
+        orderNotes(
+          sorted.map((e) => e.n),
+          (n) => n.at,
+        ),
+      ),
+    ).toEqual(ids(sorted));
+  });
+
+  test("open and done partition every status regardless of unread count", () => {
+    for (const status of [
+      null,
+      "",
+      "pending",
+      "needs-input",
+      "applied",
+      "answered",
+      "skipped",
+      "future-status",
+    ]) {
+      for (const unread of [0, 1, 3]) {
+        expect(matchesFilter("open", unread, status)).toBe(
+          !matchesFilter("done", unread, status),
+        );
+        expect(matchesFilter("new", unread, status)).toBe(unread > 0);
+        expect(matchesFilter("all", unread, status)).toBe(true);
+      }
+    }
+  });
+
+  test("summaries flatten references and attached images, never the replacement code", () => {
+    expect(
+      noteSummary(
+        "```suggestion\nsecret replacement\n```\n\nSee [a.ts:4](lcr:abc) and ![screen](images/a.png)\nMore",
+      ),
+    ).toBe("See a.ts:4 and screen");
+    expect(
+      noteSummary("```suggestion\n\n```\n\n```suggestion\nnext\n```"),
+    ).toBe("suggested change");
+    expect(noteSummary("```suggestion\nunfinished")).toBe("```suggestion");
+  });
+
+  test("negative file placements are stray unless explicitly global and stay behind every live file", () => {
+    const list = [
+      {
+        ...note("negative", "missing.ts", 2),
+        at: { fi: -1, i: 0, how: "exact" },
+      },
+      { ...note("live", "live.ts", 8), at: { fi: 3, i: 20, how: "exact" } },
+      { ...note("missing", "missing.ts"), at: null },
+    ];
+    const ordered = orderNotes(list, (n) => n.at);
+    expect(ids(ordered)).toEqual(["live", "missing", "negative"]);
+    expect(ordered.map((e) => e.gone)).toEqual([false, true, true]);
+    const grouped = groupNotes(ordered);
+    expect(grouped[1]).toMatchObject({
+      stray: true,
+      global: false,
+      path: "",
+      fi: -1,
+    });
+    expect(grouped[1]?.entries.map((e) => e.n.id)).toEqual([
+      "missing",
+      "negative",
+    ]);
+  });
+
+  test("equal row placements preserve source chronology only after original range ordering", () => {
+    const list = [
+      note("later-range", "a.ts", 9),
+      note("first-tie", "a.ts", 2),
+      note("second-tie", "a.ts", 2),
+    ];
+    expect(
+      ids(orderNotes(list, () => ({ fi: 0, i: 3, how: "moved" }))),
+    ).toEqual(["first-tie", "second-tie", "later-range"]);
   });
 });

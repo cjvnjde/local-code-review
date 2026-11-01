@@ -63,3 +63,67 @@ test("external authentication failures are visible and never trigger an authenti
   await client.start();
   await expect(client.session()).rejects.toThrow("Authentication required");
 });
+
+test("ACP profile identity changes with executable, arguments and environment but not environment ordering", () => {
+  const base = {
+    name: "Agent",
+    command: "/bin/agent",
+    args: ["--mode", "review"],
+    env: { A: "1", B: "2" },
+  };
+  const target = acpTarget(base);
+  expect(acpTarget({ ...base, env: { B: "2", A: "1" } })).toBe(target);
+  for (const changed of [
+    { ...base, name: "Another agent" },
+    { ...base, command: "/other/agent" },
+    { ...base, args: ["review", "--mode"] },
+    { ...base, args: ["--mode review"] },
+    { ...base, env: { A: "different", B: "2" } },
+    { ...base, env: { A: "1" } },
+  ])
+    expect(acpTarget(changed)).not.toBe(target);
+  expect(acpTarget({ name: "Agent", command: "agent", args: [] })).toBe(
+    acpTarget({ name: "Agent", command: "agent", args: [], env: {} }),
+  );
+});
+
+test("ACP configuration rejects malformed executable boundaries and accepts literal argv and string environment values", async () => {
+  const file = path.join(root(), "profile.json");
+  for (const invalid of [
+    null,
+    [],
+    {},
+    { name: "  ", command: "agent" },
+    { name: "Agent", command: "\t" },
+    { name: 1, command: "agent" },
+    { name: "Agent", command: 1 },
+    { name: "Agent", command: "agent", args: [1] },
+    { name: "Agent", command: "agent", args: null },
+    { name: "Agent", command: "agent", env: null },
+    { name: "Agent", command: "agent", env: [] },
+    { name: "Agent", command: "agent", env: { TOKEN: null } },
+  ]) {
+    writeFileSync(file, JSON.stringify(invalid));
+    await expect(readAcpConfig(file)).rejects.toThrow("ACP config");
+  }
+  writeFileSync(
+    file,
+    JSON.stringify({
+      name: "Agent",
+      command: "/path with spaces/agent",
+      args: ["", "one two", "; touch /tmp/not-executed", "$(not-executed)"],
+      env: { EMPTY: "", TOKEN: "literal value" },
+    }),
+  );
+  expect(await readAcpConfig(file)).toEqual({
+    name: "Agent",
+    command: "/path with spaces/agent",
+    args: ["", "one two", "; touch /tmp/not-executed", "$(not-executed)"],
+    env: { EMPTY: "", TOKEN: "literal value" },
+  });
+  writeFileSync(file, "{not json");
+  await expect(readAcpConfig(file)).rejects.toThrow();
+  await expect(
+    readAcpConfig(path.join(root(), "missing.json")),
+  ).rejects.toThrow();
+});

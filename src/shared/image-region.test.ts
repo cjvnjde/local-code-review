@@ -89,9 +89,150 @@ describe("screenshot region coordinates", () => {
     ])
       expect(imageRegion({ ...region, ...over })).toBeNull();
   });
+
+  test("every coordinate must be a safe integer and fit independently on each axis", () => {
+    for (const field of [
+      "x",
+      "y",
+      "width",
+      "height",
+      "imageWidth",
+      "imageHeight",
+    ]) {
+      for (const bad of [
+        NaN,
+        Infinity,
+        -Infinity,
+        0.5,
+        Number.MAX_SAFE_INTEGER + 1,
+        "1",
+        null,
+      ])
+        expect(imageRegion({ ...region, [field]: bad })).toBeNull();
+    }
+    const edge = { ...region, x: 1365, y: 6813, width: 1, height: 1 };
+    expect(imageRegion(edge)).toEqual(edge);
+    expect(imageRegion({ ...edge, width: 2 })).toBeNull();
+    expect(imageRegion({ ...edge, height: 2 })).toBeNull();
+    expect(imageRegion({ ...edge, imageWidth: 1365 })).toBeNull();
+    expect(imageRegion({ ...edge, imageHeight: 6813 })).toBeNull();
+  });
+
+  test("capture links cannot carry traversal, encoded separators or URL suffixes", () => {
+    for (const capture of [
+      "images/.hidden.png",
+      "images/a/b.png",
+      "images/a\\b.png",
+      "images/%2e%2e.png",
+      "images/a.png?download=1",
+      "images/a.png#x",
+      "/images/a.png",
+      "images/a.svg",
+      "images/a.png\n",
+    ])
+      expect(imageRegion({ ...region, capture })).toBeNull();
+    const input = {
+      ...region,
+      side: "old",
+      capture: "images/A-1_test.v2.PNG",
+      ignored: "discard",
+    };
+    const clean = imageRegion(input)!;
+    expect(clean).toEqual({ ...region, side: "old", capture: input.capture });
+    input.x = 0;
+    expect(clean.x).toBe(100);
+  });
+
+  test("drag reversal preserves pixel bounds and fractional edges round outward", () => {
+    const view = { width: 40, height: 30 },
+      size = { width: 101, height: 79 };
+    const a = { x: 3.2, y: 4.1 },
+      b = { x: 21.8, y: 18.2 };
+    const rect = regionRect(a, b, view, size);
+    expect(rect).toEqual({ x: 8, y: 10, width: 48, height: 38 });
+    expect(regionRect(b, a, view, size)).toEqual(rect);
+    expect(
+      imageRegion({
+        ...region,
+        ...rect,
+        imageWidth: size.width,
+        imageHeight: size.height,
+      }),
+    ).not.toBeNull();
+  });
+
+  test("the click slack is strict on both axes and tiny images stay selectable", () => {
+    const size = { width: 200, height: 200 };
+    expect(
+      regionRect({ x: 100, y: 100 }, { x: 103.99, y: 103.99 }, size, size),
+    ).toEqual({ x: 52, y: 52, width: 96, height: 96 });
+    expect(
+      regionRect({ x: 100, y: 100 }, { x: 104, y: 101 }, size, size),
+    ).toEqual({ x: 100, y: 100, width: 4, height: 1 });
+    expect(
+      regionRect({ x: 100, y: 100 }, { x: 101, y: 104 }, size, size),
+    ).toEqual({ x: 100, y: 100, width: 1, height: 4 });
+    expect(
+      regionRect(
+        { x: 1, y: 1 },
+        { x: 1, y: 1 },
+        { width: 1, height: 1 },
+        { width: 1, height: 1 },
+      ),
+    ).toEqual({ x: 0, y: 0, width: 1, height: 1 });
+  });
+
+  test("one-pixel regions at the origin are valid but zero or negative dimensions never are", () => {
+    const tiny = {
+      ...region,
+      x: 0,
+      y: 0,
+      width: 1,
+      height: 1,
+      imageWidth: 1,
+      imageHeight: 1,
+    };
+    expect(imageRegion(tiny)).toEqual(tiny);
+    for (const field of ["width", "height", "imageWidth", "imageHeight"])
+      for (const bad of [0, -1])
+        expect(imageRegion({ ...tiny, [field]: bad })).toBeNull();
+    expect(imageRegion({ ...tiny, y: -1 })).toBeNull();
+    for (const source of [123, null, "abc!", "!abc", "a b", ""])
+      expect(imageRegion({ ...tiny, source })).toBeNull();
+    expect(imageRegion({ ...tiny, capture: 123 })).toBeNull();
+  });
+
+  test("clicking either far edge keeps the entire pick inside the source image", () => {
+    const view = { width: 100, height: 150 },
+      size = { width: 200, height: 300 };
+    expect(
+      regionRect({ x: 100, y: 150 }, { x: 100, y: 150 }, view, size),
+    ).toEqual({ x: 104, y: 204, width: 96, height: 96 });
+    expect(
+      regionRect({ x: -20, y: -20 }, { x: -20, y: -20 }, view, size),
+    ).toEqual({ x: 0, y: 0, width: 96, height: 96 });
+    expect(
+      regionRect({ x: 1000, y: 1000 }, { x: 1000, y: 1000 }, view, size),
+    ).toEqual({ x: 104, y: 204, width: 96, height: 96 });
+  });
 });
 
 describe("screenshot review round trips", () => {
+  test("agent-readable capture evidence names the selected side and original image dimensions", () => {
+    for (const side of ["old", "new"] as const) {
+      const input = { ...region, side };
+      const lines = imageRegionLines(input);
+      const evidence = lines
+        .filter((line) => !line.startsWith("<!--"))
+        .join("\n");
+      expect(evidence).toContain(side === "old" ? "**before**" : "**after**");
+      expect(evidence).toContain("1366×6814");
+      expect(evidence).toContain("(images/012345.png)");
+      const marker = lines[0]!.match(/^<!-- lcr:image (.+) -->$/)!;
+      expect(imageRegion(JSON.parse(marker[1]!))).toEqual(input);
+    }
+  });
+
   test("keeps coordinates and crop separate from editable prose, across repeated saves", () => {
     const first = noteFromComment(comment);
     let markdown = renderMarkdown({ range: "HEAD", notes: [first] });

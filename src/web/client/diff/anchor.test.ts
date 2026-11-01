@@ -1,5 +1,16 @@
-import { beforeEach, describe, expect, test } from "bun:test";
-import { outdatedNotes, placeNote, placeNotes, strayNotes } from "./anchor.ts";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import {
+  anchorKeys,
+  globalNotes,
+  orderedNotes,
+  placeOf,
+  rowOfNote,
+  outdatedNotes,
+  placeNote,
+  placeNotes,
+  replaceIn,
+  strayNotes,
+} from "./anchor.ts";
 import { state } from "../app/state.ts";
 
 const ctx = (n: number, o: number, text: string) => ({ t: "ctx", n, o, text });
@@ -35,11 +46,29 @@ function note(over: any = {}) {
   };
 }
 
+let saved: Pick<
+  typeof state,
+  "files" | "byPath" | "notes" | "place" | "resolved" | "showResolved"
+>;
+beforeEach(() => {
+  saved = {
+    files: state.files,
+    byPath: state.byPath,
+    notes: state.notes,
+    place: state.place,
+    resolved: state.resolved,
+    showResolved: state.showResolved,
+  };
+});
+afterEach(() => Object.assign(state, saved));
+
 beforeEach(() => {
   state.files = [];
   state.byPath = new Map();
   state.notes = new Map();
   state.place = new Map();
+  state.resolved = new Map();
+  state.showResolved = false;
 });
 
 describe("placeNote", () => {
@@ -204,6 +233,93 @@ describe("placeNote", () => {
     state.byPath = new Map([["app.ts", 0]]);
     expect(placeNote(note())).toEqual({ fi: 0, i: -1, j: -1, how: "outdated" });
   });
+
+  test("relocation never borrows identical text from the opposite side", () => {
+    for (const side of ["old", "new"]) {
+      diff({
+        path: "app.ts",
+        rows: [hunk(), del(20, "removed"), add(20, "added")],
+      });
+      const text = side === "old" ? "added" : "removed";
+      expect(
+        placeNote(
+          note({
+            a: "n90",
+            b: "n90",
+            side,
+            code: (side === "old" ? "-" : "+") + text,
+          }),
+        ),
+      ).toEqual({ fi: 0, i: -1, j: -1, how: "outdated" });
+    }
+  });
+
+  test("a mixed replacement relocates across opposite-side rows without claiming hidden lines", () => {
+    diff({
+      path: "app.ts",
+      rows: [
+        hunk(),
+        ctx(10, 10, "before"),
+        del(11, "old"),
+        add(11, "new"),
+        ctx(12, 12, "after"),
+      ],
+    });
+    expect(
+      placeNote(
+        note({ a: "n90", b: "n92", code: " before\n-old\n+new\n after" }),
+      ),
+    ).toEqual({ fi: 0, i: 1, j: 4, how: "moved" });
+    expect(
+      placeNote(
+        note({
+          a: "o90",
+          b: "o92",
+          side: "old",
+          code: " before\n-old\n+new\n after",
+        }),
+      ),
+    ).toEqual({ fi: 0, i: 1, j: 4, how: "moved" });
+  });
+
+  test("ambiguous full captures do not fall back to a fragment of context", () => {
+    diff({
+      path: "app.ts",
+      rows: [
+        ctx(10, 10, "keep"),
+        add(11, "changed"),
+        ctx(20, 20, "keep"),
+        add(21, "changed"),
+      ],
+    });
+    expect(
+      placeNote(note({ a: "n90", b: "n91", code: " keep\n+changed" })),
+    ).toEqual({ fi: 0, i: -1, j: -1, how: "outdated" });
+  });
+
+  test("blank-only captures cannot manufacture a moved location", () => {
+    diff({ path: "app.ts", rows: [ctx(10, 10, ""), add(11, "   ")] });
+    for (const code of ["+", " \n+   ", "-\n "])
+      expect(placeNote(note({ a: "n90", b: "n91", code }))).toEqual({
+        fi: 0,
+        i: -1,
+        j: -1,
+        how: "outdated",
+      });
+  });
+
+  test("existing endpoint keys are insufficient when intervening captured lines changed", () => {
+    diff({
+      path: "app.ts",
+      rows: [ctx(1, 1, "first"), ctx(2, 2, "unrelated"), ctx(3, 3, "last")],
+    });
+    expect(
+      placeNote(note({ a: "n1", b: "n3", code: " first\n expected\n last" })),
+    ).toEqual({ fi: 0, i: -1, j: -1, how: "outdated" });
+    expect(
+      placeNote(note({ a: "n3", b: "n1", code: " first\n expected\n last" })),
+    ).toEqual({ fi: 0, i: -1, j: -1, how: "outdated" });
+  });
 });
 
 describe("placeNotes", () => {
@@ -243,5 +359,143 @@ describe("placeNotes", () => {
       j: 1,
       how: "exact",
     });
+  });
+
+  test("revealed context recomputes only the affected file and leaves other cached placements intact", () => {
+    diff(
+      { path: "app.ts", rows: [add(3, '  console.log("debug");')] },
+      { path: "other.ts", rows: [ctx(1, 1, "keep")] },
+    );
+    const n = note(),
+      other = note({
+        id: "other",
+        file: "other.ts",
+        a: "n1",
+        b: "n1",
+        code: " keep",
+      });
+    state.notes.set(n.id, n);
+    state.notes.set(other.id, other);
+    placeNotes();
+    const otherPlace = state.place.get(other.id);
+    state.files[0].rows.unshift(ctx(2, 2, "revealed"));
+    delete state.files[0].ki;
+    replaceIn("app.ts");
+    expect(state.place.get(n.id)).toEqual({ fi: 0, i: 1, j: 1, how: "exact" });
+    expect(state.place.get(other.id)).toBe(otherPlace);
+  });
+});
+
+describe("anchor boundary transitions", () => {
+  test("review notes remain global even when their file and all rows are absent", () => {
+    const overall = note({
+      id: "|@|@|#overall",
+      scope: "global",
+      file: "",
+      a: "@",
+      b: "@",
+      code: "",
+    });
+    expect(placeNote(overall)).toEqual({ fi: -1, i: -1, j: -1, how: "global" });
+    expect(rowOfNote(overall)).toBe(-1);
+    diff({ path: "app.ts", rows: [ctx(3, 3, "unrelated")] });
+    expect(placeNote(overall)).toEqual({ fi: -1, i: -1, j: -1, how: "global" });
+  });
+
+  test("an exact capture may start at row zero and span hunk separators without counting them as code", () => {
+    diff({
+      path: "app.ts",
+      rows: [ctx(1, 1, "  first"), hunk(), ctx(2, 2, ""), ctx(3, 3, "last  ")],
+    });
+    const n = note({ a: "n1", b: "n3", code: " first\n \n last" });
+    expect(placeNote(n)).toEqual({ fi: 0, i: 0, j: 3, how: "exact" });
+    expect(rowOfNote(n)).toBe(3);
+    expect(anchorKeys(state.files[0], 0, 3)).toEqual(["n1", "n3"]);
+  });
+
+  test("legacy notes without captured code require both ordered endpoints but do not invent content", () => {
+    diff({ path: "app.ts", rows: [ctx(1, 1, "first"), ctx(2, 2, "second")] });
+    expect(placeNote(note({ a: "n1", b: "n2", code: "" }))).toEqual({
+      fi: 0,
+      i: 0,
+      j: 1,
+      how: "exact",
+    });
+    for (const [a, b] of [
+      ["n9", "n2"],
+      ["n1", "n9"],
+      ["n2", "n1"],
+    ])
+      expect(placeNote(note({ a, b, code: "" }))).toEqual({
+        fi: 0,
+        i: -1,
+        j: -1,
+        how: "outdated",
+      });
+  });
+
+  test("empty files, populated binaries and captures on a missing side cannot claim a line", () => {
+    for (const rows of [[], [hunk()], [del(8, "target")]]) {
+      diff({ path: "app.ts", rows });
+      expect(placeNote(note({ a: "n8", b: "n8", code: "+target" }))).toEqual({
+        fi: 0,
+        i: -1,
+        j: -1,
+        how: "outdated",
+      });
+    }
+    diff({ path: "app.ts", rows: [ctx(3, 3, '  console.log("debug");')] });
+    state.files[0].binary = true;
+    expect(placeNote(note())).toEqual({ fi: 0, i: -1, j: -1, how: "outdated" });
+  });
+
+  test("old-side relocation skips added rows while preserving contiguous old line numbers", () => {
+    diff({
+      path: "app.ts",
+      rows: [
+        add(10, "noise"),
+        del(7, "target"),
+        add(11, "more noise"),
+        del(8, "tail"),
+      ],
+    });
+    expect(
+      placeNote(
+        note({ a: "o70", b: "o71", side: "old", code: "-target\n-tail" }),
+      ),
+    ).toEqual({ fi: 0, i: 1, j: 3, how: "moved" });
+  });
+
+  test("derived note traversal separates globals and orders stray notes by file and original line", () => {
+    diff({ path: "app.ts", rows: [ctx(1, 1, "live")] });
+    const overall = note({
+      id: "|@|@|#global",
+      scope: "global",
+      file: "",
+      a: "@",
+      b: "@",
+      code: "",
+    });
+    const live = note({ id: "live", a: "n1", b: "n1", code: " live" });
+    const stray = [
+      note({ id: "z9", file: "z.ts", start: 9 }),
+      note({ id: "a4", file: "a.ts", start: 4 }),
+      note({ id: "z2", file: "z.ts", start: 2 }),
+    ];
+    for (const n of [...stray, live, overall]) state.notes.set(n.id, n);
+    placeNotes();
+    expect(globalNotes()).toEqual([overall]);
+    expect(strayNotes().map((n) => n.id)).toEqual(["a4", "z2", "z9"]);
+    expect(orderedNotes().map((e) => e.n.id)).toEqual([
+      overall.id,
+      live.id,
+      "a4",
+      "z2",
+      "z9",
+    ]);
+    expect(placeOf(stray[0])).toBeNull();
+    expect(rowOfNote(stray[0])).toBe(-1);
+    expect(rowOfNote(live)).toBe(0);
+    expect(placeOf(live)).toBe(state.place.get(live.id));
   });
 });

@@ -333,7 +333,7 @@ export function createSession(
     save(submission: ReviewSubmission, replace = false): Promise<SaveResult> {
       return serialise(async () => {
         const doc = await read();
-        const known = new Map(doc.notes.map((note) => [note.id, note]));
+        const known = new Map(doc.notes.map((note, index) => [note.id, index]));
         const changed: ReviewNote[] = [];
         for (const comment of submission.comments) {
           if (!comment.id) {
@@ -342,14 +342,15 @@ export function createSession(
             changed.push(note);
             continue;
           }
-          const kept = known.get(comment.id);
-          if (kept) {
+          const index = known.get(comment.id);
+          if (index !== undefined) {
+            const kept = doc.notes[index]!;
             const next = applyComment(kept, comment);
             if (reviewerFields(kept) !== reviewerFields(next)) {
               assertEditableNote(kept);
               changed.push(next);
             }
-            Object.assign(kept, next);
+            doc.notes[index] = next;
           } else {
             const note = noteFromComment(comment);
             doc.notes.push(note);

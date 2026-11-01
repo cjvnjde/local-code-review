@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   delKey,
   delRunAt,
@@ -9,7 +9,7 @@ import {
   toggleFileFold,
   toggleRun,
 } from "./deleted.ts";
-import { state } from "../app/state.ts";
+import { resolutionKey, state } from "../app/state.ts";
 
 /** A file whose rows read as the types given: `+` added, `-` removed, ` ` context, `@` a hunk row. */
 const fileOf = (shape: string, path = "src/a.ts") => {
@@ -28,12 +28,32 @@ const noteOn = (path: string, i: number, j: number) => {
   state.place.set("n1", { fi: 0, i, j, how: "exact" });
 };
 
-afterEach(() => {
+let saved: Pick<
+  typeof state,
+  "openDel" | "delFold" | "notes" | "place" | "resolved" | "showResolved"
+> & { foldDel: boolean };
+beforeEach(() => {
+  saved = {
+    foldDel: state.cfg.foldDel,
+    openDel: state.openDel,
+    delFold: state.delFold,
+    notes: state.notes,
+    place: state.place,
+    resolved: state.resolved,
+    showResolved: state.showResolved,
+  };
   state.cfg.foldDel = false;
-  state.openDel = new Set<string>();
-  state.delFold = new Map<string, boolean>();
+  state.openDel = new Set();
+  state.delFold = new Map();
   state.notes = new Map();
   state.place = new Map();
+  state.resolved = new Map();
+  state.showResolved = false;
+});
+afterEach(() => {
+  const { foldDel, ...rest } = saved;
+  state.cfg.foldDel = foldDel;
+  Object.assign(state, rest);
 });
 
 describe("folding removed lines", () => {
@@ -85,10 +105,13 @@ describe("folding removed lines", () => {
     state.cfg.foldDel = true;
     const f = fileOf(" --");
     expect(delKey(f, 1)).toBe("src/a.ts|o2");
-    // Two context lines revealed above it: same run, same key, so it stays open.
-    const grown = fileOf("   --");
-    expect(delKey(grown, 3)).toBe("src/a.ts|o4");
-    expect(delKey(fileOf("  --"), 2)).toBe("src/a.ts|o3");
+    const grown = {
+      ...f,
+      rows: [{ t: "ctx", n: 0, o: 0, text: "revealed" }, ...f.rows],
+    };
+    toggleRun(f, 1);
+    expect(delKey(grown, 2)).toBe("src/a.ts|o2");
+    expect(delRuns(grown, 0, grown.rows.length).get(2)?.open).toBe(true);
   });
 
   test("opens and folds one run at a time, and reports which it is", () => {
@@ -180,5 +203,90 @@ describe("folding removed lines", () => {
     expect(delRuns({ path: "b.png", rows: [], binary: true }, 0, 0).size).toBe(
       0,
     );
+  });
+
+  test("a note touching either edge opens only the intersected run", () => {
+    state.cfg.foldDel = true;
+    const f = fileOf(" -- -- ");
+    for (const [i, j, expected] of [
+      [0, 1, [true, false]],
+      [2, 3, [true, false]],
+      [3, 4, [false, true]],
+      [5, 6, [false, true]],
+      [2, 4, [true, true]],
+    ] as const) {
+      noteOn(f.path, i, j);
+      expect(
+        [...delRuns(f, 0, f.rows.length).values()].map((r) => r.noted),
+      ).toEqual(expected);
+    }
+  });
+
+  test("outdated notes do not pin runs open and a row outside the block cannot reveal one", () => {
+    state.cfg.foldDel = true;
+    const f = fileOf(" -- ");
+    noteOn(f.path, -1, -1);
+    expect(delRuns(f, 0, f.rows.length).get(1)?.open).toBe(false);
+    state.notes.clear();
+    state.place.clear();
+    expect(revealRow(f, 2, 0, 2)).toBe(false);
+    expect(state.openDel.size).toBe(0);
+  });
+
+  test("file toggles clear exact path keys, including pipe-containing paths, not prefixes", () => {
+    state.cfg.foldDel = true;
+    const path = "src/a|b.ts";
+    state.openDel = new Set([
+      path + "|o1",
+      path + "|o5",
+      path + ".bak|o1",
+      "src/a|o1",
+    ]);
+    expect(toggleFileFold(path)).toBe(false);
+    expect([...state.openDel]).toEqual([path + ".bak|o1", "src/a|o1"]);
+  });
+
+  test("drawn row counts reflect closed, opened and note-pinned runs without mutating rows", () => {
+    state.cfg.foldDel = true;
+    const f = fileOf("--+--- "),
+      original = structuredClone(f.rows);
+    expect(drawnRows(f, 0, f.rows.length)).toBe(4);
+    expect(revealRow(f, 1, 0, f.rows.length)).toBe(true);
+    expect(drawnRows(f, 0, f.rows.length)).toBe(6);
+    noteOn(f.path, 4, 4);
+    expect(drawnRows(f, 0, f.rows.length)).toBe(9);
+    expect(f.rows).toEqual(original);
+    expect(delRuns(f, 2, 2).size).toBe(0);
+    expect(drawnRows(f, 2, 2)).toBe(0);
+  });
+
+  test("resolved-note visibility controls whether its deleted subject must stay open", () => {
+    state.cfg.foldDel = true;
+    const f = fileOf(" -- ");
+    noteOn(f.path, 1, 2);
+    const n = state.notes.get("n1");
+    state.resolved.set(n.id, resolutionKey(n));
+    expect(delRuns(f, 0, f.rows.length).get(1)).toMatchObject({
+      noted: false,
+      open: false,
+    });
+    state.showResolved = true;
+    expect(delRuns(f, 0, f.rows.length).get(1)).toMatchObject({
+      noted: true,
+      open: true,
+    });
+    expect(state.openDel.size).toBe(0);
+  });
+
+  test("revealing the first row of a deletion run opens that run, not just interior rows", () => {
+    state.cfg.foldDel = true;
+    const f = fileOf(" --- ");
+    expect(delRunAt(f, 1, 0, f.rows.length)).toMatchObject({
+      start: 1,
+      end: 3,
+    });
+    expect(revealRow(f, 1, 0, f.rows.length)).toBe(true);
+    expect(revealRow(f, 1, 0, f.rows.length)).toBe(false);
+    expect(foldingDeleted(undefined)).toBe(true);
   });
 });

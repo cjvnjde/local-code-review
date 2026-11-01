@@ -221,3 +221,65 @@ describe("retitle", () => {
     expect(f.rows[1].text).toBe("a");
   });
 });
+
+describe("hidden context boundary invariants", () => {
+  test("a single omitted line is a real gap and neighbouring deletions cannot hide its new coordinates", () => {
+    const f = {
+      rows: [
+        { t: "ctx", o: 1, n: 1, text: "before" },
+        { t: "del", o: 2, text: "removed before" },
+        { t: "hunk", text: "@@" },
+        { t: "del", o: 4, text: "removed after" },
+        { t: "ctx", o: 5, n: 3, text: "after" },
+      ],
+    };
+    expect(gapOf(f, 2)).toEqual({ from: 2, to: 2 });
+    expect(gapSize(gapOf(f, 2))).toBe(1);
+    expect(expandRange(gapOf(f, 2), 20, "up")).toEqual({ from: 2, to: 2 });
+    expect(expandRange(gapOf(f, 2), 20, "down")).toEqual({ from: 2, to: 2 });
+  });
+
+  test("unresolvable hunks never borrow coordinates across another hunk in either direction", () => {
+    const f = {
+      rows: [
+        { t: "ctx", o: 1, n: 1, text: "before" },
+        { t: "hunk", text: "@@" },
+        { t: "del", o: 2, text: "old only" },
+        { t: "hunk", text: "@@" },
+        { t: "ctx", o: 20, n: 20, text: "after" },
+        { t: "hunk", text: "@@" },
+        { t: "del", o: 21, text: "old tail" },
+        { t: "hunk", text: "", tail: true },
+      ],
+    };
+    expect(gapOf(f, 1)).toBeNull();
+    expect(gapOf(f, 3)).toBeNull();
+    expect(gapOf(f, 7)).toBeNull();
+    expect(gapOf(f, -1)).toBeNull();
+    expect(gapOf(f, f.rows.length)).toBeNull();
+  });
+
+  test("a file made only of context still detects the full trailing run including row zero", () => {
+    const f = { rows: ctx(1, 3, 0) };
+    expect(hasTail(f, 3)).toBe(true);
+    expect(hasTail(f, 4)).toBe(false);
+    markTails([f], 3);
+    const afterFirst = [...f.rows];
+    markTails([f], 3);
+    expect(f.rows).toEqual(afterFirst);
+  });
+
+  test("expanding from both ends converges to the same code and hunk range as expanding all", () => {
+    const staged = sample(),
+      whole = sample();
+    const originalCode = staged.rows.filter((r) => r.t !== "hunk");
+    insertContext(staged, 4, "down", ctx(4, 6), 3);
+    insertContext(staged, 7, "up", ctx(8, 10), 3);
+    expect(gapOf(staged, 7)).toEqual({ from: 7, to: 7 });
+    insertContext(staged, 7, "down", ctx(7, 7), 1);
+    insertContext(whole, 4, "all", ctx(4, 10), 7);
+    expect(staged.rows).toEqual(whole.rows);
+    expect(originalCode.every((row) => staged.rows.includes(row))).toBe(true);
+    expect(staged.rows.filter((r) => r.t === "hunk")).toHaveLength(1);
+  });
+});

@@ -368,3 +368,171 @@ test("a missing installed agent keeps its actionable startup error visible after
   expect(agent.status!().state).toBe("unavailable");
   expect(agent.status!().detail).toContain("no-such-agent");
 });
+
+test("pausing an active turn lets it settle but holds queued work until explicit resume", async () => {
+  const f = await setup();
+  const a = await f.send("a");
+  await until(() => f.started(1));
+  await f.agent.control("pause");
+  await f.send("b");
+  f.release(1);
+  await until(() => f.tasks()[0].state === "completed");
+  expect(f.agent.snapshot().paused).toBe(true);
+  expect(f.tasks()[1].state).toBe("queued");
+  expect(f.started(2)).toBe(false);
+  expect(
+    (await f.session.readNote(f.session.file, a.id))!.messages[0]!.body,
+  ).toBe("Fixture answer 1");
+  await f.agent.control("resume");
+  await until(() => f.started(2));
+  f.release(2);
+  await until(() => f.tasks()[1].state === "completed");
+  expect(f.agent.snapshot().paused).toBe(false);
+});
+
+test("cancelling queued work leaves the active turn and following FIFO work intact", async () => {
+  const f = await setup();
+  await f.send("a");
+  await until(() => f.started(1));
+  const skipped = await f.send("b");
+  await f.send("c");
+  await f.agent.control("cancel", f.tasks()[1].id);
+  expect(f.tasks().map((task: { state: string }) => task.state)).toEqual([
+    "running",
+    "cancelled",
+    "queued",
+  ]);
+  expect(f.agent.snapshot().paused).toBe(false);
+  f.release(1);
+  await until(() => f.started(2));
+  const prompts = f
+    .rpc()
+    .filter(
+      (message: { method?: string }) => message.method === "session/prompt",
+    );
+  expect(prompts).toHaveLength(2);
+  expect(prompts[1].params.prompt[0].text).toContain("Question c");
+  expect(prompts[1].params.prompt[0].text).not.toContain("Question b");
+  f.release(2);
+  await until(() => f.tasks()[2].state === "completed");
+  expect(
+    (await f.session.readNote(f.session.file, skipped.id))!.messages,
+  ).toEqual([]);
+});
+
+test("allowing a permission returns approval to running without starting another prompt early", async () => {
+  const f = await setup("permission");
+  await f.send("a");
+  await f.send("b");
+  await until(() => f.agent.snapshot().permissions.length === 1);
+  const approval = f.agent.snapshot().permissions[0];
+  await f.agent.control("permission", approval.id, "yes");
+  expect(f.agent.snapshot().permissions).toEqual([]);
+  expect(f.tasks()[0].state).toBe("running");
+  expect(f.started(2)).toBe(false);
+  await expect(
+    f.agent.control("permission", approval.id, "yes"),
+  ).rejects.toThrow("available permission");
+  f.release(1);
+  await until(() => f.agent.snapshot().permissions.length === 1);
+  expect(f.tasks()[0].state).toBe("completed");
+  await f.agent.control(
+    "permission",
+    f.agent.snapshot().permissions[0].id,
+    "yes",
+  );
+  f.release(2);
+  await until(() => f.tasks()[1].state === "completed");
+  expect(f.agent.snapshot().paused).toBe(false);
+});
+
+test("active turns cannot be acknowledged away or have their loaded session replaced", async () => {
+  const f = await setup();
+  await f.send("a");
+  await until(() => f.started(1));
+  await expect(f.agent.control("acknowledge", f.tasks()[0].id)).rejects.toThrow(
+    "agent to stop",
+  );
+  await expect(f.agent.control("new-session", f.tasks()[0].id)).rejects.toThrow(
+    "current turn",
+  );
+  await expect(f.agent.control("cancel", "missing-task")).rejects.toThrow(
+    "Unknown task",
+  );
+  await expect(f.agent.control("invented-action")).rejects.toThrow(
+    "Unknown managed",
+  );
+  expect(f.tasks()[0].state).toBe("running");
+  f.release(1);
+  await until(() => f.tasks()[0].state === "completed");
+  expect(
+    f
+      .rpc()
+      .filter(
+        (message: { method?: string }) => message.method === "session/new",
+      ),
+  ).toHaveLength(1);
+});
+
+test("a note deleted while paused is skipped before session creation and the next task still runs", async () => {
+  const f = await setup();
+  await f.agent.control("pause");
+  const removed = await f.send("a");
+  await f.send("b");
+  await f.session.remove([removed.id]);
+  await f.agent.control("resume");
+  await until(() => f.started(1));
+  expect(f.tasks()[0].state).toBe("cancelled");
+  expect(f.tasks()[1].state).toBe("running");
+  const prompt = f
+    .rpc()
+    .find(
+      (message: { method?: string }) => message.method === "session/prompt",
+    );
+  expect(prompt.params.prompt[0].text).toContain("Question b");
+  f.release(1);
+  await until(() => f.tasks()[1].state === "completed");
+  expect(
+    f
+      .rpc()
+      .filter(
+        (message: { method?: string }) => message.method === "session/prompt",
+      ),
+  ).toHaveLength(1);
+});
+
+test("queued work for a different ACP profile blocks dispatch until explicitly cancelled", async () => {
+  const f = await setup();
+  await f.agent.control("pause");
+  const note = await f.send("a");
+  await f.agent.close();
+  const changed = createManagedAgent({
+    repoRoot: f.root,
+    outDir: ".review",
+    directory: path.join(f.root, "git-state"),
+    session: f.session,
+    config: {
+      name: "A different ACP profile",
+      command: process.execPath,
+      args: [fixture],
+      env: { LCR_ACP_FIXTURE: f.root },
+    },
+    notify() {},
+  });
+  agents.push(changed);
+  await changed.check!();
+  await changed.control("resume");
+  await until(() => changed.snapshot().paused);
+  expect(changed.status!().detail).toContain("another ACP configuration");
+  expect(changed.snapshot().tasks[0].state).toBe("queued");
+  expect(f.started(1)).toBe(false);
+  await changed.control("cancel", changed.snapshot().tasks[0].id);
+  await changed.publish(f.session.file, [note]);
+  await changed.control("resume");
+  await until(() => f.started(1));
+  f.release(1);
+  await until(() => changed.snapshot().tasks[1].state === "completed");
+  expect(
+    changed.snapshot().tasks.map((task: { state: string }) => task.state),
+  ).toEqual(["cancelled", "completed"]);
+});

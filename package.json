@@ -9,6 +9,8 @@
     "start": "bun ./src/index.ts",
     "dev": "bun --watch ./src/index.ts --no-open",
     "test": "bun test ./src",
+    "test:coverage": "bun test ./src --coverage",
+    "test:mutation": "bunx --package @stryker-mutator/core@10.1.1 stryker run",
     "check": "bun test ./src && bun build ./src/index.ts --target=bun --outdir /tmp/lcr-check",
     "build": "bun build ./src/index.ts --compile --minify --outfile lcr"
   }

@@ -250,3 +250,67 @@ describe("startup defaults", () => {
     expect(parseArgs([], { acp: null }).acp).toBeUndefined();
   });
 });
+
+describe("CLI validation and separator boundaries", () => {
+  test("only the final repeated numeric option is validated and used", () => {
+    expect(
+      parseArgs([
+        "--port",
+        "-1",
+        "--port",
+        "65535",
+        "--context",
+        "-2",
+        "--context",
+        "0",
+      ]),
+    ).toMatchObject({ port: 65535, context: 0, diffArgs: [] });
+    expect(() => parseArgs(["--port", "65535", "--port", "Infinity"])).toThrow(
+      "--port",
+    );
+    for (const value of ["NaN", "Infinity", "-Infinity", "2.5"])
+      expect(() => parseArgs(["--context", value])).toThrow("--context");
+  });
+
+  test("help and version bypass startup-only validation without changing literal Git paths", () => {
+    for (const local of ["--help", "-h", "--version", "-v"]) {
+      const options = parseArgs([
+        "--port",
+        "invalid",
+        "--context",
+        "-1",
+        "--out",
+        "",
+        local,
+        "--",
+        "--acp",
+      ]);
+      expect(options.help || options.version).toBe(true);
+      expect(options.diffArgs).toEqual(["--", "--acp"]);
+    }
+  });
+
+  test("rejects a missing or option-looking ACP path instead of treating it as Git input", () => {
+    for (const value of ["", " ", "--staged", "-profile.json"])
+      expect(() => parseArgs(["--acp", value])).toThrow("configuration");
+    expect(parseArgs(["--acp", "  profile with spaces.json  "]).acp).toBe(
+      "profile with spaces.json",
+    );
+  });
+
+  test("CLI live-page selection rejects nonlocal, credentialed and missing URLs", () => {
+    for (const value of [
+      "https://example.com",
+      "file:///tmp/page.html",
+      "http://user:password@localhost:3000",
+      "",
+    ])
+      expect(() => parseArgs(["--web", value])).toThrow();
+    expect(() => parseArgs(["--web"])).toThrow();
+    expect(parseArgs(["--", "--web", "https://example.com"]).diffArgs).toEqual([
+      "--",
+      "--web",
+      "https://example.com",
+    ]);
+  });
+});

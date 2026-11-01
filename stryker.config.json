@@ -1,0 +1,30 @@
+{
+  "$schema": "https://raw.githubusercontent.com/stryker-mutator/stryker-js/master/packages/api/schema/stryker-schema.json",
+  "mutate": ["src/**/*.ts", "!src/**/*.test.ts", "!src/**/fixtures/**"],
+  "testRunner": "command",
+  "commandRunner": {
+    "command": "bun test ./src --bail"
+  },
+  "coverageAnalysis": "off",
+  "concurrency": 4,
+  "timeoutMS": 10000,
+  "ignorePatterns": [
+    ".review/**",
+    ".workflow/**",
+    ".mutation/**",
+    ".stryker-*/**",
+    "docs/**",
+    "lcr"
+  ],
+  "reporters": ["clear-text", "progress", "html", "json"],
+  "clearTextReporter": {
+    "reportTests": false,
+    "reportMutants": false
+  },
+  "htmlReporter": {
+    "fileName": ".mutation/mutation.html"
+  },
+  "jsonReporter": {
+    "fileName": ".mutation/mutation.json"
+  }
+}

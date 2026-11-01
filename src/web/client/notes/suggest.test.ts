@@ -223,4 +223,163 @@ describe("bodyParts", () => {
     const other = "```ts\nconst a = 1;\n```";
     expect(bodyParts(other)).toEqual([{ t: "text", v: other }]);
   });
+
+  test("generated suggestions round-trip empty lines and arbitrary embedded backtick runs", () => {
+    for (const lines of [
+      [],
+      [""],
+      ["", "a", ""],
+      ["```", "`````", "`x`"],
+      ["  indented", "\t", "last"],
+    ]) {
+      const block = suggestionBlock(lines);
+      expect(bodyParts(block)).toEqual([{ t: "sug", v: lines.join("\n") }]);
+      expect(bodyParts("before\n\n" + block + "\n\nafter")).toEqual([
+        { t: "text", v: "before" },
+        { t: "sug", v: lines.join("\n") },
+        { t: "text", v: "after" },
+      ]);
+    }
+  });
+
+  test("incomplete, inline and indented suggestion markers remain literal prose", () => {
+    for (const body of [
+      "inline ```suggestion\nx\n```",
+      "  ```suggestion\nx\n```",
+      "````suggestion\nx\n```",
+      "```suggestion\nx\n`` trailing text",
+    ]) {
+      expect(bodyParts(body)).toEqual([{ t: "text", v: body }]);
+    }
+    expect(bodyParts("```suggestion\nx\n```")).toEqual([{ t: "sug", v: "x" }]);
+    expect(bodyParts("ordinary")).toEqual([{ t: "text", v: "ordinary" }]);
+  });
+});
+
+describe("suggestion projection invariants", () => {
+  test("every small diff reconstructs both source sequences without altering either input", () => {
+    const sequences: string[][] = [
+      [],
+      [""],
+      ["a"],
+      ["b"],
+      ["a", "a"],
+      ["a", "b"],
+      ["b", "a"],
+      ["a", "", "a"],
+      ["b", "a", "b"],
+    ];
+    for (const base of sequences) {
+      for (const next of sequences) {
+        const savedBase = [...base],
+          savedNext = [...next];
+        const out = lineDiff(base, next);
+        expect(out.filter((r) => r.t !== "add").map((r) => r.v)).toEqual(base);
+        expect(out.filter((r) => r.t !== "del").map((r) => r.v)).toEqual(next);
+        expect(base).toEqual(savedBase);
+        expect(next).toEqual(savedNext);
+      }
+    }
+  });
+
+  test("duplicate lines are consumed once and replacement ties put removals first", () => {
+    expect(lineDiff(["a", "b", "a"], ["b", "a", "b"])).toEqual([
+      { t: "del", v: "a" },
+      { t: "ctx", v: "b" },
+      { t: "ctx", v: "a" },
+      { t: "add", v: "b" },
+    ]);
+    expect(lineDiff(["a", "a"], ["a"])).toEqual([
+      { t: "ctx", v: "a" },
+      { t: "del", v: "a" },
+    ]);
+  });
+
+  test("large middle replacement preserves shared edges and still reconstructs both sides", () => {
+    const base = [
+      "top",
+      ...Array.from({ length: 65 }, (_, i) => "old" + i),
+      "bottom",
+    ];
+    const next = [
+      "top",
+      ...Array.from({ length: 65 }, (_, i) => "new" + i),
+      "bottom",
+    ];
+    const out = lineDiff(base, next);
+    expect(out[0]).toEqual({ t: "ctx", v: "top" });
+    expect(out.at(-1)).toEqual({ t: "ctx", v: "bottom" });
+    expect(out.filter((r) => r.t === "ctx")).toHaveLength(2);
+    expect(out.filter((r) => r.t !== "add").map((r) => r.v)).toEqual(base);
+    expect(out.filter((r) => r.t !== "del").map((r) => r.v)).toEqual(next);
+  });
+
+  test("seeding from rows and reading captured code agree on empty and mixed-side lines", () => {
+    const rows = [del(1, "old"), ctx(2, ""), add(3, " next"), ctx(4, "tail")];
+    expect(suggestLines(rows)).toEqual(capturedLines("-old\n \n+ next\n tail"));
+    const block = suggestionBlock(suggestLines(rows));
+    const inserted = insertBlock("before  \n after", 9, block);
+    expect(inserted.value.slice(inserted.from, inserted.to)).toBe(
+      "\n next\ntail",
+    );
+    expect(bodyParts(inserted.value)).toEqual([
+      { t: "text", v: "before" },
+      { t: "sug", v: "\n next\ntail" },
+      { t: "text", v: "after" },
+    ]);
+  });
+
+  test("pairing chooses the longest shared interior sequence instead of the first available equal line", () => {
+    expect(lineDiff(["a", "b", "c", "d"], ["b", "c", "a", "d"])).toEqual([
+      { t: "del", v: "a" },
+      { t: "ctx", v: "b" },
+      { t: "ctx", v: "c" },
+      { t: "add", v: "a" },
+      { t: "ctx", v: "d" },
+    ]);
+    expect(lineDiff(["x", "a", "b", "c"], ["a", "b", "z", "c"])).toEqual([
+      { t: "del", v: "x" },
+      { t: "ctx", v: "a" },
+      { t: "ctx", v: "b" },
+      { t: "add", v: "z" },
+      { t: "ctx", v: "c" },
+    ]);
+  });
+
+  test("a moderately sized replacement retains unchanged interior lines at the pairing budget", () => {
+    const base = Array.from({ length: 64 }, (_, i) =>
+      i === 30 ? "keep" : "old" + i,
+    );
+    const next = Array.from({ length: 64 }, (_, i) =>
+      i === 40 ? "keep" : "new" + i,
+    );
+    const out = lineDiff(base, next);
+    expect(out.filter((r) => r.t === "ctx")).toEqual([{ t: "ctx", v: "keep" }]);
+    expect(out.filter((r) => r.t === "del")).toHaveLength(63);
+    expect(out.filter((r) => r.t === "add")).toHaveLength(63);
+  });
+
+  test("suggestion seeds ignore non-code rows and fall back only to rows with an old-side coordinate", () => {
+    expect(
+      suggestLines([
+        null,
+        { t: "hunk", text: "@@" },
+        { text: "not anchored" },
+        del(2, "removed"),
+      ]),
+    ).toEqual(["removed"]);
+    expect(suggestLines([null, { t: "hunk", text: "@@" }])).toEqual([]);
+    expect(capturedLines(" \t ")).toEqual([]);
+    expect(capturedLines("-gone\n+\n+next")).toEqual(["", "next"]);
+  });
+
+  test("insertion trims the caret boundary without destroying whitespace inside following prose", () => {
+    const block = suggestionBlock(["new"]);
+    const result = insertBlock("before \n\t  first  second\n third", 9, block);
+    expect(result.value).toBe(
+      "before\n\n" + block + "\n\nfirst  second\n third",
+    );
+    expect(result.value.slice(result.from, result.to)).toBe("new");
+    expect(bodyParts("```suggestion\n```")).toEqual([{ t: "sug", v: "" }]);
+  });
 });

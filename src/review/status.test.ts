@@ -1,12 +1,24 @@
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { renderMarkdown } from "./render.ts";
 import { noteFromComment } from "./thread.ts";
 import { collectStatuses, parseStatuses } from "./status.ts";
 import type { ReviewComment } from "../shared/review-types.ts";
 import { mintNoteId, noteKey } from "../web/client/app/state.ts";
+
+const roots: string[] = [];
+const workspace = async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "lcr-status-"));
+  roots.push(dir);
+  return dir;
+};
+afterEach(async () => {
+  await Promise.all(
+    roots.splice(0).map((dir) => rm(dir, { recursive: true, force: true })),
+  );
+});
 
 const review = (...sections: string[]) =>
   ["# Review notes", "", ...sections].join("\n");
@@ -272,7 +284,7 @@ describe("parseStatuses", () => {
 
 describe("collectStatuses", () => {
   test("merges review files oldest first and ignores other files", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "lcr-status-"));
+    const dir = await workspace();
     await writeFile(
       path.join(dir, "review-2026-01-01T00-00-00.md"),
       review(
@@ -312,3 +324,171 @@ describe("collectStatuses", () => {
     ).toEqual([]);
   });
 });
+
+describe("status interpretation boundaries", () => {
+  test.each([
+    [
+      "FIXED. : renamed: all callers — including tests",
+      "applied",
+      "renamed: all callers — including tests",
+    ],
+    ["needs clarification – select one", "needs-input", "select one"],
+    ["won't-fix -- outside scope", "skipped", "outside scope"],
+    ["as designed - no change required", "answered", "no change required"],
+    ["implemented — done", "applied", "done"],
+    [
+      "waiting: for staging — not final",
+      "unknown",
+      "waiting: for staging — not final",
+    ],
+    ["applied-ish", "unknown", "applied-ish"],
+  ])(
+    "interprets the verdict without losing detail: %s",
+    (raw, status, detail) => {
+      expect(
+        parseStatuses(
+          review(
+            "### src/app.ts:12 <!-- lcr:src/app.ts|n12|n12|#status -->",
+            "",
+            `  sTaTuS : ${raw}`,
+          ),
+          "review-source.md",
+        ),
+      ).toEqual([
+        {
+          id: "src/app.ts|n12|n12|#status",
+          key: "src/app.ts:12",
+          status,
+          detail,
+          source: "review-source.md",
+        },
+      ]);
+    },
+  );
+
+  test("an appended reopening verdict removes the previously settled status", () => {
+    expect(
+      parseStatuses(
+        review(
+          "### src/app.ts:12 <!-- lcr:src/app.ts|n12|n12|#status -->",
+          "Status: applied — initial result",
+          "",
+          "Status: open",
+        ),
+      ),
+    ).toEqual([]);
+  });
+
+  test("overall and legacy headings retain independent matching keys", () => {
+    expect(
+      parseStatuses(
+        review(
+          "## Overall",
+          "### Overall note <!-- lcr:|@|@|#overall -->",
+          "Status: answered — explained",
+          "",
+          "## src/app.ts",
+          "### src/app.ts:12-14:2-8 (line numbers before the change)",
+          "Status: skipped — historical",
+        ),
+        "review-legacy.md",
+      ),
+    ).toEqual([
+      {
+        id: "|@|@|#overall",
+        key: "Overall note",
+        status: "answered",
+        detail: "explained",
+        source: "review-legacy.md",
+      },
+      {
+        id: "",
+        key: "src/app.ts:12-14:2-8",
+        status: "skipped",
+        detail: "historical",
+        source: "review-legacy.md",
+      },
+    ]);
+  });
+
+  test("status collection caps file reads, retaining chronological outcomes and source identity", async () => {
+    const dir = await workspace();
+    const names = Array.from(
+      { length: 22 },
+      (_, index) => `review-${String(index).padStart(2, "0")}.md`,
+    );
+    for (const [index, name] of names.entries()) {
+      await writeFile(
+        path.join(dir, name),
+        review(
+          "### src/app.ts:12 <!-- lcr:src/app.ts|n12|n12|#same -->",
+          `Status: ${index % 2 ? "applied" : "skipped"} — turn ${index}`,
+        ),
+      );
+    }
+    const all = await collectStatuses(dir, ".");
+    expect(all).toHaveLength(20);
+    expect(all.map((entry) => entry.source)).toEqual(names.slice(2));
+    expect(all[0]).toMatchObject({ status: "skipped", detail: "turn 2" });
+    expect(all.at(-1)).toMatchObject({ status: "applied", detail: "turn 21" });
+    expect(
+      (await collectStatuses(dir, ".", 1)).map((entry) => entry.source),
+    ).toEqual(names.slice(-1));
+    expect(
+      (await collectStatuses(dir, ".", 3)).map((entry) => entry.source),
+    ).toEqual(names.slice(-3));
+    expect(
+      (await collectStatuses(dir, ".", 30)).map((entry) => entry.source),
+    ).toEqual(names);
+  });
+
+  test("empty and unreadable files consume the recent-file window without resurrecting older statuses", async () => {
+    const dir = await workspace();
+    await writeFile(
+      path.join(dir, "review-1.md"),
+      review("### a.ts:1", "Status: applied"),
+    );
+    await writeFile(path.join(dir, "review-2.md"), "");
+    await mkdir(path.join(dir, "review-3.md"));
+    expect(await collectStatuses(dir, ".", 2)).toEqual([]);
+    expect(await collectStatuses(dir, ".", 3)).toEqual([
+      {
+        id: "",
+        key: "a.ts:1",
+        status: "applied",
+        detail: "",
+        source: "review-1.md",
+      },
+    ]);
+  });
+});
+
+test.each([
+  "not-applied",
+  "unanswered",
+  "answered-later",
+  "not-skipped",
+  "skipped-later",
+  "unblocked",
+  "needs-input-later",
+])(
+  "a verdict containing but not equal to a recognized outcome stays unknown: %s",
+  (raw) => {
+    expect(
+      parseStatuses(
+        review(
+          "### a.ts:12 <!-- lcr:a.ts|n12|n12|#status -->",
+          `Status: ${raw}`,
+        ),
+      ),
+    ).toEqual([
+      {
+        id: "a.ts|n12|n12|#status",
+        key: "a.ts:12",
+        status: "unknown",
+        detail: raw,
+        source: "",
+      },
+    ]);
+  },
+);

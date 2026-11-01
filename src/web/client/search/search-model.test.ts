@@ -140,4 +140,229 @@ describe("review search", () => {
     expect(searchSegments([], "abc")).toEqual([]);
     expect(searchSegments(["abc"], "")).toEqual([]);
   });
+
+  test("literal queries deduplicate terms, prefer longest overlaps and preserve original offsets", () => {
+    expect(matchRanges("aaaa AA", "aa aaa AA")).toEqual([
+      [0, 3],
+      [5, 7],
+    ]);
+    expect(
+      matchRanges("a+b (x) [y] $z ^end? \\", "a+b (x) [y] $z ^end? \\"),
+    ).toEqual([
+      [0, 3],
+      [4, 7],
+      [8, 11],
+      [12, 14],
+      [15, 20],
+      [21, 22],
+    ]);
+    expect(matchRanges("İ i I", "i")).toEqual([
+      [2, 3],
+      [4, 5],
+    ]);
+  });
+
+  test("matching never borrows required terms from another document", () => {
+    const documents = [
+      {
+        kind: "code" as const,
+        path: "src/a.ts",
+        text: "alpha",
+        label: "Added",
+      },
+      {
+        kind: "reply" as const,
+        path: "src/a.ts",
+        text: "beta",
+        label: "Agent answer",
+      },
+      {
+        kind: "code" as const,
+        path: "beta.ts",
+        text: "alpha",
+        label: "Context",
+      },
+    ];
+    expect(searchReview(documents, "alpha beta").map((r) => r.path)).toEqual([
+      "beta.ts",
+    ]);
+    expect(searchReview(documents, "src/a.ts").map((r) => r.kind)).toEqual([]);
+    expect(documents.every((d) => !("ranges" in d))).toBe(true);
+  });
+
+  test("code traversal includes only two neighbours per side and stops at hunk boundaries", () => {
+    const rows = [
+      { t: "hunk", text: "@@ first @@" },
+      ...Array.from({ length: 7 }, (_, i) => ({
+        t: "ctx",
+        n: i + 1,
+        o: i + 1,
+        text: "line" + i,
+      })),
+      { t: "hunk", text: "@@ second @@" },
+      { t: "del", o: 100, text: "last" },
+    ];
+    const documents = searchDocuments(
+      [{ path: "a.ts", rows }],
+      [],
+      new Map(),
+      new Map(),
+    );
+    expect(
+      documents.filter((d) => d.kind === "code").map((d) => d.row),
+    ).toEqual(["n1", "n2", "n3", "n4", "n5", "n6", "n7", "o100"]);
+    expect(documents.find((d) => d.text === "line3")?.context).toBe(
+      " line1\n line2\n line3\n line4\n line5",
+    );
+    expect(documents.find((d) => d.text === "line0")?.context).toBe(
+      " line0\n line1\n line2",
+    );
+    expect(documents.find((d) => d.text === "last")?.context).toBe("-last");
+  });
+
+  test("note traversal retains range labels and reply positions when some bodies are empty", () => {
+    const documents = searchDocuments(
+      [],
+      [
+        { id: "file", file: "a.ts", scope: "file", body: "whole" },
+        { id: "range", file: "a.ts", start: 4, end: 8, body: "range" },
+        { id: "single", file: "a.ts", start: 3, end: 3, body: "one" },
+        {
+          id: "label",
+          file: "a.ts",
+          label: "old 2",
+          start: 2,
+          end: 2,
+          body: "label",
+        },
+      ],
+      new Map([
+        ["range", [{ role: "agent" }, { role: "reviewer", body: "reply" }]],
+      ]),
+      new Map(),
+    );
+    expect(
+      documents.filter((d) => d.kind === "note").map((d) => d.location),
+    ).toEqual(["whole file", "4–8", "3", "old 2"]);
+    expect(searchReview(documents, "reply")[0]).toMatchObject({
+      noteId: "range",
+      message: 1,
+      location: "4–8",
+    });
+  });
+
+  test("span mapping uses the preceding span for an end at a boundary and skips empty starts", () => {
+    expect(searchSegments(["ab", "", "cd", "ef"], "ab cd ef")).toEqual([
+      { start: { part: 0, offset: 0 }, end: { part: 0, offset: 2 } },
+      { start: { part: 2, offset: 0 }, end: { part: 2, offset: 2 } },
+      { start: { part: 3, offset: 0 }, end: { part: 3, offset: 2 } },
+    ]);
+    expect(searchSegments(["", "", ""], "x")).toEqual([]);
+  });
+
+  test("excerpts distinguish beginning, middle, tail and absent matches", () => {
+    expect(searchExcerpt("target rest", "target", 6)).toBe("target…");
+    expect(searchExcerpt("0123456789target", "target", 9)).toBe("…789target");
+    expect(searchExcerpt("0123456789", "missing", 4)).toBe("0123…");
+    expect(searchExcerpt("short", "short", 20)).toBe("short");
+    expect(searchHtml('<&>"', "missing")).toBe("&lt;&amp;&gt;&quot;");
+  });
+
+  test("UI capture metadata is searchable and results still identify the owning global note", () => {
+    const ui = {
+      id: "ui",
+      scope: "global",
+      body: "Please adjust this",
+      web: {
+        before: {
+          url: "http://localhost:3000/checkout",
+          title: "Checkout",
+          selector: '[data-testid="purchase"]',
+          components: [
+            {
+              framework: "React",
+              name: "PurchaseForm",
+              file: "src/PurchaseForm.tsx",
+            },
+          ],
+          element: {
+            tag: "button",
+            text: "Buy now",
+            attributes: { "aria-label": "Confirm purchase" },
+            styles: { color: "red" },
+          },
+        },
+      },
+    };
+    const documents = searchDocuments([], [ui], new Map(), new Map());
+    for (const query of [
+      "localhost",
+      "Checkout",
+      "data-testid",
+      "PurchaseForm",
+      "Buy now",
+      "aria-label",
+      "color",
+    ]) {
+      const hits = searchReview(documents, query);
+      expect(hits).toHaveLength(1);
+      expect(hits[0]).toMatchObject({
+        kind: "note",
+        noteId: "ui",
+        path: "",
+        location: "",
+      });
+    }
+    expect(searchReview(documents, "undefined")).toEqual([]);
+    expect(searchReview(documents, "Please")[0]).toMatchObject({
+      noteId: "ui",
+      path: "",
+    });
+  });
+
+  test("files without a rename source and unchanged rename paths index only their real path", () => {
+    const documents = searchDocuments(
+      [
+        { path: "plain.ts", rows: [] },
+        { path: "same.ts", from: "same.ts", rows: [] },
+        { path: "renamed.ts", from: "original.ts", rows: [] },
+      ],
+      [],
+      new Map(),
+      new Map(),
+    );
+    expect(documents[0]?.text).toBe("plain.ts");
+    expect(documents[1]?.text).toBe("same.ts");
+    expect(searchReview(documents, "undefined")).toEqual([]);
+    expect(searchReview(documents, "original.ts")[0]).toMatchObject({
+      kind: "file",
+      path: "renamed.ts",
+    });
+    expect(searchReview(documents, "renamed.ts")[0]).toMatchObject({
+      kind: "file",
+      path: "renamed.ts",
+    });
+  });
+
+  test("search keeps row side and coordinates when additions and removals share a number", () => {
+    const documents = searchDocuments(
+      [
+        {
+          path: "both.ts",
+          rows: [
+            { t: "del", o: 7, text: "old target" },
+            { t: "add", n: 7, text: "new target" },
+            { t: "ctx", o: 8, n: 9, text: "context target" },
+          ],
+        },
+      ],
+      [],
+      new Map(),
+      new Map(),
+    );
+    const hits = searchReview(documents, "target");
+    expect(hits.map((r) => r.row)).toEqual(["o7", "n7", "n9"]);
+    expect(hits[0]?.context).toBe("-old target\n+new target\n context target");
+    expect(hits.every((r) => r.path === "both.ts")).toBe(true);
+  });
 });

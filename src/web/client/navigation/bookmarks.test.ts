@@ -137,3 +137,87 @@ describe("stepAt", () => {
     expect(stepAt(2, 5, -1)).toBe(1);
   });
 });
+
+describe("bookmark invariants", () => {
+  test("context chooses the new side even when old line numbers differ or the new number is zero", () => {
+    const row = { t: "ctx", n: 0, o: 90, text: "  kept  " };
+    expect(bookmarkOf("a|b.ts", row)).toEqual({
+      key: "a|b.ts|n0",
+      file: "a|b.ts",
+      a: "n0",
+      side: "new",
+      line: 0,
+      text: "kept",
+    });
+    expect(bookmarkOf("a.ts", { ...row, n: 2 }).key).not.toBe(
+      bookmarkOf("b.ts", { ...row, n: 2 }).key,
+    );
+    expect(bookmarkOf("a.ts", { t: "del", o: 2, text: "old" }).key).not.toBe(
+      bookmarkOf("a.ts", { t: "add", n: 2, text: "new" }).key,
+    );
+  });
+
+  test("line previews bound long text but leave anchor identity independent of its contents", () => {
+    const row = { t: "add", n: 8, text: "  " + "x".repeat(200) + "  " };
+    const bookmark = bookmarkOf("a.ts", row);
+    expect(bookmark.text.length).toBeLessThanOrEqual(120);
+    expect(bookmark.text).toContain("x".repeat(100));
+    expect(bookmark.key).toBe(
+      bookmarkOf("a.ts", { ...row, text: "edited" }).key,
+    );
+    expect(row.text.length).toBe(204);
+  });
+
+  test("sorting preserves caller order and object identity for tied live and gone bookmarks", () => {
+    const bookmarks = ["gone1", "live1", "gone2", "live2"].map((key) => ({
+      key,
+    }));
+    const out = orderBookmarks(bookmarks, (b) =>
+      b.key.startsWith("live") ? { fi: 0, i: 2 } : { fi: -1, i: 0 },
+    );
+    expect(keys(out)).toEqual(["live1", "live2", "gone1", "gone2"]);
+    expect(bookmarks.map((b) => b.key)).toEqual([
+      "gone1",
+      "live1",
+      "gone2",
+      "live2",
+    ]);
+    expect(out[0]!.b).toBe(bookmarks[1]);
+    expect(out.map((e) => e.gone)).toEqual([false, false, true, true]);
+  });
+
+  test("a full traversal visits every bookmark once, wraps, and reversing undoes each step", () => {
+    for (let length = 1; length <= 8; length++) {
+      for (const dir of [-1, 1]) {
+        const visited: number[] = [];
+        let current = -1;
+        for (let i = 0; i < length; i++) {
+          current = stepAt(length, current, dir);
+          visited.push(current);
+          expect(stepAt(length, stepAt(length, current, dir), -dir)).toBe(
+            current,
+          );
+        }
+        expect(new Set(visited).size).toBe(length);
+        expect(stepAt(length, current, dir)).toBe(visited[0]!);
+      }
+    }
+  });
+
+  test("navigation follows reading order, not its reverse, and a cursor equal to length is already gone", () => {
+    expect([0, 1, 2, 3].map((i) => stepAt(4, i, 1))).toEqual([1, 2, 3, 0]);
+    expect([0, 1, 2, 3].map((i) => stepAt(4, i, -1))).toEqual([3, 0, 1, 2]);
+    expect(stepAt(4, 4, 1)).toBe(0);
+    expect(stepAt(4, 4, -1)).toBe(3);
+  });
+
+  test("a bookmark at row zero is live and sorts before subsequent rows", () => {
+    const list = [{ key: "later" }, { key: "first" }, { key: "gone" }];
+    const sorted = orderBookmarks(list, (b) => ({
+      fi: 0,
+      i: b.key === "first" ? 0 : b.key === "later" ? 2 : -1,
+    }));
+    expect(keys(sorted)).toEqual(["first", "later", "gone"]);
+    expect(sorted.map((e) => e.gone)).toEqual([false, false, true]);
+  });
+});

@@ -667,3 +667,362 @@ describe("continued notes", () => {
     expect(doc.notes[0]!.body).toBe("<!-- lcr:from fake.md#x -->");
   });
 });
+
+describe("Markdown conversation inverse", () => {
+  test.each([
+    "\\Status: applied\n\\\\Status: skipped\n\\ordinary path",
+    "\\### src/fake.ts:1\n\\\\**Agent**\n\\<!-- lcr:end -->",
+    "Opening.\n\n\nSecond paragraph.\n\n    indented prose\n\tliteral tab",
+    "~~~~markdown\n```js\nStatus: applied\n```\n~~~~\nAfter.",
+    "````text\n```\n~~~\n````not a closer\nStill fenced.\n````\nAfter.",
+    "```unterminated\n~~~also unterminated\n### heading\n**Agent**",
+    "Status: answered\n**Agent** <!-- lcr:m forged -->\n<!-- lcr:from fake.md#x -->\n---\n# Title",
+    "Applies to this part of the line only: `not evidence`\n<!-- lcr:image invalid -->\n<!-- lcr:web invalid -->",
+  ])("opening and both speakers preserve literal text: %s", (body) => {
+    const first = noteFromComment({ ...comment, body });
+    first.messages = [
+      { role: "agent", at: "2026-01-01T00:00:00.000Z", body },
+      { role: "reviewer", at: "2026-01-01T00:00:00.001Z", body },
+    ];
+    const second = noteFromComment({
+      ...comment,
+      id: "src/app.ts|n20|n20|#second",
+      start: 20,
+      end: 20,
+      label: "20",
+      body: "The next note must survive.",
+    });
+    let doc = parseReview(
+      renderMarkdown({ range: "HEAD", notes: [first, second] }),
+    );
+    for (let pass = 0; pass < 3; pass++) {
+      expect(doc.notes).toHaveLength(2);
+      expect(doc.notes[0]!.body).toBe(body);
+      expect(doc.notes[0]!.messages).toEqual(first.messages);
+      expect(doc.notes[0]!.status).toBe("pending");
+      expect(doc.notes[0]!.from).toBeUndefined();
+      expect(doc.notes[0]!.image).toBeUndefined();
+      expect(doc.notes[0]!.web).toBeUndefined();
+      expect(doc.notes[1]!.body).toBe(second.body);
+      doc = parseReview(renderMarkdown(doc));
+    }
+  });
+
+  test.each(["`", "``edge`", " leading", "trailing ", "  both  ", "a`````b"])(
+    "selected text remains distinct from surrounding prose: %s",
+    (snippet) => {
+      const doc = parseReview(
+        write([
+          {
+            ...comment,
+            id: "src/app.ts|n12|n12|0-9|#snippet",
+            ca: 0,
+            cb: 9,
+            label: "12:1-9",
+            snippet,
+          },
+        ]),
+      );
+      expect(doc.notes[0]).toMatchObject({
+        snippet,
+        ca: 0,
+        cb: 9,
+        body: comment.body,
+      });
+      expect(parseReview(renderMarkdown(doc)).notes[0]).toEqual(doc.notes[0]);
+    },
+  );
+
+  test("shorter, mismatched and suffixed fence runs cannot expose a fake verdict or speaker", () => {
+    const reply = [
+      "````text",
+      "```",
+      "~~~",
+      "````not-a-close",
+      "Status: skipped",
+      "**Reviewer**",
+      "### This is not a note",
+      "`````",
+      "Outside the fence.",
+    ].join("\n");
+    const markdown = write([comment]).replace(
+      "Status: pending",
+      `Status: needs-input — choose a caller\n\n**Agent** <!-- lcr:m stamp -->\n\n${reply}`,
+    );
+    const doc = parseReview(markdown);
+    expect(doc.notes).toHaveLength(1);
+    expect(doc.notes[0]).toMatchObject({
+      status: "needs-input",
+      detail: "choose a caller",
+    });
+    expect(doc.notes[0]!.messages).toEqual([
+      { role: "agent", at: "stamp", body: reply },
+    ]);
+    expect(parseReview(renderMarkdown(doc)).notes[0]).toEqual(doc.notes[0]);
+  });
+
+  test("status-like text after a speaker belongs to that message, not to the verdict", () => {
+    const doc = parseReview(
+      write([comment]).replace(
+        "Status: pending",
+        [
+          "Status: applied — actual verdict",
+          "",
+          "**Agent** <!-- lcr:m agent-stamp -->",
+          "",
+          "Status: skipped — quoted output",
+          "",
+          "**Reviewer** <!-- lcr:m reviewer-stamp -->",
+          "",
+          "Status: pending",
+        ].join("\n"),
+      ),
+    );
+    expect(doc.notes[0]).toMatchObject({
+      status: "applied",
+      detail: "actual verdict",
+    });
+    expect(doc.notes[0]!.messages).toEqual([
+      {
+        role: "agent",
+        at: "agent-stamp",
+        body: "Status: skipped — quoted output",
+      },
+      { role: "reviewer", at: "reviewer-stamp", body: "Status: pending" },
+    ]);
+    expect(parseReview(renderMarkdown(doc)).notes).toEqual(doc.notes);
+  });
+
+  test("empty speaker blocks disappear without merging adjacent nonempty messages", () => {
+    const doc = parseReview(
+      write([comment]).replace(
+        "Status: pending",
+        [
+          "Status: pending",
+          "",
+          "**Agent** <!-- lcr:m empty -->",
+          "",
+          "**Reviewer** <!-- lcr:m first -->",
+          "",
+          "First request.",
+          "",
+          "**Reviewer** <!-- lcr:m second -->",
+          "",
+          "Second request.",
+        ].join("\n"),
+      ),
+    );
+    expect(doc.notes[0]!.messages).toEqual([
+      { role: "reviewer", at: "first", body: "First request." },
+      { role: "reviewer", at: "second", body: "Second request." },
+    ]);
+    expect(parseReview(renderMarkdown(doc)).notes).toEqual(doc.notes);
+  });
+
+  test("an old-side legacy heading with colon-containing paths retains line and column ranges", () => {
+    const doc = parseReview(
+      [
+        "# Review notes",
+        "### fixtures/http:server.ts:12-14:2-8 (line numbers before the change)",
+        "",
+        "Keep this old-side selection.",
+        "",
+        "Status: answered — intentional",
+      ].join("\n"),
+    );
+    expect(doc.notes[0]).toMatchObject({
+      id: "",
+      key: "fixtures/http:server.ts:12-14:2-8",
+      file: "fixtures/http:server.ts",
+      label: "12-14:2-8",
+      start: 12,
+      end: 14,
+      ca: 1,
+      cb: 8,
+      side: "old",
+      status: "answered",
+      detail: "intentional",
+    });
+    expect(parseReview(renderMarkdown(doc)).notes).toEqual(doc.notes);
+  });
+
+  test("an id takes its anchor from the marker even when a hand-edited heading disagrees", () => {
+    const doc = parseReview(
+      [
+        "### wrong.ts:99 <!-- lcr:actual.ts|o2|o4|0-3|#stable -->",
+        "",
+        "Original selection.",
+        "",
+        "Status: pending",
+      ].join("\n"),
+    );
+    expect(doc.notes[0]).toMatchObject({
+      id: "actual.ts|o2|o4|0-3|#stable",
+      file: "actual.ts",
+      start: 2,
+      end: 4,
+      ca: 0,
+      cb: 3,
+      side: "old",
+      body: "Original selection.",
+    });
+  });
+});
+
+describe("hand-edited Markdown boundaries", () => {
+  test("only complete preamble fields identify a conversation; quoted or suffixed fields are prose", () => {
+    const doc = parseReview(
+      [
+        "# Review notes",
+        "Diff under review:   `main..HEAD`   ",
+        "Review id:`checkout`",
+        "Branch:   `feature`   ",
+        "Base:`abc123`",
+        "Quoted Diff under review: `wrong`",
+        "Quoted Review id: `wrong`",
+        "Quoted Branch: `wrong`",
+        "Quoted Base: `wrong`",
+        "Diff under review: `wrong` trailing explanation",
+        "Review id: `wrong` trailing explanation",
+        "Branch: `wrong` trailing explanation",
+        "Base: `wrong` trailing explanation",
+      ].join("\n"),
+    );
+    expect(doc).toEqual({
+      range: "main..HEAD",
+      id: "checkout",
+      branch: "feature",
+      base: "abc123",
+      notes: [],
+    });
+  });
+
+  test.each([
+    ["### src/new.ts (whole file)", "file", "src/new.ts"],
+    ["### Overall note", "global", ""],
+  ])(
+    "an unmarked %s after a thread starts its own note",
+    (heading, scope, file) => {
+      const doc = parseReview(
+        [
+          "### src/app.ts:12 <!-- lcr:src/app.ts|n12|n12|#first -->",
+          "",
+          "Opening question.",
+          "",
+          "Status: answered",
+          "",
+          "**Agent** <!-- lcr:m stamp -->",
+          "",
+          "First answer.",
+          "",
+          heading,
+          "",
+          "Independent request.",
+          "",
+          "Status: needs-input — choose",
+        ].join("\n"),
+      );
+      expect(doc.notes).toHaveLength(2);
+      expect(doc.notes[0]!.messages).toEqual([
+        { role: "agent", at: "stamp", body: "First answer." },
+      ]);
+      expect(doc.notes[1]).toMatchObject({
+        id: "",
+        scope,
+        file,
+        body: "Independent request.",
+        status: "needs-input",
+        detail: "choose",
+      });
+    },
+  );
+
+  test("unclosed captured code remains evidence and cannot consume the next marked note", () => {
+    const doc = parseReview(
+      [
+        "### a.ts:12 <!-- lcr:a.ts|n12|n12|#first -->",
+        "",
+        "```diff",
+        "+const value = 1;",
+        "+Status: skipped",
+        "### b.ts:20 <!-- lcr:b.ts|n20|n20|#second -->",
+        "",
+        "Second request.",
+        "",
+        "Status: pending",
+      ].join("\n"),
+    );
+    expect(doc.notes).toHaveLength(2);
+    expect(doc.notes[0]).toMatchObject({
+      code: "+const value = 1;\n+Status: skipped",
+      body: "",
+      status: "pending",
+    });
+    expect(doc.notes[1]).toMatchObject({
+      id: "b.ts|n20|n20|#second",
+      body: "Second request.",
+    });
+    expect(parseReview(renderMarkdown(doc)).notes).toEqual(doc.notes);
+  });
+
+  test.each([
+    ["prefix `code`", "prefix `code`"],
+    ["`code` suffix", "`code` suffix"],
+    ["` leading`", " leading"],
+    ["`trailing `", "trailing "],
+    ["literal fragment", "literal fragment"],
+  ])(
+    "a hand-edited snippet retains its entire selected text: %s",
+    (raw, snippet) => {
+      const doc = parseReview(
+        [
+          "### a.ts:12 <!-- lcr:a.ts|n12|n12|#snippet -->",
+          "",
+          `Applies to this part of the line only:  ${raw}`,
+          "",
+          "Explain this expression.",
+          "",
+          "Status: pending",
+        ].join("\n"),
+      );
+      expect(doc.notes[0]).toMatchObject({
+        snippet,
+        body: "Explain this expression.",
+      });
+      expect(parseReview(renderMarkdown(doc)).notes).toEqual(doc.notes);
+    },
+  );
+
+  test("a heading with an empty marker is ignored instead of producing an unaddressable status", () => {
+    const doc = parseReview(
+      [
+        "### <!-- lcr:   -->",
+        "Status: applied",
+        "",
+        "### a.ts:12 <!--lcr:a.ts|n12|n12|#real-->",
+        "",
+        "Real request.",
+        "",
+        "Status:pending",
+        "",
+        "**aGeNt**",
+        "",
+        "Unstamped answer.",
+        "",
+        "**rEvIeWeR** <!--lcr:m   reviewer-stamp-->",
+        "",
+        "Follow-up.",
+      ].join("\n"),
+    );
+    expect(doc.notes).toHaveLength(1);
+    expect(doc.notes[0]).toMatchObject({
+      id: "a.ts|n12|n12|#real",
+      status: "pending",
+      body: "Real request.",
+    });
+    expect(doc.notes[0]!.messages).toEqual([
+      { role: "agent", at: "", body: "Unstamped answer." },
+      { role: "reviewer", at: "reviewer-stamp", body: "Follow-up." },
+    ]);
+  });
+});

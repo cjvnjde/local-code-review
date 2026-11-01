@@ -87,4 +87,10 @@ describe("filePathHtml", () => {
     );
     expect(filePathTitle(file)).toBe("src/app.ts");
   });
+
+  test("an unchanged source name is not displayed as a rename", () => {
+    const file = { path: "src/app.ts", from: "src/app.ts" };
+    expect(filePathHtml(file)).toBe(pathHtml(file.path));
+    expect(filePathTitle(file)).toBe(file.path);
+  });
 });

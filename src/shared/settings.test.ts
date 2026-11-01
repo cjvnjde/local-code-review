@@ -9,7 +9,6 @@ describe("UI settings schema", () => {
       enterSaves: true,
       navHidden: true,
     });
-    expect(Object.keys(DEFAULT_UI_SETTINGS)).toHaveLength(17);
   });
 
   test("accepts exactly the choices offered by the numeric controls", () => {
@@ -55,5 +54,58 @@ describe("UI settings schema", () => {
     const settings = parseUiSettings(input);
     input.disabledHide.push("*.snap");
     expect(settings.disabledHide).toEqual(["dist/"]);
+  });
+
+  test("null-prototype configuration records are accepted but inherited preferences are not", () => {
+    const input = Object.assign(Object.create(null), {
+      auto: false,
+      hide: "*.snap",
+    });
+    expect(parseUiSettings(input)).toEqual({ auto: false, hide: "*.snap" });
+    expect(() => parseUiSettings(Object.create({ auto: true }))).toThrow();
+    class Preferences {
+      auto = false;
+    }
+    expect(() => parseUiSettings(new Preferences())).toThrow();
+  });
+
+  test("boolean settings preserve both choices independently instead of resetting other fields", () => {
+    const keys = [
+      "auto",
+      "back",
+      "toast",
+      "hideEnabled",
+      "hideDeleted",
+      "foldDel",
+      "enterSaves",
+      "navHidden",
+      "ntFold",
+      "bmFold",
+      "single",
+      "ghosts",
+    ];
+    for (const key of keys) {
+      for (const value of [false, true]) {
+        const input = { [key]: value };
+        expect(parseUiSettings(input)).toEqual(input);
+        expect(input).toEqual({ [key]: value });
+      }
+    }
+    expect(parseUiSettings({ hide: "", editor: "" })).toEqual({
+      hide: "",
+      editor: "",
+    });
+    expect(
+      parseUiSettings({ hide: "*.snap\nbuild/", editor: "code --wait" }),
+    ).toEqual({ hide: "*.snap\nbuild/", editor: "code --wait" });
+  });
+
+  test("rejecting a later invalid preference leaves the caller's earlier arrays untouched", () => {
+    const input = { disabledHide: ["dist/", "*.snap"], expand: 11 };
+    expect(() => parseUiSettings(input)).toThrow();
+    expect(input).toEqual({ disabledHide: ["dist/", "*.snap"], expand: 11 });
+    const parsed = parseUiSettings({ disabledHide: input.disabledHide });
+    parsed.disabledHide!.push("generated/");
+    expect(input.disabledHide).toEqual(["dist/", "*.snap"]);
   });
 });

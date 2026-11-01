@@ -39,6 +39,50 @@ cmp -s skills/apply-lcr/SKILL.md .agents/skills/apply-lcr/SKILL.md
 
 Do not commit generated executables or review files.
 
+## Test coverage and mutation testing
+
+```sh
+bun test ./src
+bun run test:coverage
+LCR_TEST_BROWSER=1 bun test ./src/web-review/browser.test.ts
+```
+
+Tests live beside their owners. Filesystem, Git, HTTP, WebSocket, ACP subprocess, and browser-lifecycle
+cases use isolated temporary resources and close them after each scenario. The opt-in Chrome workflow
+also exercises screenshot annotations, editor preservation, stale updates, browser restart,
+cross-origin isolation, and history Back/Forward navigation over an unsaved editor. It is skipped by the
+ordinary suite so contributors still need only Bun and Git.
+
+Bun's coverage report describes modules loaded into the test process, not every source file or code
+executed in a browser or child process. Use it to find gaps, not as proof of whole-project coverage.
+Prefer tests of boundaries, state transitions, round trips, ownership, and failure recovery over
+assertions about implementation details or incidental wording.
+
+Run [StrykerJS](https://stryker-mutator.io/docs/stryker-js/) without installing project dependencies:
+
+```sh
+bun run test:mutation
+```
+
+The script resolves `@stryker-mutator/core@10.1.1` through `bunx`. `stryker.config.json` selects production
+TypeScript, excludes tests and subprocess fixtures, and runs Bun through Stryker's
+[command runner](https://stryker-mutator.io/docs/stryker-js/configuration/#commandrunner-object).
+Source mutations happen in disposable sandboxes, never in the working tree. Reports stay locally
+ignored under `.mutation/`: open `mutation.html` or inspect `mutation.json`.
+
+For a focused iteration, select both the source and its relevant consumer tests:
+
+```sh
+bun run test:mutation --mutate src/web/client/components/path.ts \
+  --commandRunner.command 'bun test ./src/web/client/components/path.test.ts ./src/web/client/components/path-layout.test.ts --bail'
+```
+
+The default scans all production TypeScript; a focused score describes only the selected files.
+The command runner does not support Stryker's per-test coverage analysis, so coverage analysis is
+off and every selected test runs for each mutant. Unexecuted mutations therefore appear as survivors,
+not as a separate no-coverage category. Review survivors for missing behavioral assertions; equivalent
+mutations and changes to incidental text are not reasons to pin implementation details in tests.
+
 ## Formatting
 
 Use Prettier's default style, run on demand without adding a project dependency:
@@ -100,6 +144,8 @@ the server serializes it into the reviewed page rather than loading the ordinary
 ### Conversation components
 
 - `src/review/session.ts` owns review-file mutations; `src/review/thread.ts` owns the Markdown format.
+  Saving an editable note replaces its reviewer-owned snapshot, including cleared optional capture
+  fields, while preserving the agent-owned thread and verdict through `applyComment`.
 - Browser `notes/notes.ts` owns note placement and editing; `notes/thread.ts` owns reply lifecycle
   and server reconciliation. Keep commit guards, deletion, cancellation, in-flight state and
   single-editor ownership in those controllers.
