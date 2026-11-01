@@ -65,20 +65,83 @@ npx skills add cjvnjde/local-code-review --skill apply-lcr
 
 Then ask “Apply the newest lcr review” or use `/apply-lcr` if supported.
 
-For managed sequential work, use the included [Codex profile](examples/agents/codex.json) or
-[OMP profile](examples/agents/omp.json). Codex requires Bun and an installed, authenticated `codex`;
-its profile runs the ACP adapter through `bunx`. OMP uses an installed, authenticated `omp` directly.
+### Connect an agent
 
-From this checkout, copy the profiles into your user configuration directory:
+The setup below works with the downloaded `lcr` executable; no source checkout is needed.
+Choose one agent and keep its credentials in its own authentication store, not in these files.
+The optional agents and adapters have their own runtime requirements.
+
+Create your user configuration directory:
 
 ```sh
 lcr_config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/lcr"
 mkdir -p "$lcr_config_dir/agents"
-cp -n examples/agents/codex.json examples/agents/omp.json "$lcr_config_dir/agents/"
 ```
 
-Select the agent in `~/.config/lcr/config.json` (or `$XDG_CONFIG_HOME/lcr/config.json` when
-`XDG_CONFIG_HOME` is an absolute path):
+The paths below use `~/.config/lcr`. If you set `XDG_CONFIG_HOME`, it must be an absolute path;
+use `$XDG_CONFIG_HOME/lcr` instead.
+
+#### Codex
+
+Install [Bun](https://bun.sh/) and [Codex CLI](https://developers.openai.com/codex/cli), then
+authenticate Codex by running `codex` and completing its sign-in flow.
+
+Put this in `~/.config/lcr/agents/codex.json`:
+
+```json
+{
+  "name": "Codex ACP",
+  "command": "bunx",
+  "args": ["@agentclientprotocol/codex-acp@2.5.0"],
+  "env": {
+    "CODEX_PATH": "codex"
+  }
+}
+```
+
+`bunx` downloads and runs the ACP adapter; `CODEX_PATH` selects your installed `codex`.
+The first run needs network access to fetch the adapter.
+
+#### Claude
+
+Install [Node.js 22 or later](https://nodejs.org/) and
+[Claude Code](https://code.claude.com/docs/en/quickstart), then run `claude` and sign in.
+Install the [Claude ACP adapter](https://github.com/agentclientprotocol/claude-agent-acp):
+
+```sh
+npm install -g @agentclientprotocol/claude-agent-acp
+```
+
+Put this in `~/.config/lcr/agents/claude.json`:
+
+```json
+{
+  "name": "Claude ACP",
+  "command": "claude-agent-acp",
+  "args": []
+}
+```
+
+Make sure `claude-agent-acp` is on your `PATH`. No Claude MCP registration or channel flag is needed.
+
+#### OMP
+
+Install and authenticate OMP with your chosen provider first. Its `omp` executable must be on your `PATH`.
+Put this in `~/.config/lcr/agents/omp.json`:
+
+```json
+{
+  "name": "OMP",
+  "command": "omp",
+  "args": ["acp"]
+}
+```
+
+OMP provides ACP directly; no separate adapter is needed.
+
+#### Select your default
+
+Put this in `~/.config/lcr/config.json`, or add the `acp` field to your existing settings:
 
 ```json
 {
@@ -86,8 +149,11 @@ Select the agent in `~/.config/lcr/config.json` (or `$XDG_CONFIG_HOME/lcr/config
 }
 ```
 
-Use `"agents/omp.json"` to select OMP instead. Profile paths resolve relative to this settings file.
-Plain `lcr` uses whichever profile you configured; no agent is built in as the default.
+Use `"agents/claude.json"` for Claude or `"agents/omp.json"` for OMP instead. Profile paths resolve
+relative to this settings file. Plain `lcr` uses whichever profile you configured; no agent is built
+in as the default.
+
+Run inside the project you want to review:
 
 ```sh
 lcr                                                # Use the configured agent
@@ -95,8 +161,9 @@ lcr --acp "$lcr_config_dir/agents/omp.json" --id ui   # Override it for this run
 lcr --no-agent                                     # Review manually
 ```
 
-Keep credentials in the agent's own authentication store. See [ACP connections and queue](docs/agent-connections.md)
-for other agents, configuration fields, permissions and restart recovery.
+These connections start managed agent sessions; they do not attach to an already-running agent terminal.
+See [ACP connections and queue](docs/agent-connections.md) for other agents, configuration fields,
+permissions and restart recovery.
 
 Saving a comment starts the selected agent; further comments queue until that turn ends. Queue state
 survives restarts, and permissions appear in the page's **Queue** control.
