@@ -71,24 +71,21 @@ The setup below works with the downloaded `lcr` executable; no source checkout i
 Choose one agent and keep its credentials in its own authentication store, not in these files.
 The optional agents and adapters have their own runtime requirements.
 
-Create your user configuration directory:
-
-```sh
-lcr_config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/lcr"
-mkdir -p "$lcr_config_dir/agents"
-```
-
-The paths below use `~/.config/lcr`. If you set `XDG_CONFIG_HOME`, it must be an absolute path;
-use `$XDG_CONFIG_HOME/lcr` instead.
+Copy the shell block for your agent into a terminal. Each block creates its configuration directory
+and writes the profile file, replacing that profile if it already exists. These commands work in
+POSIX shells on macOS and Linux and respect `XDG_CONFIG_HOME`, which must be an absolute path if set.
 
 #### Codex
 
 Install [Bun](https://bun.sh/) and [Codex CLI](https://developers.openai.com/codex/cli), then
 authenticate Codex by running `codex` and completing its sign-in flow.
 
-Put this in `~/.config/lcr/agents/codex.json`:
+Create the Codex profile:
 
-```json
+```sh
+lcr_config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/lcr"
+mkdir -p "$lcr_config_dir/agents" &&
+cat > "$lcr_config_dir/agents/codex.json" <<'JSON'
 {
   "name": "Codex ACP",
   "command": "bunx",
@@ -97,6 +94,7 @@ Put this in `~/.config/lcr/agents/codex.json`:
     "CODEX_PATH": "codex"
   }
 }
+JSON
 ```
 
 `bunx` downloads and runs the ACP adapter; `CODEX_PATH` selects your installed `codex`.
@@ -112,14 +110,18 @@ Install the [Claude ACP adapter](https://github.com/agentclientprotocol/claude-a
 npm install -g @agentclientprotocol/claude-agent-acp
 ```
 
-Put this in `~/.config/lcr/agents/claude.json`:
+Create the Claude profile:
 
-```json
+```sh
+lcr_config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/lcr"
+mkdir -p "$lcr_config_dir/agents" &&
+cat > "$lcr_config_dir/agents/claude.json" <<'JSON'
 {
   "name": "Claude ACP",
   "command": "claude-agent-acp",
   "args": []
 }
+JSON
 ```
 
 Make sure `claude-agent-acp` is on your `PATH`. No Claude MCP registration or channel flag is needed.
@@ -127,37 +129,51 @@ Make sure `claude-agent-acp` is on your `PATH`. No Claude MCP registration or ch
 #### OMP
 
 Install and authenticate OMP with your chosen provider first. Its `omp` executable must be on your `PATH`.
-Put this in `~/.config/lcr/agents/omp.json`:
+Create the OMP profile:
 
-```json
+```sh
+lcr_config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/lcr"
+mkdir -p "$lcr_config_dir/agents" &&
+cat > "$lcr_config_dir/agents/omp.json" <<'JSON'
 {
   "name": "OMP",
   "command": "omp",
   "args": ["acp"]
 }
+JSON
 ```
 
 OMP provides ACP directly; no separate adapter is needed.
 
 #### Select your default
 
-Put this in `~/.config/lcr/config.json`, or add the `acp` field to your existing settings:
+Copy this block to select Codex, preserving any other settings in `config.json`. It uses Bun or
+Node.js from your `PATH`. For Claude or OMP, change the first line to `LCR_PROFILE=agents/claude.json`
+or `LCR_PROFILE=agents/omp.json`.
 
-```json
-{
-  "acp": "agents/codex.json"
-}
+```sh
+LCR_PROFILE=agents/codex.json \
+"$(command -v bun || command -v node)" -e '
+const fs = require("node:fs");
+const path = require("node:path");
+const base = process.env.XDG_CONFIG_HOME || path.join(process.env.HOME, ".config");
+if (!path.isAbsolute(base)) throw new Error("XDG_CONFIG_HOME must be an absolute path");
+const directory = path.join(base, "lcr");
+const file = path.join(directory, "config.json");
+const settings = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : {};
+fs.mkdirSync(directory, { recursive: true });
+fs.writeFileSync(file, JSON.stringify({ ...settings, acp: process.env.LCR_PROFILE }, null, 2) + "\n");
+'
 ```
 
-Use `"agents/claude.json"` for Claude or `"agents/omp.json"` for OMP instead. Profile paths resolve
-relative to this settings file. Plain `lcr` uses whichever profile you configured; no agent is built
-in as the default.
+Profile paths resolve relative to this settings file. Plain `lcr` uses whichever profile you
+configured; no agent is built in as the default.
 
 Run inside the project you want to review:
 
 ```sh
 lcr                                                # Use the configured agent
-lcr --acp "$lcr_config_dir/agents/omp.json" --id ui   # Override it for this run
+lcr --acp "${XDG_CONFIG_HOME:-$HOME/.config}/lcr/agents/omp.json" --id ui  # Override for this run
 lcr --no-agent                                     # Review manually
 ```
 
