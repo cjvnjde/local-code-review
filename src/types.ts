@@ -1,4 +1,4 @@
-import type { ImageRegion } from './image-region.ts';
+import type { ImageRegion } from "./image-region.ts";
 
 export type FileStatus = "modified" | "added" | "deleted" | "renamed";
 export type DiffRowType = "hunk" | "add" | "del" | "ctx";
@@ -24,7 +24,8 @@ export interface DiffFile {
   hash: string;
 }
 
-export type NoteStatusKind = "applied" | "answered" | "skipped" | "needs-input" | "pending" | "unknown";
+export type NoteStatusKind =
+  "applied" | "answered" | "skipped" | "needs-input" | "pending" | "unknown";
 
 /** One note's outcome, read back from the `Status:` lines an agent wrote into a review file. */
 export interface NoteStatus {

@@ -42,21 +42,38 @@ export function parseArgs(argv: string[]): CliOptions {
     else if (arg === "--open") open = true;
     else if (arg === "--help" || arg === "-h") help = true;
     else if (arg === "--version" || arg === "-v") version = true;
-    else if (arg === "--no-agent") { noAgent = true; acp = ""; }
-    else if (arg === "--acp") {
+    else if (arg === "--no-agent") {
+      noAgent = true;
+      acp = "";
+    } else if (arg === "--acp") {
       noAgent = false;
       acp = argv[++i]?.trim() ?? "";
-      if (!acp || acp.startsWith("-")) throw new Error("--acp requires a JSON configuration file.");
-    }
-    else diffArgs.push(arg);
+      if (!acp || acp.startsWith("-"))
+        throw new Error("--acp requires a JSON configuration file.");
+    } else diffArgs.push(arg);
   }
 
   if (!help && !version) {
-    if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error("--port requires an integer from 0 to 65535.");
-    if (!Number.isInteger(context) || context < 0) throw new Error("--context requires a non-negative integer.");
-    if (!outDir || outDir.startsWith("-")) throw new Error("--out requires a directory.");
+    if (!Number.isInteger(port) || port < 0 || port > 65535)
+      throw new Error("--port requires an integer from 0 to 65535.");
+    if (!Number.isInteger(context) || context < 0)
+      throw new Error("--context requires a non-negative integer.");
+    if (!outDir || outDir.startsWith("-"))
+      throw new Error("--out requires a directory.");
   }
-  return { ...(noAgent ? { noAgent: true } : {}), ...(acp ? { acp } : {}), ...(web ? { web } : {}), port, outDir, context, open, id, version, help, diffArgs };
+  return {
+    ...(noAgent ? { noAgent: true } : {}),
+    ...(acp ? { acp } : {}),
+    ...(web ? { web } : {}),
+    port,
+    outDir,
+    context,
+    open,
+    id,
+    version,
+    help,
+    diffArgs,
+  };
 }
 
 /** Help is local to the CLI: it needs neither Git nor a running review. */

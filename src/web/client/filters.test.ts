@@ -71,21 +71,24 @@ describe("globRx", () => {
 
 describe("hide patterns", () => {
   test("disabling rules preserves manual eye overrides and deleted-file hiding", () => {
-    loadFiles([{path:'src/a.snap',status:'modified'},{path:'gone.ts',status:'deleted'}]);
-    state.hideRx=compileHide('*.snap,dist/',['*.snap']);
-    expect(isHidden('src/a.snap')).toBe(false);
-    expect(isHidden('dist/app.js')).toBe(true);
-    state.hideRx=compileHide('*.snap,dist/');
-    state.shown.add('src/a.snap');
-    state.hidden.add('manual.ts');
-    state.cfg.hideDeleted=true;
-    state.cfg.hideEnabled=false;
-    expect(isHidden('dist/app.js')).toBe(false);
-    expect(isHidden('manual.ts')).toBe(true);
-    expect(isHidden('gone.ts')).toBe(true);
-    state.cfg.hideEnabled=true;
-    expect(isHidden('src/a.snap')).toBe(false);
-    expect(isHidden('dist/app.js')).toBe(true);
+    loadFiles([
+      { path: "src/a.snap", status: "modified" },
+      { path: "gone.ts", status: "deleted" },
+    ]);
+    state.hideRx = compileHide("*.snap,dist/", ["*.snap"]);
+    expect(isHidden("src/a.snap")).toBe(false);
+    expect(isHidden("dist/app.js")).toBe(true);
+    state.hideRx = compileHide("*.snap,dist/");
+    state.shown.add("src/a.snap");
+    state.hidden.add("manual.ts");
+    state.cfg.hideDeleted = true;
+    state.cfg.hideEnabled = false;
+    expect(isHidden("dist/app.js")).toBe(false);
+    expect(isHidden("manual.ts")).toBe(true);
+    expect(isHidden("gone.ts")).toBe(true);
+    state.cfg.hideEnabled = true;
+    expect(isHidden("src/a.snap")).toBe(false);
+    expect(isHidden("dist/app.js")).toBe(true);
   });
   test("counts only visible exceptions to current rules, including deleted files", () => {
     loadFiles([
@@ -96,7 +99,10 @@ describe("hide patterns", () => {
     ]);
     state.hideRx = compileHide("*.test.*");
     state.cfg.hideDeleted = true;
-    state.shown = new Set([...state.files.map(f => f.path), "no-longer-in-diff.test.ts"]);
+    state.shown = new Set([
+      ...state.files.map((f) => f.path),
+      "no-longer-in-diff.test.ts",
+    ]);
     state.hidden.add("src/b.test.ts");
     expect(revealedCount()).toBe(2);
     state.shown.clear();

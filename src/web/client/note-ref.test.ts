@@ -1,13 +1,45 @@
 import { describe, expect, test } from "bun:test";
-import { insertRef, noteByRef, plainRefs, refIn, refLabel, refOf, refToken } from "./note-ref.ts";
+import {
+  insertRef,
+  noteByRef,
+  plainRefs,
+  refIn,
+  refLabel,
+  refOf,
+  refToken,
+} from "./note-ref.ts";
 
 // Notes as the page holds them: the anchors say which kind of note it is, the id carries its tail.
-const line = (tail: string, file = "src/cli.ts", label = "42") =>
-  ({ id: `${file}|n42|n42|#${tail}`, file, label, a: "n42", b: "n42", start: 42, end: 42, body: "" });
-const whole = (tail: string, file = "src/cli.ts") =>
-  ({ id: `${file}|*|*|#${tail}`, file, label: "", a: "*", b: "*", start: 0, end: 0, body: "" });
-const overall = (tail: string) =>
-  ({ id: `|@|@|#${tail}`, file: "", label: "", a: "@", b: "@", start: 0, end: 0, body: "" });
+const line = (tail: string, file = "src/cli.ts", label = "42") => ({
+  id: `${file}|n42|n42|#${tail}`,
+  file,
+  label,
+  a: "n42",
+  b: "n42",
+  start: 42,
+  end: 42,
+  body: "",
+});
+const whole = (tail: string, file = "src/cli.ts") => ({
+  id: `${file}|*|*|#${tail}`,
+  file,
+  label: "",
+  a: "*",
+  b: "*",
+  start: 0,
+  end: 0,
+  body: "",
+});
+const overall = (tail: string) => ({
+  id: `|@|@|#${tail}`,
+  file: "",
+  label: "",
+  a: "@",
+  b: "@",
+  start: 0,
+  end: 0,
+  body: "",
+});
 
 describe("refOf", () => {
   test("a reference is the tail every minted id ends with", () => {
@@ -41,7 +73,7 @@ describe("refIn", () => {
     expect(refIn("#note=mk1a")).toBe("mk1a");
     expect(refIn("https://example.com/#note=mk1a")).toBe("");
     expect(refIn("http://localhost:4321/other#note=mk1a")).toBe("");
-    expect(refIn("lcr:mk1a\" onclick=evil")).toBe("");
+    expect(refIn('lcr:mk1a" onclick=evil')).toBe("");
   });
 });
 
@@ -85,12 +117,18 @@ describe("refToken", () => {
 
 describe("plainRefs", () => {
   test("a reference reads as the note it names where there is no room for a link", () => {
-    expect(plainRefs("Same as [src/cli.ts:42](lcr:mk1a), see there")).toBe("Same as src/cli.ts:42, see there");
-    expect(plainRefs("[src/\\[id\\]/page.ts:42](lcr:mk1a)")).toBe("src/[id]/page.ts:42");
+    expect(plainRefs("Same as [src/cli.ts:42](lcr:mk1a), see there")).toBe(
+      "Same as src/cli.ts:42, see there",
+    );
+    expect(plainRefs("[src/\\[id\\]/page.ts:42](lcr:mk1a)")).toBe(
+      "src/[id]/page.ts:42",
+    );
   });
 
   test("an ordinary link is left as it was written", () => {
-    expect(plainRefs("[docs](https://example.com)")).toBe("[docs](https://example.com)");
+    expect(plainRefs("[docs](https://example.com)")).toBe(
+      "[docs](https://example.com)",
+    );
     expect(plainRefs("")).toBe("");
   });
 });
@@ -105,11 +143,16 @@ describe("insertRef", () => {
   });
 
   test("an empty box takes the reference on its own", () => {
-    expect(insertRef("", 0, 0, token)).toEqual({ value: token, caret: token.length });
+    expect(insertRef("", 0, 0, token)).toEqual({
+      value: token,
+      caret: token.length,
+    });
   });
 
   test("it replaces what was selected, and needs no space against a line break", () => {
-    expect(insertRef("see that\n\n", 4, 8, token).value).toBe(`see ${token}\n\n`);
+    expect(insertRef("see that\n\n", 4, 8, token).value).toBe(
+      `see ${token}\n\n`,
+    );
   });
 
   test("a caret past the end of the text still writes at the end", () => {

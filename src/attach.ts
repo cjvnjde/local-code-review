@@ -47,7 +47,11 @@ const EXTENSIONS: Record<string, string> = {
  * browser sends carries parameters, and a clipboard's `image/PNG` is the same type as any other.
  */
 export function attachExtension(type: string): string {
-  const bare = String(type || "").split(";", 1)[0]?.trim().toLowerCase() ?? "";
+  const bare =
+    String(type || "")
+      .split(";", 1)[0]
+      ?.trim()
+      .toLowerCase() ?? "";
   return EXTENSIONS[bare] ?? "";
 }
 
@@ -59,7 +63,8 @@ export function attachExtension(type: string): string {
  */
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
-const dirOf = (repoRoot: string, outDir: string) => path.resolve(repoRoot, outDir, ATTACH_DIR);
+const dirOf = (repoRoot: string, outDir: string) =>
+  path.resolve(repoRoot, outDir, ATTACH_DIR);
 
 /**
  * Keeps one picture and answers the name it is kept under, or empty for a type or a size that is not
@@ -74,8 +79,12 @@ export async function saveAttachment(
   type: string,
 ): Promise<string> {
   const extension = attachExtension(type);
-  if (!extension || !bytes.byteLength || bytes.byteLength > ATTACH_MAX_BYTES) return "";
-  const digest = new Bun.CryptoHasher("sha256").update(bytes).digest("hex").slice(0, 16);
+  if (!extension || !bytes.byteLength || bytes.byteLength > ATTACH_MAX_BYTES)
+    return "";
+  const digest = new Bun.CryptoHasher("sha256")
+    .update(bytes)
+    .digest("hex")
+    .slice(0, 16);
   const name = `${digest}.${extension}`;
   const directory = dirOf(repoRoot, outDir);
   await mkdir(directory, { recursive: true });
@@ -94,16 +103,25 @@ export async function readAttachment(
   name: string,
 ): Promise<{ bytes: Uint8Array; type: string } | null> {
   // Bare names are the original images/ API. Explicit paths are relative to the review file.
-  const match = /^(images\/|assets\/|\.\/)?([A-Za-z0-9][A-Za-z0-9._-]*)$/.exec(name);
+  const match = /^(images\/|assets\/|\.\/)?([A-Za-z0-9][A-Za-z0-9._-]*)$/.exec(
+    name,
+  );
   if (!match || !NAME.test(match[2]!)) return null;
   const type = imageType(match[2]!);
   if (!type) return null;
   const root = await realpath(path.resolve(repoRoot, outDir)).catch(() => "");
   if (!root) return null;
-  const directory = match[1] === "./" ? "" : match[1] ?? `${ATTACH_DIR}/`;
-  const target = await realpath(path.join(root, directory, match[2]!)).catch(() => "");
+  const directory = match[1] === "./" ? "" : (match[1] ?? `${ATTACH_DIR}/`);
+  const target = await realpath(path.join(root, directory, match[2]!)).catch(
+    () => "",
+  );
   const relative = target ? path.relative(root, target) : "..";
-  if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) return null;
+  if (
+    relative === ".." ||
+    relative.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relative)
+  )
+    return null;
   const bytes = await readFile(target).catch(() => null);
   return bytes ? { bytes: new Uint8Array(bytes), type } : null;
 }

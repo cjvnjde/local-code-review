@@ -59,21 +59,34 @@ export function mediaType(file: string): string {
  * there — the side that added the file, a working copy since deleted — is not an error, it is the
  * absence the page draws as "no image on this side".
  */
-export async function readBlob(repoRoot: string, side: string, file: string): Promise<Uint8Array | null> {
+export async function readBlob(
+  repoRoot: string,
+  side: string,
+  file: string,
+): Promise<Uint8Array | null> {
   if (!file) return null;
   try {
     if (side === WORKTREE) {
       const full = path.resolve(repoRoot, file);
       // The caller only ever passes a path out of the diff, and this keeps it that way.
-      if (full !== repoRoot && !full.startsWith(repoRoot + path.sep)) return null;
-      const [root, resolved] = await Promise.all([realpath(repoRoot), realpath(full)]);
+      if (full !== repoRoot && !full.startsWith(repoRoot + path.sep))
+        return null;
+      const [root, resolved] = await Promise.all([
+        realpath(repoRoot),
+        realpath(full),
+      ]);
       // A tracked symlink (or directory symlink) is still a path from the diff; its target need not
       // belong to this repository. Check the resolved path before reading any media bytes.
       if (!resolved.startsWith(root + path.sep)) return null;
       const handle = Bun.file(resolved);
-      return (await handle.exists()) ? new Uint8Array(await handle.arrayBuffer()) : null;
+      return (await handle.exists())
+        ? new Uint8Array(await handle.arrayBuffer())
+        : null;
     }
-    return await runGitBytes(["show", `${side === INDEX ? "" : side}:${file}`], repoRoot);
+    return await runGitBytes(
+      ["show", `${side === INDEX ? "" : side}:${file}`],
+      repoRoot,
+    );
   } catch {
     return null;
   }

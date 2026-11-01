@@ -37,13 +37,18 @@ async function readEach(
 ): Promise<void> {
   const directory = path.resolve(repoRoot, outDir);
   for (const name of (await listReviews(repoRoot, outDir)).slice(-READ_LIMIT)) {
-    const text = await readFile(path.join(directory, name), "utf8").catch(() => "");
+    const text = await readFile(path.join(directory, name), "utf8").catch(
+      () => "",
+    );
     if (text) take(name, parseReview(text));
   }
 }
 
 /** Every saved review described for the picker, oldest first — the order the directory lists them. */
-export async function describeReviews(repoRoot: string, outDir: string): Promise<ReviewInfo[]> {
+export async function describeReviews(
+  repoRoot: string,
+  outDir: string,
+): Promise<ReviewInfo[]> {
   const out: ReviewInfo[] = [];
   await readEach(repoRoot, outDir, (name, doc) => {
     out.push({
@@ -77,9 +82,16 @@ export async function collectGhosts(
     if (name === options.except) return;
     if (doc.branch && options.branch && doc.branch !== options.branch) return;
     const notes = doc.notes.filter(
-      (note) => note.file && !note.scope && !options.taken.has(`${name}#${note.id}`),
+      (note) =>
+        note.file && !note.scope && !options.taken.has(`${name}#${note.id}`),
     );
-    if (notes.length) out.push({ file: name, range: doc.range, branch: doc.branch ?? "", notes });
+    if (notes.length)
+      out.push({
+        file: name,
+        range: doc.range,
+        branch: doc.branch ?? "",
+        notes,
+      });
   });
   return out;
 }

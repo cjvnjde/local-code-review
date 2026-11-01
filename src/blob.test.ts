@@ -17,8 +17,13 @@ async function repo() {
   await runGit(["commit", "-qm", "first"], root);
   return root;
 }
-const source = (root: string, diffArgs: string[] = []) => ({ repoRoot: root, context: 3, diffArgs });
-const text = (bytes: Uint8Array | null) => (bytes ? new TextDecoder().decode(bytes) : null);
+const source = (root: string, diffArgs: string[] = []) => ({
+  repoRoot: root,
+  context: 3,
+  diffArgs,
+});
+const text = (bytes: Uint8Array | null) =>
+  bytes ? new TextDecoder().decode(bytes) : null;
 
 describe("imageType", () => {
   test("names the type of every extension the page can draw, whatever the case", () => {
@@ -56,17 +61,26 @@ describe("mediaType", () => {
 describe("diffSides", () => {
   test("an argument-less run is HEAD against the working tree", async () => {
     const root = await repo();
-    expect(await diffSides(source(root))).toEqual({ old: "HEAD", new: WORKTREE });
+    expect(await diffSides(source(root))).toEqual({
+      old: "HEAD",
+      new: WORKTREE,
+    });
   });
 
   test("a staged run reads its new side out of the index", async () => {
     const root = await repo();
-    expect(await diffSides(source(root, ["--cached"]))).toEqual({ old: "HEAD", new: INDEX });
+    expect(await diffSides(source(root, ["--cached"]))).toEqual({
+      old: "HEAD",
+      new: INDEX,
+    });
   });
 
   test("a range takes its own ends", async () => {
     const root = await repo();
-    expect(await diffSides(source(root, ["main..HEAD"]))).toEqual({ old: "main", new: "HEAD" });
+    expect(await diffSides(source(root, ["main..HEAD"]))).toEqual({
+      old: "main",
+      new: "HEAD",
+    });
   });
 
   test("a symmetric range takes the merge base, so the branch's own commits are not the old side", async () => {
@@ -75,19 +89,28 @@ describe("diffSides", () => {
     await runGit(["checkout", "-qb", "work"], root);
     await writeFile(path.join(root, "logo.png"), "second", "utf8");
     await runGit(["commit", "-qam", "second"], root);
-    expect(await diffSides(source(root, ["main...work"]))).toEqual({ old: base, new: "work" });
+    expect(await diffSides(source(root, ["main...work"]))).toEqual({
+      old: base,
+      new: "work",
+    });
   });
 
   test("two revisions are the two sides", async () => {
     const root = await repo();
     await runGit(["branch", "later"], root);
-    expect(await diffSides(source(root, ["main", "later"]))).toEqual({ old: "main", new: "later" });
+    expect(await diffSides(source(root, ["main", "later"]))).toEqual({
+      old: "main",
+      new: "later",
+    });
   });
 
   test("a pathspec without a revision compares the index to the working tree", async () => {
     const root = await repo();
     await mkdir(path.join(root, "assets"), { recursive: true });
-    expect(await diffSides(source(root, ["assets"]))).toEqual({ old: INDEX, new: WORKTREE });
+    expect(await diffSides(source(root, ["assets"]))).toEqual({
+      old: INDEX,
+      new: WORKTREE,
+    });
   });
 
   test("an option-only diff previews the staged version as its old side", async () => {
@@ -127,14 +150,19 @@ describe("readBlob", () => {
     const root = await repo();
     await writeFile(path.join(root, "..", "outside.png"), "secret", "utf8");
     expect(await readBlob(root, WORKTREE, "../outside.png")).toBeNull();
-    expect(await readBlob(root, WORKTREE, "assets/../../outside.png")).toBeNull();
+    expect(
+      await readBlob(root, WORKTREE, "assets/../../outside.png"),
+    ).toBeNull();
   });
 
   test("symlinks cannot expose media outside the repository", async () => {
     const root = await repo();
     const outside = await mkdtemp(path.join(tmpdir(), "lcr-outside-"));
     await writeFile(path.join(outside, "private.png"), "private");
-    await symlink(path.join(outside, "private.png"), path.join(root, "escape.png"));
+    await symlink(
+      path.join(outside, "private.png"),
+      path.join(root, "escape.png"),
+    );
     await symlink(outside, path.join(root, "assets"));
     expect(await readBlob(root, WORKTREE, "escape.png")).toBeNull();
     expect(await readBlob(root, WORKTREE, "assets/private.png")).toBeNull();

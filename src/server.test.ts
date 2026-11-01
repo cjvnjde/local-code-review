@@ -2,16 +2,20 @@ import { describe, expect, test } from "bun:test";
 import { PORT_ATTEMPTS, listen, repoId } from "./server.ts";
 
 function inUse(): Error {
-  return Object.assign(new Error("Failed to start server. Is port in use?"), { code: "EADDRINUSE" });
+  return Object.assign(new Error("Failed to start server. Is port in use?"), {
+    code: "EADDRINUSE",
+  });
 }
 
 describe("listen", () => {
   test("uses the requested port when it is free", () => {
     const tried: number[] = [];
-    expect(listen(7777, (port) => {
-      tried.push(port);
-      return port;
-    })).toBe(7777);
+    expect(
+      listen(7777, (port) => {
+        tried.push(port);
+        return port;
+      }),
+    ).toBe(7777);
     expect(tried).toEqual([7777]);
   });
 
@@ -32,8 +36,10 @@ describe("listen", () => {
       listen(7777, (port) => {
         tried.push(port);
         throw inUse();
-      })
-    ).toThrow(`ports 7777-${7777 + PORT_ATTEMPTS - 1} are all in use; pass --port to pick another`);
+      }),
+    ).toThrow(
+      `ports 7777-${7777 + PORT_ATTEMPTS - 1} are all in use; pass --port to pick another`,
+    );
     expect(tried).toHaveLength(PORT_ATTEMPTS);
   });
 
@@ -43,17 +49,19 @@ describe("listen", () => {
       listen(0, (port) => {
         tried.push(port);
         throw inUse();
-      })
+      }),
     ).toThrow();
     expect(tried).toEqual([0]);
   });
 
   test("stops at the highest valid port", () => {
     const tried: number[] = [];
-    expect(() => listen(65534, (port) => {
-      tried.push(port);
-      throw inUse();
-    })).toThrow("ports 65534-65535 are all in use");
+    expect(() =>
+      listen(65534, (port) => {
+        tried.push(port);
+        throw inUse();
+      }),
+    ).toThrow("ports 65534-65535 are all in use");
     expect(tried).toEqual([65534, 65535]);
   });
 
@@ -61,7 +69,7 @@ describe("listen", () => {
     expect(() =>
       listen(7777, () => {
         throw new Error("permission denied");
-      })
+      }),
     ).toThrow("permission denied");
   });
 });

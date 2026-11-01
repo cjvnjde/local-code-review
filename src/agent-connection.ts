@@ -22,5 +22,8 @@ export interface AgentAdapter {
   close?: () => void | Promise<void>;
   status?: () => AgentConnection;
   check?: () => Promise<void>;
-  publish(review: string, notes: ReviewNote[]): AgentDelivery | Promise<AgentDelivery>;
+  publish(
+    review: string,
+    notes: ReviewNote[],
+  ): AgentDelivery | Promise<AgentDelivery>;
 }

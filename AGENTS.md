@@ -3,6 +3,7 @@
 ## Workflow
 
 - After completing requested changes and validation, commit them and push the working branch to `origin`.
+- Format changed source, documentation, and configuration files with Prettier's default style before validation: `bunx prettier --write --no-config --no-editorconfig <files>`. Run it on demand; do not add Prettier as a dependency or introduce style overrides. Never format generated review files; keep the distributable skill copies byte-identical.
 
 ## Project shape
 

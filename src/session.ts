@@ -5,10 +5,26 @@ import { deleteReviews, listReviews } from "./output.ts";
 import { renderMarkdown } from "./review.ts";
 import { applyComment, noteFromComment, parseReview } from "./thread.ts";
 import type { ReviewDoc, ReviewMessage, ReviewNote } from "./thread.ts";
-import type { NoteStatusKind, ReviewComment, ReviewSubmission } from "./types.ts";
-import { dropWebSelection, setWebAnnotation, webAnnotationTarget, WebAnnotationInvalid, webCapture, type WebAnnotationTarget, type WebCapture } from './web-review-model.ts';
-import { webAnnotation, webAnnotationImagesMatch, type WebAnnotation } from './web-annotation.ts';
-import { readAttachment } from './attach.ts';
+import type {
+  NoteStatusKind,
+  ReviewComment,
+  ReviewSubmission,
+} from "./types.ts";
+import {
+  dropWebSelection,
+  setWebAnnotation,
+  webAnnotationTarget,
+  WebAnnotationInvalid,
+  webCapture,
+  type WebAnnotationTarget,
+  type WebCapture,
+} from "./web-review-model.ts";
+import {
+  webAnnotation,
+  webAnnotationImagesMatch,
+  type WebAnnotation,
+} from "./web-annotation.ts";
+import { readAttachment } from "./attach.ts";
 
 export interface SaveResult {
   /** Path of the session file, relative to the repository unless the output directory is absolute. */
@@ -38,10 +54,14 @@ export interface ReviewContext {
  * so files from before those fields — and a detached HEAD or an unresolvable base — read as belonging
  * rather than foreign.
  */
-export function matchesContext(doc: ReviewContext, context: ReviewContext): boolean {
+export function matchesContext(
+  doc: ReviewContext,
+  context: ReviewContext,
+): boolean {
   if (doc.id || context.id) return (doc.id ?? "") === (context.id ?? "");
   if (doc.range !== context.range) return false;
-  if (doc.branch && context.branch && doc.branch !== context.branch) return false;
+  if (doc.branch && context.branch && doc.branch !== context.branch)
+    return false;
   if (doc.base && context.base && doc.base !== context.base) return false;
   return true;
 }
@@ -66,14 +86,29 @@ function freeStamp(note: ReviewNote): string {
 function ownMessage(doc: ReviewDoc, id: string, at: string) {
   if (!at) return null;
   const note = doc.notes.find((entry) => entry.id === id);
-  const message = note?.messages.find((entry) => entry.role === "reviewer" && entry.at === at);
+  const message = note?.messages.find(
+    (entry) => entry.role === "reviewer" && entry.at === at,
+  );
   return note && message ? { note, message } : null;
 }
 
 /** Only reviewer-owned fields: an agent reply or verdict must never wake the agent again. */
 function reviewerFields(note: ReviewNote): string {
-  return JSON.stringify([note.body, note.file, note.label, note.start, note.end,
-    note.code ?? "", note.scope ?? "", note.side ?? "new", note.ca, note.cb, note.snippet ?? "", note.image ?? null, note.web ?? null]);
+  return JSON.stringify([
+    note.body,
+    note.file,
+    note.label,
+    note.start,
+    note.end,
+    note.code ?? "",
+    note.scope ?? "",
+    note.side ?? "new",
+    note.ca,
+    note.cb,
+    note.snippet ?? "",
+    note.image ?? null,
+    note.web ?? null,
+  ]);
 }
 
 /**
@@ -88,14 +123,21 @@ function reviewerFields(note: ReviewNote): string {
  * lines. Every mutation here therefore re-reads the file first and keeps what it does not own — the
  * agent's messages and verdicts survive a save that happens while it is still working.
  */
-export function createSession(repoRoot: string, outDir: string, range: string, context: ReviewContext = { range }) {
+export function createSession(
+  repoRoot: string,
+  outDir: string,
+  range: string,
+  context: ReviewContext = { range },
+) {
   let name = "";
   /** Serialises this side's read-modify-write cycles; the agent's edits are outside our control. */
   let queue: Promise<unknown> = Promise.resolve();
 
   const dir = () => path.resolve(repoRoot, outDir);
   const shown = (file: string) =>
-    path.isAbsolute(outDir) ? path.join(dir(), file) : path.relative(repoRoot, path.join(dir(), file));
+    path.isAbsolute(outDir)
+      ? path.join(dir(), file)
+      : path.relative(repoRoot, path.join(dir(), file));
 
   /** The doc a conversation opens with: this invocation's context, stamped into the file it mints. */
   function fresh(): ReviewDoc {
@@ -129,7 +171,10 @@ export function createSession(repoRoot: string, outDir: string, range: string, c
     const taken = new Set(await listReviews(repoRoot, outDir));
     const from = Date.now();
     for (let step = 0; ; step++) {
-      const stamp = new Date(from + step * 1000).toISOString().replace(/[:.]/g, "-").slice(0, 19);
+      const stamp = new Date(from + step * 1000)
+        .toISOString()
+        .replace(/[:.]/g, "-")
+        .slice(0, 19);
       const candidate = `review-${stamp}.md`;
       if (!taken.has(candidate)) return candidate;
     }
@@ -140,7 +185,11 @@ export function createSession(repoRoot: string, outDir: string, range: string, c
     await mkdir(dir(), { recursive: true });
     // The doc's own context wins: a conversation adopted from another range or branch keeps saying
     // where it came from, rather than being restamped with wherever it was reopened.
-    await writeFile(path.join(dir(), name), renderMarkdown({ ...doc, range: doc.range || range }), "utf8");
+    await writeFile(
+      path.join(dir(), name),
+      renderMarkdown({ ...doc, range: doc.range || range }),
+      "utf8",
+    );
     return name;
   }
 
@@ -171,7 +220,9 @@ export function createSession(repoRoot: string, outDir: string, range: string, c
      */
     async adoptMatching(): Promise<string> {
       for (const candidate of (await listReviews(repoRoot, outDir)).reverse()) {
-        const text = await readFile(path.join(dir(), candidate), "utf8").catch(() => "");
+        const text = await readFile(path.join(dir(), candidate), "utf8").catch(
+          () => "",
+        );
         if (text && matchesContext(parseReview(text), context)) {
           name = candidate;
           return name;
@@ -201,32 +252,57 @@ export function createSession(repoRoot: string, outDir: string, range: string, c
     read: () => serialise(read),
 
     readNote(file: string, id: string): Promise<ReviewNote | null> {
-      return serialise(async () => (await readNamed(file))?.notes.find((note) => note.id === id) ?? null);
+      return serialise(
+        async () =>
+          (await readNamed(file))?.notes.find((note) => note.id === id) ?? null,
+      );
     },
 
     /** The managed agent's reply path; never changes which conversation the page is reading. */
-    answer(file: string, id: string, body: string, status?: NoteStatusKind): Promise<ReviewNote | null> {
+    answer(
+      file: string,
+      id: string,
+      body: string,
+      status?: NoteStatusKind,
+    ): Promise<ReviewNote | null> {
       return serialise(async () => {
         const doc = await readNamed(file);
         const note = doc?.notes.find((entry) => entry.id === id);
         if (!doc || !note) return null;
         note.messages.push({ role: "agent", at: freeStamp(note), body });
-        if (status) { note.status = status; note.detail = ""; }
+        if (status) {
+          note.status = status;
+          note.detail = "";
+        }
         await writeFile(path.join(dir(), file), renderMarkdown(doc), "utf8");
         return note;
       });
     },
 
     /** Managed results cannot resurrect a note or award a verdict to a later reviewer edit. */
-    answerRevision(file: string, id: string, body: string, revision: string, status?: NoteStatusKind): Promise<ReviewNote | null> {
+    answerRevision(
+      file: string,
+      id: string,
+      body: string,
+      revision: string,
+      status?: NoteStatusKind,
+    ): Promise<ReviewNote | null> {
       return serialise(async () => {
         const doc = await readNamed(file);
-        const note = doc?.notes.find(entry => entry.id === id);
+        const note = doc?.notes.find((entry) => entry.id === id);
         if (!doc || !note) return null;
         const same = reviewerRevision(note) === revision;
-        note.messages.push({ role: "agent", at: freeStamp(note), body: same ? body :
-          `Response to submitted revision ${revision.slice(0, 12)}. Later reviewer edits or follow-ups were not part of this turn.\n\n${body}` });
-        if (same && status) { note.status = status; note.detail = ""; }
+        note.messages.push({
+          role: "agent",
+          at: freeStamp(note),
+          body: same
+            ? body
+            : `Response to submitted revision ${revision.slice(0, 12)}. Later reviewer edits or follow-ups were not part of this turn.\n\n${body}`,
+        });
+        if (same && status) {
+          note.status = status;
+          note.detail = "";
+        }
         await writeFile(path.join(dir(), file), renderMarkdown(doc), "utf8");
         return note;
       });
@@ -252,7 +328,8 @@ export function createSession(repoRoot: string, outDir: string, range: string, c
           const kept = known.get(comment.id);
           if (kept) {
             const next = applyComment(kept, comment);
-            if (reviewerFields(kept) !== reviewerFields(next)) changed.push(next);
+            if (reviewerFields(kept) !== reviewerFields(next))
+              changed.push(next);
             Object.assign(kept, next);
           } else {
             const note = noteFromComment(comment);
@@ -274,7 +351,11 @@ export function createSession(repoRoot: string, outDir: string, range: string, c
      * now, holding the old conversation so neither side has to reconstruct it. The provenance marker
      * is what keeps the original from being offered as a ghost beside its own continuation.
      */
-    import(comment: ReviewComment, thread: ReviewMessage[], from: string): Promise<ReviewNote> {
+    import(
+      comment: ReviewComment,
+      thread: ReviewMessage[],
+      from: string,
+    ): Promise<ReviewNote> {
       return serialise(async () => {
         const doc = await read();
         const note = noteFromComment(comment);
@@ -293,7 +374,11 @@ export function createSession(repoRoot: string, outDir: string, range: string, c
         if (!doc) return null;
         const note = doc.notes.find((entry) => entry.id === id);
         if (!note) return null;
-        const message: ReviewMessage = { role: "reviewer", at: freeStamp(note), body };
+        const message: ReviewMessage = {
+          role: "reviewer",
+          at: freeStamp(note),
+          body,
+        };
         note.messages.push(message);
         await writeFile(path.join(dir(), file), renderMarkdown(doc), "utf8");
         return note;
@@ -305,7 +390,12 @@ export function createSession(repoRoot: string, outDir: string, range: string, c
      * without a second one contradicting it. Its stamp and its place in the thread are kept: the
      * message is the one the agent was already reading, saying something else.
      */
-    editReply(id: string, at: string, body: string, file = name): Promise<ReviewNote | null> {
+    editReply(
+      id: string,
+      at: string,
+      body: string,
+      file = name,
+    ): Promise<ReviewNote | null> {
       return serialise(async () => {
         const doc = await readNamed(file);
         if (!doc) return null;
@@ -324,7 +414,9 @@ export function createSession(repoRoot: string, outDir: string, range: string, c
         if (!doc) return null;
         const found = ownMessage(doc, id, at);
         if (!found) return null;
-        found.note.messages = found.note.messages.filter((entry) => entry !== found.message);
+        found.note.messages = found.note.messages.filter(
+          (entry) => entry !== found.message,
+        );
         await writeFile(path.join(dir(), file), renderMarkdown(doc), "utf8");
         return found.note;
       });
@@ -332,13 +424,14 @@ export function createSession(repoRoot: string, outDir: string, range: string, c
 
     /** Add visual evidence without rewriting the original subject or the agent's conversation. */
     addWebCapture(id: string, capture: WebCapture): Promise<ReviewNote | null> {
-      const clean=webCapture(capture);
+      const clean = webCapture(capture);
       return serialise(async () => {
-        if (!clean) throw new Error('Invalid comparison capture.');
+        if (!clean) throw new Error("Invalid comparison capture.");
         const doc = await read();
-        const note = doc.notes.find(entry => entry.id === id);
+        const note = doc.notes.find((entry) => entry.id === id);
         if (!note?.web) return null;
-        if (note.web.after.length >= 100) throw new Error('This note already has 100 comparison captures.');
+        if (note.web.after.length >= 100)
+          throw new Error("This note already has 100 comparison captures.");
         note.web.after.push(clean);
         await write(doc);
         return note;
@@ -346,16 +439,20 @@ export function createSession(repoRoot: string, outDir: string, range: string, c
     },
 
     /** Append another selected subject, keeping comparison captures tied to the original subject. */
-    addWebSelection(id: string, capture: WebCapture): Promise<ReviewNote | null> {
-      const clean=webCapture(capture);
+    addWebSelection(
+      id: string,
+      capture: WebCapture,
+    ): Promise<ReviewNote | null> {
+      const clean = webCapture(capture);
       return serialise(async () => {
-        if (!clean) throw new Error('Invalid page selection.');
+        if (!clean) throw new Error("Invalid page selection.");
         const doc = await read();
-        const note = doc.notes.find(entry => entry.id === id);
-        if (!note || note.scope !== 'global') return null;
-        if (!note.web) note.web = {before:clean,after:[]};
+        const note = doc.notes.find((entry) => entry.id === id);
+        if (!note || note.scope !== "global") return null;
+        if (!note.web) note.web = { before: clean, after: [] };
         else {
-          if ((note.web.additional?.length ?? 0) >= 100) throw new Error('This note already has 100 additional selections.');
+          if ((note.web.additional?.length ?? 0) >= 100)
+            throw new Error("This note already has 100 additional selections.");
           (note.web.additional ??= []).push(clean);
         }
         await write(doc);
@@ -364,32 +461,53 @@ export function createSession(repoRoot: string, outDir: string, range: string, c
     },
 
     /** Update only one capture's proposal against a fresh file and the editor's expected image. */
-    annotateWebCapture(id: string,target: WebAnnotationTarget,annotation: WebAnnotation|null): Promise<ReviewNote|null> {
-      const clean=annotation===null?null:webAnnotation(annotation),where=webAnnotationTarget(target);
+    annotateWebCapture(
+      id: string,
+      target: WebAnnotationTarget,
+      annotation: WebAnnotation | null,
+    ): Promise<ReviewNote | null> {
+      const clean = annotation === null ? null : webAnnotation(annotation),
+        where = webAnnotationTarget(target);
       return serialise(async () => {
-        if(!where||annotation!==null&&!clean)throw new WebAnnotationInvalid('Invalid screenshot annotation.');
-        const doc=await read(),note=doc.notes.find(entry=>entry.id===id);
-        if(!note?.web||note.scope!=='global')return null;
-        const web=setWebAnnotation(note.web,where,clean);
-        if(clean){
-          const capture=where.kind==='after'?web.after[where.index]!:
-            where.index===0?web.before:web.additional![where.index-1]!;
-          if(!await webAnnotationImagesMatch(clean,capture.area,name=>readAttachment(repoRoot,outDir,name)))
-            throw new WebAnnotationInvalid('The PNG attachments are missing, invalid, or their dimensions do not match the annotation. Upload the drawing again.');
+        if (!where || (annotation !== null && !clean))
+          throw new WebAnnotationInvalid("Invalid screenshot annotation.");
+        const doc = await read(),
+          note = doc.notes.find((entry) => entry.id === id);
+        if (!note?.web || note.scope !== "global") return null;
+        const web = setWebAnnotation(note.web, where, clean);
+        if (clean) {
+          const capture =
+            where.kind === "after"
+              ? web.after[where.index]!
+              : where.index === 0
+                ? web.before
+                : web.additional![where.index - 1]!;
+          if (
+            !(await webAnnotationImagesMatch(clean, capture.area, (name) =>
+              readAttachment(repoRoot, outDir, name),
+            ))
+          )
+            throw new WebAnnotationInvalid(
+              "The PNG attachments are missing, invalid, or their dimensions do not match the annotation. Upload the drawing again.",
+            );
         }
-        note.web=web;
+        note.web = web;
         await write(doc);
         return note;
       });
     },
 
     /** Remove a selected subject against freshly read evidence without changing the conversation. */
-    removeWebSelection(id: string,index: number,key: string): Promise<ReviewNote | null> {
+    removeWebSelection(
+      id: string,
+      index: number,
+      key: string,
+    ): Promise<ReviewNote | null> {
       return serialise(async () => {
         const doc = await read();
-        const note = doc.notes.find(entry => entry.id === id);
-        if (!note?.web || note.scope !== 'global') return null;
-        const web = dropWebSelection(note.web,index,key);
+        const note = doc.notes.find((entry) => entry.id === id);
+        if (!note?.web || note.scope !== "global") return null;
+        const web = dropWebSelection(note.web, index, key);
         if (web) note.web = web;
         else delete note.web;
         await write(doc);

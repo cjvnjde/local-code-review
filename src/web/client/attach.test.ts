@@ -1,19 +1,36 @@
 import { describe, expect, test } from "bun:test";
-import { attachSrc, filesFrom, insertShot, labelFor, plainShots, shotHtml, shotToken, swapShot } from "./attach.ts";
+import {
+  attachSrc,
+  filesFrom,
+  insertShot,
+  labelFor,
+  plainShots,
+  shotHtml,
+  shotToken,
+  swapShot,
+} from "./attach.ts";
 
 describe("attachSrc", () => {
-  test("agent reply pictures can live beside the review or in its assets folder",()=>{
-    const name='review-2026-10-29T12-26-26-package-not-ready.png';
-    expect(attachSrc(name)).toBe('/api/attachment?ref='+name);
-    expect(attachSrc('./'+name)).toBe('/api/attachment?ref='+name);
-    expect(attachSrc('assets/missing-spec-secret.png')).toBe('/api/attachment?ref=assets%2Fmissing-spec-secret.png');
-    expect(attachSrc('.review/'+name)).toBe('');
-    expect(attachSrc('assets/../../outside.png')).toBe('');
+  test("agent reply pictures can live beside the review or in its assets folder", () => {
+    const name = "review-2026-10-29T12-26-26-package-not-ready.png";
+    expect(attachSrc(name)).toBe("/api/attachment?ref=" + name);
+    expect(attachSrc("./" + name)).toBe("/api/attachment?ref=" + name);
+    expect(attachSrc("assets/missing-spec-secret.png")).toBe(
+      "/api/attachment?ref=assets%2Fmissing-spec-secret.png",
+    );
+    expect(attachSrc(".review/" + name)).toBe("");
+    expect(attachSrc("assets/../../outside.png")).toBe("");
   });
   test("a picture of this review is drawn from the review's own directory", () => {
-    expect(attachSrc("images/a1b2c3.png")).toBe("/api/attachment?name=a1b2c3.png");
-    expect(attachSrc("images/after-fix.PNG")).toBe("/api/attachment?name=after-fix.PNG");
-    expect(attachSrc("<images/a1b2c3.png>")).toBe("/api/attachment?name=a1b2c3.png");
+    expect(attachSrc("images/a1b2c3.png")).toBe(
+      "/api/attachment?name=a1b2c3.png",
+    );
+    expect(attachSrc("images/after-fix.PNG")).toBe(
+      "/api/attachment?name=after-fix.PNG",
+    );
+    expect(attachSrc("<images/a1b2c3.png>")).toBe(
+      "/api/attachment?name=a1b2c3.png",
+    );
   });
 
   test("anything that is not one is not one, so it stays the link it was written as", () => {
@@ -35,7 +52,9 @@ describe("attachSrc", () => {
 describe("labelFor", () => {
   test("a file keeps its own name, without the extension", () => {
     expect(labelFor("overlapping-header.png")).toBe("overlapping-header");
-    expect(labelFor("/Users/me/Desktop/Screenshot 2026-08-20.png")).toBe("Screenshot 2026-08-20");
+    expect(labelFor("/Users/me/Desktop/Screenshot 2026-08-20.png")).toBe(
+      "Screenshot 2026-08-20",
+    );
   });
 
   test("a picture the clipboard had no name for is called what it is", () => {
@@ -51,7 +70,12 @@ describe("labelFor", () => {
 
 describe("insertShot", () => {
   test("a picture lands on a line of its own, one blank line clear of the prose", () => {
-    const written = insertShot("This is wrong:", 14, 14, "![shot](images/a.png)");
+    const written = insertShot(
+      "This is wrong:",
+      14,
+      14,
+      "![shot](images/a.png)",
+    );
     expect(written.value).toBe("This is wrong:\n\n![shot](images/a.png)");
     expect(written.caret).toBe(written.value.length);
   });
@@ -63,8 +87,12 @@ describe("insertShot", () => {
   });
 
   test("an empty note is just the picture, and a selection is replaced by it", () => {
-    expect(insertShot("", 0, 0, "![a](images/a.png)").value).toBe("![a](images/a.png)");
-    expect(insertShot("take this out", 5, 13, "![a](images/a.png)").value).toBe("take\n\n![a](images/a.png)");
+    expect(insertShot("", 0, 0, "![a](images/a.png)").value).toBe(
+      "![a](images/a.png)",
+    );
+    expect(insertShot("take this out", 5, 13, "![a](images/a.png)").value).toBe(
+      "take\n\n![a](images/a.png)",
+    );
   });
 
   test("offsets outside the text are read as its ends rather than as an error", () => {
@@ -75,12 +103,17 @@ describe("insertShot", () => {
 
 describe("shotToken", () => {
   test("is the ordinary Markdown image, which is the whole of what is written down", () => {
-    expect(shotToken("screenshot", "images/a1b2.png")).toBe("![screenshot](images/a1b2.png)");
+    expect(shotToken("screenshot", "images/a1b2.png")).toBe(
+      "![screenshot](images/a1b2.png)",
+    );
   });
 });
 
 describe("filesFrom", () => {
-  const item = (type: string) => ({ kind: "file", getAsFile: () => ({ type, name: "image.png" }) });
+  const item = (type: string) => ({
+    kind: "file",
+    getAsFile: () => ({ type, name: "image.png" }),
+  });
 
   test("a pasted screenshot is the picture in the clipboard", () => {
     const files = filesFrom({ items: [item("image/png")], files: [] });
@@ -89,24 +122,34 @@ describe("filesFrom", () => {
   });
 
   test("a drop from the desktop is read off the files it carries", () => {
-    expect(filesFrom({ files: [{ type: "image/webp", name: "a.webp" }] }).length).toBe(1);
+    expect(
+      filesFrom({ files: [{ type: "image/webp", name: "a.webp" }] }).length,
+    ).toBe(1);
   });
 
   test("text, and files lcr does not keep, are nothing to attach", () => {
-    expect(filesFrom({ items: [{ kind: "string", getAsFile: () => null }] })).toEqual([]);
-    expect(filesFrom({ files: [{ type: "application/pdf", name: "spec.pdf" }] })).toEqual([]);
+    expect(
+      filesFrom({ items: [{ kind: "string", getAsFile: () => null }] }),
+    ).toEqual([]);
+    expect(
+      filesFrom({ files: [{ type: "application/pdf", name: "spec.pdf" }] }),
+    ).toEqual([]);
     expect(filesFrom(null)).toEqual([]);
   });
 });
 
 describe("plainShots", () => {
   test("a summary reads a picture as what it was called", () => {
-    expect(plainShots("look: ![the header](images/a.png)")).toBe("look: the header");
+    expect(plainShots("look: ![the header](images/a.png)")).toBe(
+      "look: the header",
+    );
     expect(plainShots("![](images/a.png)")).toBe("image");
   });
 
   test("a link that is not an attached picture is left exactly as it was written", () => {
-    expect(plainShots("![shot](https://example.com/a.png)")).toBe("![shot](https://example.com/a.png)");
+    expect(plainShots("![shot](https://example.com/a.png)")).toBe(
+      "![shot](https://example.com/a.png)",
+    );
     expect(plainShots("[a note](lcr:9f)")).toBe("[a note](lcr:9f)");
   });
 });
@@ -121,18 +164,27 @@ describe("shotHtml", () => {
   });
 
   test("escapes what it is given rather than trusting the note it came out of", () => {
-    const html = shotHtml("/api/attachment?name=a.png", '"><script>alert(1)</script>');
+    const html = shotHtml(
+      "/api/attachment?name=a.png",
+      '"><script>alert(1)</script>',
+    );
     expect(html).not.toContain("<script>");
   });
 
   test("a picture with nothing written over it still says what it is", () => {
-    expect(shotHtml("/api/attachment?name=a.png", "")).toContain('alt="attached image"');
+    expect(shotHtml("/api/attachment?name=a.png", "")).toContain(
+      'alt="attached image"',
+    );
   });
 });
 
 describe("swapShot", () => {
   test("the placeholder becomes the link, where the placeholder stood", () => {
-    const swapped = swapShot("look:\n\n![…attaching](#lcr-attaching-1)", "![…attaching](#lcr-attaching-1)", "![a](images/a.png)");
+    const swapped = swapShot(
+      "look:\n\n![…attaching](#lcr-attaching-1)",
+      "![…attaching](#lcr-attaching-1)",
+      "![a](images/a.png)",
+    );
     expect(swapped!.value).toBe("look:\n\n![a](images/a.png)");
     expect(swapped!.caret).toBe(swapped!.value.length);
   });
@@ -140,11 +192,15 @@ describe("swapShot", () => {
   test("a picture that never arrived takes the blank line it was given with it", () => {
     expect(swapShot("look:\n\nMARK", "MARK", "")!.value).toBe("look:");
     expect(swapShot("MARK", "MARK", "")!.value).toBe("");
-    expect(swapShot("before\n\nMARK\n\nafter", "MARK", "")!.value).toBe("before\n\nafter");
+    expect(swapShot("before\n\nMARK\n\nafter", "MARK", "")!.value).toBe(
+      "before\n\nafter",
+    );
   });
 
   test("a placeholder the reader deleted is nothing to swap", () => {
-    expect(swapShot("changed my mind", "MARK", "![a](images/a.png)")).toBeNull();
+    expect(
+      swapShot("changed my mind", "MARK", "![a](images/a.png)"),
+    ).toBeNull();
   });
 });
 
@@ -167,7 +223,8 @@ class Fake extends EventTarget {
 /** Stands in for a `.nbox`, which outlives the editors drawn into it. */
 class FakeBox extends Fake {
   open: any = null;
-  querySelector = (selector: string) => (selector === "textarea" ? this.open : null);
+  querySelector = (selector: string) =>
+    selector === "textarea" ? this.open : null;
   /** A box that has an editor in it, the way one being written into does. */
   static with(ta: any) {
     const box = new FakeBox();
@@ -194,9 +251,10 @@ class FakeText extends Fake {
     this.addEventListener("input", () => this.grew++);
   }
 }
-const paste = (files: any[]) => Object.assign(new Event("paste", { cancelable: true }), {
-  clipboardData: { items: [], files },
-});
+const paste = (files: any[]) =>
+  Object.assign(new Event("paste", { cancelable: true }), {
+    clipboardData: { items: [], files },
+  });
 const png = (name = "image.png") => ({ type: "image/png", name });
 /** Lets the upload and the swap that follows it settle. */
 const settle = () => new Promise((done) => setTimeout(done, 0));
@@ -211,7 +269,8 @@ describe("wireAttach", () => {
       return Response.json({ name: "a1.png", ref: "images/a1.png" });
     }) as any;
     try {
-      const ta = new FakeText(), box = FakeBox.with(ta);
+      const ta = new FakeText(),
+        box = FakeBox.with(ta);
       ta.value = "This is wrong:";
       ta.selectionStart = ta.selectionEnd = ta.value.length;
       wireAttach(box, ta);
@@ -233,7 +292,8 @@ describe("wireAttach", () => {
 
   test("a paste of ordinary text is left to the box", async () => {
     const { wireAttach } = await import("./attach.ts");
-    const ta = new FakeText(), box = FakeBox.with(ta);
+    const ta = new FakeText(),
+      box = FakeBox.with(ta);
     wireAttach(box, ta);
     const event = paste([{ type: "text/plain", name: "" }]);
     ta.dispatchEvent(event);
@@ -243,12 +303,15 @@ describe("wireAttach", () => {
 
   test("a picture that never arrives leaves no gap where it stood", async () => {
     const { wireAttach } = await import("./attach.ts");
-    const original = globalThis.fetch, alerted: string[] = [];
+    const original = globalThis.fetch,
+      alerted: string[] = [];
     const noAlert = (globalThis as any).alert;
-    globalThis.fetch = (async () => Response.json({ error: "no room on disk" }, { status: 500 })) as any;
+    globalThis.fetch = (async () =>
+      Response.json({ error: "no room on disk" }, { status: 500 })) as any;
     (globalThis as any).alert = (text: string) => alerted.push(text);
     try {
-      const ta = new FakeText(), box = FakeBox.with(ta);
+      const ta = new FakeText(),
+        box = FakeBox.with(ta);
       ta.value = "look";
       ta.selectionStart = ta.selectionEnd = 4;
       wireAttach(box, ta);
@@ -265,9 +328,11 @@ describe("wireAttach", () => {
   test("a placeholder the reader deleted is not written over", async () => {
     const { wireAttach } = await import("./attach.ts");
     const original = globalThis.fetch;
-    globalThis.fetch = (async () => Response.json({ ref: "images/a2.png" })) as any;
+    globalThis.fetch = (async () =>
+      Response.json({ ref: "images/a2.png" })) as any;
     try {
-      const ta = new FakeText(), box = FakeBox.with(ta);
+      const ta = new FakeText(),
+        box = FakeBox.with(ta);
       wireAttach(box, ta);
       ta.dispatchEvent(paste([png()]));
       ta.value = "changed my mind";
@@ -281,16 +346,27 @@ describe("wireAttach", () => {
   test("a drag of files says the box will take them, and a drop of one takes it", async () => {
     const { wireAttach } = await import("./attach.ts");
     const original = globalThis.fetch;
-    globalThis.fetch = (async () => Response.json({ ref: "images/a3.png" })) as any;
+    globalThis.fetch = (async () =>
+      Response.json({ ref: "images/a3.png" })) as any;
     try {
-      const ta = new FakeText(), box = FakeBox.with(ta);
+      const ta = new FakeText(),
+        box = FakeBox.with(ta);
       wireAttach(box, ta);
-      const transfer = { types: ["Files"], items: [], files: [png("shot-of-the-header.png")], dropEffect: "" };
-      const over = Object.assign(new Event("dragover", { cancelable: true }), { dataTransfer: transfer });
+      const transfer = {
+        types: ["Files"],
+        items: [],
+        files: [png("shot-of-the-header.png")],
+        dropEffect: "",
+      };
+      const over = Object.assign(new Event("dragover", { cancelable: true }), {
+        dataTransfer: transfer,
+      });
       box.dispatchEvent(over);
       expect(box.classes.has("dropping")).toBe(true);
       expect(over.defaultPrevented).toBe(true);
-      const drop = Object.assign(new Event("drop", { cancelable: true }), { dataTransfer: transfer });
+      const drop = Object.assign(new Event("drop", { cancelable: true }), {
+        dataTransfer: transfer,
+      });
       box.dispatchEvent(drop);
       expect(box.classes.has("dropping")).toBe(false);
       expect(drop.defaultPrevented).toBe(true);
@@ -303,14 +379,19 @@ describe("wireAttach", () => {
 
   test("a drag of text is the browser's business, so dragging a word inside the box still works", async () => {
     const { wireAttach } = await import("./attach.ts");
-    const ta = new FakeText(), box = FakeBox.with(ta);
+    const ta = new FakeText(),
+      box = FakeBox.with(ta);
     wireAttach(box, ta);
     const transfer = { types: ["text/plain"], items: [], files: [] };
-    const over = Object.assign(new Event("dragover", { cancelable: true }), { dataTransfer: transfer });
+    const over = Object.assign(new Event("dragover", { cancelable: true }), {
+      dataTransfer: transfer,
+    });
     box.dispatchEvent(over);
     expect(over.defaultPrevented).toBe(false);
     expect(box.classes.has("dropping")).toBe(false);
-    const drop = Object.assign(new Event("drop", { cancelable: true }), { dataTransfer: transfer });
+    const drop = Object.assign(new Event("drop", { cancelable: true }), {
+      dataTransfer: transfer,
+    });
     box.dispatchEvent(drop);
     expect(drop.defaultPrevented).toBe(false);
   });
@@ -324,14 +405,24 @@ describe("wireAttach", () => {
       return Response.json({ ref: "images/a4.png" });
     }) as any;
     try {
-      const first = new FakeText(), box = FakeBox.with(first);
+      const first = new FakeText(),
+        box = FakeBox.with(first);
       wireAttach(box, first);
       // The note is edited again: the same box, a second text box drawn into it.
       const second = new FakeText();
       box.open = second;
       wireAttach(box, second);
-      const transfer = { types: ["Files"], items: [], files: [png()], dropEffect: "" };
-      box.dispatchEvent(Object.assign(new Event("drop", { cancelable: true }), { dataTransfer: transfer }));
+      const transfer = {
+        types: ["Files"],
+        items: [],
+        files: [png()],
+        dropEffect: "",
+      };
+      box.dispatchEvent(
+        Object.assign(new Event("drop", { cancelable: true }), {
+          dataTransfer: transfer,
+        }),
+      );
       await settle();
       expect(uploads).toBe(1);
       // And into the editor that is actually open, not the one that was.
@@ -352,12 +443,21 @@ describe("wireAttach", () => {
     }) as any;
     try {
       // A reply box stands inside the note box it answers, so a drop on it reaches both.
-      const reply = new FakeText(), inner = FakeBox.with(reply);
-      const note = new FakeText(), outer = FakeBox.with(note);
+      const reply = new FakeText(),
+        inner = FakeBox.with(reply);
+      const note = new FakeText(),
+        outer = FakeBox.with(note);
       wireAttach(outer, note);
       wireAttach(inner, reply);
-      const transfer = { types: ["Files"], items: [], files: [png()], dropEffect: "" };
-      const drop = Object.assign(new Event("drop", { cancelable: true }), { dataTransfer: transfer });
+      const transfer = {
+        types: ["Files"],
+        items: [],
+        files: [png()],
+        dropEffect: "",
+      };
+      const drop = Object.assign(new Event("drop", { cancelable: true }), {
+        dataTransfer: transfer,
+      });
       inner.dispatchEvent(drop);
       // The page bubbles the same event on to the box around it.
       outer.dispatchEvent(drop);
@@ -372,20 +472,31 @@ describe("wireAttach", () => {
 
   test("a drop on a note with nothing open says where a picture goes", async () => {
     const { wireAttach } = await import("./attach.ts");
-    const noAlert = (globalThis as any).alert, alerted: string[] = [];
+    const noAlert = (globalThis as any).alert,
+      alerted: string[] = [];
     (globalThis as any).alert = (text: string) => alerted.push(text);
     try {
-      const ta = new FakeText(), box = FakeBox.with(ta);
+      const ta = new FakeText(),
+        box = FakeBox.with(ta);
       wireAttach(box, ta);
       box.open = null; // the editor closed and the note is being read
-      const transfer = { types: ["Files"], items: [], files: [png()], dropEffect: "" };
+      const transfer = {
+        types: ["Files"],
+        items: [],
+        files: [png()],
+        dropEffect: "",
+      };
       // The drag is still taken — a drop only reaches a target that took it, and the browser's own
       // answer to a file nobody took is to open it over the review — but nothing is marked for it.
-      const over = Object.assign(new Event("dragover", { cancelable: true }), { dataTransfer: transfer });
+      const over = Object.assign(new Event("dragover", { cancelable: true }), {
+        dataTransfer: transfer,
+      });
       box.dispatchEvent(over);
       expect(over.defaultPrevented).toBe(true);
       expect(box.classes.has("dropping")).toBe(false);
-      const drop = Object.assign(new Event("drop", { cancelable: true }), { dataTransfer: transfer });
+      const drop = Object.assign(new Event("drop", { cancelable: true }), {
+        dataTransfer: transfer,
+      });
       box.dispatchEvent(drop);
       expect(drop.defaultPrevented).toBe(true);
       expect(alerted[0]).toContain("drop the picture in there");

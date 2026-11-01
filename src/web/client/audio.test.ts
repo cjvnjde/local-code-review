@@ -8,11 +8,22 @@ const file = (over: Partial<AudioFile> = {}): AudioFile => ({
   status: "modified",
   ...over,
 });
-const sides = (html: string) => [...html.matchAll(/class="audf (old|new)"/g)].map((match) => match[1]);
+const sides = (html: string) =>
+  [...html.matchAll(/class="audf (old|new)"/g)].map((match) => match[1]);
 
 describe("isAudio", () => {
   test("recognizes browser-playable music extensions regardless of case", () => {
-    for (const name of ["song.MP3", "song.wav", "song.ogg", "song.opus", "song.flac", "song.m4a", "song.aac", "song.aiff", "song.weba"]) {
+    for (const name of [
+      "song.MP3",
+      "song.wav",
+      "song.ogg",
+      "song.opus",
+      "song.flac",
+      "song.m4a",
+      "song.aac",
+      "song.aiff",
+      "song.weba",
+    ]) {
       expect(isAudio(name)).toBe(true);
     }
     expect(isAudio("song.mp3.ts")).toBe(false);
@@ -35,7 +46,9 @@ describe("audioHtml", () => {
   });
 
   test("a rename names the old recording and asks the server under the new path", () => {
-    const html = audioHtml(file({ status: "renamed", from: "music/intro.mp3" }));
+    const html = audioHtml(
+      file({ status: "renamed", from: "music/intro.mp3" }),
+    );
     // One measured label removes a middle run as needed, and the title keeps the original whole.
     expect(html).toContain('title="music/intro.mp3"');
     expect(html).toContain('<span class="ptx">music/intro.mp3</span>');

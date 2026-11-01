@@ -7,7 +7,8 @@ import { runGit } from "./git.ts";
 
 const workspace = async (...names: string[]) => {
   const dir = await mkdtemp(path.join(tmpdir(), "lcr-output-"));
-  for (const name of names) await writeFile(path.join(dir, name), "# Review notes\n", "utf8");
+  for (const name of names)
+    await writeFile(path.join(dir, name), "# Review notes\n", "utf8");
   return dir;
 };
 
@@ -79,13 +80,18 @@ describe("listReviews", () => {
 describe("deleteReviews", () => {
   test("removes every review file and keeps the rest of the directory", async () => {
     const dir = await workspace("review-1.md", "review-2.md", "notes.md");
-    expect(await deleteReviews(dir, ".")).toEqual(["review-1.md", "review-2.md"]);
+    expect(await deleteReviews(dir, ".")).toEqual([
+      "review-1.md",
+      "review-2.md",
+    ]);
     expect(await readdir(dir)).toEqual(["notes.md"]);
   });
 
   test("spares the file it is told to keep", async () => {
     const dir = await workspace("review-1.md", "review-2.md");
-    expect(await deleteReviews(dir, ".", "review-2.md")).toEqual(["review-1.md"]);
+    expect(await deleteReviews(dir, ".", "review-2.md")).toEqual([
+      "review-1.md",
+    ]);
     expect(await listReviews(dir, ".")).toEqual(["review-2.md"]);
   });
 

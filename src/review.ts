@@ -38,9 +38,12 @@ export function renderMarkdown(doc: ReviewDoc): string {
   for (const [file, notes] of byFile) {
     output.push(`## ${file}`, "");
     // A note on the file as a whole leads its section: it is the frame for every line note under it.
-    notes.sort((a, b) =>
-      Number(b.scope === "file") - Number(a.scope === "file") ||
-      a.start - b.start || (a.ca ?? -1) - (b.ca ?? -1));
+    notes.sort(
+      (a, b) =>
+        Number(b.scope === "file") - Number(a.scope === "file") ||
+        a.start - b.start ||
+        (a.ca ?? -1) - (b.ca ?? -1),
+    );
     for (const note of notes) output.push(...renderNote(note));
   }
 

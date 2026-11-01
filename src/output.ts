@@ -5,13 +5,18 @@ import { runGit } from "./git.ts";
 /** The one definition of what lcr generated: nothing else in the output directory is ours to touch. */
 const REVIEW_FILE = /^review-.*\.md$/;
 
-export async function excludeRelativeOutput(repoRoot: string, outDir: string): Promise<void> {
+export async function excludeRelativeOutput(
+  repoRoot: string,
+  outDir: string,
+): Promise<void> {
   if (path.isAbsolute(outDir)) return;
 
   try {
     // Asked of git rather than assembled: in a linked worktree the exclude file lives in the
     // main repository's common dir, not under the worktree's own git dir.
-    const excludePath = (await runGit(["rev-parse", "--git-path", "info/exclude"], repoRoot)).trim();
+    const excludePath = (
+      await runGit(["rev-parse", "--git-path", "info/exclude"], repoRoot)
+    ).trim();
     const excludeFile = path.resolve(repoRoot, excludePath);
     const current = await readFile(excludeFile, "utf8").catch(() => "");
     const entry = `/${outDir.replace(/^\.\//, "").replace(/\/$/, "")}/`;
@@ -26,7 +31,10 @@ export async function excludeRelativeOutput(repoRoot: string, outDir: string): P
 }
 
 /** Names of the generated review files in the output directory, oldest name first. */
-export async function listReviews(repoRoot: string, outDir: string): Promise<string[]> {
+export async function listReviews(
+  repoRoot: string,
+  outDir: string,
+): Promise<string[]> {
   try {
     const names = await readdir(path.resolve(repoRoot, outDir));
     return names.filter((name) => REVIEW_FILE.test(name)).sort();
@@ -39,7 +47,11 @@ export async function listReviews(repoRoot: string, outDir: string): Promise<str
  * Deletes generated review files and answers the names that went. `keep` survives, so a fresh save
  * can prune what came before it. Only names lcr writes itself are ever removed.
  */
-export async function deleteReviews(repoRoot: string, outDir: string, keep = ""): Promise<string[]> {
+export async function deleteReviews(
+  repoRoot: string,
+  outDir: string,
+  keep = "",
+): Promise<string[]> {
   const directory = path.resolve(repoRoot, outDir);
   const removed: string[] = [];
   for (const name of await listReviews(repoRoot, outDir)) {

@@ -1,21 +1,92 @@
 /* Composer presentation is shared; note and reply controllers keep their own lifecycle. */
-textarea.composer-input{width:100%;background:var(--crust);color:var(--ink);border:1px solid var(--edge-hi);border-radius:5px;
-  padding:8px 10px;font:var(--fs-code)/1.55 var(--sans);resize:none;min-height:var(--composer-min,76px);
-  display:block;overflow-y:hidden}
-textarea.composer-input:focus,.msg .medit textarea:focus{outline:none;border-color:var(--composer-focus,var(--accent))}
-.reply,.medit{--composer-min:62px;--composer-focus:var(--mauve)}
+textarea.composer-input {
+  width: 100%;
+  background: var(--crust);
+  color: var(--ink);
+  border: 1px solid var(--edge-hi);
+  border-radius: 5px;
+  padding: 8px 10px;
+  font: var(--fs-code)/1.55 var(--sans);
+  resize: none;
+  min-height: var(--composer-min, 76px);
+  display: block;
+  overflow-y: hidden;
+}
+textarea.composer-input:focus,
+.msg .medit textarea:focus {
+  outline: none;
+  border-color: var(--composer-focus, var(--accent));
+}
+.reply,
+.medit {
+  --composer-min: 62px;
+  --composer-focus: var(--mauve);
+}
 
 /* Suggestions have the same presentation in a note and either side of its thread. */
-.nbody .sugb,.msg .mb .sugb{margin:8px 0;border:1px solid var(--edge-hi);border-radius:5px;background:var(--crust);overflow:hidden}
-.nbody .sugb:first-child,.msg .mb .sugb:first-child{margin-top:0}
-.nbody .sugb:last-child,.msg .mb .sugb:last-child{margin-bottom:0}
-.nbody .sugh,.msg .mb .sugh{padding:3px 10px;background:var(--add-gut);color:var(--add);font:var(--fs-xs)/1.6 var(--mono);
-  text-transform:uppercase;letter-spacing:.05em}
-.nbody .sugb pre{margin:0;padding:8px 10px;overflow-x:auto;white-space:pre;
-  font:var(--fs-code)/1.55 var(--mono);color:var(--ink)}
-.sugb .sugc{padding:5px 0;font:var(--fs-code)/1.5 var(--mono);color:var(--ink)}
-.sugb .sugc .cl{display:flex;gap:6px;padding:0 10px;white-space:pre-wrap;word-break:break-word}
-.sugb .sugc .cl .cm{flex:none;width:8px;color:var(--ink-faint)}
-.sugb .sugc .cl .c{flex:1;min-width:0}
-.sugb .sugc .cl.add{background:var(--add-bg)} .sugb .sugc .cl.add .cm{color:var(--add)}
-.sugb .sugc .cl.del{background:var(--del-bg)} .sugb .sugc .cl.del .cm{color:var(--del)}
+.nbody .sugb,
+.msg .mb .sugb {
+  margin: 8px 0;
+  border: 1px solid var(--edge-hi);
+  border-radius: 5px;
+  background: var(--crust);
+  overflow: hidden;
+}
+.nbody .sugb:first-child,
+.msg .mb .sugb:first-child {
+  margin-top: 0;
+}
+.nbody .sugb:last-child,
+.msg .mb .sugb:last-child {
+  margin-bottom: 0;
+}
+.nbody .sugh,
+.msg .mb .sugh {
+  padding: 3px 10px;
+  background: var(--add-gut);
+  color: var(--add);
+  font: var(--fs-xs)/1.6 var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.nbody .sugb pre {
+  margin: 0;
+  padding: 8px 10px;
+  overflow-x: auto;
+  white-space: pre;
+  font: var(--fs-code)/1.55 var(--mono);
+  color: var(--ink);
+}
+.sugb .sugc {
+  padding: 5px 0;
+  font: var(--fs-code)/1.5 var(--mono);
+  color: var(--ink);
+}
+.sugb .sugc .cl {
+  display: flex;
+  gap: 6px;
+  padding: 0 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.sugb .sugc .cl .cm {
+  flex: none;
+  width: 8px;
+  color: var(--ink-faint);
+}
+.sugb .sugc .cl .c {
+  flex: 1;
+  min-width: 0;
+}
+.sugb .sugc .cl.add {
+  background: var(--add-bg);
+}
+.sugb .sugc .cl.add .cm {
+  color: var(--add);
+}
+.sugb .sugc .cl.del {
+  background: var(--del-bg);
+}
+.sugb .sugc .cl.del .cm {
+  color: var(--del);
+}

@@ -22,16 +22,20 @@ export interface DiffSource {
 /** Revision default mode compares against; an unborn branch has only Git's empty tree. */
 export async function resolveWorktreeBase(repoRoot: string): Promise<string> {
   if (await isCommit(repoRoot, "HEAD")) return "HEAD";
-  return (await runGit(["hash-object", "-t", "tree", "--stdin"], repoRoot, "")).trim();
+  return (
+    await runGit(["hash-object", "-t", "tree", "--stdin"], repoRoot, "")
+  ).trim();
 }
 
 async function gitDiffArgs(source: DiffSource): Promise<string[]> {
   if (source.diffArgs.length > 0) return source.diffArgs;
-  return [source.worktreeBase ?? await resolveWorktreeBase(source.repoRoot)];
+  return [source.worktreeBase ?? (await resolveWorktreeBase(source.repoRoot))];
 }
 
 export function diffRangeLabel(diffArgs: string[]): string {
-  return diffArgs.length === 0 ? "working tree vs HEAD (incl. untracked)" : diffArgs.join(" ");
+  return diffArgs.length === 0
+    ? "working tree vs HEAD (incl. untracked)"
+    : diffArgs.join(" ");
 }
 
 /**
@@ -42,13 +46,21 @@ export function diffRangeLabel(diffArgs: string[]): string {
  * a base git cannot resolve is recorded as nothing, which matches any.
  */
 export async function diffBase(source: DiffSource): Promise<string> {
-  const revs = source.diffArgs.slice(0, whereDashDash(source.diffArgs)).filter((arg) => !arg.startsWith("-"));
-  const short = (rev: string) => runGit(["rev-parse", "--short=12", `${rev || "HEAD"}^{commit}`], source.repoRoot);
+  const revs = source.diffArgs
+    .slice(0, whereDashDash(source.diffArgs))
+    .filter((arg) => !arg.startsWith("-"));
+  const short = (rev: string) =>
+    runGit(
+      ["rev-parse", "--short=12", `${rev || "HEAD"}^{commit}`],
+      source.repoRoot,
+    );
   try {
     const symmetric = revs.find((arg) => arg.includes("..."));
     if (symmetric) {
       const [a, b] = symmetric.split("...", 2) as [string, string];
-      const merged = (await runGit(["merge-base", a || "HEAD", b || "HEAD"], source.repoRoot)).trim();
+      const merged = (
+        await runGit(["merge-base", a || "HEAD", b || "HEAD"], source.repoRoot)
+      ).trim();
       return (await short(merged)).trim();
     }
     const range = revs.find((arg) => arg.includes(".."));
@@ -87,7 +99,10 @@ export interface DiffSides {
  */
 export async function diffSides(source: DiffSource): Promise<DiffSides> {
   if (source.diffArgs.length === 0) {
-    return { old: source.worktreeBase ?? await resolveWorktreeBase(source.repoRoot), new: WORKTREE };
+    return {
+      old: source.worktreeBase ?? (await resolveWorktreeBase(source.repoRoot)),
+      new: WORKTREE,
+    };
   }
   const args = source.diffArgs.slice(0, whereDashDash(source.diffArgs));
   const revs = args.filter((arg) => !arg.startsWith("-"));
@@ -95,7 +110,10 @@ export async function diffSides(source: DiffSource): Promise<DiffSides> {
   const symmetric = revs.find((arg) => arg.includes("..."));
   if (symmetric) {
     const [a, b] = symmetric.split("...", 2) as [string, string];
-    const merged = await runGit(["merge-base", a || "HEAD", b || "HEAD"], source.repoRoot)
+    const merged = await runGit(
+      ["merge-base", a || "HEAD", b || "HEAD"],
+      source.repoRoot,
+    )
       .then((text) => text.trim())
       .catch(() => "");
     return { old: merged || a || "HEAD", new: b || "HEAD" };
@@ -106,24 +124,32 @@ export async function diffSides(source: DiffSource): Promise<DiffSides> {
     return { old: a || "HEAD", new: b || "HEAD" };
   }
   const named: string[] = [];
-  for (const rev of revs) if (await isCommit(source.repoRoot, rev)) named.push(rev);
-  if (named.length >= 2) return { old: named[0] as string, new: named[1] as string };
+  for (const rev of revs)
+    if (await isCommit(source.repoRoot, rev)) named.push(rev);
+  if (named.length >= 2)
+    return { old: named[0] as string, new: named[1] as string };
   // With explicit arguments Git's ordinary diff compares the index, not HEAD, to the worktree.
   // Only our argument-less default injects HEAD to include staged changes as well.
-  return { old: named[0] ?? (staged ? "HEAD" : INDEX), new: staged ? INDEX : WORKTREE };
+  return {
+    old: named[0] ?? (staged ? "HEAD" : INDEX),
+    new: staged ? INDEX : WORKTREE,
+  };
 }
 
 /** Whether git reads an argument as a commit; a pathspec answers no, and so does anything unresolvable. */
 async function isCommit(repoRoot: string, rev: string): Promise<boolean> {
   if (!rev) return false;
-  return await runGit(["rev-parse", "--verify", "--quiet", `${rev}^{commit}`], repoRoot)
+  return await runGit(
+    ["rev-parse", "--verify", "--quiet", `${rev}^{commit}`],
+    repoRoot,
+  )
     .then((text) => !!text.trim())
     .catch(() => false);
 }
 
 export async function getDiff(source: DiffSource): Promise<DiffFile[]> {
-  const readsWorktree = source.diffArgs.length === 0
-    || (await diffSides(source)).new === WORKTREE;
+  const readsWorktree =
+    source.diffArgs.length === 0 || (await diffSides(source)).new === WORKTREE;
   // An untracked file has no diff until Git knows its path. Include it in every comparison whose
   // new side is the worktree, including one with an explicit base such as `origin/main`.
   if (readsWorktree) {
@@ -140,7 +166,10 @@ export async function validateDiff(source: DiffSource): Promise<void> {
 
 async function readDiff(source: DiffSource): Promise<string> {
   const args = await gitDiffArgs(source);
-  return runGit([...DIFF_ARGS, `-U${source.context}`, ...args], source.repoRoot);
+  return runGit(
+    [...DIFF_ARGS, `-U${source.context}`, ...args],
+    source.repoRoot,
+  );
 }
 
 /**
@@ -148,8 +177,13 @@ async function readDiff(source: DiffSource): Promise<string> {
  * unquoted UTF-8 paths so a non-ASCII file name comes through as itself rather than octal escapes.
  */
 const DIFF_ARGS = [
-  "-c", "core.quotepath=false",
-  "diff", "--no-color", "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/",
+  "-c",
+  "core.quotepath=false",
+  "diff",
+  "--no-color",
+  "--no-ext-diff",
+  "--src-prefix=a/",
+  "--dst-prefix=b/",
 ];
 
 /** Wide enough that git prints one file as a single hunk, so every unchanged line comes with it. */
@@ -168,22 +202,40 @@ export async function getFileContext(
   start: number,
   end: number,
 ): Promise<DiffRow[]> {
-  if (!path || !Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start) return [];
+  if (
+    !path ||
+    !Number.isInteger(start) ||
+    !Number.isInteger(end) ||
+    start < 1 ||
+    end < start
+  )
+    return [];
   const last = Math.min(end, start + MAX_CONTEXT_ROWS - 1);
   const args = await gitDiffArgs(source);
   const whole = [...DIFF_ARGS, `-U${FULL_CONTEXT}`, ...args];
   // Narrowing to one file keeps the re-diff cheap, but arguments already carrying a pathspec can
   // reject a second one, so a rejected narrow run falls back to diffing everything.
-  const scoped = args.includes("--") ? [...whole, path] : [...whole, "--", path];
-  const raw = await runGit(scoped, source.repoRoot).catch(() => runGit(whole, source.repoRoot));
+  const scoped = args.includes("--")
+    ? [...whole, path]
+    : [...whole, "--", path];
+  const raw = await runGit(scoped, source.repoRoot).catch(() =>
+    runGit(whole, source.repoRoot),
+  );
   return contextRows(parseDiff(raw), path, start, last);
 }
 
 /** Context rows of one file inside an inclusive new-side line range. */
-export function contextRows(files: DiffFile[], path: string, start: number, end: number): DiffRow[] {
+export function contextRows(
+  files: DiffFile[],
+  path: string,
+  start: number,
+  end: number,
+): DiffRow[] {
   const file = files.find((entry) => entry.path === path);
   if (!file) return [];
-  return file.rows.filter((row) => row.t === "ctx" && row.n != null && row.n >= start && row.n <= end);
+  return file.rows.filter(
+    (row) => row.t === "ctx" && row.n != null && row.n >= start && row.n <= end,
+  );
 }
 
 /** Cheap content fingerprint. Viewed marks expire when file diff changes. */
@@ -202,7 +254,8 @@ function headerPath(text: string): string {
 
 /** Undoes git's C-style path quoting, kept for names holding quotes, backslashes, or control bytes. */
 function unquotePath(text: string): string {
-  if (text.length < 2 || !text.startsWith('"') || !text.endsWith('"')) return text;
+  if (text.length < 2 || !text.startsWith('"') || !text.endsWith('"'))
+    return text;
   const inner = text.slice(1, -1);
   const bytes: number[] = [];
   const encoder = new TextEncoder();
@@ -215,13 +268,27 @@ function unquotePath(text: string): string {
     const next = inner[++i] as string;
     if (next >= "0" && next <= "7") {
       let octal = next;
-      while (octal.length < 3 && (inner[i + 1] as string) >= "0" && (inner[i + 1] as string) <= "7") {
+      while (
+        octal.length < 3 &&
+        (inner[i + 1] as string) >= "0" &&
+        (inner[i + 1] as string) <= "7"
+      ) {
         octal += inner[++i];
       }
       bytes.push(parseInt(octal, 8));
       continue;
     }
-    const known: Record<string, string> = { n: "\n", t: "\t", r: "\r", '"': '"', "\\": "\\", a: "\x07", b: "\b", f: "\f", v: "\v" };
+    const known: Record<string, string> = {
+      n: "\n",
+      t: "\t",
+      r: "\r",
+      '"': '"',
+      "\\": "\\",
+      a: "\x07",
+      b: "\b",
+      f: "\f",
+      v: "\v",
+    };
     bytes.push(...encoder.encode(known[next] ?? next));
   }
   return new TextDecoder().decode(new Uint8Array(bytes));
@@ -251,7 +318,14 @@ export function parseDiff(raw: string): DiffFile[] {
 
   for (const line of raw.split("\n")) {
     if (line.startsWith("diff --git ")) {
-      file = { path: pathFromGitLine(line), status: "modified", rows: [], added: 0, removed: 0, body: [] };
+      file = {
+        path: pathFromGitLine(line),
+        status: "modified",
+        rows: [],
+        added: 0,
+        removed: 0,
+        body: [],
+      };
       files.push(file);
       inHunk = false;
       continue;
@@ -285,7 +359,8 @@ export function parseDiff(raw: string): DiffFile[] {
       }
       if (line.startsWith("--- ")) {
         const diffPath = headerPath(line.slice(4));
-        if (!file.path && diffPath !== "/dev/null") file.path = diffPath.replace(/^a\//, "");
+        if (!file.path && diffPath !== "/dev/null")
+          file.path = diffPath.replace(/^a\//, "");
         continue;
       }
       if (line.startsWith("Binary files")) {
@@ -321,8 +396,10 @@ export function parseDiff(raw: string): DiffFile[] {
     }
   }
 
-  return files.filter((entry) => entry.path).map(({ body, ...entry }) => ({
-    ...entry,
-    hash: fingerprint(body.join("\n")),
-  }));
+  return files
+    .filter((entry) => entry.path)
+    .map(({ body, ...entry }) => ({
+      ...entry,
+      hash: fingerprint(body.join("\n")),
+    }));
 }

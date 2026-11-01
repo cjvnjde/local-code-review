@@ -1,5 +1,13 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { isMinted, markSubmitted, mintNoteId, reindexNotes, reviewTime, state, statusOf } from "./state.ts";
+import {
+  isMinted,
+  markSubmitted,
+  mintNoteId,
+  reindexNotes,
+  reviewTime,
+  state,
+  statusOf,
+} from "./state.ts";
 
 const OLD = ".review/review-2026-01-01T10-00-00.md";
 const NEW = ".review/review-2026-02-02T10-00-00.md";
@@ -13,8 +21,13 @@ const lineNote = (line: number, body: string) => ({
   start: line,
   end: line,
 });
-const applied = (id: string, key: string, source: string) =>
-  ({ id, key, status: "applied", detail: "done", source });
+const applied = (id: string, key: string, source: string) => ({
+  id,
+  key,
+  status: "applied",
+  detail: "done",
+  source,
+});
 
 const put = (...notes: any[]) => {
   state.notes = new Map(notes.map((n) => [n.id, n]));
@@ -32,7 +45,11 @@ describe("mintNoteId", () => {
   });
 
   test("a character range stays part of the location it was minted from", () => {
-    expect(mintNoteId("src/app.ts", "n7", "n7", 4, 9).startsWith("src/app.ts|n7|n7|4-9|#")).toBe(true);
+    expect(
+      mintNoteId("src/app.ts", "n7", "n7", 4, 9).startsWith(
+        "src/app.ts|n7|n7|4-9|#",
+      ),
+    ).toBe(true);
   });
 });
 
@@ -63,8 +80,12 @@ describe("statusOf", () => {
     const handled = lineNote(7, "Rename it.");
     put(handled);
     markSubmitted(OLD);
-    state.status = new Map([[handled.id, applied(handled.id, "src/app.ts:7", OLD)]]);
-    state.statusByKey = new Map([["src/app.ts:7", applied(handled.id, "src/app.ts:7", OLD)]]);
+    state.status = new Map([
+      [handled.id, applied(handled.id, "src/app.ts:7", OLD)],
+    ]);
+    state.statusByKey = new Map([
+      ["src/app.ts:7", applied(handled.id, "src/app.ts:7", OLD)],
+    ]);
     expect(statusOf(handled)).toMatchObject({ status: "applied" });
 
     // The notes were cleared and a new one written on the same line, then handed over in its own review.
@@ -78,7 +99,9 @@ describe("statusOf", () => {
   test("the heading fallback needs a submitted note and an unambiguous heading", () => {
     const note = lineNote(7, "Rename it.");
     put(note);
-    state.statusByKey = new Map([["src/app.ts:7", applied("lost-marker", "src/app.ts:7", NEW)]]);
+    state.statusByKey = new Map([
+      ["src/app.ts:7", applied("lost-marker", "src/app.ts:7", NEW)],
+    ]);
     expect(statusOf(note)).toBeNull(); // never handed over, so nothing can have been reported
 
     markSubmitted(OLD);
@@ -96,7 +119,9 @@ describe("statusOf", () => {
     const second = lineNote(7, "And handle the null case.");
     put(first, second);
     markSubmitted(OLD);
-    state.status = new Map([[second.id, applied(second.id, "src/app.ts:7", NEW)]]);
+    state.status = new Map([
+      [second.id, applied(second.id, "src/app.ts:7", NEW)],
+    ]);
 
     expect(statusOf(first)).toBeNull();
     expect(statusOf(second)).toMatchObject({ status: "applied" });
@@ -107,7 +132,9 @@ describe("statusOf", () => {
     put(note);
     markSubmitted(OLD);
     markSubmitted(NEW); // still open in a later review; the first handover is what counts
-    state.statusByKey = new Map([["src/app.ts:7", applied("lost-marker", "src/app.ts:7", OLD)]]);
+    state.statusByKey = new Map([
+      ["src/app.ts:7", applied("lost-marker", "src/app.ts:7", OLD)],
+    ]);
 
     expect(statusOf(note)).toMatchObject({ status: "applied" });
   });

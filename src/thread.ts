@@ -1,6 +1,14 @@
 import type { NoteStatusKind, ReviewComment } from "./types.ts";
-import { webReview, webReviewLines, type WebReview } from './web-review-model.ts';
-import { imageRegion, imageRegionLines, type ImageRegion } from './image-region.ts';
+import {
+  webReview,
+  webReviewLines,
+  type WebReview,
+} from "./web-review-model.ts";
+import {
+  imageRegion,
+  imageRegionLines,
+  type ImageRegion,
+} from "./image-region.ts";
 
 /**
  * The review file is the conversation. It is written by lcr and appended to by the agent, and both
@@ -122,7 +130,8 @@ const MARKER = /<!--\s*lcr:(.+?)\s*-->/;
 const FROM = /^<!--\s*lcr:from\s+(.+?)\s*-->\s*$/;
 const WEB = /^<!-- lcr:web (.+) -->$/;
 const IMAGE = /^<!-- lcr:image (.+) -->$/;
-const MESSAGE = /^\*\*(Reviewer|Agent)\*\*\s*(?:<!--\s*lcr:m\s*([^>]*?)\s*-->\s*)?$/i;
+const MESSAGE =
+  /^\*\*(Reviewer|Agent)\*\*\s*(?:<!--\s*lcr:m\s*([^>]*?)\s*-->\s*)?$/i;
 const STATUS = /^\s*status\s*:\s*(.+?)\s*$/i;
 const SNIPPET = /^Applies to this part of the line only:\s*(.+?)\s*$/;
 const OLD_SIDE = /\s*\(line numbers before the change\)\s*$/;
@@ -153,7 +162,9 @@ const sealed = (line: string): boolean =>
  * thread; a heading the agent wrote in its reply names none of these and stays in the reply.
  */
 const namesNote = (key: string): boolean =>
-  OVERALL.test(key) || WHOLE_FILE.test(key) || LEGACY.test(key.replace(OLD_SIDE, ""));
+  OVERALL.test(key) ||
+  WHOLE_FILE.test(key) ||
+  LEGACY.test(key.replace(OLD_SIDE, ""));
 
 /** Tracks fenced regions so captured code containing anything at all cannot be read as structure. */
 class Fences {
@@ -169,7 +180,11 @@ class Fences {
       return true;
     }
     // A shorter run, or one of the other character, is content rather than the closing delimiter.
-    if (mark[0] === this.open[0] && mark.length >= this.open.length && !(match[3] as string).trim()) {
+    if (
+      mark[0] === this.open[0] &&
+      mark.length >= this.open.length &&
+      !(match[3] as string).trim()
+    ) {
       this.open = "";
     }
     return true;
@@ -183,10 +198,22 @@ class Fences {
 
 /** Line shapes the parser reads as structure when they stand outside a fence. */
 function dangerous(line: string): boolean {
-  return H1.test(line) || H2.test(line) || H3.test(line) || /^-{3,}\s*$/.test(line) ||
-    STATUS.test(line) || MESSAGE.test(line) || SNIPPET.test(line) || FROM.test(line) || IMAGE.test(line) || WEB.test(line) || END.test(line);
+  return (
+    H1.test(line) ||
+    H2.test(line) ||
+    H3.test(line) ||
+    /^-{3,}\s*$/.test(line) ||
+    STATUS.test(line) ||
+    MESSAGE.test(line) ||
+    SNIPPET.test(line) ||
+    FROM.test(line) ||
+    IMAGE.test(line) ||
+    WEB.test(line) ||
+    END.test(line)
+  );
 }
-const escapable = (line: string): boolean => dangerous(line) || FENCE.test(line);
+const escapable = (line: string): boolean =>
+  dangerous(line) || FENCE.test(line);
 
 /**
  * Reviewer-written text is emitted verbatim, so a line of it that happens to speak the file's own
@@ -212,7 +239,11 @@ export function escapeText(text: string): string {
       if (!open) {
         open = mark;
         at = i;
-      } else if (mark[0] === open[0] && mark.length >= open.length && !(match[3] as string).trim()) {
+      } else if (
+        mark[0] === open[0] &&
+        mark.length >= open.length &&
+        !(match[3] as string).trim()
+      ) {
         open = "";
       }
     }
@@ -221,19 +252,28 @@ export function escapeText(text: string): string {
   }
 
   let open = "";
-  return lines.map((line, i) => {
-    const match = unmatched.has(i) ? null : FENCE.exec(line);
-    if (match) {
-      const mark = match[2] as string;
-      if (!open) open = mark;
-      else if (mark[0] === open[0] && mark.length >= open.length && !(match[3] as string).trim()) open = "";
-      return line;
-    }
-    if (open) return line;
-    if (unmatched.has(i)) return `\\${line}`;
-    const bare = line.replace(/^\\+/, "");
-    return (bare === line ? dangerous(line) : escapable(bare)) ? `\\${line}` : line;
-  }).join("\n");
+  return lines
+    .map((line, i) => {
+      const match = unmatched.has(i) ? null : FENCE.exec(line);
+      if (match) {
+        const mark = match[2] as string;
+        if (!open) open = mark;
+        else if (
+          mark[0] === open[0] &&
+          mark.length >= open.length &&
+          !(match[3] as string).trim()
+        )
+          open = "";
+        return line;
+      }
+      if (open) return line;
+      if (unmatched.has(i)) return `\\${line}`;
+      const bare = line.replace(/^\\+/, "");
+      return (bare === line ? dangerous(line) : escapable(bare))
+        ? `\\${line}`
+        : line;
+    })
+    .join("\n");
 }
 
 /** Undoes `escapeText` line by line, leaving fenced content and honest backslashes alone. */
@@ -241,7 +281,8 @@ function unescapeLines(lines: string[]): string[] {
   const fences = new Fences();
   return lines.map((line) => {
     if (fences.step(line)) return line;
-    if (line.startsWith("\\") && escapable(line.replace(/^\\+/, ""))) return line.slice(1);
+    if (line.startsWith("\\") && escapable(line.replace(/^\\+/, "")))
+      return line.slice(1);
     return line;
   });
 }
@@ -259,7 +300,9 @@ interface Preamble {
 }
 
 /** Splits the document into its preamble, the overall note, and one block of lines per note. */
-function split(markdown: string): Preamble & { general: string[]; sections: RawSection[] } {
+function split(
+  markdown: string,
+): Preamble & { general: string[]; sections: RawSection[] } {
   const fences = new Fences();
   const sections: RawSection[] = [];
   const general: string[] = [];
@@ -331,7 +374,9 @@ function split(markdown: string): Preamble & { general: string[]; sections: RawS
 /** Reads a whole review file back into the notes and threads it holds. */
 export function parseReview(markdown: string): ReviewDoc {
   const { range, id, branch, base, general, sections } = split(markdown);
-  const notes = sections.map(readSection).filter((note): note is ReviewNote => !!note);
+  const notes = sections
+    .map(readSection)
+    .filter((note): note is ReviewNote => !!note);
   // Prose under `## Overall` is how a single overall note was written before overall notes were
   // notes. It says the same thing, so it is read back as the first of them rather than dropped; the
   // id is fixed, so reading the same file twice does not multiply it.
@@ -398,7 +443,10 @@ function readSection(section: RawSection): ReviewNote | null {
       const start = MESSAGE.exec(line);
       if (start) {
         current = {
-          role: (start[1] as string).toLowerCase() === "agent" ? "agent" : "reviewer",
+          role:
+            (start[1] as string).toLowerCase() === "agent"
+              ? "agent"
+              : "reviewer",
           at: (start[2] ?? "").trim(),
           lines: [],
         };
@@ -434,7 +482,11 @@ function readSection(section: RawSection): ReviewNote | null {
 
   readOpening(note, before);
   note.messages = messages
-    .map((entry) => ({ role: entry.role, at: entry.at, body: trimBlock(unescapeLines(entry.lines)) }))
+    .map((entry) => ({
+      role: entry.role,
+      at: entry.at,
+      body: trimBlock(unescapeLines(entry.lines)),
+    }))
     .filter((entry) => !!entry.body);
   return note;
 }
@@ -452,25 +504,39 @@ function readOpening(note: ReviewNote, lines: string[]): void {
 
   for (let at = 0; at < lines.length; at++) {
     const line = lines[at] as string;
-    const web = !open && !note.web && !body.some(entry => entry.trim()) && WEB.exec(line);
+    const web =
+      !open &&
+      !note.web &&
+      !body.some((entry) => entry.trim()) &&
+      WEB.exec(line);
     if (web) {
       try {
         const value = webReview(JSON.parse(web[1] as string));
-        if (value && note.scope === 'global') {
+        if (value && note.scope === "global") {
           const block = webReviewLines(value);
-          if (lines.slice(at, at + block.length).join('\n') === block.join('\n')) {
-            note.web = value; at += block.length - 1; continue;
+          if (
+            lines.slice(at, at + block.length).join("\n") === block.join("\n")
+          ) {
+            note.web = value;
+            at += block.length - 1;
+            continue;
           }
         }
       } catch {}
     }
-    const image = !open && !note.image && !body.some(entry => entry.trim()) && IMAGE.exec(line);
+    const image =
+      !open &&
+      !note.image &&
+      !body.some((entry) => entry.trim()) &&
+      IMAGE.exec(line);
     if (image) {
       try {
         const region = imageRegion(JSON.parse(image[1] as string));
-        if (region && note.scope === 'file') {
+        if (region && note.scope === "file") {
           const block = imageRegionLines(region);
-          if (lines.slice(at, at + block.length).join('\n') === block.join('\n')) {
+          if (
+            lines.slice(at, at + block.length).join("\n") === block.join("\n")
+          ) {
             note.image = region;
             at += block.length - 1;
             continue;
@@ -481,7 +547,10 @@ function readOpening(note: ReviewNote, lines: string[]): void {
     const match = FENCE.exec(line);
     if (open) {
       const mark = match?.[2] as string | undefined;
-      const closes = !!mark && mark[0] === open[0] && mark.length >= open.length &&
+      const closes =
+        !!mark &&
+        mark[0] === open[0] &&
+        mark.length >= open.length &&
         !(match?.[3] as string).trim();
       if (!closes) {
         (code ?? body).push(line);
@@ -499,8 +568,12 @@ function readOpening(note: ReviewNote, lines: string[]): void {
     if (match) {
       open = match[2] as string;
       // A note on no lines never captured code, so a leading `diff` block is its own prose.
-      if (!taken && !note.scope && !body.some((entry) => entry.trim()) &&
-        (match[3] as string).trim() === "diff") {
+      if (
+        !taken &&
+        !note.scope &&
+        !body.some((entry) => entry.trim()) &&
+        (match[3] as string).trim() === "diff"
+      ) {
         code = [];
         taken = true;
         continue;
@@ -583,34 +656,57 @@ function locate(note: ReviewNote, key: string): void {
   if (!note.label) note.label = labelOf(note);
 }
 
-const lineOf = (anchor: string): number => Number(/\d+/.exec(anchor ?? "")?.[0] ?? 0);
+const lineOf = (anchor: string): number =>
+  Number(/\d+/.exec(anchor ?? "")?.[0] ?? 0);
 
 /** The line label a note heading carries, rebuilt from its range and any character offsets. */
-export function labelOf(note: Pick<ReviewNote, "start" | "end" | "ca" | "cb">): string {
-  const lines = note.start === note.end ? String(note.start) : `${note.start}-${note.end}`;
+export function labelOf(
+  note: Pick<ReviewNote, "start" | "end" | "ca" | "cb">,
+): string {
+  const lines =
+    note.start === note.end ? String(note.start) : `${note.start}-${note.end}`;
   return note.ca != null ? `${lines}:${note.ca + 1}-${note.cb}` : lines;
 }
 
-export function readStatus(raw: string): { status: NoteStatusKind; detail: string } {
+export function readStatus(raw: string): {
+  status: NoteStatusKind;
+  detail: string;
+} {
   const text = raw.trim();
   const split = /^([^—:]+?)\s*(?:—|–|--|\s-\s|:)\s*(.*)$/.exec(text);
-  const word = (split?.[1] ?? text).trim().toLowerCase().replace(/[.\s]+$/, "").replace(/\s+/g, "-");
+  const word = (split?.[1] ?? text)
+    .trim()
+    .toLowerCase()
+    .replace(/[.\s]+$/, "")
+    .replace(/\s+/g, "-");
   const detail = (split?.[2] ?? "").trim();
-  if (/^(applied|done|fixed|resolved|implemented)$/.test(word)) return { status: "applied", detail };
+  if (/^(applied|done|fixed|resolved|implemented)$/.test(word))
+    return { status: "applied", detail };
   // A note that only asked a question is handled by answering it, with no edit to show for it.
-  if (/^(answered|answer|explained|as-designed|by-design|intentional)$/.test(word)) {
+  if (
+    /^(answered|answer|explained|as-designed|by-design|intentional)$/.test(word)
+  ) {
     return { status: "answered", detail };
   }
-  if (/^(skipped|skip|rejected|declined|wontfix|won't-fix)$/.test(word)) return { status: "skipped", detail };
-  if (/^(needs-input|needs-info|needs-clarification|question|blocked|unclear)$/.test(word)) {
+  if (/^(skipped|skip|rejected|declined|wontfix|won't-fix)$/.test(word))
+    return { status: "skipped", detail };
+  if (
+    /^(needs-input|needs-info|needs-clarification|question|blocked|unclear)$/.test(
+      word,
+    )
+  ) {
     return { status: "needs-input", detail };
   }
-  if (word === "pending" || word === "todo" || word === "open") return { status: "pending", detail };
+  if (word === "pending" || word === "todo" || word === "open")
+    return { status: "pending", detail };
   return { status: "unknown", detail: text };
 }
 
 function trimBlock(lines: string[]): string {
-  return lines.join("\n").replace(/^\s*\n+/, "").replace(/\s+$/, "");
+  return lines
+    .join("\n")
+    .replace(/^\s*\n+/, "")
+    .replace(/\s+$/, "");
 }
 
 /** Undoes `inlineCode`, so a snippet survives the round trip whatever backticks it holds. */
@@ -618,7 +714,9 @@ function readInlineCode(text: string): string {
   const fence = /^(`+)([\s\S]*)\1$/.exec(text.trim());
   if (!fence) return text.trim();
   const inner = fence[2] as string;
-  return inner.startsWith(" ") && inner.endsWith(" ") ? inner.slice(1, -1) : inner;
+  return inner.startsWith(" ") && inner.endsWith(" ")
+    ? inner.slice(1, -1)
+    : inner;
 }
 
 /* ---------- writing ---------- */
@@ -629,12 +727,15 @@ export function noteFromComment(comment: ReviewComment): ReviewNote {
     id: comment.id ?? "",
     key: "",
     file: comment.scope === "global" ? "" : comment.file,
-    label: comment.scope ? "" : (comment.label ?? labelOf({
-      start: comment.start,
-      end: comment.end,
-      ca: comment.ca,
-      cb: comment.cb,
-    })),
+    label: comment.scope
+      ? ""
+      : (comment.label ??
+        labelOf({
+          start: comment.start,
+          end: comment.end,
+          ca: comment.ca,
+          cb: comment.cb,
+        })),
     side: comment.side ?? "new",
     start: comment.start,
     end: comment.end,
@@ -654,9 +755,9 @@ export function noteFromComment(comment: ReviewComment): ReviewNote {
   }
   if (comment.snippet) note.snippet = comment.snippet;
   if (comment.code) note.code = comment.code;
-  const image = comment.scope === 'file' ? imageRegion(comment.image) : null;
+  const image = comment.scope === "file" ? imageRegion(comment.image) : null;
   if (image) note.image = image;
-  const web = comment.scope === 'global' ? webReview(comment.web) : null;
+  const web = comment.scope === "global" ? webReview(comment.web) : null;
   if (web) note.web = web;
   note.key = headingKey(note);
   return note;
@@ -665,7 +766,9 @@ export function noteFromComment(comment: ReviewComment): ReviewNote {
 /** The heading text a note is written under, and the fallback key a lost marker is matched by. */
 export function headingKey(note: ReviewNote): string {
   if (note.scope === "global") return OVERALL_KEY;
-  return note.scope === "file" ? `${note.file} (whole file)` : `${note.file}:${note.label}`;
+  return note.scope === "file"
+    ? `${note.file} (whole file)`
+    : `${note.file}:${note.label}`;
 }
 
 /**
@@ -673,12 +776,16 @@ export function headingKey(note: ReviewNote): string {
  * replies and its verdict stay exactly as it wrote them, which is what makes a save mid-conversation
  * safe.
  */
-export function applyComment(note: ReviewNote, comment: ReviewComment): ReviewNote {
+export function applyComment(
+  note: ReviewNote,
+  comment: ReviewComment,
+): ReviewNote {
   const fresh = noteFromComment(comment);
   // Older tabs do not know this field; rewording their note must not discard its captured subject.
-  if (note.image && fresh.scope === 'file' && !fresh.image) fresh.image = note.image;
+  if (note.image && fresh.scope === "file" && !fresh.image)
+    fresh.image = note.image;
   // Persisted evidence is authoritative even after its last selection was removed.
-  if (fresh.scope === 'global') {
+  if (fresh.scope === "global") {
     if (note.web) fresh.web = note.web;
     else delete fresh.web;
   }
@@ -694,9 +801,13 @@ export function applyComment(note: ReviewNote, comment: ReviewComment): ReviewNo
 
 export function renderNote(note: ReviewNote): string[] {
   const marker = note.id ? ` <!-- lcr:${note.id.replace(/[<>]/g, "")} -->` : "";
-  const side = !note.scope && note.side === "old" ? " (line numbers before the change)" : "";
+  const side =
+    !note.scope && note.side === "old"
+      ? " (line numbers before the change)"
+      : "";
   const out = [`### ${headingKey(note)}${side}${marker}`, ""];
-  if (note.from) out.push(`<!-- lcr:from ${note.from.replace(/[<>]/g, "")} -->`, "");
+  if (note.from)
+    out.push(`<!-- lcr:from ${note.from.replace(/[<>]/g, "")} -->`, "");
   if (note.web) out.push(...webReviewLines(note.web));
   if (note.image) out.push(...imageRegionLines(note.image));
   if (note.code && note.code.trim()) {
@@ -704,7 +815,10 @@ export function renderNote(note: ReviewNote): string[] {
     out.push(`${fence}diff`, note.code, fence, "");
   }
   if (note.snippet) {
-    out.push(`Applies to this part of the line only: ${inlineCode(note.snippet)}`, "");
+    out.push(
+      `Applies to this part of the line only: ${inlineCode(note.snippet)}`,
+      "",
+    );
   }
   if (note.body.trim()) out.push(escapeText(note.body.trim()), "");
   out.push(`Status: ${statusLine(note)}`, "");
@@ -717,7 +831,12 @@ export function renderNote(note: ReviewNote): string[] {
 export function renderMessage(message: ReviewMessage): string[] {
   const label = message.role === "agent" ? "Agent" : "Reviewer";
   const stamp = message.at ? ` ${message.at}` : "";
-  return [`**${label}** <!-- lcr:m${stamp} -->`, "", escapeText(message.body.trim()), ""];
+  return [
+    `**${label}** <!-- lcr:m${stamp} -->`,
+    "",
+    escapeText(message.body.trim()),
+    "",
+  ];
 }
 
 function statusLine(note: ReviewNote): string {
@@ -731,7 +850,10 @@ function statusLine(note: ReviewNote): string {
  * by looking at line starts.
  */
 function fenceFor(text: string): string {
-  const longest = Math.max(0, ...[...text.matchAll(/`+/g)].map((match) => match[0].length));
+  const longest = Math.max(
+    0,
+    ...[...text.matchAll(/`+/g)].map((match) => match[0].length),
+  );
   return "`".repeat(Math.max(3, longest + 1));
 }
 

@@ -39,6 +39,19 @@ cmp -s skills/apply-lcr/SKILL.md .agents/skills/apply-lcr/SKILL.md
 
 Do not commit generated executables or review files.
 
+## Formatting
+
+Use Prettier's default style, run on demand without adding a project dependency:
+
+```sh
+bunx prettier --write --no-config --no-editorconfig <files>
+bunx prettier --check --no-config --no-editorconfig <files>
+```
+
+Pass the source, documentation, or configuration files being changed. No Prettier configuration or
+style overrides are needed. The first run may download the formatter. Do not format generated review
+files, and keep the two distributable skill copies byte-identical.
+
 ## Browser component boundaries
 
 Keep plain TypeScript and light-DOM components. The UI relies on selective repaints, ancestor selectors,

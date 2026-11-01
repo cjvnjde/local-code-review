@@ -19,11 +19,7 @@ import { webSelectionKey, type WebCapture } from "./web-review-model.ts";
 import { createWebReview } from "./web-review.ts";
 import { saveAttachment } from "./attach.ts";
 import type { WebAnnotation } from "./web-annotation.ts";
-import type {
-  DiffFile,
-  NoteStatus,
-  ReviewComment,
-} from "./types.ts";
+import type { DiffFile, NoteStatus, ReviewComment } from "./types.ts";
 
 const originalLog = console.log;
 const originalError = console.error;
@@ -75,9 +71,15 @@ const webCapture: WebCapture = {
   area: "images/area.png",
 };
 
-function webController(overrides: Partial<NonNullable<ServerOptions["web"]>> = {}): NonNullable<ServerOptions["web"]> {
+function webController(
+  overrides: Partial<NonNullable<ServerOptions["web"]>> = {},
+): NonNullable<ServerOptions["web"]> {
   return {
-    status: () => ({ url: webCapture.url, state: "closed", detail: "Open the review browser." }),
+    status: () => ({
+      url: webCapture.url,
+      state: "closed",
+      detail: "Open the review browser.",
+    }),
     open: async () => {},
     review: async () => ({}),
     draft: () => undefined,
@@ -102,9 +104,7 @@ async function startTestServer(overrides: Partial<ServerOptions> = {}) {
     reviewId: "",
     context: 3,
     getDiff: async () => [diffFile()],
-    getContext: async () => [
-      { t: "ctx", o: 2, n: 2, text: "context" },
-    ],
+    getContext: async () => [{ t: "ctx", o: 2, n: 2, text: "context" }],
     readBlob: async () => new TextEncoder().encode("picture"),
     saveAttachment: async () => "image-hash.png",
     readAttachment: async () => ({
@@ -117,11 +117,8 @@ async function startTestServer(overrides: Partial<ServerOptions> = {}) {
     deleteReviews: async () => [],
     describeReviews: async () => [],
     getGhosts: async () => [],
-    importNote: (from, imported) => session.import(
-      imported,
-      [],
-      `${from.file}#${from.id}`,
-    ),
+    importNote: (from, imported) =>
+      session.import(imported, [], `${from.file}#${from.id}`),
     session,
     hub,
     ...overrides,
@@ -144,11 +141,8 @@ type StartedServer = {
   server: Server;
 };
 
-const request = (
-  started: StartedServer,
-  route: string,
-  init?: RequestInit,
-) => fetch(`${started.base}${route}`, init);
+const request = (started: StartedServer, route: string, init?: RequestInit) =>
+  fetch(`${started.base}${route}`, init);
 
 beforeAll(() => {
   console.log = () => {};
@@ -174,8 +168,13 @@ describe("review settings handoff", () => {
     expect(initial.headers.get("cache-control")).toBe("no-store");
     expect(await initial.json()).toEqual({ settings: null });
     const events: string[] = [];
-    const detach = started.hub.add(chunk => events.push(chunk));
-    const settings = { enterSaves: true, single: true, editor: "code", disabledHide: ["dist/"] };
+    const detach = started.hub.add((chunk) => events.push(chunk));
+    const settings = {
+      enterSaves: true,
+      single: true,
+      editor: "code",
+      disabledHide: ["dist/"],
+    };
     const put = await request(started, "/api/settings", {
       method: "PUT",
       headers: { "content-type": "application/json", origin: started.base },
@@ -183,31 +182,62 @@ describe("review settings handoff", () => {
     });
     expect(put.status).toBe(200);
     expect(events).toEqual(['data: {"type":"settings"}\n\n']);
-    expect(await (await request(started, "/api/settings")).json()).toEqual({ settings });
+    expect(await (await request(started, "/api/settings")).json()).toEqual({
+      settings,
+    });
     detach();
 
     // Settings are browser preferences handed to this server, not a record shared with another run.
     const other = await startTestServer();
-    expect(await (await request(other, "/api/settings")).json()).toEqual({ settings: null });
+    expect(await (await request(other, "/api/settings")).json()).toEqual({
+      settings: null,
+    });
   });
 
   test("rejects foreign origins, malformed snapshots and unsupported methods without an event", async () => {
     const started = await startTestServer();
     const events: string[] = [];
-    const detach = started.hub.add(chunk => events.push(chunk));
-    expect((await request(started, "/api/settings", {
-      method: "PUT",
-      headers: { "content-type": "application/json", origin: "https://reviewed-app.example" },
-      body: JSON.stringify({ enterSaves: true }),
-    })).status).toBe(403);
-    for (const body of ["null", "[]", '"settings"', "true", "42", '{"enterSaves":{"value":true}}']) {
-      expect((await request(started, "/api/settings", {
-        method: "PUT", headers: { "content-type": "application/json" }, body,
-      })).status).toBe(400);
+    const detach = started.hub.add((chunk) => events.push(chunk));
+    expect(
+      (
+        await request(started, "/api/settings", {
+          method: "PUT",
+          headers: {
+            "content-type": "application/json",
+            origin: "https://reviewed-app.example",
+          },
+          body: JSON.stringify({ enterSaves: true }),
+        })
+      ).status,
+    ).toBe(403);
+    for (const body of [
+      "null",
+      "[]",
+      '"settings"',
+      "true",
+      "42",
+      '{"enterSaves":{"value":true}}',
+    ]) {
+      expect(
+        (
+          await request(started, "/api/settings", {
+            method: "PUT",
+            headers: { "content-type": "application/json" },
+            body,
+          })
+        ).status,
+      ).toBe(400);
     }
-    expect((await request(started, "/api/settings", { method: "POST" })).status).toBe(405);
-    expect((await request(started, "/api/settings", { method: "PUT", body: "{}" })).status).toBe(415);
-    expect(await (await request(started, "/api/settings")).json()).toEqual({ settings: null });
+    expect(
+      (await request(started, "/api/settings", { method: "POST" })).status,
+    ).toBe(405);
+    expect(
+      (await request(started, "/api/settings", { method: "PUT", body: "{}" }))
+        .status,
+    ).toBe(415);
+    expect(await (await request(started, "/api/settings")).json()).toEqual({
+      settings: null,
+    });
     expect(events).toEqual([]);
     detach();
   });
@@ -237,32 +267,52 @@ describe("combined Git and live-page routes", () => {
     };
     for (const note of [comment, visual]) {
       const response = await request(started, "/api/note", {
-        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ comment: note }),
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ comment: note }),
       });
       expect(response.status).toBe(200);
     }
     const reply = await request(started, "/api/reply", {
-      method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id: visual.id, body: "Keep this conversation in the existing review." }),
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        id: visual.id,
+        body: "Keep this conversation in the existing review.",
+      }),
     });
     expect(reply.status).toBe(200);
     const doc = await started.options.session.read();
     expect(doc.range).toBe("HEAD");
     expect(doc.notes).toHaveLength(2);
-    expect(doc.notes.map(note => note.id)).toEqual(expect.arrayContaining([comment.id, visual.id]));
-    const savedVisual = doc.notes.find(note => note.id === visual.id)!;
+    expect(doc.notes.map((note) => note.id)).toEqual(
+      expect.arrayContaining([comment.id, visual.id]),
+    );
+    const savedVisual = doc.notes.find((note) => note.id === visual.id)!;
     expect(savedVisual.web).toEqual(visual.web);
-    expect(savedVisual.messages.at(-1)!.body).toBe("Keep this conversation in the existing review.");
+    expect(savedVisual.messages.at(-1)!.body).toBe(
+      "Keep this conversation in the existing review.",
+    );
   });
 
   test("review controller rejects unowned note ids before starting a browser", async () => {
     const started = await startTestServer();
     const web = createWebReview({
-      url: webCapture.url, repoRoot: started.options.repoRoot, outDir: ".review",
-      session: started.options.session, hub: started.hub, reviewUrl: () => started.base,
+      url: webCapture.url,
+      repoRoot: started.options.repoRoot,
+      outDir: ".review",
+      session: started.options.session,
+      hub: started.hub,
+      reviewUrl: () => started.base,
     });
-    for (const id of [comment.id, "https://example.com/#note=note", "|@|@|#missing"]) {
-      await expect(web.review(id)).rejects.toThrow("That note no longer exists.");
+    for (const id of [
+      comment.id,
+      "https://example.com/#note=note",
+      "|@|@|#missing",
+    ]) {
+      await expect(web.review(id)).rejects.toThrow(
+        "That note no longer exists.",
+      );
     }
     expect(web.status().state).toBe("closed");
     expect(web.draft("../capture")).toBeUndefined();
@@ -272,54 +322,104 @@ describe("combined Git and live-page routes", () => {
     const token = "c57a083d-1559-4e06-9da8-a56d34788c63";
     const lookups: string[] = [];
     let mutations = 0;
-    const started = await startTestServer({ web: webController({
-      draft: (id) => { lookups.push(id); return id === token ? { before: webCapture, after: [], additional: [webCapture] } : undefined; },
-      open: async () => { mutations++; },
-      captureAfter: async () => { mutations++; return { capture: webCapture, preview: "" }; },
-    }) });
+    const started = await startTestServer({
+      web: webController({
+        draft: (id) => {
+          lookups.push(id);
+          return id === token
+            ? { before: webCapture, after: [], additional: [webCapture] }
+            : undefined;
+        },
+        open: async () => {
+          mutations++;
+        },
+        captureAfter: async () => {
+          mutations++;
+          return { capture: webCapture, preview: "" };
+        },
+      }),
+    });
     for (let i = 0; i < 2; i++) {
       const response = await request(started, `/api/web/draft?id=${token}`);
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({ web: { before: webCapture, after: [], additional: [webCapture] } });
+      expect(await response.json()).toEqual({
+        web: { before: webCapture, after: [], additional: [webCapture] },
+      });
     }
     for (const id of ["", "../capture", "a".repeat(129), "unknown"]) {
-      expect((await request(started, `/api/web/draft?id=${encodeURIComponent(id)}`)).status).toBe(404);
+      expect(
+        (await request(started, `/api/web/draft?id=${encodeURIComponent(id)}`))
+          .status,
+      ).toBe(404);
     }
     expect(lookups).toEqual([token, token, "unknown"]);
-    expect((await request(started, "/api/web/draft", {
-      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: comment.id }),
-    })).status).toBe(405);
+    expect(
+      (
+        await request(started, "/api/web/draft", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ id: comment.id }),
+        })
+      ).status,
+    ).toBe(405);
     expect(mutations).toBe(0);
   });
 
   test("an empty but valid draft remains readable without opening the browser", async () => {
     const token = "c57a083d-1559-4e06-9da8-a56d34788c63";
-    const started = await startTestServer({ web: webController({
-      draft: (id) => id === token ? null : undefined,
-      open: async () => { throw new Error("Draft reads must not open the browser."); },
-    }) });
+    const started = await startTestServer({
+      web: webController({
+        draft: (id) => (id === token ? null : undefined),
+        open: async () => {
+          throw new Error("Draft reads must not open the browser.");
+        },
+      }),
+    });
     const response = await request(started, `/api/web/draft?id=${token}`);
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ web: null });
-    expect((await request(started, "/api/web/draft?id=missing")).status).toBe(404);
+    expect((await request(started, "/api/web/draft?id=missing")).status).toBe(
+      404,
+    );
   });
 
   test("saved selections can be removed without --web, with comparison ownership and stale-write protection", async () => {
     const started = await startTestServer();
     const second = { ...webCapture, page: "images/second.png" };
     const third = { ...webCapture, page: "images/third.png" };
-    const visual: ReviewComment = { id: "|@|@|#visual", file: "", scope: "global", start: 0, end: 0,
-      body: "Keep this wording.", web: { before: webCapture, after: [webCapture], additional: [second, third] } };
+    const visual: ReviewComment = {
+      id: "|@|@|#visual",
+      file: "",
+      scope: "global",
+      start: 0,
+      end: 0,
+      body: "Keep this wording.",
+      web: {
+        before: webCapture,
+        after: [webCapture],
+        additional: [second, third],
+      },
+    };
     await started.options.session.save({ comments: [visual, comment] });
-    await started.options.session.answer(started.options.session.file, visual.id!, "Agent reply.", "applied");
-    const events: string[] = [], off = started.hub.add(event => events.push(event));
-    const remove = (index: number, key: string, id = visual.id!) => request(started, "/api/web/selection", {
-      method: "POST", headers: { "content-type": "application/json", origin: started.base },
-      body: JSON.stringify({ id, index, key }),
-    });
+    await started.options.session.answer(
+      started.options.session.file,
+      visual.id!,
+      "Agent reply.",
+      "applied",
+    );
+    const events: string[] = [],
+      off = started.hub.add((event) => events.push(event));
+    const remove = (index: number, key: string, id = visual.id!) =>
+      request(started, "/api/web/selection", {
+        method: "POST",
+        headers: { "content-type": "application/json", origin: started.base },
+        body: JSON.stringify({ id, index, key }),
+      });
     const additional = await remove(1, webSelectionKey(second));
     expect(additional.status).toBe(200);
-    expect(await additional.json()).toEqual({ web: { before: webCapture, after: [webCapture], additional: [third] } });
+    expect(await additional.json()).toEqual({
+      web: { before: webCapture, after: [webCapture], additional: [third] },
+    });
     const stale = await remove(1, webSelectionKey(second));
     expect(stale.status).toBe(409);
     expect((await stale.json()).error).toContain("changed");
@@ -330,185 +430,492 @@ describe("combined Git and live-page routes", () => {
     expect(last.status).toBe(200);
     expect(await last.json()).toEqual({ web: null });
     expect(events).toHaveLength(3);
-    expect(events.every(event => event.includes('"type":"review"'))).toBe(true);
+    expect(events.every((event) => event.includes('"type":"review"'))).toBe(
+      true,
+    );
     const save = await request(started, "/api/note", {
-      method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ comment: { ...visual, body: "Stale editor wording." } }),
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        comment: { ...visual, body: "Stale editor wording." },
+      }),
     });
     expect(save.status).toBe(200);
-    const restart = createSession(started.options.repoRoot, ".review", "HEAD");await restart.adoptMatching();
-    const note = (await restart.read()).notes.find(note => note.id === visual.id)!;
-    expect(note.web).toBeUndefined();expect(note.body).toBe("Stale editor wording.");
-    expect(note.messages[0]!.body).toBe("Agent reply.");expect(note.status).toBe("applied");
+    const restart = createSession(started.options.repoRoot, ".review", "HEAD");
+    await restart.adoptMatching();
+    const note = (await restart.read()).notes.find(
+      (note) => note.id === visual.id,
+    )!;
+    expect(note.web).toBeUndefined();
+    expect(note.body).toBe("Stale editor wording.");
+    expect(note.messages[0]!.body).toBe("Agent reply.");
+    expect(note.status).toBe("applied");
     expect((await remove(0, webSelectionKey(third))).status).toBe(404);
-    expect((await remove(0, webSelectionKey(webCapture), comment.id!)).status).toBe(404);
+    expect(
+      (await remove(0, webSelectionKey(webCapture), comment.id!)).status,
+    ).toBe(404);
     await started.options.session.remove(visual.id!);
     expect((await remove(0, webSelectionKey(third))).status).toBe(404);
-    expect((await started.options.session.read()).notes.map(note => note.id)).toEqual([comment.id]);
+    expect(
+      (await started.options.session.read()).notes.map((note) => note.id),
+    ).toEqual([comment.id]);
     off();
   });
 
   test("annotations persist independently for subject and after captures without --web or stale text clobbering", async () => {
     const started = await startTestServer();
-    const second = { ...webCapture, area: "images/second.png" }, after = { ...webCapture, area: "images/after.png" };
-    const visual: ReviewComment = { id: "|@|@|#drawn", file: "", scope: "global", start: 0, end: 0,
-      body: "Keep original evidence.", web: { before: webCapture, after: [after], additional: [second] } };
+    const second = { ...webCapture, area: "images/second.png" },
+      after = { ...webCapture, area: "images/after.png" };
+    const visual: ReviewComment = {
+      id: "|@|@|#drawn",
+      file: "",
+      scope: "global",
+      start: 0,
+      end: 0,
+      body: "Keep original evidence.",
+      web: { before: webCapture, after: [after], additional: [second] },
+    };
     await started.options.session.save({ comments: [visual, comment] });
-    await started.options.session.answer(started.options.session.file, visual.id!, "Agent conversation.", "applied");
-    const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=", "base64");
-    const image = await saveAttachment(started.options.repoRoot, ".review", png, "image/png");
-    for(const name of ["area.png", "second.png", "after.png"])
-      await writeFile(path.join(started.options.repoRoot, ".review", "images", name), png);
-    const annotation: WebAnnotation = { image: "images/" + image, width: 1, height: 1, padding: 0,
-      marks: [{ tool: "arrow", color: "#ff0000", width: 3, from: { x: 0, y: 0 }, to: { x: 1, y: 1 } }] };
-    const events: string[] = [], off = started.hub.add(event => events.push(event));
-    const annotate = (target: unknown, value: WebAnnotation|null = annotation, id = visual.id!) => request(started, "/api/web/annotation", {
-      method: "POST", headers: { "content-type": "application/json", origin: started.base },
-      body: JSON.stringify({ id, target, annotation: value }),
-    });
-    const subject = { kind: "selection", index: 1, key: webSelectionKey(second), expected: "" };
-    const comparison = { kind: "after", index: 0, key: webSelectionKey(after), expected: "" };
+    await started.options.session.answer(
+      started.options.session.file,
+      visual.id!,
+      "Agent conversation.",
+      "applied",
+    );
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=",
+      "base64",
+    );
+    const image = await saveAttachment(
+      started.options.repoRoot,
+      ".review",
+      png,
+      "image/png",
+    );
+    for (const name of ["area.png", "second.png", "after.png"])
+      await writeFile(
+        path.join(started.options.repoRoot, ".review", "images", name),
+        png,
+      );
+    const annotation: WebAnnotation = {
+      image: "images/" + image,
+      width: 1,
+      height: 1,
+      padding: 0,
+      marks: [
+        {
+          tool: "arrow",
+          color: "#ff0000",
+          width: 3,
+          from: { x: 0, y: 0 },
+          to: { x: 1, y: 1 },
+        },
+      ],
+    };
+    const events: string[] = [],
+      off = started.hub.add((event) => events.push(event));
+    const annotate = (
+      target: unknown,
+      value: WebAnnotation | null = annotation,
+      id = visual.id!,
+    ) =>
+      request(started, "/api/web/annotation", {
+        method: "POST",
+        headers: { "content-type": "application/json", origin: started.base },
+        body: JSON.stringify({ id, target, annotation: value }),
+      });
+    const subject = {
+      kind: "selection",
+      index: 1,
+      key: webSelectionKey(second),
+      expected: "",
+    };
+    const comparison = {
+      kind: "after",
+      index: 0,
+      key: webSelectionKey(after),
+      expected: "",
+    };
     const response = await annotate(subject);
     expect(response.status).toBe(200);
-    expect((await response.json()).web).toEqual({ before: webCapture, after: [after], additional: [{ ...second, annotation }] });
+    expect((await response.json()).web).toEqual({
+      before: webCapture,
+      after: [after],
+      additional: [{ ...second, annotation }],
+    });
     expect((await annotate(subject)).status).toBe(409);
-    expect((await annotate({ ...subject, key: "wrong" }, null)).status).toBe(409);
+    expect((await annotate({ ...subject, key: "wrong" }, null)).status).toBe(
+      409,
+    );
     expect((await annotate(comparison)).status).toBe(200);
     expect((await annotate({ ...subject, index: 3 })).status).toBe(409);
     expect((await annotate(subject, annotation, "missing")).status).toBe(404);
     expect((await annotate(subject, annotation, comment.id!)).status).toBe(404);
-    expect((await annotate({ kind: "selection", index: 0, key: webSelectionKey(webCapture), expected: "" },
-      { ...annotation, image: "images/missing.png" })).status).toBe(400);
-    expect((await request(started, "/api/note", { method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ comment: { ...visual, body: "Edited in an older tab." } }) })).status).toBe(200);
-    expect((await annotate({ ...subject, expected: annotation.image }, null)).status).toBe(200);
-    const restart = createSession(started.options.repoRoot, ".review", "HEAD");await restart.adoptMatching();
-    const notes = (await restart.read()).notes, note = notes.find(note => note.id === visual.id)!;
-    expect(note.web!.before).toEqual(webCapture);expect(note.web!.additional![0]).toEqual(second);
-    expect(note.web!.after[0]).toEqual({ ...after, annotation });expect(note.body).toBe("Edited in an older tab.");
-    expect(note.status).toBe("applied");expect(note.messages[0]!.body).toBe("Agent conversation.");
-    expect(notes.find(note => note.id === comment.id)!.body).toBe(comment.body);
-    expect(events.filter(event => event.includes('"type":"review"'))).toHaveLength(4);
+    expect(
+      (
+        await annotate(
+          {
+            kind: "selection",
+            index: 0,
+            key: webSelectionKey(webCapture),
+            expected: "",
+          },
+          { ...annotation, image: "images/missing.png" },
+        )
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await request(started, "/api/note", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            comment: { ...visual, body: "Edited in an older tab." },
+          }),
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (await annotate({ ...subject, expected: annotation.image }, null)).status,
+    ).toBe(200);
+    const restart = createSession(started.options.repoRoot, ".review", "HEAD");
+    await restart.adoptMatching();
+    const notes = (await restart.read()).notes,
+      note = notes.find((note) => note.id === visual.id)!;
+    expect(note.web!.before).toEqual(webCapture);
+    expect(note.web!.additional![0]).toEqual(second);
+    expect(note.web!.after[0]).toEqual({ ...after, annotation });
+    expect(note.body).toBe("Edited in an older tab.");
+    expect(note.status).toBe("applied");
+    expect(note.messages[0]!.body).toBe("Agent conversation.");
+    expect(notes.find((note) => note.id === comment.id)!.body).toBe(
+      comment.body,
+    );
+    expect(
+      events.filter((event) => event.includes('"type":"review"')),
+    ).toHaveLength(4);
     off();
   });
 
   test("annotation requests enforce same-origin JSON, valid targets and safe existing PNG attachments", async () => {
     const started = await startTestServer();
-    const annotation: WebAnnotation = { image: "images/proposal.png", width: 1, height: 1, padding: 0,
-      marks: [{ tool: "text", color: "#123456", at: { x: 0, y: 0 }, text: "Proposal", size: 20 }] };
-    const target = { kind: "selection" as const, index: 0, key: webSelectionKey(webCapture), expected: "" };
-    const post = (body: unknown, headers: Record<string,string> = { "content-type": "application/json" }) =>
-      request(started, "/api/web/annotation", { method: "POST", headers, body: JSON.stringify(body) });
+    const annotation: WebAnnotation = {
+      image: "images/proposal.png",
+      width: 1,
+      height: 1,
+      padding: 0,
+      marks: [
+        {
+          tool: "text",
+          color: "#123456",
+          at: { x: 0, y: 0 },
+          text: "Proposal",
+          size: 20,
+        },
+      ],
+    };
+    const target = {
+      kind: "selection" as const,
+      index: 0,
+      key: webSelectionKey(webCapture),
+      expected: "",
+    };
+    const post = (
+      body: unknown,
+      headers: Record<string, string> = { "content-type": "application/json" },
+    ) =>
+      request(started, "/api/web/annotation", {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+      });
     expect((await request(started, "/api/web/annotation")).status).toBe(405);
     expect((await post({}, {})).status).toBe(415);
-    expect((await post({}, { "content-type": "application/json", origin: "http://localhost:3000" })).status).toBe(403);
-    for(const body of [null, [], {}, { id: 42, target, annotation }, { id: "", target, annotation },
-      { id: comment.id, draftId: "draft", target, annotation }, { target, annotation }, { id: comment.id, target },
-      ...[{ kind: "page" }, { index: -1 }, { index: 1.5 }, { index: 101 }, { key: 42 }, { expected: "../secret.png" }]
-        .map(patch => ({ id: comment.id, target: { ...target, ...patch }, annotation })),
-      ...[{ image: "../secret.png" }, { image: "images/proposal.svg" }, { marks: [] }, { width: 999999 }]
-        .map(patch => ({ id: comment.id, target, annotation: { ...annotation, ...patch } }))]){
+    expect(
+      (
+        await post(
+          {},
+          {
+            "content-type": "application/json",
+            origin: "http://localhost:3000",
+          },
+        )
+      ).status,
+    ).toBe(403);
+    for (const body of [
+      null,
+      [],
+      {},
+      { id: 42, target, annotation },
+      { id: "", target, annotation },
+      { id: comment.id, draftId: "draft", target, annotation },
+      { target, annotation },
+      { id: comment.id, target },
+      ...[
+        { kind: "page" },
+        { index: -1 },
+        { index: 1.5 },
+        { index: 101 },
+        { key: 42 },
+        { expected: "../secret.png" },
+      ].map((patch) => ({
+        id: comment.id,
+        target: { ...target, ...patch },
+        annotation,
+      })),
+      ...[
+        { image: "../secret.png" },
+        { image: "images/proposal.svg" },
+        { marks: [] },
+        { width: 999999 },
+      ].map((patch) => ({
+        id: comment.id,
+        target,
+        annotation: { ...annotation, ...patch },
+      })),
+    ]) {
       expect((await post(body)).status).toBe(400);
     }
-    expect((await post({ draftId: "missing", target, annotation })).status).toBe(404);
-    const web = createWebReview({ url: webCapture.url, repoRoot: started.options.repoRoot, outDir: ".review",
-      session: started.options.session, hub: started.hub, reviewUrl: () => started.base });
+    expect(
+      (await post({ draftId: "missing", target, annotation })).status,
+    ).toBe(404);
+    const web = createWebReview({
+      url: webCapture.url,
+      repoRoot: started.options.repoRoot,
+      outDir: ".review",
+      session: started.options.session,
+      hub: started.hub,
+      reviewUrl: () => started.base,
+    });
     started.options.web = web;
-    expect((await post({ draftId: "missing", target, annotation })).status).toBe(404);
-    await expect(web.annotate({ draftId: "missing", target, annotation })).rejects.toThrow("no longer exists");
-    await expect(web.annotate({ id: comment.id, draftId: "missing", target, annotation })).rejects.toThrow("Choose");
-    const visual: ReviewComment = { id: "|@|@|#secure", file: "", scope: "global", start: 0, end: 0,
-      body: "Original.", web: { before: webCapture, after: [] } };
+    expect(
+      (await post({ draftId: "missing", target, annotation })).status,
+    ).toBe(404);
+    await expect(
+      web.annotate({ draftId: "missing", target, annotation }),
+    ).rejects.toThrow("no longer exists");
+    await expect(
+      web.annotate({ id: comment.id, draftId: "missing", target, annotation }),
+    ).rejects.toThrow("Choose");
+    const visual: ReviewComment = {
+      id: "|@|@|#secure",
+      file: "",
+      scope: "global",
+      start: 0,
+      end: 0,
+      body: "Original.",
+      web: { before: webCapture, after: [] },
+    };
     await started.options.session.save({ comments: [visual] });
     const outside = await mkdtemp(path.join(tmpdir(), "lcr-outside-"));
-    const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=", "base64");
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=",
+      "base64",
+    );
     await writeFile(path.join(outside, "proposal.png"), png);
-    await mkdir(path.join(started.options.repoRoot, ".review", "images"), { recursive: true });
-    await writeFile(path.join(started.options.repoRoot, ".review", "images", "area.png"), png);
-    await symlink(path.join(outside, "proposal.png"), path.join(started.options.repoRoot, ".review", "images", "proposal.png"));
-    expect((await post({ id: visual.id, target, annotation })).status).toBe(400);
-    expect((await started.options.session.read()).notes[0]!.web!.before.annotation).toBeUndefined();
+    await mkdir(path.join(started.options.repoRoot, ".review", "images"), {
+      recursive: true,
+    });
+    await writeFile(
+      path.join(started.options.repoRoot, ".review", "images", "area.png"),
+      png,
+    );
+    await symlink(
+      path.join(outside, "proposal.png"),
+      path.join(started.options.repoRoot, ".review", "images", "proposal.png"),
+    );
+    expect((await post({ id: visual.id, target, annotation })).status).toBe(
+      400,
+    );
+    expect(
+      (await started.options.session.read()).notes[0]!.web!.before.annotation,
+    ).toBeUndefined();
     expect(web.status().state).toBe("closed");
-    const image = await saveAttachment(started.options.repoRoot, ".review", png, "image/png");
+    const image = await saveAttachment(
+      started.options.repoRoot,
+      ".review",
+      png,
+      "image/png",
+    );
     const valid = { ...annotation, image: "images/" + image };
     const writes = await Promise.allSettled([
       web.annotate({ id: visual.id, target, annotation: valid }),
       web.annotate({ id: visual.id, target, annotation: valid }),
     ]);
-    expect(writes.map(result => result.status)).toEqual(["fulfilled", "rejected"]);
-    expect((await started.options.session.read()).notes[0]!.web!.before.annotation).toEqual(valid);
-    await web.annotate({ id: visual.id, target: { ...target, expected: valid.image }, annotation: null });
-    expect((await started.options.session.read()).notes[0]!.web!.before.annotation).toBeUndefined();
+    expect(writes.map((result) => result.status)).toEqual([
+      "fulfilled",
+      "rejected",
+    ]);
+    expect(
+      (await started.options.session.read()).notes[0]!.web!.before.annotation,
+    ).toEqual(valid);
+    await web.annotate({
+      id: visual.id,
+      target: { ...target, expected: valid.image },
+      annotation: null,
+    });
+    expect(
+      (await started.options.session.read()).notes[0]!.web!.before.annotation,
+    ).toBeUndefined();
   });
 
   test("selection removal requires a bounded index, expected key and same-origin JSON POST", async () => {
     const started = await startTestServer();
     expect((await request(started, "/api/web/selection")).status).toBe(405);
-    expect((await request(started, "/api/web/selection", { method: "POST", body: "{}" })).status).toBe(415);
-    expect((await request(started, "/api/web/selection", {
-      method: "POST", headers: { "content-type": "application/json", origin: "http://localhost:3000" }, body: "{}",
-    })).status).toBe(403);
-    for (const body of [null, {}, { id: 42, index: 0, key: "key" }, { id: comment.id, index: 0 },
-      ...[-1, 1.5, 101, "0"].map(index => ({ id: comment.id, index, key: "key" })),
-      { id: comment.id, index: 0, key: 42 }, { id: comment.id, draftId: "draft", index: 0, key: "key" }]) {
-      expect((await request(started, "/api/web/selection", {
-        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
-      })).status).toBe(400);
+    expect(
+      (
+        await request(started, "/api/web/selection", {
+          method: "POST",
+          body: "{}",
+        })
+      ).status,
+    ).toBe(415);
+    expect(
+      (
+        await request(started, "/api/web/selection", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            origin: "http://localhost:3000",
+          },
+          body: "{}",
+        })
+      ).status,
+    ).toBe(403);
+    for (const body of [
+      null,
+      {},
+      { id: 42, index: 0, key: "key" },
+      { id: comment.id, index: 0 },
+      ...[-1, 1.5, 101, "0"].map((index) => ({
+        id: comment.id,
+        index,
+        key: "key",
+      })),
+      { id: comment.id, index: 0, key: 42 },
+      { id: comment.id, draftId: "draft", index: 0, key: "key" },
+    ]) {
+      expect(
+        (
+          await request(started, "/api/web/selection", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(body),
+          })
+        ).status,
+      ).toBe(400);
     }
     expect(started.options.session.file).toBe("");
   });
 
   test("controller selection removal is serialized and rejects ambiguous targets without a browser", async () => {
     const started = await startTestServer();
-    const visual: ReviewComment = { id: "|@|@|#visual", file: "", scope: "global", start: 0, end: 0,
-      body: "Keep note.", web: { before: webCapture, after: [webCapture] } };
+    const visual: ReviewComment = {
+      id: "|@|@|#visual",
+      file: "",
+      scope: "global",
+      start: 0,
+      end: 0,
+      body: "Keep note.",
+      web: { before: webCapture, after: [webCapture] },
+    };
     await started.options.session.save({ comments: [visual] });
-    const web = createWebReview({ url: webCapture.url, repoRoot: started.options.repoRoot, outDir: ".review",
-      session: started.options.session, hub: started.hub, reviewUrl: () => started.base });
+    const web = createWebReview({
+      url: webCapture.url,
+      repoRoot: started.options.repoRoot,
+      outDir: ".review",
+      session: started.options.session,
+      hub: started.hub,
+      reviewUrl: () => started.base,
+    });
     const selection = { index: 0, key: webSelectionKey(webCapture) };
-    await expect(web.removeSelection(selection)).rejects.toThrow("Choose either");
-    await expect(web.removeSelection({ ...selection, id: visual.id, draftId: "draft" })).rejects.toThrow("Choose either");
-    await expect(web.removeSelection({ ...selection, draftId: "missing" })).rejects.toThrow("no longer exists");
+    await expect(web.removeSelection(selection)).rejects.toThrow(
+      "Choose either",
+    );
+    await expect(
+      web.removeSelection({ ...selection, id: visual.id, draftId: "draft" }),
+    ).rejects.toThrow("Choose either");
+    await expect(
+      web.removeSelection({ ...selection, draftId: "missing" }),
+    ).rejects.toThrow("no longer exists");
     const results = await Promise.allSettled([
       web.removeSelection({ ...selection, id: visual.id }),
       web.removeSelection({ ...selection, id: visual.id }),
     ]);
     expect(results[0]).toEqual({ status: "fulfilled", value: { web: null } });
     expect(results[1]!.status).toBe("rejected");
-    expect((await started.options.session.read()).notes[0]!.web).toBeUndefined();
+    expect(
+      (await started.options.session.read()).notes[0]!.web,
+    ).toBeUndefined();
     expect(web.status().state).toBe("closed");
   });
 
   test("review navigation accepts an optional note id and enforces same-origin JSON POST", async () => {
     const ids: (string | undefined)[] = [];
-    const started = await startTestServer({ web: webController({
-      review: async (id) => { ids.push(id); return {}; },
-    }) });
+    const started = await startTestServer({
+      web: webController({
+        review: async (id) => {
+          ids.push(id);
+          return {};
+        },
+      }),
+    });
     for (const body of [{}, { id: comment.id }]) {
       const response = await request(started, "/api/web/review", {
-        method: "POST", headers: { "content-type": "application/json", origin: started.base },
+        method: "POST",
+        headers: { "content-type": "application/json", origin: started.base },
         body: JSON.stringify(body),
       });
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual({ ok: true });
     }
     expect((await request(started, "/api/web/review")).status).toBe(405);
-    expect((await request(started, "/api/web/review", { method: "POST", body: "{}" })).status).toBe(415);
-    expect((await request(started, "/api/web/review", {
-      method: "POST", headers: { "content-type": "application/json", origin: "http://localhost:3000" }, body: "{}",
-    })).status).toBe(403);
-    expect((await request(started, "/api/web/review", {
-      method: "POST", headers: { "content-type": "application/json" }, body: '{"id":42}',
-    })).status).toBe(400);
+    expect(
+      (
+        await request(started, "/api/web/review", {
+          method: "POST",
+          body: "{}",
+        })
+      ).status,
+    ).toBe(415);
+    expect(
+      (
+        await request(started, "/api/web/review", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            origin: "http://localhost:3000",
+          },
+          body: "{}",
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await request(started, "/api/web/review", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: '{"id":42}',
+        })
+      ).status,
+    ).toBe(400);
     expect(ids).toEqual([undefined, comment.id]);
   });
 
   test("live-page routes remain unavailable without --web", async () => {
     const started = await startTestServer();
-    expect((await request(started, "/api/web/draft?id=missing")).status).toBe(404);
-    expect((await request(started, "/api/web/review", {
-      method: "POST", headers: { "content-type": "application/json" }, body: "{}",
-    })).status).toBe(404);
+    expect((await request(started, "/api/web/draft?id=missing")).status).toBe(
+      404,
+    );
+    expect(
+      (
+        await request(started, "/api/web/review", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: "{}",
+        })
+      ).status,
+    ).toBe(404);
   });
 });
 
@@ -627,7 +1034,9 @@ describe("open-file API", () => {
     });
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: "A file path is required." });
+    expect(await response.json()).toEqual({
+      error: "A file path is required.",
+    });
   });
 
   test("refuses a path that is not in the current diff", async () => {
@@ -763,10 +1172,12 @@ describe("blob API", () => {
   test("the old side of a rename is read under its former path", async () => {
     const calls: unknown[][] = [];
     const started = await startTestServer({
-      getDiff: async () => [diffFile({
-        from: "assets/old-logo.png",
-        status: "renamed",
-      })],
+      getDiff: async () => [
+        diffFile({
+          from: "assets/old-logo.png",
+          status: "renamed",
+        }),
+      ],
       readBlob: async (...args) => {
         calls.push(args);
         return new TextEncoder().encode("old picture");
@@ -816,10 +1227,7 @@ describe("blob API", () => {
   test("rejects files outside the diff and unsupported media", async () => {
     const started = await startTestServer();
 
-    const outside = await request(
-      started,
-      "/api/blob?path=..%2Fsecret.png",
-    );
+    const outside = await request(started, "/api/blob?path=..%2Fsecret.png");
     const unsupportedServer = await startTestServer({
       getDiff: async () => [diffFile({ path: "build/app.wasm" })],
     });
@@ -882,10 +1290,12 @@ describe("attachment APIs", () => {
       name: "sha.png",
       ref: "images/sha.png",
     });
-    expect(calls).toEqual([{
-      bytes: new TextEncoder().encode("image bytes"),
-      type: "image/png",
-    }]);
+    expect(calls).toEqual([
+      {
+        bytes: new TextEncoder().encode("image bytes"),
+        type: "image/png",
+      },
+    ]);
   });
 
   test("attach reports when the store refuses the bytes", async () => {
@@ -943,25 +1353,36 @@ describe("attachment APIs", () => {
     expect(reads).toBe(0);
   });
 
-  test("named agent images are revalidated by content, so updates do not show stale pixels",async()=>{
-    const names:string[]=[];
-    let body='first';
-    const started=await startTestServer({readAttachment:async name=>{
-      names.push(name);return {type:'image/png',bytes:new TextEncoder().encode(body)};
-    }});
-    const url='/api/attachment?ref=review-2026-10-29T12-26-26-package-not-ready.png';
-    const first=await request(started,url);
-    expect(names[0]).toBe('./review-2026-10-29T12-26-26-package-not-ready.png');
-    expect(first.headers.get('cache-control')).toBe('no-cache');
-    const tag=first.headers.get('etag')!;
-    expect((await request(started,url,{headers:{'if-none-match':tag}})).status).toBe(304);
-    body='updated';
-    const updated=await request(started,url,{headers:{'if-none-match':tag}});
+  test("named agent images are revalidated by content, so updates do not show stale pixels", async () => {
+    const names: string[] = [];
+    let body = "first";
+    const started = await startTestServer({
+      readAttachment: async (name) => {
+        names.push(name);
+        return { type: "image/png", bytes: new TextEncoder().encode(body) };
+      },
+    });
+    const url =
+      "/api/attachment?ref=review-2026-10-29T12-26-26-package-not-ready.png";
+    const first = await request(started, url);
+    expect(names[0]).toBe("./review-2026-10-29T12-26-26-package-not-ready.png");
+    expect(first.headers.get("cache-control")).toBe("no-cache");
+    const tag = first.headers.get("etag")!;
+    expect(
+      (await request(started, url, { headers: { "if-none-match": tag } }))
+        .status,
+    ).toBe(304);
+    body = "updated";
+    const updated = await request(started, url, {
+      headers: { "if-none-match": tag },
+    });
     expect(updated.status).toBe(200);
-    expect(updated.headers.get('etag')).not.toBe(tag);
-    expect(await updated.text()).toBe('updated');
-    await request(started,'/api/attachment?ref=assets%2Fafter.png',{method:'HEAD'});
-    expect(names.at(-1)).toBe('assets/after.png');
+    expect(updated.headers.get("etag")).not.toBe(tag);
+    expect(await updated.text()).toBe("updated");
+    await request(started, "/api/attachment?ref=assets%2Fafter.png", {
+      method: "HEAD",
+    });
+    expect(names.at(-1)).toBe("assets/after.png");
   });
 
   test("attachment reports a missing name and rejects mutation", async () => {
@@ -969,10 +1390,7 @@ describe("attachment APIs", () => {
       readAttachment: async () => null,
     });
 
-    const missing = await request(
-      started,
-      "/api/attachment?name=missing.png",
-    );
+    const missing = await request(started, "/api/attachment?name=missing.png");
     const mutation = await request(
       started,
       "/api/attachment?name=missing.png",
@@ -987,69 +1405,135 @@ describe("attachment APIs", () => {
 
 describe("review conversation APIs", () => {
   test("one note is persisted and queued immediately, without submitting other notes or clicking the footer", async () => {
-    const started=await startTestServer();
-    const queued:string[][]=[];
-    started.options.agent={agent:"External ACP agent",publish:async(review,notes)=>{
-      for(const note of notes) expect((await started.options.session.readNote(review,note.id))!.body).toBe(note.body);
-      queued.push(notes.map((note)=>note.id));
-      return {state:"queued",count:notes.length};
-    }};
-    const post=async(value:object)=>{
-      const response=await request(started,"/api/note",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(value)});
+    const started = await startTestServer();
+    const queued: string[][] = [];
+    started.options.agent = {
+      agent: "External ACP agent",
+      publish: async (review, notes) => {
+        for (const note of notes)
+          expect(
+            (await started.options.session.readNote(review, note.id))!.body,
+          ).toBe(note.body);
+        queued.push(notes.map((note) => note.id));
+        return { state: "queued", count: notes.length };
+      },
+    };
+    const post = async (value: object) => {
+      const response = await request(started, "/api/note", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(value),
+      });
       expect(response.status).toBe(200);
       return response.json();
     };
-    const saved=await post({comment});
-    expect(saved.delivery).toEqual({state:"queued",count:1});
+    const saved = await post({ comment });
+    expect(saved.delivery).toEqual({ state: "queued", count: 1 });
     expect(queued).toEqual([[comment.id!]]);
     expect((await started.options.session.read()).notes).toHaveLength(1);
-    await post({comment});
+    await post({ comment });
     expect(queued.at(-1)).toEqual([]);
-    await post({comment:{...comment,body:"Why is this fallback needed?"}});
+    await post({
+      comment: { ...comment, body: "Why is this fallback needed?" },
+    });
     expect(queued.at(-1)).toEqual([comment.id!]);
-    await post({comment,retry:true});
+    await post({ comment, retry: true });
     expect(queued.at(-1)).toEqual([comment.id!]);
   });
 
   test("without an ACP configuration, notes save locally and no agent is advertised", async () => {
-    const started=await startTestServer();
-    const status=await (await request(started,"/api/agent")).json();
-    expect(status.agent).toBeUndefined(); expect(status.connection).toBeUndefined();
-    const response=await request(started,"/api/note",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({comment})});
+    const started = await startTestServer();
+    const status = await (await request(started, "/api/agent")).json();
+    expect(status.agent).toBeUndefined();
+    expect(status.connection).toBeUndefined();
+    const response = await request(started, "/api/note", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ comment }),
+    });
     expect(response.status).toBe(200);
     expect((await response.json()).delivery).toBeUndefined();
-    expect((await started.options.session.read()).notes[0]!.body).toBe(comment.body);
+    expect((await started.options.session.read()).notes[0]!.body).toBe(
+      comment.body,
+    );
   });
 
   test("single-note writes require JSON and complete note data", async () => {
-    const started=await startTestServer();
-    expect((await request(started,"/api/note",{method:"POST",body:"{}"})).status).toBe(415);
-    expect((await request(started,"/api/note",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({comment:{body:"incomplete"}})})).status).toBe(400);
+    const started = await startTestServer();
+    expect(
+      (await request(started, "/api/note", { method: "POST", body: "{}" }))
+        .status,
+    ).toBe(415);
+    expect(
+      (
+        await request(started, "/api/note", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ comment: { body: "incomplete" } }),
+        })
+      ).status,
+    ).toBe(400);
     expect((await started.options.session.read()).notes).toEqual([]);
   });
 
   test("ACP receives reviewer saves and follow-ups, while agent-only changes enqueue nothing", async () => {
     const started = await startTestServer();
     const submitted: string[][] = [];
-    started.options.agent = { agent: "External ACP agent", publish: (_review, notes) => {
-      submitted.push(notes.map(note => note.id));
-      return { state: notes.length ? "queued" : "unchanged", count: notes.length };
-    } };
-    const post = async (route: string, body: object, method = "POST") => {
-      const response = await request(started, route, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-      expect(response.status).toBe(200); return response.json();
+    started.options.agent = {
+      agent: "External ACP agent",
+      publish: (_review, notes) => {
+        submitted.push(notes.map((note) => note.id));
+        return {
+          state: notes.length ? "queued" : "unchanged",
+          count: notes.length,
+        };
+      },
     };
-    expect((await post("/api/submit", { comments: [comment] })).delivery.state).toBe("queued");
-    expect((await post("/api/submit", { comments: [comment] })).delivery.state).toBe("unchanged");
-    const reply = await post("/api/reply", { id: comment.id, body: "And why?" });
+    const post = async (route: string, body: object, method = "POST") => {
+      const response = await request(started, route, {
+        method,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      expect(response.status).toBe(200);
+      return response.json();
+    };
+    expect(
+      (await post("/api/submit", { comments: [comment] })).delivery.state,
+    ).toBe("queued");
+    expect(
+      (await post("/api/submit", { comments: [comment] })).delivery.state,
+    ).toBe("unchanged");
+    const reply = await post("/api/reply", {
+      id: comment.id,
+      body: "And why?",
+    });
     expect(reply.delivery.state).toBe("queued");
-    await post("/api/reply", { id: comment.id, at: reply.note.messages[0].at, body: "Explain the fallback." }, "PUT");
-    await started.options.session.answer(started.options.session.file, comment.id!, "The fallback handles missing values.", "answered");
-    expect(submitted.filter(ids => ids.length)).toHaveLength(3);
+    await post(
+      "/api/reply",
+      {
+        id: comment.id,
+        at: reply.note.messages[0].at,
+        body: "Explain the fallback.",
+      },
+      "PUT",
+    );
+    await started.options.session.answer(
+      started.options.session.file,
+      comment.id!,
+      "The fallback handles missing values.",
+      "answered",
+    );
+    expect(submitted.filter((ids) => ids.length)).toHaveLength(3);
     const doc = await (await request(started, "/api/review")).json();
-    expect(doc.notes[0].messages.at(-1)).toMatchObject({ role: "agent", body: "The fallback handles missing values." });
-    expect((await post("/api/submit", { comments: [comment] })).delivery.state).toBe("unchanged");
-    expect(submitted.filter(ids => ids.length)).toHaveLength(3);
+    expect(doc.notes[0].messages.at(-1)).toMatchObject({
+      role: "agent",
+      body: "The fallback handles missing values.",
+    });
+    expect(
+      (await post("/api/submit", { comments: [comment] })).delivery.state,
+    ).toBe("unchanged");
+    expect(submitted.filter((ids) => ids.length)).toHaveLength(3);
   });
 
   test("review GET returns the current file, notes, and statuses", async () => {
@@ -1239,8 +1723,8 @@ describe("review conversation APIs", () => {
 
     const response = await request(
       started,
-      `/api/note?id=${encodeURIComponent(comment.id ?? "")}`
-        + `&id=${encodeURIComponent(second.id)}`,
+      `/api/note?id=${encodeURIComponent(comment.id ?? "")}` +
+        `&id=${encodeURIComponent(second.id)}`,
       { method: "DELETE" },
     );
 
@@ -1344,64 +1828,187 @@ describe("review conversation APIs", () => {
   });
 });
 
-describe('live UI browser API', () => {
-  test('is unavailable in a diff review and requires JSON and a local origin to launch', async () => {
+describe("live UI browser API", () => {
+  test("is unavailable in a diff review and requires JSON and a local origin to launch", async () => {
     const diff = await startTestServer();
-    expect((await request(diff, '/api/web')).status).toBe(404);
-    let opened=0, captured='';
-    const web={status:()=>({url:'http://localhost:3000/',state:'closed',detail:'Open browser'}),
-      open:async()=>{opened++;},captureAfter:async(id:string)=>{captured=id;},focus:async()=>{},close:async()=>{}};
-    const started=await startTestServer({web:web as any});
-    expect((await (await request(started,'/api/diff')).json()).web.url).toBe('http://localhost:3000/');
-    expect((await request(started,'/api/web',{method:'POST'})).status).toBe(415);
-    expect((await request(started,'/api/web',{method:'POST',headers:{'content-type':'application/json',origin:'https://example.com'},body:'{}'})).status).toBe(403);
+    expect((await request(diff, "/api/web")).status).toBe(404);
+    let opened = 0,
+      captured = "";
+    const web = {
+      status: () => ({
+        url: "http://localhost:3000/",
+        state: "closed",
+        detail: "Open browser",
+      }),
+      open: async () => {
+        opened++;
+      },
+      captureAfter: async (id: string) => {
+        captured = id;
+      },
+      focus: async () => {},
+      close: async () => {},
+    };
+    const started = await startTestServer({ web: web as any });
+    expect((await (await request(started, "/api/diff")).json()).web.url).toBe(
+      "http://localhost:3000/",
+    );
+    expect(
+      (await request(started, "/api/web", { method: "POST" })).status,
+    ).toBe(415);
+    expect(
+      (
+        await request(started, "/api/web", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            origin: "https://example.com",
+          },
+          body: "{}",
+        })
+      ).status,
+    ).toBe(403);
     expect(opened).toBe(0);
-    expect((await request(started,'/api/web',{method:'POST',headers:{'content-type':'application/json',origin:started.base},body:'{}'})).status).toBe(200);
+    expect(
+      (
+        await request(started, "/api/web", {
+          method: "POST",
+          headers: { "content-type": "application/json", origin: started.base },
+          body: "{}",
+        })
+      ).status,
+    ).toBe(200);
     expect(opened).toBe(1);
-    expect((await request(started,'/api/web/capture',{method:'GET'})).status).toBe(405);
-    expect((await request(started,'/api/web/capture',{method:'POST',headers:{'content-type':'application/json'},body:'{}'})).status).toBe(400);
-    expect((await request(started,'/api/web/capture',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id:'|@|@|#note'})})).status).toBe(200);
-    expect(captured).toBe('|@|@|#note');
+    expect(
+      (await request(started, "/api/web/capture", { method: "GET" })).status,
+    ).toBe(405);
+    expect(
+      (
+        await request(started, "/api/web/capture", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: "{}",
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await request(started, "/api/web/capture", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ id: "|@|@|#note" }),
+        })
+      ).status,
+    ).toBe(200);
+    expect(captured).toBe("|@|@|#note");
   });
 });
 
-describe('managed queue API', () => {
-  test('read-only state and same-origin explicit controls expose permissions without granting by polling', async () => {
+describe("managed queue API", () => {
+  test("read-only state and same-origin explicit controls expose permissions without granting by polling", async () => {
     const calls: any[] = [];
-    const started = await startTestServer({ agent: {
-      agent: 'Any external agent',
-      status: () => ({ agent: 'Any external agent', state: 'unavailable', detail: 'Queued locally' }),
-      snapshot: () => ({ paused: true, tasks: [], permissions: [{ id: 'permission-1' }] }),
-      control: async (...args) => { calls.push(args); }, publish: () => ({ state: 'queued', count: 1 }),
-    } });
-    const state = await (await request(started, '/api/agent/queue')).json();
-    expect(state.queue.permissions).toHaveLength(1); expect(calls).toEqual([]);
-    const body = JSON.stringify({ action: 'permission', id: 'permission-1', option: 'allow-once' });
-    expect((await request(started, '/api/agent/queue', { method: 'POST', body })).status).toBe(415);
-    expect((await request(started, '/api/agent/queue', { method: 'POST', headers: { 'content-type': 'application/json', origin: 'https://unrelated.example' }, body })).status).toBe(403);
+    const started = await startTestServer({
+      agent: {
+        agent: "Any external agent",
+        status: () => ({
+          agent: "Any external agent",
+          state: "unavailable",
+          detail: "Queued locally",
+        }),
+        snapshot: () => ({
+          paused: true,
+          tasks: [],
+          permissions: [{ id: "permission-1" }],
+        }),
+        control: async (...args) => {
+          calls.push(args);
+        },
+        publish: () => ({ state: "queued", count: 1 }),
+      },
+    });
+    const state = await (await request(started, "/api/agent/queue")).json();
+    expect(state.queue.permissions).toHaveLength(1);
     expect(calls).toEqual([]);
-    expect((await request(started, '/api/agent/queue', { method: 'POST', headers: { 'content-type': 'application/json', origin: started.base }, body })).status).toBe(200);
-    expect(calls).toEqual([['permission', 'permission-1', 'allow-once']]);
-    const saved=await request(started,'/api/note',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({comment})});
+    const body = JSON.stringify({
+      action: "permission",
+      id: "permission-1",
+      option: "allow-once",
+    });
+    expect(
+      (await request(started, "/api/agent/queue", { method: "POST", body }))
+        .status,
+    ).toBe(415);
+    expect(
+      (
+        await request(started, "/api/agent/queue", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            origin: "https://unrelated.example",
+          },
+          body,
+        })
+      ).status,
+    ).toBe(403);
+    expect(calls).toEqual([]);
+    expect(
+      (
+        await request(started, "/api/agent/queue", {
+          method: "POST",
+          headers: { "content-type": "application/json", origin: started.base },
+          body,
+        })
+      ).status,
+    ).toBe(200);
+    expect(calls).toEqual([["permission", "permission-1", "allow-once"]]);
+    const saved = await request(started, "/api/note", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ comment }),
+    });
     expect(saved.status).toBe(200);
-    const note=await saved.json();
-    expect(note.connection.state).toBe('unavailable');
-    expect(note.delivery).toEqual({state:'queued',count:1});
+    const note = await saved.json();
+    expect(note.connection.state).toBe("unavailable");
+    expect(note.delivery).toEqual({ state: "queued", count: 1 });
   });
-  test('manual mode does not expose managed controls', async () => {
+  test("manual mode does not expose managed controls", async () => {
     const started = await startTestServer();
-    expect((await request(started, '/api/agent/queue')).status).toBe(404);
+    expect((await request(started, "/api/agent/queue")).status).toBe(404);
   });
-  test('note deletion and reply withdrawal notify only the original review queue', async () => {
-    const withdrawn: any[] = [], revised: any[] = [];
-    const started = await startTestServer({ agent: { agent: 'ACP',
-      publish: () => ({ state: 'queued', count: 1 }), withdraw: async (...args) => { withdrawn.push(args); }, revise: async (...args) => { revised.push(args); },
-    } });
-    await started.options.session.save({ comments: [comment] }); const review = started.options.session.file;
-    const note = await started.options.session.reply(comment.id!, 'Later withdrawn');
-    await request(started, '/api/reply?id=' + encodeURIComponent(comment.id!) + '&at=' + encodeURIComponent(note!.messages[0]!.at), { method: 'DELETE' });
-    expect(revised[0][0]).toBe(review); expect(revised[0][1].messages).toEqual([]);
-    await request(started, '/api/note?id=' + encodeURIComponent(comment.id!), { method: 'DELETE' });
+  test("note deletion and reply withdrawal notify only the original review queue", async () => {
+    const withdrawn: any[] = [],
+      revised: any[] = [];
+    const started = await startTestServer({
+      agent: {
+        agent: "ACP",
+        publish: () => ({ state: "queued", count: 1 }),
+        withdraw: async (...args) => {
+          withdrawn.push(args);
+        },
+        revise: async (...args) => {
+          revised.push(args);
+        },
+      },
+    });
+    await started.options.session.save({ comments: [comment] });
+    const review = started.options.session.file;
+    const note = await started.options.session.reply(
+      comment.id!,
+      "Later withdrawn",
+    );
+    await request(
+      started,
+      "/api/reply?id=" +
+        encodeURIComponent(comment.id!) +
+        "&at=" +
+        encodeURIComponent(note!.messages[0]!.at),
+      { method: "DELETE" },
+    );
+    expect(revised[0][0]).toBe(review);
+    expect(revised[0][1].messages).toEqual([]);
+    await request(started, "/api/note?id=" + encodeURIComponent(comment.id!), {
+      method: "DELETE",
+    });
     expect(withdrawn).toEqual([[review, [comment.id]]]);
   });
 });

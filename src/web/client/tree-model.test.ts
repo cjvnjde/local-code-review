@@ -6,13 +6,20 @@ const files = (...paths: string[]) => paths.map((path) => ({ path }));
 describe("treeOrder", () => {
   test("a folder's own files come after its subfolders, as the tree draws them", () => {
     // git lists these the other way round: it sorts the whole path, so "src/w…" precedes "src/x…".
-    expect(treeOrder(files("src/index.ts", "src/web/client/tree.ts", "src/watch.ts")))
-      .toEqual(["src/web/client/tree.ts", "src/index.ts", "src/watch.ts"]);
+    expect(
+      treeOrder(
+        files("src/index.ts", "src/web/client/tree.ts", "src/watch.ts"),
+      ),
+    ).toEqual(["src/web/client/tree.ts", "src/index.ts", "src/watch.ts"]);
   });
 
   test("files and folders are each in name order", () => {
-    expect(treeOrder(files("b/one.ts", "a/two.ts", "z.ts", "c.ts")))
-      .toEqual(["a/two.ts", "b/one.ts", "c.ts", "z.ts"]);
+    expect(treeOrder(files("b/one.ts", "a/two.ts", "z.ts", "c.ts"))).toEqual([
+      "a/two.ts",
+      "b/one.ts",
+      "c.ts",
+      "z.ts",
+    ]);
   });
 
   test("every file is listed exactly once, whatever the diff's order was", () => {
@@ -23,11 +30,23 @@ describe("treeOrder", () => {
 
 describe("expandedToFile", () => {
   test("opens only folders containing the current file", () => {
-    const collapsed = new Set(["src", "src/web/client", "src/web/server", "docs"]);
+    const collapsed = new Set([
+      "src",
+      "src/web/client",
+      "src/web/server",
+      "docs",
+    ]);
 
-    expect([...expandedToFile(collapsed, "src/web/client/tree.ts")])
-      .toEqual(["src/web/server", "docs"]);
-    expect([...collapsed]).toEqual(["src", "src/web/client", "src/web/server", "docs"]);
+    expect([...expandedToFile(collapsed, "src/web/client/tree.ts")]).toEqual([
+      "src/web/server",
+      "docs",
+    ]);
+    expect([...collapsed]).toEqual([
+      "src",
+      "src/web/client",
+      "src/web/server",
+      "docs",
+    ]);
   });
 });
 
@@ -37,7 +56,10 @@ describe("inTreeOrder", () => {
       { path: "src/index.ts", added: 1 },
       { path: "src/web/shell.html", added: 2 },
     ];
-    expect(inTreeOrder(given).map((f) => f.path)).toEqual(["src/web/shell.html", "src/index.ts"]);
+    expect(inTreeOrder(given).map((f) => f.path)).toEqual([
+      "src/web/shell.html",
+      "src/index.ts",
+    ]);
     expect(inTreeOrder(given)[0]!.added).toBe(2);
   });
 

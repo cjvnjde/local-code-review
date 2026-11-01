@@ -100,9 +100,8 @@ const note = (file: string, id = `${file}|n1|n1|#a`) => ({
   end: 1,
 });
 
-const storeKey = () => (
-  `gitreview:${state.repo}:${state.reviewId ? `#${state.reviewId}` : state.range}`
-);
+const storeKey = () =>
+  `gitreview:${state.repo}:${state.reviewId ? `#${state.reviewId}` : state.range}`;
 
 const putStored = (value: unknown) => {
   local.setItem(storeKey(), JSON.stringify(value));
@@ -156,8 +155,16 @@ beforeEach(() => {
     cfgAuto: { checked: state.cfg.auto, disabled: false, value: "" },
     cfgBack: { checked: state.cfg.back, disabled: false, value: "" },
     cfgToast: { checked: state.cfg.toast, disabled: false, value: "" },
-    cfgLimit: { checked: false, disabled: false, value: String(state.cfg.limit) },
-    cfgExpand: { checked: false, disabled: false, value: String(state.cfg.expand) },
+    cfgLimit: {
+      checked: false,
+      disabled: false,
+      value: String(state.cfg.limit),
+    },
+    cfgExpand: {
+      checked: false,
+      disabled: false,
+      value: String(state.cfg.expand),
+    },
     cfgHide: { checked: false, disabled: false, value: state.cfg.hide },
     cfgDeleted: { checked: state.cfg.hideDeleted, disabled: false, value: "" },
     cfgEnter: { checked: state.cfg.enterSaves, disabled: false, value: "" },
@@ -185,19 +192,22 @@ afterEach(() => {
 
 describe("settings persistence", () => {
   test("loadCfg hydrates state and every settings control", () => {
-    local.setItem("gitreview:settings", JSON.stringify({
-      auto: false,
-      back: true,
-      toast: false,
-      limit: 240,
-      expand: 12,
-      hide: "*.snap",
-      hideDeleted: true,
-      enterSaves: true,
-      single: true,
-      ghosts: false,
-      editor: "code",
-    }));
+    local.setItem(
+      "gitreview:settings",
+      JSON.stringify({
+        auto: false,
+        back: true,
+        toast: false,
+        limit: 240,
+        expand: 12,
+        hide: "*.snap",
+        hideDeleted: true,
+        enterSaves: true,
+        single: true,
+        ghosts: false,
+        editor: "code",
+      }),
+    );
 
     loadCfg();
 
@@ -227,9 +237,9 @@ describe("settings persistence", () => {
       cfgGhosts: { checked: false },
       cfgEditor: { value: "code" },
     });
-    expect(state.hideRx.some((pattern: RegExp) => (
-      pattern.test("src/app.snap")
-    ))).toBe(true);
+    expect(
+      state.hideRx.some((pattern: RegExp) => pattern.test("src/app.snap")),
+    ).toBe(true);
   });
 
   test("embedded settings ignore partitioned storage and cannot persist stale defaults", () => {
@@ -240,9 +250,10 @@ describe("settings persistence", () => {
     expect(state.cfg.enterSaves).toBe(false);
     state.cfg.editor = "stale editor";
     persistCfg();
-    expect(JSON.parse(local.getItem("gitreview:settings")!)).toEqual({ enterSaves: true });
+    expect(JSON.parse(local.getItem("gitreview:settings")!)).toEqual({
+      enterSaves: true,
+    });
   });
-
 
   test("saveCfg persists controls and reports a display-affecting change", () => {
     controls.cfgAuto.checked = false;
@@ -273,14 +284,15 @@ describe("settings persistence", () => {
       ghosts: false,
     });
     expect(controls.cfgBack.disabled).toBe(true);
-    expect(JSON.parse(local.getItem("gitreview:settings") ?? "null"))
-      .toMatchObject({
-        editor: "code",
-        hide: "dist/",
-        hideDeleted: true,
-        expand: 12,
-        ghosts: false,
-      });
+    expect(
+      JSON.parse(local.getItem("gitreview:settings") ?? "null"),
+    ).toMatchObject({
+      editor: "code",
+      hide: "dist/",
+      hideDeleted: true,
+      expand: 12,
+      ghosts: false,
+    });
   });
 
   test("saveCfg does not request a redraw for non-rendering settings", () => {
@@ -309,23 +321,28 @@ describe("settings persistence", () => {
 
 describe("note persistence", () => {
   test("resolved visibility survives reload without taking the conversation out of the store", () => {
-    const savedNote=note('a.ts');
-    state.notes.set(savedNote.id,savedNote);
-    state.resolved.set(savedNote.id,resolutionKey(savedNote));
+    const savedNote = note("a.ts");
+    state.notes.set(savedNote.id, savedNote);
+    state.resolved.set(savedNote.id, resolutionKey(savedNote));
     save();
-    state.notes=new Map(); state.resolved=new Map();
+    state.notes = new Map();
+    state.resolved = new Map();
     restore();
     expect(state.notes.get(savedNote.id)).toEqual(savedNote);
     expect(isResolved(state.notes.get(savedNote.id))).toBe(true);
   });
   test("clearing only visible ids preserves resolved notes and their replies", () => {
-    const hidden=note('a.ts'), visible=note('b.ts');
-    state.notes=new Map([[hidden.id,hidden],[visible.id,visible]]);
-    state.msgs.set(hidden.id,[{role:'agent',body:'Kept answer'}]);
-    state.resolved.set(hidden.id,resolutionKey(hidden));
+    const hidden = note("a.ts"),
+      visible = note("b.ts");
+    state.notes = new Map([
+      [hidden.id, hidden],
+      [visible.id, visible],
+    ]);
+    state.msgs.set(hidden.id, [{ role: "agent", body: "Kept answer" }]);
+    state.resolved.set(hidden.id, resolutionKey(hidden));
     clearNotes([visible.id]);
     expect([...state.notes.keys()]).toEqual([hidden.id]);
-    expect(state.msgs.get(hidden.id)[0].body).toBe('Kept answer');
+    expect(state.msgs.get(hidden.id)[0].body).toBe("Kept answer");
     expect(isResolved(hidden)).toBe(true);
   });
   test("saves the durable review state under the repository and range", () => {
@@ -339,9 +356,7 @@ describe("note persistence", () => {
       ["src/viewed.ts", { h: "diff-hash", auto: false }],
     ]);
     state.delFold = new Map([["src/app.ts", true]]);
-    state.msgs = new Map([
-      [savedNote.id, [{ role: "agent", body: "Done." }]],
-    ]);
+    state.msgs = new Map([[savedNote.id, [{ role: "agent", body: "Done." }]]]);
     state.seen = new Map([[savedNote.id, 1]]);
 
     save();
@@ -416,10 +431,12 @@ describe("note persistence", () => {
 
   test("re-mints legacy location-derived ids as fresh unsubmitted notes", () => {
     putStored({
-      notes: [{
-        ...note("src/app.ts", "src/app.ts|n1|n1"),
-        sentAt: 1234,
-      }],
+      notes: [
+        {
+          ...note("src/app.ts", "src/app.ts|n1|n1"),
+          sentAt: 1234,
+        },
+      ],
     });
 
     restore();
@@ -467,39 +484,40 @@ describe("note persistence", () => {
 
     persistCfg();
 
-    expect(JSON.parse(local.getItem("gitreview:settings") ?? "null"))
-      .toMatchObject({
-        foldDel: true,
-        navHidden: true,
-        editor: "code",
-      });
+    expect(
+      JSON.parse(local.getItem("gitreview:settings") ?? "null"),
+    ).toMatchObject({
+      foldDel: true,
+      navHidden: true,
+      editor: "code",
+    });
   });
 });
 
 describe("bookmark persistence", () => {
   test("saves bookmarks in session storage with the current read stamp", () => {
     state.bookmarks = new Map([
-      [
-        "src/app.ts|n4",
-        { key: "src/app.ts|n4", file: "src/app.ts", a: "n4" },
-      ],
+      ["src/app.ts|n4", { key: "src/app.ts|n4", file: "src/app.ts", a: "n4" }],
     ]);
 
     saveBookmarks();
 
-    expect(JSON.parse(
-      session.getItem("gitreview:bookmarks") ?? "null",
-    )).toEqual({
+    expect(
+      JSON.parse(session.getItem("gitreview:bookmarks") ?? "null"),
+    ).toEqual({
       scope: "repo-a:main..HEAD",
       list: [{ key: "src/app.ts|n4", file: "src/app.ts", a: "n4" }],
     });
   });
 
   test("restores bookmarks only into the read that created them", () => {
-    session.setItem("gitreview:bookmarks", JSON.stringify({
-      scope: "repo-a:main..HEAD",
-      list: [{ key: "src/app.ts|n4", file: "src/app.ts", a: "n4" }],
-    }));
+    session.setItem(
+      "gitreview:bookmarks",
+      JSON.stringify({
+        scope: "repo-a:main..HEAD",
+        list: [{ key: "src/app.ts|n4", file: "src/app.ts", a: "n4" }],
+      }),
+    );
     state.bmCur = "src/old.ts|n1";
 
     restoreBookmarks();
@@ -513,10 +531,13 @@ describe("bookmark persistence", () => {
   });
 
   test("restore reads session bookmarks even when no durable notes exist", () => {
-    session.setItem("gitreview:bookmarks", JSON.stringify({
-      scope: "repo-a:main..HEAD",
-      list: [{ key: "src/app.ts|n4", file: "src/app.ts", a: "n4" }],
-    }));
+    session.setItem(
+      "gitreview:bookmarks",
+      JSON.stringify({
+        scope: "repo-a:main..HEAD",
+        list: [{ key: "src/app.ts|n4", file: "src/app.ts", a: "n4" }],
+      }),
+    );
 
     restore();
 
@@ -525,10 +546,7 @@ describe("bookmark persistence", () => {
 
   test("clearBookmarks clears both memory and the session record", () => {
     state.bookmarks = new Map([
-      [
-        "src/app.ts|n4",
-        { key: "src/app.ts|n4", file: "src/app.ts", a: "n4" },
-      ],
+      ["src/app.ts|n4", { key: "src/app.ts|n4", file: "src/app.ts", a: "n4" }],
     ]);
     state.bmCur = "src/app.ts|n4";
 
@@ -536,9 +554,9 @@ describe("bookmark persistence", () => {
 
     expect(state.bookmarks.size).toBe(0);
     expect(state.bmCur).toBe("");
-    expect(JSON.parse(
-      session.getItem("gitreview:bookmarks") ?? "null",
-    )).toEqual({
+    expect(
+      JSON.parse(session.getItem("gitreview:bookmarks") ?? "null"),
+    ).toEqual({
       scope: "repo-a:main..HEAD",
       list: [],
     });
@@ -557,10 +575,7 @@ describe("review progress cleanup", () => {
     ]);
     state.folded = new Set(["src/a.ts", "src/c.ts"]);
 
-    expect([...unviewCommented()].sort()).toEqual([
-      "src/a.ts",
-      "src/b.ts",
-    ]);
+    expect([...unviewCommented()].sort()).toEqual(["src/a.ts", "src/b.ts"]);
     expect([...state.viewed.keys()]).toEqual(["src/c.ts"]);
     expect([...state.folded]).toEqual(["src/c.ts"]);
   });
@@ -570,9 +585,7 @@ describe("review progress cleanup", () => {
       ["a1", note("src/a.ts", "src/a.ts|n1|n1|#a")],
       ["a2", note("src/a.ts", "src/a.ts|n2|n2|#b")],
     ]);
-    state.viewed = new Map([
-      ["src/a.ts", { h: "h1", auto: true }],
-    ]);
+    state.viewed = new Map([["src/a.ts", { h: "h1", auto: true }]]);
     state.folded = new Set<string>();
 
     expect([...unviewCommented()]).toEqual(["src/a.ts"]);
@@ -581,9 +594,7 @@ describe("review progress cleanup", () => {
 
   test("no notes means every viewed mark survives", () => {
     state.notes = new Map();
-    state.viewed = new Map([
-      ["src/a.ts", { h: "h1", auto: false }],
-    ]);
+    state.viewed = new Map([["src/a.ts", { h: "h1", auto: false }]]);
     state.folded = new Set(["src/a.ts"]);
 
     expect(unviewCommented().size).toBe(0);
@@ -630,11 +641,7 @@ describe("review progress cleanup", () => {
       ["src/changed.ts", { h: "old", auto: false }],
       ["src/gone.ts", { h: "gone", auto: false }],
     ]);
-    state.folded = new Set([
-      "src/current.ts",
-      "src/changed.ts",
-      "src/gone.ts",
-    ]);
+    state.folded = new Set(["src/current.ts", "src/changed.ts", "src/gone.ts"]);
 
     expect(pruneViewed()).toEqual(["src/changed.ts", "src/gone.ts"]);
     expect([...state.viewed.keys()]).toEqual(["src/current.ts"]);

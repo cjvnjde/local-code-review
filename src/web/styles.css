@@ -1,933 +1,3863 @@
 @import "./conversation.css";
 
-  /* catppuccin mocha */
-  :root{
-    --base:#1e1e2e; --mantle:#181825; --crust:#11111b;
-    --s0:#313244; --s1:#45475a; --s2:#585b70;
-    --ov0:#6c7086; --ov1:#7f849c; --ov2:#9399b2;
-    --text:#cdd6f4; --sub1:#bac2de; --sub0:#a6adc8;
-    --green:#a6e3a1; --red:#f38ba8; --yellow:#f9e2af; --blue:#89b4fa;
-    --mauve:#cba6f7; --peach:#fab387; --teal:#94e2d5; --sky:#89dceb;
-    --sapphire:#74c7ec; --lav:#b4befe; --pink:#f5c2e7;
+/* catppuccin mocha */
+:root {
+  --base: #1e1e2e;
+  --mantle: #181825;
+  --crust: #11111b;
+  --s0: #313244;
+  --s1: #45475a;
+  --s2: #585b70;
+  --ov0: #6c7086;
+  --ov1: #7f849c;
+  --ov2: #9399b2;
+  --text: #cdd6f4;
+  --sub1: #bac2de;
+  --sub0: #a6adc8;
+  --green: #a6e3a1;
+  --red: #f38ba8;
+  --yellow: #f9e2af;
+  --blue: #89b4fa;
+  --mauve: #cba6f7;
+  --peach: #fab387;
+  --teal: #94e2d5;
+  --sky: #89dceb;
+  --sapphire: #74c7ec;
+  --lav: #b4befe;
+  --pink: #f5c2e7;
 
-    --bg:var(--base); --panel:var(--base); --panel2:var(--mantle);
-    --edge:var(--s0); --edge-hi:var(--s1);
-    --ink:var(--text); --ink-dim:var(--sub0); --ink-faint:var(--ov0);
-    --add:var(--green); --del:var(--red); --mark:var(--yellow); --accent:var(--blue);
-    --add-bg:rgba(166,227,161,.08); --add-gut:rgba(166,227,161,.16); --add-w:rgba(166,227,161,.28);
-    --del-bg:rgba(243,139,168,.08); --del-gut:rgba(243,139,168,.16); --del-w:rgba(243,139,168,.28);
-    --sel:rgba(137,180,250,.14); --csel:rgba(137,180,250,.34); --cnote:rgba(249,226,175,.24);
-    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
-    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+  --bg: var(--base);
+  --panel: var(--base);
+  --panel2: var(--mantle);
+  --edge: var(--s0);
+  --edge-hi: var(--s1);
+  --ink: var(--text);
+  --ink-dim: var(--sub0);
+  --ink-faint: var(--ov0);
+  --add: var(--green);
+  --del: var(--red);
+  --mark: var(--yellow);
+  --accent: var(--blue);
+  --add-bg: rgba(166, 227, 161, 0.08);
+  --add-gut: rgba(166, 227, 161, 0.16);
+  --add-w: rgba(166, 227, 161, 0.28);
+  --del-bg: rgba(243, 139, 168, 0.08);
+  --del-gut: rgba(243, 139, 168, 0.16);
+  --del-w: rgba(243, 139, 168, 0.28);
+  --sel: rgba(137, 180, 250, 0.14);
+  --csel: rgba(137, 180, 250, 0.34);
+  --cnote: rgba(249, 226, 175, 0.24);
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
 
-    /* One size scale for the whole page. --fs-xs is the floor: nothing reads smaller than this.
+  /* One size scale for the whole page. --fs-xs is the floor: nothing reads smaller than this.
        --tap and --tap-lg are minimum square hit areas, so an icon button is never just its icon:
        --tap for controls that sit inside a row, --tap-lg for standalone ones. --row is the code
        row height and must stay in step with ROW_H in client/diff-view.ts, which estimates the
        height of a block that has not been mounted yet. */
-    --fs-code:14px; --fs-ui:13px; --fs-sm:12px; --fs-xs:11px;
-    --icon:14px; --tap:26px; --tap-lg:30px; --row:24px;
-  }
-  *{box-sizing:border-box}
-  html,body{height:100%}
-  body{margin:0;background:var(--bg);color:var(--ink);font:var(--fs-code)/1.5 var(--mono);display:flex;flex-direction:column}
-  body.dragging{user-select:none;cursor:row-resize}
-  .i{width:var(--icon);height:var(--icon);fill:currentColor;flex:none;display:block}
-  /* The invisible full path supplies the flex box's natural width; the measured label over it removes
+  --fs-code: 14px;
+  --fs-ui: 13px;
+  --fs-sm: 12px;
+  --fs-xs: 11px;
+  --icon: 14px;
+  --tap: 26px;
+  --tap-lg: 30px;
+  --row: 24px;
+}
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  height: 100%;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: var(--fs-code)/1.5 var(--mono);
+  display: flex;
+  flex-direction: column;
+}
+body.dragging {
+  user-select: none;
+  cursor: row-resize;
+}
+.i {
+  width: var(--icon);
+  height: var(--icon);
+  fill: currentColor;
+  flex: none;
+  display: block;
+}
+/* The invisible full path supplies the flex box's natural width; the measured label over it removes
      one run from its middle when that box shrinks. Its minimum is the beginning plus the whole name. */
-  .pth{position:relative;display:block;overflow:hidden;white-space:nowrap}
-  .pth::after{content:attr(data-path);visibility:hidden}
-  .pth .ptx{position:absolute;inset:0;white-space:nowrap}
-  .file-path{display:flex;align-items:center;min-width:0}
-  .file-path>.pth{flex:0 1 auto}
-  .file-path>.arrow{color:var(--ink-faint);padding:0 7px;flex:none}
-  /* one row high and no taller: the header is a strip, so nothing in it may wrap the page open */
-  header{position:relative;display:flex;align-items:center;gap:12px;padding:3px 12px;border-bottom:1px solid var(--edge);
-    background:var(--panel2);flex:none;min-height:calc(var(--tap-lg) + 6px)}
-  #gear,#navToggle{border:none;background:none;padding:0;color:var(--ink-faint);display:flex;align-items:center;
-    justify-content:center;width:var(--tap-lg);height:var(--tap-lg);flex:none;border-radius:5px}
-  #gear:hover,#gear.on,#navToggle:hover,#navToggle.on{color:var(--ink);background:var(--s0)}
-  /* Reading-time controls in the permanent page header match those in each sticky file header. */
-  .quick{display:flex;align-items:center;gap:4px;flex:none}
-  .quick button,header>.cf{border:none;background:none;color:var(--ink-faint);padding:4px 8px;display:flex;gap:6px;
-    align-items:center;min-height:var(--tap);flex:none;font-size:var(--fs-xs);text-transform:uppercase;
-    letter-spacing:.05em;border-radius:5px}
-  .quick button:hover,header>.cf:hover{color:var(--ink);background:var(--s0)}
-  .quick button.on{color:var(--del)}
-  .quick button.on:hover{background:var(--s0)}
-  /* An overall-note draft stays under its permanent control while saved overall notes remain in the
+.pth {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.pth::after {
+  content: attr(data-path);
+  visibility: hidden;
+}
+.pth .ptx {
+  position: absolute;
+  inset: 0;
+  white-space: nowrap;
+}
+.file-path {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.file-path > .pth {
+  flex: 0 1 auto;
+}
+.file-path > .arrow {
+  color: var(--ink-faint);
+  padding: 0 7px;
+  flex: none;
+}
+/* one row high and no taller: the header is a strip, so nothing in it may wrap the page open */
+header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 3px 12px;
+  border-bottom: 1px solid var(--edge);
+  background: var(--panel2);
+  flex: none;
+  min-height: calc(var(--tap-lg) + 6px);
+}
+#gear,
+#navToggle {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--ink-faint);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--tap-lg);
+  height: var(--tap-lg);
+  flex: none;
+  border-radius: 5px;
+}
+#gear:hover,
+#gear.on,
+#navToggle:hover,
+#navToggle.on {
+  color: var(--ink);
+  background: var(--s0);
+}
+/* Reading-time controls in the permanent page header match those in each sticky file header. */
+.quick {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+.quick button,
+header > .cf {
+  border: none;
+  background: none;
+  color: var(--ink-faint);
+  padding: 4px 8px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  min-height: var(--tap);
+  flex: none;
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: 5px;
+}
+.quick button:hover,
+header > .cf:hover {
+  color: var(--ink);
+  background: var(--s0);
+}
+.quick button.on {
+  color: var(--del);
+}
+.quick button.on:hover {
+  background: var(--s0);
+}
+/* An overall-note draft stays under its permanent control while saved overall notes remain in the
      card at the top of the diff. It overlays the read instead of moving or scrolling it. */
-  #globalDraft{position:absolute;right:12px;top:calc(100% + 6px);z-index:11;
-    width:min(760px,calc(100vw - 24px));max-height:calc(100dvh - 100% - 18px);overflow-y:auto;
-    border-radius:7px;box-shadow:0 14px 34px rgba(0,0,0,.5)}
-  #globalDraft[hidden]{display:none}
-  #globalDraft .nbox{margin:0;box-shadow:inset 3px 0 0 var(--mark)}
-  /* anchored to the header rather than a fixed offset, so it keeps sitting just below it. The panel is
+#globalDraft {
+  position: absolute;
+  right: 12px;
+  top: calc(100% + 6px);
+  z-index: 11;
+  width: min(760px, calc(100vw - 24px));
+  max-height: calc(100dvh - 100% - 18px);
+  overflow-y: auto;
+  border-radius: 7px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.5);
+}
+#globalDraft[hidden] {
+  display: none;
+}
+#globalDraft .nbox {
+  margin: 0;
+  box-shadow: inset 3px 0 0 var(--mark);
+}
+/* anchored to the header rather than a fixed offset, so it keeps sitting just below it. The panel is
      taller than most viewports, so it scrolls itself: 100% is the header height it hangs below, and the
      rest of the subtraction is the 6px gap above plus a 12px margin off the bottom of the screen. */
-  #settings{position:absolute;right:12px;top:calc(100% + 6px);z-index:10;width:380px;background:var(--panel2);
-    border:1px solid var(--edge-hi);border-radius:8px;padding:13px 15px;box-shadow:0 14px 34px rgba(0,0,0,.5);
-    font-family:var(--sans);font-size:var(--fs-ui);display:flex;flex-direction:column;gap:11px;
-    max-height:calc(100dvh - 100% - 18px);overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
-  /* the sections keep their own height instead of being squeezed to fit the capped panel */
-  #settings>*{flex:none}
-  #settings[hidden]{display:none}
-  #settings h4{margin:0;font:600 var(--fs-xs)/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint)}
-  #settings label{display:flex;gap:9px;align-items:center;min-height:24px;color:var(--ink);cursor:pointer}
-  #settings input[type=checkbox]{accent-color:var(--accent);width:16px;height:16px;margin:0;flex:none;cursor:pointer}
-  #settings select{background:var(--crust);color:var(--ink);border:1px solid var(--edge-hi);border-radius:4px;
-    padding:5px 8px;font:var(--fs-ui) var(--sans);margin-left:auto;cursor:pointer}
-  #settings textarea{width:100%;background:var(--crust);color:var(--ink);border:1px solid var(--edge-hi);
-    border-radius:4px;padding:7px 9px;font:var(--fs-ui)/1.5 var(--mono);resize:vertical}
-  #settings textarea:focus{outline:none;border-color:var(--accent)}
-  #settings .note{margin:0;color:var(--ink-faint);font-size:var(--fs-sm);line-height:1.5}
-  #settings .note code{color:var(--mark);font-family:var(--mono)}
-  #settings .sub label{color:var(--ink-dim);padding-left:25px}
-  #settings .settings-section{border-top:1px solid var(--edge);padding-top:11px;display:flex;flex-direction:column;gap:9px}
-  #settings #cfgEditor{margin-left:auto;width:210px;min-width:0;background:var(--crust);color:var(--ink);
-    border:1px solid var(--edge-hi);border-radius:4px;padding:5px 8px;font:var(--fs-ui) var(--mono)}
-  #settings #cfgEditor:focus{outline:none;border-color:var(--accent)}
-  #settings .settings-section button{align-self:flex-start}
+#settings {
+  position: absolute;
+  right: 12px;
+  top: calc(100% + 6px);
+  z-index: 10;
+  width: 380px;
+  background: var(--panel2);
+  border: 1px solid var(--edge-hi);
+  border-radius: 8px;
+  padding: 13px 15px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.5);
+  font-family: var(--sans);
+  font-size: var(--fs-ui);
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  max-height: calc(100dvh - 100% - 18px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+/* the sections keep their own height instead of being squeezed to fit the capped panel */
+#settings > * {
+  flex: none;
+}
+#settings[hidden] {
+  display: none;
+}
+#settings h4 {
+  margin: 0;
+  font: 600 var(--fs-xs)/1 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+#settings label {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  min-height: 24px;
+  color: var(--ink);
+  cursor: pointer;
+}
+#settings input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  flex: none;
+  cursor: pointer;
+}
+#settings select {
+  background: var(--crust);
+  color: var(--ink);
+  border: 1px solid var(--edge-hi);
+  border-radius: 4px;
+  padding: 5px 8px;
+  font: var(--fs-ui) var(--sans);
+  margin-left: auto;
+  cursor: pointer;
+}
+#settings textarea {
+  width: 100%;
+  background: var(--crust);
+  color: var(--ink);
+  border: 1px solid var(--edge-hi);
+  border-radius: 4px;
+  padding: 7px 9px;
+  font: var(--fs-ui)/1.5 var(--mono);
+  resize: vertical;
+}
+#settings textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+#settings .note {
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+}
+#settings .note code {
+  color: var(--mark);
+  font-family: var(--mono);
+}
+#settings .sub label {
+  color: var(--ink-dim);
+  padding-left: 25px;
+}
+#settings .settings-section {
+  border-top: 1px solid var(--edge);
+  padding-top: 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+#settings #cfgEditor {
+  margin-left: auto;
+  width: 210px;
+  min-width: 0;
+  background: var(--crust);
+  color: var(--ink);
+  border: 1px solid var(--edge-hi);
+  border-radius: 4px;
+  padding: 5px 8px;
+  font: var(--fs-ui) var(--mono);
+}
+#settings #cfgEditor:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+#settings .settings-section button {
+  align-self: flex-start;
+}
 
-  /* saved reviews, newest first: the history matching adoption leaves behind, each reopenable */
-  #settings .rvlist{display:flex;flex-direction:column;border:1px solid var(--edge);border-radius:6px;
-    background:var(--crust);max-height:220px;overflow-y:auto}
-  #settings .rvitem{display:flex;align-items:center;gap:9px;padding:7px 10px;border-bottom:1px solid var(--edge)}
-  #settings .rvitem:last-child{border-bottom:none}
-  #settings .rvitem.cur{background:var(--s0)}
-  #settings .rvitem .rvtx{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
-  #settings .rvitem .rvwhen{color:var(--ink);font-family:var(--mono);font-size:var(--fs-sm)}
-  #settings .rvitem .rvwhere{color:var(--mark);font-family:var(--mono);font-size:var(--fs-xs);
-    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  #settings .rvitem .rvct{color:var(--ink-faint);font-size:var(--fs-xs)}
-  #settings .rvitem button{flex:none;align-self:center;padding:5px 10px;font-size:var(--fs-xs);min-height:var(--tap)}
-  #settings .rvitem .rvcur{flex:none;color:var(--green);font-size:var(--fs-xs);text-transform:uppercase;
-    letter-spacing:.05em}
+/* saved reviews, newest first: the history matching adoption leaves behind, each reopenable */
+#settings .rvlist {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+  background: var(--crust);
+  max-height: 220px;
+  overflow-y: auto;
+}
+#settings .rvitem {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--edge);
+}
+#settings .rvitem:last-child {
+  border-bottom: none;
+}
+#settings .rvitem.cur {
+  background: var(--s0);
+}
+#settings .rvitem .rvtx {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+#settings .rvitem .rvwhen {
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+}
+#settings .rvitem .rvwhere {
+  color: var(--mark);
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#settings .rvitem .rvct {
+  color: var(--ink-faint);
+  font-size: var(--fs-xs);
+}
+#settings .rvitem button {
+  flex: none;
+  align-self: center;
+  padding: 5px 10px;
+  font-size: var(--fs-xs);
+  min-height: var(--tap);
+}
+#settings .rvitem .rvcur {
+  flex: none;
+  color: var(--green);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
 
-  #settings .skill-command{display:flex;gap:7px;width:100%}
-  #settings .skill-command input{flex:1;min-width:0;min-height:var(--tap-lg);background:var(--crust);color:var(--mark);
-    border:1px solid var(--edge-hi);border-radius:4px;padding:7px 9px;font:var(--fs-sm)/1.4 var(--mono);cursor:text}
-  #settings .skill-command input:focus{outline:none;border-color:var(--accent)}
-  #settings .skill-command button{align-self:stretch;flex:none}
+#settings .skill-command {
+  display: flex;
+  gap: 7px;
+  width: 100%;
+}
+#settings .skill-command input {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--tap-lg);
+  background: var(--crust);
+  color: var(--mark);
+  border: 1px solid var(--edge-hi);
+  border-radius: 4px;
+  padding: 7px 9px;
+  font: var(--fs-sm)/1.4 var(--mono);
+  cursor: text;
+}
+#settings .skill-command input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+#settings .skill-command button {
+  align-self: stretch;
+  flex: none;
+}
 
-  #toasts{position:fixed;right:16px;bottom:70px;z-index:20;display:flex;flex-direction:column;gap:7px;align-items:flex-end}
-  .toast{display:flex;align-items:center;gap:10px;background:var(--panel2);border:1px solid var(--edge-hi);
-    border-left:3px solid var(--green);border-radius:6px;padding:8px 12px;font-family:var(--sans);font-size:var(--fs-ui);
-    color:var(--ink);box-shadow:0 10px 26px rgba(0,0,0,.45);max-width:460px}
-  .toast.off{border-left-color:var(--peach)}
-  .toast .ic{display:flex;color:var(--green)}
-  .toast.off .ic{color:var(--peach)}
-  .toast .tx{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono)}
-  .toast .lbl{color:var(--ink-faint);text-transform:uppercase;font-size:var(--fs-xs);letter-spacing:.05em}
-  .toast button{padding:5px 9px;font-size:var(--fs-xs);min-height:var(--tap)}
-  .toast.out{opacity:0;transform:translateY(4px);transition:opacity .18s,transform .18s}
-  header b{font-weight:600;letter-spacing:.06em;text-transform:uppercase;font-size:var(--fs-sm)}
-  /* a long revision spec gives way rather than wrapping the strip onto a second line */
-  header .range{color:var(--mark);font-size:var(--fs-sm);min-width:0;overflow:hidden;text-overflow:ellipsis;
-    white-space:nowrap}
-  /* the name a run was started under, when it has one: which review this is, ahead of which diff */
-  header .rvid{flex:none;color:var(--mauve);font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.06em;
-    border:1px solid var(--mauve);border-radius:9px;padding:1px 8px;max-width:220px;overflow:hidden;
-    text-overflow:ellipsis;white-space:nowrap}
-  header .rvid[hidden]{display:none}
-  header .spacer{flex:1}
-  main{flex:1;display:flex;min-height:0}
+#toasts {
+  position: fixed;
+  right: 16px;
+  bottom: 70px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  align-items: flex-end;
+}
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--panel2);
+  border: 1px solid var(--edge-hi);
+  border-left: 3px solid var(--green);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-family: var(--sans);
+  font-size: var(--fs-ui);
+  color: var(--ink);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45);
+  max-width: 460px;
+}
+.toast.off {
+  border-left-color: var(--peach);
+}
+.toast .ic {
+  display: flex;
+  color: var(--green);
+}
+.toast.off .ic {
+  color: var(--peach);
+}
+.toast .tx {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono);
+}
+.toast .lbl {
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  font-size: var(--fs-xs);
+  letter-spacing: 0.05em;
+}
+.toast button {
+  padding: 5px 9px;
+  font-size: var(--fs-xs);
+  min-height: var(--tap);
+}
+.toast.out {
+  opacity: 0;
+  transform: translateY(4px);
+  transition:
+    opacity 0.18s,
+    transform 0.18s;
+}
+header b {
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: var(--fs-sm);
+}
+/* a long revision spec gives way rather than wrapping the strip onto a second line */
+header .range {
+  color: var(--mark);
+  font-size: var(--fs-sm);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* the name a run was started under, when it has one: which review this is, ahead of which diff */
+header .rvid {
+  flex: none;
+  color: var(--mauve);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border: 1px solid var(--mauve);
+  border-radius: 9px;
+  padding: 1px 8px;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+header .rvid[hidden] {
+  display: none;
+}
+header .spacer {
+  flex: 1;
+}
+main {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
 
-  nav{width:330px;flex:none;display:flex;flex-direction:column;border-right:1px solid var(--edge);background:var(--panel2)}
-  body.notree nav{display:none}
-  .navtop{flex:none;padding:10px;border-bottom:1px solid var(--edge);display:flex;flex-direction:column;gap:8px}
-  .navtop input{width:100%;background:var(--crust);color:var(--ink);border:1px solid var(--edge-hi);border-radius:5px;
-    padding:7px 10px;font:var(--fs-ui)/1.4 var(--sans)}
-  .navtop input:focus{outline:none;border-color:var(--accent)}
-  .navbtns{display:flex;gap:5px}
-  .navbtns button{flex:1;padding:0;min-height:var(--tap-lg)}
-  .fstat{text-align:left;text-transform:none;letter-spacing:0;border-style:dashed;border-color:var(--edge-hi);
-    color:var(--mark);padding:5px 8px;font-size:var(--fs-xs);min-height:28px;justify-content:flex-start}
-  .fstat[hidden]{display:none}
-  .fstat:hover{color:var(--mark);border-color:var(--mark)}
-  .tree{flex:1;overflow:auto;padding:6px 0 20px}
-  .tw{display:flex;align-items:center;gap:7px;padding:2px 8px 2px 0;cursor:pointer;color:var(--ink-dim);
-      white-space:nowrap;min-height:30px}
-  .tw:hover{background:var(--s0);color:var(--ink)}
-  .tw .nm{flex:1;overflow:hidden;text-overflow:ellipsis;font-size:var(--fs-ui)}
-  .tw.dir .nm{color:var(--ink)}
-  .tw.hid .nm{color:var(--ink-faint);text-decoration:line-through}
-  .tw.flt .nm{text-decoration-style:dashed;font-style:italic}
-  .tw.seen .nm{color:var(--ov1)}
-  .tw .chev{display:flex;color:var(--ink-faint)}
-  .tw .st{width:13px;text-align:center;font-size:var(--fs-xs);font-weight:700}
-  .st.added{color:var(--add)} .st.deleted{color:var(--del)} .st.modified{color:var(--mark)} .st.renamed{color:var(--accent)}
-  .tw .ct{font-size:var(--fs-xs);color:var(--crust);background:var(--mark);border-radius:9px;padding:1px 6px;font-weight:700}
-  .tw .eye,.tw .vd,.tw .vf{opacity:0;border:none;background:none;padding:0;color:var(--ink-faint);display:flex;
-    align-items:center;justify-content:center;width:var(--tap);height:var(--tap);min-height:0;flex:none;border-radius:4px}
-  .tw:hover .eye,.tw .eye.on,.tw:hover .vd,.tw:hover .vf,.tw .vd.on,.tw .vd.part,.tw .vf.on{opacity:1}
-  .tw .eye:focus-visible,.tw .vd:focus-visible,.tw .vf:focus-visible{opacity:1}
-  .tw .eye:hover,.tw .vd:hover,.tw .vf:hover{color:var(--ink);background:var(--s1)}
-  .tw .eye.on{color:var(--mark)}
-  .tw .vd.on,.tw .vf.on{color:var(--green)}
-  .tw .vd.part{color:var(--ov1)}
-  /* the file the diff pane is showing: the tree follows the scroll and keeps this row in view */
-  .tw.sel{background:var(--s0);box-shadow:inset 2px 0 0 var(--lav)}
-  .tw.sel .nm{color:var(--ink)}
+nav {
+  width: 330px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--edge);
+  background: var(--panel2);
+}
+body.notree nav {
+  display: none;
+}
+.navtop {
+  flex: none;
+  padding: 10px;
+  border-bottom: 1px solid var(--edge);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.navtop input {
+  width: 100%;
+  background: var(--crust);
+  color: var(--ink);
+  border: 1px solid var(--edge-hi);
+  border-radius: 5px;
+  padding: 7px 10px;
+  font: var(--fs-ui)/1.4 var(--sans);
+}
+.navtop input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.navbtns {
+  display: flex;
+  gap: 5px;
+}
+.navbtns button {
+  flex: 1;
+  padding: 0;
+  min-height: var(--tap-lg);
+}
+.fstat {
+  text-align: left;
+  text-transform: none;
+  letter-spacing: 0;
+  border-style: dashed;
+  border-color: var(--edge-hi);
+  color: var(--mark);
+  padding: 5px 8px;
+  font-size: var(--fs-xs);
+  min-height: 28px;
+  justify-content: flex-start;
+}
+.fstat[hidden] {
+  display: none;
+}
+.fstat:hover {
+  color: var(--mark);
+  border-color: var(--mark);
+}
+.tree {
+  flex: 1;
+  overflow: auto;
+  padding: 6px 0 20px;
+}
+.tw {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 2px 8px 2px 0;
+  cursor: pointer;
+  color: var(--ink-dim);
+  white-space: nowrap;
+  min-height: 30px;
+}
+.tw:hover {
+  background: var(--s0);
+  color: var(--ink);
+}
+.tw .nm {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--fs-ui);
+}
+.tw.dir .nm {
+  color: var(--ink);
+}
+.tw.hid .nm {
+  color: var(--ink-faint);
+  text-decoration: line-through;
+}
+.tw.flt .nm {
+  text-decoration-style: dashed;
+  font-style: italic;
+}
+.tw.seen .nm {
+  color: var(--ov1);
+}
+.tw .chev {
+  display: flex;
+  color: var(--ink-faint);
+}
+.tw .st {
+  width: 13px;
+  text-align: center;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+}
+.st.added {
+  color: var(--add);
+}
+.st.deleted {
+  color: var(--del);
+}
+.st.modified {
+  color: var(--mark);
+}
+.st.renamed {
+  color: var(--accent);
+}
+.tw .ct {
+  font-size: var(--fs-xs);
+  color: var(--crust);
+  background: var(--mark);
+  border-radius: 9px;
+  padding: 1px 6px;
+  font-weight: 700;
+}
+.tw .eye,
+.tw .vd,
+.tw .vf {
+  opacity: 0;
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--ink-faint);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--tap);
+  height: var(--tap);
+  min-height: 0;
+  flex: none;
+  border-radius: 4px;
+}
+.tw:hover .eye,
+.tw .eye.on,
+.tw:hover .vd,
+.tw:hover .vf,
+.tw .vd.on,
+.tw .vd.part,
+.tw .vf.on {
+  opacity: 1;
+}
+.tw .eye:focus-visible,
+.tw .vd:focus-visible,
+.tw .vf:focus-visible {
+  opacity: 1;
+}
+.tw .eye:hover,
+.tw .vd:hover,
+.tw .vf:hover {
+  color: var(--ink);
+  background: var(--s1);
+}
+.tw .eye.on {
+  color: var(--mark);
+}
+.tw .vd.on,
+.tw .vf.on {
+  color: var(--green);
+}
+.tw .vd.part {
+  color: var(--ov1);
+}
+/* the file the diff pane is showing: the tree follows the scroll and keeps this row in view */
+.tw.sel {
+  background: var(--s0);
+  box-shadow: inset 2px 0 0 var(--lav);
+}
+.tw.sel .nm {
+  color: var(--ink);
+}
 
-  /* two lists under the tree, built the same way: the notes this review has made, and the places the
+/* two lists under the tree, built the same way: the notes this review has made, and the places the
      read is jumping between. Notes carry the page's note colour, bookmarks their own. */
-  .ntpane,.bmpane{flex:none;display:flex;flex-direction:column;border-top:1px solid var(--edge-hi)}
-  .ntpane{max-height:38%} .bmpane{max-height:42%}
-  .ntpane[hidden],.bmpane[hidden]{display:none}
-  .nthead,.bmhead{flex:none;display:flex;align-items:center;gap:7px;padding:7px 10px;border-bottom:1px solid var(--edge)}
-  .nthead .ttl,.bmhead .ttl{font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.08em;color:var(--ink-faint)}
-  .nthead .ct,.bmhead .ct{font-size:var(--fs-xs);color:var(--crust);border-radius:9px;padding:1px 6px;font-weight:700}
-  .nthead .ct{background:var(--mark)} .bmhead .ct{background:var(--mauve)}
-  .nthead .spacer,.bmhead .spacer{flex:1}
-  .nthead button,.bmhead button{padding:4px 7px;font-size:var(--fs-xs);min-height:var(--tap);display:flex;align-items:center}
-  .ntlist,.bmlist{flex:1;overflow:auto;padding:4px 0 10px}
-  /* either list folds to its header, so a long one leaves the tree room; the count and the stepping
+.ntpane,
+.bmpane {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--edge-hi);
+}
+.ntpane {
+  max-height: 38%;
+}
+.bmpane {
+  max-height: 42%;
+}
+.ntpane[hidden],
+.bmpane[hidden] {
+  display: none;
+}
+.nthead,
+.bmhead {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--edge);
+}
+.nthead .ttl,
+.bmhead .ttl {
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-faint);
+}
+.nthead .ct,
+.bmhead .ct {
+  font-size: var(--fs-xs);
+  color: var(--crust);
+  border-radius: 9px;
+  padding: 1px 6px;
+  font-weight: 700;
+}
+.nthead .ct {
+  background: var(--mark);
+}
+.bmhead .ct {
+  background: var(--mauve);
+}
+.nthead .spacer,
+.bmhead .spacer {
+  flex: 1;
+}
+.nthead button,
+.bmhead button {
+  padding: 4px 7px;
+  font-size: var(--fs-xs);
+  min-height: var(--tap);
+  display: flex;
+  align-items: center;
+}
+.ntlist,
+.bmlist {
+  flex: 1;
+  overflow: auto;
+  padding: 4px 0 10px;
+}
+/* either list folds to its header, so a long one leaves the tree room; the count and the stepping
      buttons stay in that header, which is what makes a folded list still worth having open */
-  .nthead .fold,.bmhead .fold{flex:none;gap:7px;padding:2px 5px;margin-left:-5px;border:none;min-height:var(--tap)}
-  .nthead .fold:hover .ttl,.bmhead .fold:hover .ttl{color:var(--ink)}
-  .nthead .chev,.bmhead .chev{display:flex;color:var(--ink-faint)}
-  .ntpane.folded,.bmpane.folded{max-height:none}
-  .ntpane.folded .ntlist,.bmpane.folded .bmlist{display:none}
-  /* nothing below the header to divide it from, and the pane's own top border already draws the line */
-  .ntpane.folded .nthead,.bmpane.folded .bmhead{border-bottom:none}
+.nthead .fold,
+.bmhead .fold {
+  flex: none;
+  gap: 7px;
+  padding: 2px 5px;
+  margin-left: -5px;
+  border: none;
+  min-height: var(--tap);
+}
+.nthead .fold:hover .ttl,
+.bmhead .fold:hover .ttl {
+  color: var(--ink);
+}
+.nthead .chev,
+.bmhead .chev {
+  display: flex;
+  color: var(--ink-faint);
+}
+.ntpane.folded,
+.bmpane.folded {
+  max-height: none;
+}
+.ntpane.folded .ntlist,
+.bmpane.folded .bmlist {
+  display: none;
+}
+/* nothing below the header to divide it from, and the pane's own top border already draws the line */
+.ntpane.folded .nthead,
+.bmpane.folded .bmhead {
+  border-bottom: none;
+}
 
-  /* one note per row: where it sits, what it says, and what has happened to it since */
-  .nw{display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer;color:var(--ink-dim)}
-  .nw:hover{background:var(--s0)}
-  .nw.cur{background:var(--s0);box-shadow:inset 2px 0 0 var(--mark)}
-  .nw .ni{flex:1;min-width:0;display:flex;flex-direction:column}
-  .nw .loc{color:var(--mark);font-size:var(--fs-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .nw .tx{color:var(--ink-faint);font-size:var(--fs-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-    font-family:var(--sans)}
-  .nw:hover .tx{color:var(--ink-dim)}
-  .nw.gone .loc{color:var(--peach);text-decoration:line-through}
-  .nw .nb{flex:none;display:flex;align-items:center;gap:5px}
-  .nw .unread{font:700 var(--fs-xs)/1.5 var(--mono);padding:1px 6px;border-radius:9px;
-    background:var(--mark);color:var(--crust)}
-  /* the verdict an agent reported, in the colours the note's own badge uses */
-  .nw .dot{width:7px;height:7px;border-radius:50%;background:var(--s2)}
-  .nw .dot.applied{background:var(--green)}
-  .nw .dot.answered{background:var(--teal)}
-  .nw .dot.skipped{background:var(--peach)}
-  .nw .dot.needs-input{background:var(--sapphire)}
-  .bw{display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer;color:var(--ink-dim)}
-  .bw:hover{background:var(--s0)}
-  .bw.cur{background:var(--s0);box-shadow:inset 2px 0 0 var(--mauve)}
-  .bw .bi{flex:1;min-width:0;display:flex;flex-direction:column}
-  .bw .loc{color:var(--mauve);font-size:var(--fs-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .bw .tx{color:var(--ink-faint);font-size:var(--fs-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .bw:hover .tx{color:var(--ink-dim)}
-  .bw.gone .loc{color:var(--ink-faint);text-decoration:line-through}
-  .bw .rm{opacity:0;border:none;background:none;padding:0;color:var(--ink-faint);display:flex;align-items:center;
-    justify-content:center;width:var(--tap);height:var(--tap);min-height:0;flex:none;border-radius:4px}
-  .bw:hover .rm{opacity:1}
-  .bw .rm:hover{color:var(--del);background:var(--s1)}
-  .bw .rm:focus-visible{opacity:1}
+/* one note per row: where it sits, what it says, and what has happened to it since */
+.nw {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  cursor: pointer;
+  color: var(--ink-dim);
+}
+.nw:hover {
+  background: var(--s0);
+}
+.nw.cur {
+  background: var(--s0);
+  box-shadow: inset 2px 0 0 var(--mark);
+}
+.nw .ni {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.nw .loc {
+  color: var(--mark);
+  font-size: var(--fs-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nw .tx {
+  color: var(--ink-faint);
+  font-size: var(--fs-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--sans);
+}
+.nw:hover .tx {
+  color: var(--ink-dim);
+}
+.nw.gone .loc {
+  color: var(--peach);
+  text-decoration: line-through;
+}
+.nw .nb {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.nw .unread {
+  font: 700 var(--fs-xs)/1.5 var(--mono);
+  padding: 1px 6px;
+  border-radius: 9px;
+  background: var(--mark);
+  color: var(--crust);
+}
+/* the verdict an agent reported, in the colours the note's own badge uses */
+.nw .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--s2);
+}
+.nw .dot.applied {
+  background: var(--green);
+}
+.nw .dot.answered {
+  background: var(--teal);
+}
+.nw .dot.skipped {
+  background: var(--peach);
+}
+.nw .dot.needs-input {
+  background: var(--sapphire);
+}
+.bw {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  cursor: pointer;
+  color: var(--ink-dim);
+}
+.bw:hover {
+  background: var(--s0);
+}
+.bw.cur {
+  background: var(--s0);
+  box-shadow: inset 2px 0 0 var(--mauve);
+}
+.bw .bi {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.bw .loc {
+  color: var(--mauve);
+  font-size: var(--fs-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bw .tx {
+  color: var(--ink-faint);
+  font-size: var(--fs-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bw:hover .tx {
+  color: var(--ink-dim);
+}
+.bw.gone .loc {
+  color: var(--ink-faint);
+  text-decoration: line-through;
+}
+.bw .rm {
+  opacity: 0;
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--ink-faint);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--tap);
+  height: var(--tap);
+  min-height: 0;
+  flex: none;
+  border-radius: 4px;
+}
+.bw:hover .rm {
+  opacity: 1;
+}
+.bw .rm:hover {
+  color: var(--del);
+  background: var(--s1);
+}
+.bw .rm:focus-visible {
+  opacity: 1;
+}
 
-  /* the diff and the panel that covers it share this box, so the diff is never unmounted and keeps
+/* the diff and the panel that covers it share this box, so the diff is never unmounted and keeps
      both its scroll position and its rows while the notes are being read */
-  .pane{flex:1;min-width:0;position:relative;display:flex}
-  /* we compensate scrollTop by hand when content above the fold resizes; the browser's own
+.pane {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  display: flex;
+}
+/* we compensate scrollTop by hand when content above the fold resizes; the browser's own
      scroll anchoring would apply the same correction a second time */
-  #diff{flex:1;min-width:0;overflow:auto;overflow-anchor:none;padding:0 0 40vh;scroll-behavior:auto}
-  /* clip, not hidden: overflow hidden would make each card its own scrollport and kill the sticky header */
-  #diff .file{border:1px solid var(--edge);border-radius:6px;margin:12px 14px;overflow:clip;background:var(--panel)}
-  #diff .file.seen{opacity:.72}
-  #diff .file.seen:hover{opacity:1}
-  .fh{position:sticky;top:0;z-index:2;background:var(--panel2);padding:7px 12px;border-bottom:1px solid var(--edge);
-      display:flex;gap:10px;align-items:center;box-shadow:0 1px 0 var(--crust)}
-  #diff .file.fold .fh{border-bottom:none}
-  .fh .fchev{border:none;background:none;color:var(--ink-dim);padding:0;display:flex;align-items:center;
-    justify-content:center;width:var(--tap);height:var(--tap);min-height:0;flex:none;border-radius:4px}
-  .fh .fchev:hover{background:var(--s1);color:var(--ink)}
-  .fh .p{color:var(--ink);overflow:hidden;white-space:nowrap}
-  .fh .s{font-size:var(--fs-xs);color:var(--ink-faint);text-transform:uppercase;letter-spacing:.05em}
-  .fh .plus{color:var(--add);font-size:var(--fs-sm)}
-  .fh .minus{color:var(--del);font-size:var(--fs-sm)}
-  .fh .spacer{flex:1}
-  .fh .eye,.fh .vw,.fh .cf,.fh .dl,.fh .op{border:none;background:none;color:var(--ink-faint);padding:5px 8px;display:flex;gap:6px;
-    align-items:center;min-height:var(--tap);flex:none;font-size:var(--fs-xs);text-transform:uppercase;
-    letter-spacing:.05em;border-radius:4px}
-  .fh .eye:hover,.fh .vw:hover,.fh .cf:hover,.fh .dl:hover,.fh .op:hover{color:var(--ink);background:var(--s1)}
-  .fh .vw.on{color:var(--green)}
-  .file .fh :is(.eye,.op,.cp){width:var(--tap);height:var(--tap);padding:0;justify-content:center}
-  .fh .cp{border:0;background:none;color:var(--ink-faint);border-radius:4px;display:flex;align-items:center;flex:none}
-  .fh .cp:hover{color:var(--ink);background:var(--s1)}
-  .fh .cp.copied{color:var(--teal)}
-  .tooltip{position:fixed;z-index:100;pointer-events:none;max-width:calc(100vw - var(--tap));
-    padding:calc(var(--tap) / 4) calc(var(--tap) / 3);border:1px solid var(--edge-hi);border-radius:4px;
-    background:var(--crust);color:var(--ink);font:var(--fs-xs)/1.5 var(--sans);overflow-wrap:anywhere;
-    box-shadow:0 2px 8px rgba(0,0,0,.3)}
-  .tooltip[hidden]{display:none}
-  /* folded away: the header says so in the colour the removed lines themselves are drawn in */
-  .fh .dl.on{color:var(--del)}
-  .fh .stale{color:var(--peach);font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.05em}
+#diff {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  overflow-anchor: none;
+  padding: 0 0 40vh;
+  scroll-behavior: auto;
+}
+/* clip, not hidden: overflow hidden would make each card its own scrollport and kill the sticky header */
+#diff .file {
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+  margin: 12px 14px;
+  overflow: clip;
+  background: var(--panel);
+}
+#diff .file.seen {
+  opacity: 0.72;
+}
+#diff .file.seen:hover {
+  opacity: 1;
+}
+.fh {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--panel2);
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--edge);
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  box-shadow: 0 1px 0 var(--crust);
+}
+#diff .file.fold .fh {
+  border-bottom: none;
+}
+.fh .fchev {
+  border: none;
+  background: none;
+  color: var(--ink-dim);
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--tap);
+  height: var(--tap);
+  min-height: 0;
+  flex: none;
+  border-radius: 4px;
+}
+.fh .fchev:hover {
+  background: var(--s1);
+  color: var(--ink);
+}
+.fh .p {
+  color: var(--ink);
+  overflow: hidden;
+  white-space: nowrap;
+}
+.fh .s {
+  font-size: var(--fs-xs);
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.fh .plus {
+  color: var(--add);
+  font-size: var(--fs-sm);
+}
+.fh .minus {
+  color: var(--del);
+  font-size: var(--fs-sm);
+}
+.fh .spacer {
+  flex: 1;
+}
+.fh .eye,
+.fh .vw,
+.fh .cf,
+.fh .dl,
+.fh .op {
+  border: none;
+  background: none;
+  color: var(--ink-faint);
+  padding: 5px 8px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  min-height: var(--tap);
+  flex: none;
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: 4px;
+}
+.fh .eye:hover,
+.fh .vw:hover,
+.fh .cf:hover,
+.fh .dl:hover,
+.fh .op:hover {
+  color: var(--ink);
+  background: var(--s1);
+}
+.fh .vw.on {
+  color: var(--green);
+}
+.file .fh :is(.eye, .op, .cp) {
+  width: var(--tap);
+  height: var(--tap);
+  padding: 0;
+  justify-content: center;
+}
+.fh .cp {
+  border: 0;
+  background: none;
+  color: var(--ink-faint);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  flex: none;
+}
+.fh .cp:hover {
+  color: var(--ink);
+  background: var(--s1);
+}
+.fh .cp.copied {
+  color: var(--teal);
+}
+.tooltip {
+  position: fixed;
+  z-index: 100;
+  pointer-events: none;
+  max-width: calc(100vw - var(--tap));
+  padding: calc(var(--tap) / 4) calc(var(--tap) / 3);
+  border: 1px solid var(--edge-hi);
+  border-radius: 4px;
+  background: var(--crust);
+  color: var(--ink);
+  font: var(--fs-xs)/1.5 var(--sans);
+  overflow-wrap: anywhere;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+.tooltip[hidden] {
+  display: none;
+}
+/* folded away: the header says so in the colour the removed lines themselves are drawn in */
+.fh .dl.on {
+  color: var(--del);
+}
+.fh .stale {
+  color: var(--peach);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
 
-  /* ---- files shown as media ----
+/* ---- files shown as media ----
      Two panes for a change and one for a file only added or deleted, in the diff's own order:
      what was there on the left, what replaces it on the right. Each pane keeps its own room whatever
      the other holds, so both pictures and recordings can be read against each other. */
-  :is(.imgw,.audw){display:grid;grid-template-columns:1fr;gap:1px;background:var(--edge)}
-  :is(.imgw,.audw).two{grid-template-columns:1fr 1fr}
-  @media (max-width:800px){ :is(.imgw,.audw).two{grid-template-columns:1fr} }
-  #diff .file.fold :is(.imgw,.audw){display:none}
-  :is(.imgf,.audf){margin:0;background:var(--panel);display:flex;flex-direction:column;min-width:0}
-  :is(.imgf,.audf) figcaption{display:flex;align-items:center;gap:8px;padding:6px 12px;border-bottom:1px solid var(--edge);
-    font-family:var(--sans);font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.05em}
-  :is(.imgf,.audf) figcaption .spacer{flex:1}
-  :is(.imgf,.audf) .side{color:var(--ink-dim);flex:none}
-  :is(.imgf,.audf).old .side{color:var(--del)}
-  :is(.imgf,.audf).new .side{color:var(--add)}
-  /* the name a rename is the old side of: the change is as much the name as the media */
-  :is(.imgf,.audf) .was{color:var(--ink-faint);font-family:var(--mono);text-transform:none;letter-spacing:0;
-    overflow:hidden;white-space:nowrap;min-width:0}
-  :is(.imgf,.audf) .dim{color:var(--ink-faint);font-family:var(--mono);text-transform:none;letter-spacing:0;flex:none}
-  /* a checkerboard, so a transparent image is read as transparent rather than as the panel's colour */
-  .imgb{flex:1;display:flex;align-items:flex-start;justify-content:center;padding:16px;min-height:140px;
-    background-color:var(--crust);
-    background-image:linear-gradient(45deg,var(--s0) 25%,transparent 25%),
-      linear-gradient(-45deg,var(--s0) 25%,transparent 25%),
-      linear-gradient(45deg,transparent 75%,var(--s0) 75%),
-      linear-gradient(-45deg,transparent 75%,var(--s0) 75%);
-    background-size:16px 16px;background-position:0 0,0 8px,8px -8px,-8px 0}
-  /* Fit the pane's width without shrinking tall screenshots to the viewport; compare both from the top. */
-  .imgb img{max-width:100%;height:auto;object-fit:contain;display:block;
-    box-shadow:0 2px 14px rgba(0,0,0,.45)}
-  .imgb{position:relative}
-  .imgb.editing-image{min-height:calc(var(--tap) * 18)}
-  .imgstage{position:relative;max-width:100%;min-width:0;cursor:crosshair;line-height:0}
-  .imgmarks{position:absolute;inset:0;pointer-events:none}
-  .imgregion{position:absolute;border:2px solid var(--mark);background:rgba(249,226,175,.12);pointer-events:none}
-  .imgregion button{pointer-events:auto;position:absolute;left:-2px;top:-2px;min-height:var(--tap);
-    min-width:var(--tap);padding:0 calc(var(--tap) / 4);font:var(--fs-xs) var(--mono);line-height:1.5;
-    background:var(--mark);color:var(--crust);border:0;border-radius:3px;white-space:nowrap}
-  .imgregion.picking{border-style:dashed}
-  .imgdraft{position:absolute;left:var(--fs-sm);right:var(--fs-sm);z-index:4;line-height:1.5;cursor:auto}
-  .imgdraft .nbox{margin:0;box-shadow:0 4px 20px rgba(0,0,0,.4)}
-  .imgcomment{font:var(--fs-xs) var(--sans);min-height:var(--tap);padding:0 calc(var(--tap) / 4);flex:none}
-  .image-capture{padding:var(--fs-sm);border-bottom:1px solid var(--edge)}
-  .image-caption{color:var(--ink-faint);font:var(--fs-xs)/1.5 var(--sans);margin-bottom:calc(var(--tap) / 4)}
-  .image-capture img{max-width:100%;max-height:14em;height:auto;display:block;object-fit:contain}
-  .imgdraft .image-capture img{max-height:7em}
-  .image-preview:empty{display:none}
-  /* a side that could not be read says so in its caption; an empty frame would read as an empty image */
-  .imgf.gone .imgb img{display:none}
-  .imgf.gone .dim{color:var(--del)}
-  /* native controls keep playback and seeking familiar; no bytes are fetched beyond this repository */
-  .audb{flex:1;display:flex;align-items:center;padding:var(--fs-sm);min-height:calc(var(--tap) + var(--tap));
-    background:var(--crust)}
-  .audb audio{display:block;width:100%;min-height:var(--tap);color-scheme:dark}
-  .audf.gone .audb audio{display:none}
-  .audf.gone .dim{color:var(--del)}
+:is(.imgw, .audw) {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1px;
+  background: var(--edge);
+}
+:is(.imgw, .audw).two {
+  grid-template-columns: 1fr 1fr;
+}
+@media (max-width: 800px) {
+  :is(.imgw, .audw).two {
+    grid-template-columns: 1fr;
+  }
+}
+#diff .file.fold :is(.imgw, .audw) {
+  display: none;
+}
+:is(.imgf, .audf) {
+  margin: 0;
+  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+:is(.imgf, .audf) figcaption {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--edge);
+  font-family: var(--sans);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+:is(.imgf, .audf) figcaption .spacer {
+  flex: 1;
+}
+:is(.imgf, .audf) .side {
+  color: var(--ink-dim);
+  flex: none;
+}
+:is(.imgf, .audf).old .side {
+  color: var(--del);
+}
+:is(.imgf, .audf).new .side {
+  color: var(--add);
+}
+/* the name a rename is the old side of: the change is as much the name as the media */
+:is(.imgf, .audf) .was {
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  text-transform: none;
+  letter-spacing: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  min-width: 0;
+}
+:is(.imgf, .audf) .dim {
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  text-transform: none;
+  letter-spacing: 0;
+  flex: none;
+}
+/* a checkerboard, so a transparent image is read as transparent rather than as the panel's colour */
+.imgb {
+  flex: 1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 16px;
+  min-height: 140px;
+  background-color: var(--crust);
+  background-image:
+    linear-gradient(45deg, var(--s0) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--s0) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--s0) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--s0) 75%);
+  background-size: 16px 16px;
+  background-position:
+    0 0,
+    0 8px,
+    8px -8px,
+    -8px 0;
+}
+/* Fit the pane's width without shrinking tall screenshots to the viewport; compare both from the top. */
+.imgb img {
+  max-width: 100%;
+  height: auto;
+  object-fit: contain;
+  display: block;
+  box-shadow: 0 2px 14px rgba(0, 0, 0, 0.45);
+}
+.imgb {
+  position: relative;
+}
+.imgb.editing-image {
+  min-height: calc(var(--tap) * 18);
+}
+.imgstage {
+  position: relative;
+  max-width: 100%;
+  min-width: 0;
+  cursor: crosshair;
+  line-height: 0;
+}
+.imgmarks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.imgregion {
+  position: absolute;
+  border: 2px solid var(--mark);
+  background: rgba(249, 226, 175, 0.12);
+  pointer-events: none;
+}
+.imgregion button {
+  pointer-events: auto;
+  position: absolute;
+  left: -2px;
+  top: -2px;
+  min-height: var(--tap);
+  min-width: var(--tap);
+  padding: 0 calc(var(--tap) / 4);
+  font: var(--fs-xs) var(--mono);
+  line-height: 1.5;
+  background: var(--mark);
+  color: var(--crust);
+  border: 0;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+.imgregion.picking {
+  border-style: dashed;
+}
+.imgdraft {
+  position: absolute;
+  left: var(--fs-sm);
+  right: var(--fs-sm);
+  z-index: 4;
+  line-height: 1.5;
+  cursor: auto;
+}
+.imgdraft .nbox {
+  margin: 0;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+.imgcomment {
+  font: var(--fs-xs) var(--sans);
+  min-height: var(--tap);
+  padding: 0 calc(var(--tap) / 4);
+  flex: none;
+}
+.image-capture {
+  padding: var(--fs-sm);
+  border-bottom: 1px solid var(--edge);
+}
+.image-caption {
+  color: var(--ink-faint);
+  font: var(--fs-xs)/1.5 var(--sans);
+  margin-bottom: calc(var(--tap) / 4);
+}
+.image-capture img {
+  max-width: 100%;
+  max-height: 14em;
+  height: auto;
+  display: block;
+  object-fit: contain;
+}
+.imgdraft .image-capture img {
+  max-height: 7em;
+}
+.image-preview:empty {
+  display: none;
+}
+/* a side that could not be read says so in its caption; an empty frame would read as an empty image */
+.imgf.gone .imgb img {
+  display: none;
+}
+.imgf.gone .dim {
+  color: var(--del);
+}
+/* native controls keep playback and seeking familiar; no bytes are fetched beyond this repository */
+.audb {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  padding: var(--fs-sm);
+  min-height: calc(var(--tap) + var(--tap));
+  background: var(--crust);
+}
+.audb audio {
+  display: block;
+  width: 100%;
+  min-height: var(--tap);
+  color-scheme: dark;
+}
+.audf.gone .audb audio {
+  display: none;
+}
+.audf.gone .dim {
+  color: var(--del);
+}
 
-  table{width:100%;border-collapse:collapse;table-layout:fixed}
-  #diff .file.fold table{display:none}
-  tr.r{height:var(--row)}
-  td{padding:0;vertical-align:top;white-space:pre-wrap;word-break:break-word;tab-size:2}
-  td.act{padding:0;text-align:center;border-right:1px solid var(--edge)}
-  /* sized to the row rather than to --tap: a taller button would stretch every line of the diff */
-  td.act button{opacity:0;border:none;border-radius:4px;background:var(--accent);color:var(--crust);padding:0;
-    width:20px;height:20px;min-height:0;margin:2px 1px 0;display:inline-flex;align-items:center;
-    justify-content:center;cursor:pointer;vertical-align:top}
-  tr.r:hover td.act button{opacity:1}
-  td.act button:focus-visible{opacity:1;outline:2px solid var(--mark);outline-offset:1px}
-  /* the bookmark flag stays lit once set, so a marked line reads as marked without a hover */
-  td.act .bm{background:none;color:var(--ink-faint)}
-  td.act .bm:hover{color:var(--mauve);background:var(--s1)}
-  td.act .bm.on{opacity:1;color:var(--mauve)}
-  td.g{text-align:right;padding:0 8px 0 5px;color:var(--ink-faint);user-select:none;font-size:var(--fs-sm);cursor:pointer}
-  td.gn{border-right:1px solid var(--edge)}
-  tr.r:hover td.g{color:var(--ink-dim)}
-  td.c{padding:0 12px}
-  tr.add td.g{background:var(--add-gut)} tr.add td.c{background:var(--add-bg)}
-  tr.add td.c::before{content:"+";color:var(--add);margin-right:6px}
-  tr.del td.g{background:var(--del-gut)} tr.del td.c{background:var(--del-bg)}
-  tr.del td.c::before{content:"-";color:var(--del);margin-right:6px}
-  tr.ctx td.c::before{content:" ";margin-right:6px}
-  tr.hunk td{color:var(--sapphire);background:var(--mantle);padding:4px 12px;font-size:var(--fs-sm);
-    border-top:1px solid var(--edge);border-bottom:1px solid var(--edge)}
-  /* hidden-region expanders sit where the gutters would be, so hunk text still lines up with code */
-  tr.hunk td.exp{padding:0;text-align:right;white-space:nowrap;user-select:none;border-right:1px solid var(--edge)}
-  tr.hunk.busy td.exp{opacity:.4;pointer-events:none}
-  td.exp .xp{border:none;background:none;color:var(--ink-faint);padding:0;width:26px;height:24px;min-height:0;
-    margin:0;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
-  td.exp .xp:hover{color:var(--accent);background:var(--s1)}
-  td.exp .xp:focus-visible{outline:2px solid var(--mark);outline-offset:-1px}
-  /* a run of removed lines folded away, so the file reads as the one the change leaves behind. It is a
+table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+#diff .file.fold table {
+  display: none;
+}
+tr.r {
+  height: var(--row);
+}
+td {
+  padding: 0;
+  vertical-align: top;
+  white-space: pre-wrap;
+  word-break: break-word;
+  tab-size: 2;
+}
+td.act {
+  padding: 0;
+  text-align: center;
+  border-right: 1px solid var(--edge);
+}
+/* sized to the row rather than to --tap: a taller button would stretch every line of the diff */
+td.act button {
+  opacity: 0;
+  border: none;
+  border-radius: 4px;
+  background: var(--accent);
+  color: var(--crust);
+  padding: 0;
+  width: 20px;
+  height: 20px;
+  min-height: 0;
+  margin: 2px 1px 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  vertical-align: top;
+}
+tr.r:hover td.act button {
+  opacity: 1;
+}
+td.act button:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--mark);
+  outline-offset: 1px;
+}
+/* the bookmark flag stays lit once set, so a marked line reads as marked without a hover */
+td.act .bm {
+  background: none;
+  color: var(--ink-faint);
+}
+td.act .bm:hover {
+  color: var(--mauve);
+  background: var(--s1);
+}
+td.act .bm.on {
+  opacity: 1;
+  color: var(--mauve);
+}
+td.g {
+  text-align: right;
+  padding: 0 8px 0 5px;
+  color: var(--ink-faint);
+  user-select: none;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+td.gn {
+  border-right: 1px solid var(--edge);
+}
+tr.r:hover td.g {
+  color: var(--ink-dim);
+}
+td.c {
+  padding: 0 12px;
+}
+tr.add td.g {
+  background: var(--add-gut);
+}
+tr.add td.c {
+  background: var(--add-bg);
+}
+tr.add td.c::before {
+  content: "+";
+  color: var(--add);
+  margin-right: 6px;
+}
+tr.del td.g {
+  background: var(--del-gut);
+}
+tr.del td.c {
+  background: var(--del-bg);
+}
+tr.del td.c::before {
+  content: "-";
+  color: var(--del);
+  margin-right: 6px;
+}
+tr.ctx td.c::before {
+  content: " ";
+  margin-right: 6px;
+}
+tr.hunk td {
+  color: var(--sapphire);
+  background: var(--mantle);
+  padding: 4px 12px;
+  font-size: var(--fs-sm);
+  border-top: 1px solid var(--edge);
+  border-bottom: 1px solid var(--edge);
+}
+/* hidden-region expanders sit where the gutters would be, so hunk text still lines up with code */
+tr.hunk td.exp {
+  padding: 0;
+  text-align: right;
+  white-space: nowrap;
+  user-select: none;
+  border-right: 1px solid var(--edge);
+}
+tr.hunk.busy td.exp {
+  opacity: 0.4;
+  pointer-events: none;
+}
+td.exp .xp {
+  border: none;
+  background: none;
+  color: var(--ink-faint);
+  padding: 0;
+  width: 26px;
+  height: 24px;
+  min-height: 0;
+  margin: 0;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+td.exp .xp:hover {
+  color: var(--accent);
+  background: var(--s1);
+}
+td.exp .xp:focus-visible {
+  outline: 2px solid var(--mark);
+  outline-offset: -1px;
+}
+/* a run of removed lines folded away, so the file reads as the one the change leaves behind. It is a
      row of the table, which is what lets its lines come back exactly where they were taken from. */
-  tr.dfold td{padding:0;background:var(--del-bg);border-top:1px solid var(--edge);border-bottom:1px solid var(--edge)}
-  tr.dfold.open td{background:var(--mantle)}
-  .dfb{display:flex;align-items:center;justify-content:flex-start;gap:9px;width:100%;min-height:var(--tap);
-    padding:2px 12px;border:none;border-radius:0;background:none;color:var(--ink-faint);
-    font:var(--fs-sm)/1.4 var(--mono);letter-spacing:0;text-transform:none;text-align:left}
-  .dfb .ic{display:flex;align-items:center;color:var(--del)}
-  .dfb .n{color:var(--del)}
-  .dfb .ln,.dfb .why{font-size:var(--fs-xs);color:var(--ink-faint)}
-  .dfb .why{margin-left:auto;text-transform:uppercase;letter-spacing:.05em}
-  button.dfb:hover{background:var(--s1);color:var(--ink)}
-  button.dfb:focus-visible{outline:2px solid var(--mark);outline-offset:-2px}
-  .dfb.kept{cursor:default}
-  tr.ph td{padding:0;background:none;border:none}
-  tbody.blk{contain:layout paint}
-  tr.r:hover td.c{filter:brightness(1.22)}
-  tr.sel td.c,tr.sel td.g{background:var(--sel)}
-  tr.noted td.act{box-shadow:inset 3px 0 0 var(--mark)}
-  /* the row a bookmark jump just landed on, dropped again a moment later */
-  tr.bmhit td.c,tr.bmhit td.g{background:var(--csel)}
+tr.dfold td {
+  padding: 0;
+  background: var(--del-bg);
+  border-top: 1px solid var(--edge);
+  border-bottom: 1px solid var(--edge);
+}
+tr.dfold.open td {
+  background: var(--mantle);
+}
+.dfb {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 9px;
+  width: 100%;
+  min-height: var(--tap);
+  padding: 2px 12px;
+  border: none;
+  border-radius: 0;
+  background: none;
+  color: var(--ink-faint);
+  font: var(--fs-sm)/1.4 var(--mono);
+  letter-spacing: 0;
+  text-transform: none;
+  text-align: left;
+}
+.dfb .ic {
+  display: flex;
+  align-items: center;
+  color: var(--del);
+}
+.dfb .n {
+  color: var(--del);
+}
+.dfb .ln,
+.dfb .why {
+  font-size: var(--fs-xs);
+  color: var(--ink-faint);
+}
+.dfb .why {
+  margin-left: auto;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+button.dfb:hover {
+  background: var(--s1);
+  color: var(--ink);
+}
+button.dfb:focus-visible {
+  outline: 2px solid var(--mark);
+  outline-offset: -2px;
+}
+.dfb.kept {
+  cursor: default;
+}
+tr.ph td {
+  padding: 0;
+  background: none;
+  border: none;
+}
+tbody.blk {
+  contain: layout paint;
+}
+tr.r:hover td.c {
+  filter: brightness(1.22);
+}
+tr.sel td.c,
+tr.sel td.g {
+  background: var(--sel);
+}
+tr.noted td.act {
+  box-shadow: inset 3px 0 0 var(--mark);
+}
+/* the row a bookmark jump just landed on, dropped again a moment later */
+tr.bmhit td.c,
+tr.bmhit td.g {
+  background: var(--csel);
+}
 
-  /* delta-style word diff inside a changed line */
-  td.c .w{background:var(--add-w);border-radius:2px}
-  tr.del td.c .w{background:var(--del-w)}
-  /* Character range a note is attached to: .cs while selecting, .cn once saved. A range can span
+/* delta-style word diff inside a changed line */
+td.c .w {
+  background: var(--add-w);
+  border-radius: 2px;
+}
+tr.del td.c .w {
+  background: var(--del-w);
+}
+/* Character range a note is attached to: .cs while selecting, .cn once saved. A range can span
      several token spans, so mark it with edge-free backgrounds and underlines that read as one run. */
-  td.c .cs{background:var(--csel);box-shadow:inset 0 -1px 0 var(--accent)}
-  td.c .cn{background:var(--cnote);box-shadow:inset 0 -1px 0 var(--mark)}
-  /* syntax tokens, in every container class `c` marks as code: the diff cell and a note's suggestion */
-  .c .k{color:var(--mauve)}
-  .c .s{color:var(--green)}
-  .c .n{color:var(--peach)}
-  .c .t{color:var(--yellow)}
-  .c .f{color:var(--blue)}
-  .c .y{color:var(--sapphire)}
-  .c .p{color:var(--ov2)}
-  .c .m{color:var(--ov0);font-style:italic}
-  .c .h{color:var(--mauve);font-weight:600}
-  .c .l{color:var(--blue)}
-  .c .b{color:var(--sub1);font-weight:600}
-  .c .v{color:var(--teal)}
+td.c .cs {
+  background: var(--csel);
+  box-shadow: inset 0 -1px 0 var(--accent);
+}
+td.c .cn {
+  background: var(--cnote);
+  box-shadow: inset 0 -1px 0 var(--mark);
+}
+/* syntax tokens, in every container class `c` marks as code: the diff cell and a note's suggestion */
+.c .k {
+  color: var(--mauve);
+}
+.c .s {
+  color: var(--green);
+}
+.c .n {
+  color: var(--peach);
+}
+.c .t {
+  color: var(--yellow);
+}
+.c .f {
+  color: var(--blue);
+}
+.c .y {
+  color: var(--sapphire);
+}
+.c .p {
+  color: var(--ov2);
+}
+.c .m {
+  color: var(--ov0);
+  font-style: italic;
+}
+.c .h {
+  color: var(--mauve);
+  font-weight: 600;
+}
+.c .l {
+  color: var(--blue);
+}
+.c .b {
+  color: var(--sub1);
+  font-weight: 600;
+}
+.c .v {
+  color: var(--teal);
+}
 
-  /* ghost marker: a line another review of this branch commented on. Dim until it is looked at, and
+/* ghost marker: a line another review of this branch commented on. Dim until it is looked at, and
      floated ahead of the code so it holds the right edge of the line without moving anything. */
-  td.c .ghm{float:right;border:none;background:none;color:var(--mauve);opacity:.45;padding:0 3px;
-    margin:2px 0 0 10px;min-height:0;height:20px;display:inline-flex;align-items:center;gap:3px;
-    cursor:pointer;border-radius:4px;font-size:var(--fs-xs);user-select:none}
-  td.c .ghm:hover{opacity:1;background:var(--s0)}
-  td.c .ghm:focus-visible{opacity:1;outline:2px solid var(--mark);outline-offset:1px}
-  td.c .ghm .n{color:var(--ink-dim)}
-  /* the preview a marker opens: each ghost is its note, its verdict, and the way to continue it */
-  #ghpop{position:fixed;z-index:30;overflow-y:auto;overscroll-behavior:contain;background:var(--panel2);
-    border:1px solid var(--edge-hi);border-radius:8px;box-shadow:0 14px 34px rgba(0,0,0,.5);
-    font-family:var(--sans);font-size:var(--fs-ui)}
-  #ghpop[hidden]{display:none}
-  #ghpop .ghitem{padding:10px 12px;border-bottom:1px solid var(--edge)}
-  #ghpop .ghitem:last-child{border-bottom:none}
-  #ghpop .ghsrc{display:flex;align-items:center;gap:8px;color:var(--ink-faint);font-size:var(--fs-xs);
-    margin-bottom:7px}
-  #ghpop .ghsrc .ic{display:flex;color:var(--mauve)}
-  #ghpop .ghsrc .src{font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  #ghpop .ghsrc .spacer{flex:1}
-  #ghpop .ghsrc .ct{flex:none}
-  #ghpop .ghsrc .stat{flex:none;text-transform:uppercase;letter-spacing:.05em;padding:2px 7px;
-    border-radius:9px;background:var(--s1);color:var(--ink-dim)}
-  #ghpop .ghsrc .stat.applied{background:rgba(166,227,161,.18);color:var(--green)}
-  #ghpop .ghsrc .stat.answered{background:rgba(148,226,213,.18);color:var(--teal)}
-  #ghpop .ghsrc .stat.skipped{background:rgba(250,179,135,.18);color:var(--peach)}
-  #ghpop .ghsrc .stat.needs-input{background:rgba(116,199,236,.18);color:var(--sapphire)}
-  #ghpop .ghbody{line-height:1.55}
-  #ghpop .ghlast{margin-top:8px;padding:7px 9px;border-left:2px solid var(--edge-hi);background:var(--s0);
-    border-radius:0 5px 5px 0;color:var(--ink-dim)}
-  #ghpop .ghlast .who{display:block;font-size:var(--fs-xs);color:var(--ink-faint);text-transform:uppercase;
-    letter-spacing:.05em;margin-bottom:3px}
-  #ghpop .ghacts{display:flex;justify-content:flex-end;margin-top:9px}
-  #ghpop .ghacts button{padding:5px 10px;font-size:var(--fs-xs);min-height:var(--tap)}
+td.c .ghm {
+  float: right;
+  border: none;
+  background: none;
+  color: var(--mauve);
+  opacity: 0.45;
+  padding: 0 3px;
+  margin: 2px 0 0 10px;
+  min-height: 0;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: var(--fs-xs);
+  user-select: none;
+}
+td.c .ghm:hover {
+  opacity: 1;
+  background: var(--s0);
+}
+td.c .ghm:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--mark);
+  outline-offset: 1px;
+}
+td.c .ghm .n {
+  color: var(--ink-dim);
+}
+/* the preview a marker opens: each ghost is its note, its verdict, and the way to continue it */
+#ghpop {
+  position: fixed;
+  z-index: 30;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--panel2);
+  border: 1px solid var(--edge-hi);
+  border-radius: 8px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.5);
+  font-family: var(--sans);
+  font-size: var(--fs-ui);
+}
+#ghpop[hidden] {
+  display: none;
+}
+#ghpop .ghitem {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--edge);
+}
+#ghpop .ghitem:last-child {
+  border-bottom: none;
+}
+#ghpop .ghsrc {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-faint);
+  font-size: var(--fs-xs);
+  margin-bottom: 7px;
+}
+#ghpop .ghsrc .ic {
+  display: flex;
+  color: var(--mauve);
+}
+#ghpop .ghsrc .src {
+  font-family: var(--mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#ghpop .ghsrc .spacer {
+  flex: 1;
+}
+#ghpop .ghsrc .ct {
+  flex: none;
+}
+#ghpop .ghsrc .stat {
+  flex: none;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 7px;
+  border-radius: 9px;
+  background: var(--s1);
+  color: var(--ink-dim);
+}
+#ghpop .ghsrc .stat.applied {
+  background: rgba(166, 227, 161, 0.18);
+  color: var(--green);
+}
+#ghpop .ghsrc .stat.answered {
+  background: rgba(148, 226, 213, 0.18);
+  color: var(--teal);
+}
+#ghpop .ghsrc .stat.skipped {
+  background: rgba(250, 179, 135, 0.18);
+  color: var(--peach);
+}
+#ghpop .ghsrc .stat.needs-input {
+  background: rgba(116, 199, 236, 0.18);
+  color: var(--sapphire);
+}
+#ghpop .ghbody {
+  line-height: 1.55;
+}
+#ghpop .ghlast {
+  margin-top: 8px;
+  padding: 7px 9px;
+  border-left: 2px solid var(--edge-hi);
+  background: var(--s0);
+  border-radius: 0 5px 5px 0;
+  color: var(--ink-dim);
+}
+#ghpop .ghlast .who {
+  display: block;
+  font-size: var(--fs-xs);
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 3px;
+}
+#ghpop .ghacts {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 9px;
+}
+#ghpop .ghacts button {
+  padding: 5px 10px;
+  font-size: var(--fs-xs);
+  min-height: var(--tap);
+}
 
-  /* the review offered to a note that wants to name one of its own notes */
-  #refpop{position:fixed;z-index:30;display:flex;flex-direction:column;overflow:hidden;
-    background:var(--panel2);border:1px solid var(--edge-hi);border-radius:8px;
-    box-shadow:0 14px 34px rgba(0,0,0,.5);font-family:var(--sans);font-size:var(--fs-ui)}
-  #refpop[hidden]{display:none}
-  #refpop .rq{flex:none;margin:8px;padding:7px 9px;background:var(--crust);color:var(--ink);
-    border:1px solid var(--edge-hi);border-radius:5px;font:var(--fs-ui) var(--sans)}
-  #refpop .rq:focus{outline:none;border-color:var(--accent)}
-  #refpop .rflist{flex:1;overflow-y:auto;overscroll-behavior:contain;padding-bottom:6px}
-  #refpop .rfitem{display:flex;flex-direction:column;align-items:stretch;gap:2px;width:100%;
-    padding:6px 12px;border:none;border-radius:0;background:none;text-align:left;
-    text-transform:none;letter-spacing:0;font:var(--fs-ui) var(--sans);min-height:var(--tap-lg)}
-  #refpop .rfitem:hover,#refpop .rfitem[data-on]{background:var(--s0)}
-  #refpop .rfitem .loc{color:var(--mark);font:var(--fs-sm)/1.5 var(--mono);
-    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  #refpop .rfitem .tx{color:var(--ink-faint);font-size:var(--fs-sm);
-    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  #refpop .rfnone{padding:12px;color:var(--ink-faint);font-size:var(--fs-sm)}
+/* the review offered to a note that wants to name one of its own notes */
+#refpop {
+  position: fixed;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--panel2);
+  border: 1px solid var(--edge-hi);
+  border-radius: 8px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.5);
+  font-family: var(--sans);
+  font-size: var(--fs-ui);
+}
+#refpop[hidden] {
+  display: none;
+}
+#refpop .rq {
+  flex: none;
+  margin: 8px;
+  padding: 7px 9px;
+  background: var(--crust);
+  color: var(--ink);
+  border: 1px solid var(--edge-hi);
+  border-radius: 5px;
+  font: var(--fs-ui) var(--sans);
+}
+#refpop .rq:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+#refpop .rflist {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: 6px;
+}
+#refpop .rfitem {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  width: 100%;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 0;
+  background: none;
+  text-align: left;
+  text-transform: none;
+  letter-spacing: 0;
+  font: var(--fs-ui) var(--sans);
+  min-height: var(--tap-lg);
+}
+#refpop .rfitem:hover,
+#refpop .rfitem[data-on] {
+  background: var(--s0);
+}
+#refpop .rfitem .loc {
+  color: var(--mark);
+  font: var(--fs-sm)/1.5 var(--mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#refpop .rfitem .tx {
+  color: var(--ink-faint);
+  font-size: var(--fs-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#refpop .rfnone {
+  padding: 12px;
+  color: var(--ink-faint);
+  font-size: var(--fs-sm);
+}
 
-  tr.nrow td{padding:0;background:var(--base)}
-  .nbox{margin:8px 10px 10px 28px;border:1px solid var(--edge-hi);border-radius:6px;background:var(--panel2);overflow:clip}
-  /* the file's own note sits between header and table, full width and without the gutter indent */
-  .fnotes:empty{display:none}
-  .fnotes{background:var(--base);border-bottom:1px solid var(--edge)}
-  .fnotes .nbox{margin:9px;box-shadow:inset 3px 0 0 var(--mark)}
-  .nhead{display:flex;align-items:center;flex-wrap:wrap;gap:10px;padding:6px 11px;border-bottom:1px solid var(--edge);
-    background:var(--s0);font-size:var(--fs-sm);color:var(--ink-dim);position:sticky;top:var(--note-top,0px);z-index:3}
-  .nhead .loc{color:var(--mark)}
-  .nhead .snip{background:var(--cnote);border-radius:3px;padding:0 6px;color:var(--ink);
-    max-width:46%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .nhead .all{font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.05em;padding:2px 7px;border-radius:9px;
-    background:var(--s1);color:var(--ink-dim)}
-  .nhead .spacer{flex:1}
-  .nhead .stat{font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.05em;padding:2px 7px;border-radius:9px;
-    background:var(--s1);color:var(--ink-dim)}
-  .nhead .stat.applied{background:rgba(166,227,161,.18);color:var(--green)}
-  .nhead .stat.answered{background:rgba(148,226,213,.18);color:var(--teal)}
-  .nhead .stat.skipped{background:rgba(250,179,135,.18);color:var(--peach)}
-  .nhead .stat.needs-input{background:rgba(116,199,236,.18);color:var(--sapphire)}
-  /* edit/delete live in the header strip, so they sit one step below the standalone button size */
-  .nhead button{padding:5px 9px;min-height:var(--tap);font-size:var(--fs-xs)}
-  .nhead .sug{color:var(--add)}
-  .nhead .sug:hover{color:var(--add);border-color:var(--add)}
-  .nhead .resolve{display:flex;align-items:center;gap:calc(var(--tap) / 4);color:var(--teal)}
-  button[data-icon-action]{display:inline-flex;align-items:center;justify-content:center;flex:none;
-    width:var(--tap-lg);height:var(--tap-lg);min-width:var(--tap);min-height:var(--tap);padding:0}
-  .nhead button[data-icon-action],.msg button[data-icon-action]{width:var(--tap);height:var(--tap);padding:0}
-  #historyPanel button[data-icon-action],header>button[data-icon-action],.nhead button[data-icon-action],
-  .msg .who button[data-icon-action],.acts button[data-icon-action]{padding:0}
-  .nhead .refb,.acts .refb{color:var(--lav)}
-  .nhead .refb:hover,.acts .refb:hover{color:var(--lav);border-color:var(--lav)}
-  .nhead .attb,.acts .attb{color:var(--teal)}
-  .nhead .attb:hover,.acts .attb:hover{color:var(--teal);border-color:var(--teal)}
-  .nbox.done{opacity:.7}
-  .nbox.done:hover{opacity:1}
-  .nbody{padding:10px 12px;font-family:var(--sans);font-size:var(--fs-code);line-height:1.55}
-  .nstat{padding:0 12px 9px;color:var(--ink-faint);font-family:var(--sans);font-size:var(--fs-sm)}
-  .nedit{padding:10px}
-  .acts{display:flex;gap:8px;margin-top:8px;align-items:center}
-  .acts .spacer{flex:1}
-  .acts .tip{color:var(--ink-faint);font-size:var(--fs-xs);font-family:var(--sans)}
-  /* a picture on its way onto an editor: the whole box says it will take it, because the whole box is
+tr.nrow td {
+  padding: 0;
+  background: var(--base);
+}
+.nbox {
+  margin: 8px 10px 10px 28px;
+  border: 1px solid var(--edge-hi);
+  border-radius: 6px;
+  background: var(--panel2);
+  overflow: clip;
+}
+/* the file's own note sits between header and table, full width and without the gutter indent */
+.fnotes:empty {
+  display: none;
+}
+.fnotes {
+  background: var(--base);
+  border-bottom: 1px solid var(--edge);
+}
+.fnotes .nbox {
+  margin: 9px;
+  box-shadow: inset 3px 0 0 var(--mark);
+}
+.nhead {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 6px 11px;
+  border-bottom: 1px solid var(--edge);
+  background: var(--s0);
+  font-size: var(--fs-sm);
+  color: var(--ink-dim);
+  position: sticky;
+  top: var(--note-top, 0px);
+  z-index: 3;
+}
+.nhead .loc {
+  color: var(--mark);
+}
+.nhead .snip {
+  background: var(--cnote);
+  border-radius: 3px;
+  padding: 0 6px;
+  color: var(--ink);
+  max-width: 46%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nhead .all {
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 7px;
+  border-radius: 9px;
+  background: var(--s1);
+  color: var(--ink-dim);
+}
+.nhead .spacer {
+  flex: 1;
+}
+.nhead .stat {
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 7px;
+  border-radius: 9px;
+  background: var(--s1);
+  color: var(--ink-dim);
+}
+.nhead .stat.applied {
+  background: rgba(166, 227, 161, 0.18);
+  color: var(--green);
+}
+.nhead .stat.answered {
+  background: rgba(148, 226, 213, 0.18);
+  color: var(--teal);
+}
+.nhead .stat.skipped {
+  background: rgba(250, 179, 135, 0.18);
+  color: var(--peach);
+}
+.nhead .stat.needs-input {
+  background: rgba(116, 199, 236, 0.18);
+  color: var(--sapphire);
+}
+/* edit/delete live in the header strip, so they sit one step below the standalone button size */
+.nhead button {
+  padding: 5px 9px;
+  min-height: var(--tap);
+  font-size: var(--fs-xs);
+}
+.nhead .sug {
+  color: var(--add);
+}
+.nhead .sug:hover {
+  color: var(--add);
+  border-color: var(--add);
+}
+.nhead .resolve {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--tap) / 4);
+  color: var(--teal);
+}
+button[data-icon-action] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: var(--tap-lg);
+  height: var(--tap-lg);
+  min-width: var(--tap);
+  min-height: var(--tap);
+  padding: 0;
+}
+.nhead button[data-icon-action],
+.msg button[data-icon-action] {
+  width: var(--tap);
+  height: var(--tap);
+  padding: 0;
+}
+#historyPanel button[data-icon-action],
+header > button[data-icon-action],
+.nhead button[data-icon-action],
+.msg .who button[data-icon-action],
+.acts button[data-icon-action] {
+  padding: 0;
+}
+.nhead .refb,
+.acts .refb {
+  color: var(--lav);
+}
+.nhead .refb:hover,
+.acts .refb:hover {
+  color: var(--lav);
+  border-color: var(--lav);
+}
+.nhead .attb,
+.acts .attb {
+  color: var(--teal);
+}
+.nhead .attb:hover,
+.acts .attb:hover {
+  color: var(--teal);
+  border-color: var(--teal);
+}
+.nbox.done {
+  opacity: 0.7;
+}
+.nbox.done:hover {
+  opacity: 1;
+}
+.nbody {
+  padding: 10px 12px;
+  font-family: var(--sans);
+  font-size: var(--fs-code);
+  line-height: 1.55;
+}
+.nstat {
+  padding: 0 12px 9px;
+  color: var(--ink-faint);
+  font-family: var(--sans);
+  font-size: var(--fs-sm);
+}
+.nedit {
+  padding: 10px;
+}
+.acts {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  align-items: center;
+}
+.acts .spacer {
+  flex: 1;
+}
+.acts .tip {
+  color: var(--ink-faint);
+  font-size: var(--fs-xs);
+  font-family: var(--sans);
+}
+/* a picture on its way onto an editor: the whole box says it will take it, because the whole box is
      what the drop is aimed at rather than the text area inside it */
-  .nbox.dropping,.reply.dropping,.medit.dropping{outline:2px dashed var(--teal);outline-offset:-2px}
-  .nbox.dropping textarea,.reply.dropping textarea,.medit.dropping textarea{border-color:var(--teal)}
+.nbox.dropping,
+.reply.dropping,
+.medit.dropping {
+  outline: 2px dashed var(--teal);
+  outline-offset: -2px;
+}
+.nbox.dropping textarea,
+.reply.dropping textarea,
+.medit.dropping textarea {
+  border-color: var(--teal);
+}
 
-  button{font:var(--fs-sm)/1 var(--mono);letter-spacing:.05em;text-transform:uppercase;background:transparent;color:var(--ink-dim);
-    border:1px solid var(--edge-hi);padding:7px 12px;border-radius:5px;cursor:pointer;min-height:var(--tap-lg);
-    display:inline-flex;align-items:center;justify-content:center;gap:6px}
-  /* an author `display` on `button` outranks the UA sheet's `[hidden]`, so restore it here */
-  button[hidden]{display:none}
-  button:hover{color:var(--ink);border-color:var(--ink-faint)}
-  button.primary{background:var(--accent);border-color:var(--accent);color:var(--crust);font-weight:600}
-  button.primary:hover{background:var(--lav);color:var(--crust)}
-  button:disabled{cursor:not-allowed;opacity:.55}
-  button.danger:hover{color:var(--del);border-color:var(--del)}
-  button:focus-visible,td.g:focus-visible{outline:2px solid var(--mark);outline-offset:2px}
+button {
+  font: var(--fs-sm)/1 var(--mono);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  background: transparent;
+  color: var(--ink-dim);
+  border: 1px solid var(--edge-hi);
+  padding: 7px 12px;
+  border-radius: 5px;
+  cursor: pointer;
+  min-height: var(--tap-lg);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+/* an author `display` on `button` outranks the UA sheet's `[hidden]`, so restore it here */
+button[hidden] {
+  display: none;
+}
+button:hover {
+  color: var(--ink);
+  border-color: var(--ink-faint);
+}
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--crust);
+  font-weight: 600;
+}
+button.primary:hover {
+  background: var(--lav);
+  color: var(--crust);
+}
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+button.danger:hover {
+  color: var(--del);
+  border-color: var(--del);
+}
+button:focus-visible,
+td.g:focus-visible {
+  outline: 2px solid var(--mark);
+  outline-offset: 2px;
+}
 
-  footer{flex:none;border-top:1px solid var(--edge);background:var(--panel2);padding:10px 16px;display:flex;gap:14px;align-items:center}
-  footer .count{color:var(--mark);flex:none}
-  footer .spacer{flex:1}
-  .empty{padding:34px 18px;color:var(--ink-faint);font-family:var(--sans);font-size:var(--fs-ui)}
+footer {
+  flex: none;
+  border-top: 1px solid var(--edge);
+  background: var(--panel2);
+  padding: 10px 16px;
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+footer .count {
+  color: var(--mark);
+  flex: none;
+}
+footer .spacer {
+  flex: 1;
+}
+.empty {
+  padding: 34px 18px;
+  color: var(--ink-faint);
+  font-family: var(--sans);
+  font-size: var(--fs-ui);
+}
 
-  /* ---- the conversation on a note ----
+/* ---- the conversation on a note ----
      A reply carries as much as the note it answers, so it is set as a comment in its own right rather
      than as a footnote under one: same body size as the note, a named speaker on every message, and a
      badge on the agent's, because the one thing that must never be missed is who wrote what. */
-  .thread:empty{display:none}
-  .thread{border-top:1px solid var(--edge);background:var(--panel2);padding:11px 12px;
-    display:flex;flex-direction:column;gap:10px}
-  .msg{border:1px solid var(--edge-hi);border-radius:6px;background:var(--panel);overflow:hidden}
-  .msg.a{border-left:3px solid var(--sapphire)}
-  .msg.r{border-left:3px solid var(--mauve)}
-  .msg .who{display:flex;align-items:center;gap:8px;padding:6px 11px;border-bottom:1px solid var(--edge);
-    font-family:var(--sans);font-size:var(--fs-sm);color:var(--ink-dim)}
-  .msg.a .who{background:rgba(116,199,236,.13)}
-  .msg.r .who{background:rgba(203,166,247,.11)}
-  .msg .who b{font-weight:600;color:var(--ink)}
-  .msg .bot{font:700 var(--fs-xs)/1.5 var(--mono);letter-spacing:.08em;padding:2px 7px;border-radius:9px;
-    background:var(--sapphire);color:var(--crust);flex:none}
-  .msg .newtag{font:700 var(--fs-xs)/1.5 var(--mono);letter-spacing:.06em;padding:2px 7px;border-radius:9px;
-    background:var(--mark);color:var(--crust);flex:none}
-  .msg .when{margin-left:auto;color:var(--ink-faint);font-size:var(--fs-xs);flex:none}
-  /* your own words stay yours: reword or withdraw one from the strip that names its speaker */
-  .msg .who button{padding:4px 8px;min-height:var(--tap);font-size:var(--fs-xs);flex:none}
-  .msg .who .rewrite:hover{color:var(--mauve);border-color:var(--mauve)}
-  .msg .medit{padding:10px 12px}
-  .msg .mb{padding:10px 12px;font-family:var(--sans);font-size:var(--fs-code);
-    line-height:1.55;color:var(--ink)}
-  .msg .mb pre{margin:0;padding:8px 10px;overflow-x:auto;white-space:pre;font:var(--fs-code)/1.55 var(--mono);color:var(--ink)}
-  /* a message that arrived while the page was open, until the note is looked at */
-  .msg.fresh{border-color:var(--mark)}
-  .msg.fresh.a{border-left-color:var(--sapphire)}
-  .msg.fresh.r{border-left-color:var(--mauve)}
-  .replyhost{border-top:1px solid var(--edge);background:var(--panel2)}
-  .thread:not(:empty)+.replyhost{border-top:none;padding-top:0}
-  .reply{padding:9px 12px}
-  .reply.shut{padding:7px 12px}
-  .reply .rbtn{padding:5px 9px;font-size:var(--fs-xs);color:var(--ink-faint)}
-  .reply .rbtn:hover{color:var(--mauve);border-color:var(--mauve)}
-  .rhint{padding:7px 12px;color:var(--ink-faint);font-family:var(--sans);font-size:var(--fs-sm)}
-  .nhead .unread{font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.05em;padding:2px 7px;border-radius:9px;
-    background:var(--mark);color:var(--crust);font-weight:700}
-  .nhead .unread[hidden]{display:none}
-  .nbox.unread-on{border-color:var(--mark)}
+.thread:empty {
+  display: none;
+}
+.thread {
+  border-top: 1px solid var(--edge);
+  background: var(--panel2);
+  padding: 11px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.msg {
+  border: 1px solid var(--edge-hi);
+  border-radius: 6px;
+  background: var(--panel);
+  overflow: hidden;
+}
+.msg.a {
+  border-left: 3px solid var(--sapphire);
+}
+.msg.r {
+  border-left: 3px solid var(--mauve);
+}
+.msg .who {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 11px;
+  border-bottom: 1px solid var(--edge);
+  font-family: var(--sans);
+  font-size: var(--fs-sm);
+  color: var(--ink-dim);
+}
+.msg.a .who {
+  background: rgba(116, 199, 236, 0.13);
+}
+.msg.r .who {
+  background: rgba(203, 166, 247, 0.11);
+}
+.msg .who b {
+  font-weight: 600;
+  color: var(--ink);
+}
+.msg .bot {
+  font: 700 var(--fs-xs)/1.5 var(--mono);
+  letter-spacing: 0.08em;
+  padding: 2px 7px;
+  border-radius: 9px;
+  background: var(--sapphire);
+  color: var(--crust);
+  flex: none;
+}
+.msg .newtag {
+  font: 700 var(--fs-xs)/1.5 var(--mono);
+  letter-spacing: 0.06em;
+  padding: 2px 7px;
+  border-radius: 9px;
+  background: var(--mark);
+  color: var(--crust);
+  flex: none;
+}
+.msg .when {
+  margin-left: auto;
+  color: var(--ink-faint);
+  font-size: var(--fs-xs);
+  flex: none;
+}
+/* your own words stay yours: reword or withdraw one from the strip that names its speaker */
+.msg .who button {
+  padding: 4px 8px;
+  min-height: var(--tap);
+  font-size: var(--fs-xs);
+  flex: none;
+}
+.msg .who .rewrite:hover {
+  color: var(--mauve);
+  border-color: var(--mauve);
+}
+.msg .medit {
+  padding: 10px 12px;
+}
+.msg .mb {
+  padding: 10px 12px;
+  font-family: var(--sans);
+  font-size: var(--fs-code);
+  line-height: 1.55;
+  color: var(--ink);
+}
+.msg .mb pre {
+  margin: 0;
+  padding: 8px 10px;
+  overflow-x: auto;
+  white-space: pre;
+  font: var(--fs-code)/1.55 var(--mono);
+  color: var(--ink);
+}
+/* a message that arrived while the page was open, until the note is looked at */
+.msg.fresh {
+  border-color: var(--mark);
+}
+.msg.fresh.a {
+  border-left-color: var(--sapphire);
+}
+.msg.fresh.r {
+  border-left-color: var(--mauve);
+}
+.replyhost {
+  border-top: 1px solid var(--edge);
+  background: var(--panel2);
+}
+.thread:not(:empty) + .replyhost {
+  border-top: none;
+  padding-top: 0;
+}
+.reply {
+  padding: 9px 12px;
+}
+.reply.shut {
+  padding: 7px 12px;
+}
+.reply .rbtn {
+  padding: 5px 9px;
+  font-size: var(--fs-xs);
+  color: var(--ink-faint);
+}
+.reply .rbtn:hover {
+  color: var(--mauve);
+  border-color: var(--mauve);
+}
+.rhint {
+  padding: 7px 12px;
+  color: var(--ink-faint);
+  font-family: var(--sans);
+  font-size: var(--fs-sm);
+}
+.nhead .unread {
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 7px;
+  border-radius: 9px;
+  background: var(--mark);
+  color: var(--crust);
+  font-weight: 700;
+}
+.nhead .unread[hidden] {
+  display: none;
+}
+.nbox.unread-on {
+  border-color: var(--mark);
+}
 
-  /* ---- prose, on both sides of the conversation ----
+/* ---- prose, on both sides of the conversation ----
      A note and the answer to it are Markdown, so both are set as text with code in it: sans for the
      prose, mono only where something is code. Every size is the page's own scale stepped off
      --fs-code, so the body of a message stays the size it was before it was rendered. */
-  /* a note box mounted in the diff sits inside a cell, so it would otherwise inherit the diff's own
+/* a note box mounted in the diff sits inside a cell, so it would otherwise inherit the diff's own
      pre-wrap; the blocks below carry the layout now, and a note reads the same wherever it is mounted */
-  .md{white-space:normal;word-break:break-word}
-  .md>:first-child{margin-top:0}
-  .md>:last-child{margin-bottom:0}
-  .md p{margin:0 0 8px}
-  .md h1,.md h2,.md h3,.md h4,.md h5,.md h6{margin:13px 0 6px;font-weight:600;line-height:1.3;color:var(--ink)}
-  .md h1{font-size:calc(var(--fs-code) + 4px)}
-  .md h2{font-size:calc(var(--fs-code) + 2px)}
-  .md h3{font-size:calc(var(--fs-code) + 1px)}
-  .md h4,.md h5,.md h6{font-size:var(--fs-code)}
-  .md h1,.md h2{padding-bottom:4px;border-bottom:1px solid var(--edge)}
-  .md ul,.md ol{margin:6px 0 8px;padding-left:22px}
-  .md li{margin:2px 0}
-  .md li>ul,.md li>ol{margin:2px 0}
-  .md li>p{margin:0 0 6px}
-  /* a ticked-off item reads as the box the agent wrote, and stays as unclickable as the file it is in.
+.md {
+  white-space: normal;
+  word-break: break-word;
+}
+.md > :first-child {
+  margin-top: 0;
+}
+.md > :last-child {
+  margin-bottom: 0;
+}
+.md p {
+  margin: 0 0 8px;
+}
+.md h1,
+.md h2,
+.md h3,
+.md h4,
+.md h5,
+.md h6 {
+  margin: 13px 0 6px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--ink);
+}
+.md h1 {
+  font-size: calc(var(--fs-code) + 4px);
+}
+.md h2 {
+  font-size: calc(var(--fs-code) + 2px);
+}
+.md h3 {
+  font-size: calc(var(--fs-code) + 1px);
+}
+.md h4,
+.md h5,
+.md h6 {
+  font-size: var(--fs-code);
+}
+.md h1,
+.md h2 {
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--edge);
+}
+.md ul,
+.md ol {
+  margin: 6px 0 8px;
+  padding-left: 22px;
+}
+.md li {
+  margin: 2px 0;
+}
+.md li > ul,
+.md li > ol {
+  margin: 2px 0;
+}
+.md li > p {
+  margin: 0 0 6px;
+}
+/* a ticked-off item reads as the box the agent wrote, and stays as unclickable as the file it is in.
      The marker is dropped rather than pulled out of the list, so a box lines up with the items around it. */
-  .md li.task{list-style:none}
-  .md li.task input{margin:0 7px 0 0;accent-color:var(--accent);vertical-align:baseline}
-  .md blockquote{margin:8px 0;padding:1px 0 1px 11px;border-left:3px solid var(--s2);color:var(--ink-dim)}
-  .md hr{border:none;border-top:1px solid var(--edge-hi);margin:11px 0}
-  .md a{color:var(--accent);text-decoration:none;border-bottom:1px solid rgba(137,180,250,.4)}
-  .md a:hover{border-bottom-color:var(--accent)}
-  /* a picture the reviewer attached: shown at the width the note has, and never so tall that the
+.md li.task {
+  list-style: none;
+}
+.md li.task input {
+  margin: 0 7px 0 0;
+  accent-color: var(--accent);
+  vertical-align: baseline;
+}
+.md blockquote {
+  margin: 8px 0;
+  padding: 1px 0 1px 11px;
+  border-left: 3px solid var(--s2);
+  color: var(--ink-dim);
+}
+.md hr {
+  border: none;
+  border-top: 1px solid var(--edge-hi);
+  margin: 11px 0;
+}
+.md a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(137, 180, 250, 0.4);
+}
+.md a:hover {
+  border-bottom-color: var(--accent);
+}
+/* a picture the reviewer attached: shown at the width the note has, and never so tall that the
      prose under it is pushed off the screen. Clicking opens it whole, which is what a screenshot
      of a whole window needs. */
-  .md .shot{display:block;margin:8px 0;border:none;max-width:100%;width:max-content;
-    border-radius:5px;overflow:hidden;line-height:0}
-  .md .shot:first-child{margin-top:0}
-  .md .shot:last-child{margin-bottom:0}
-  .md .shot img{display:block;max-width:100%;max-height:46vh;object-fit:contain;
-    border:1px solid var(--edge-hi);border-radius:5px;background:var(--crust)}
-  .md .shot:hover img{border-color:var(--teal)}
-  /* one note pointing at another: the chip says where that note is now, and clicking it goes there.
+.md .shot {
+  display: block;
+  margin: 8px 0;
+  border: none;
+  max-width: 100%;
+  width: max-content;
+  border-radius: 5px;
+  overflow: hidden;
+  line-height: 0;
+}
+.md .shot:first-child {
+  margin-top: 0;
+}
+.md .shot:last-child {
+  margin-bottom: 0;
+}
+.md .shot img {
+  display: block;
+  max-width: 100%;
+  max-height: 46vh;
+  object-fit: contain;
+  border: 1px solid var(--edge-hi);
+  border-radius: 5px;
+  background: var(--crust);
+}
+.md .shot:hover img {
+  border-color: var(--teal);
+}
+/* one note pointing at another: the chip says where that note is now, and clicking it goes there.
      A reference the review no longer holds keeps the words it was written with and strikes them. */
-  .md .nref{display:inline-block;white-space:nowrap;font:var(--fs-sm)/1.5 var(--mono);letter-spacing:0;
-    text-transform:none;padding:0 calc(var(--tap) / 4);min-height:var(--tap);min-width:var(--tap);border:1px solid var(--edge-hi);border-radius:9px;
-    background:var(--s0);color:var(--mark);cursor:pointer}
-  .md .nref .i{display:inline-block;width:12px;height:12px;vertical-align:-2px;margin-right:4px;
-    color:var(--ink-faint)}
-  .md button.nref:hover{color:var(--mark);border-color:var(--mark);background:var(--s1)}
-  .md button.nref:hover .i{color:var(--mark)}
-  .md .nref.gone{color:var(--ink-faint);cursor:default}
-  .md .nref.gone .t{text-decoration:line-through}
-  .refpreview{margin:calc(var(--tap) / 2) 0;border:1px solid var(--edge-hi);
-    border-left:3px solid var(--teal);border-radius:5px;background:var(--panel);overflow:hidden}
-  .refhead{display:flex;align-items:center;flex-wrap:wrap;gap:calc(var(--tap) / 3);
-    padding:calc(var(--tap) / 3);border-bottom:1px solid var(--edge);font-size:var(--fs-sm);color:var(--ink-dim)}
-  .refhead .pth{flex:1;min-width:0}
-  .refhead button{min-height:var(--tap);min-width:var(--tap);font:var(--fs-sm) var(--mono)}
-  .refbody,.refmessage{padding:calc(var(--tap) / 2)}
-  .refcapture pre{margin:0;max-height:38vh;overflow:auto;padding:calc(var(--tap) / 3);font-size:var(--fs-code)}
-  .refreplies summary{cursor:pointer;min-height:var(--tap);padding:calc(var(--tap) / 3);
-    color:var(--teal);font-size:var(--fs-sm);border-top:1px solid var(--edge)}
-  .refmessage+.refmessage{border-top:1px solid var(--edge)}
-  .refmessage>b{font:600 var(--fs-sm) var(--sans);color:var(--ink-dim)}
-  .refpreview.gone{padding:calc(var(--tap) / 2);color:var(--ink-faint)}
-  .reading-position{flex:none;border-top:1px solid var(--edge);padding:calc(var(--tap) / 3);
-    font:var(--fs-xs) var(--sans);color:var(--ink-dim)}
-  #readingNow,#resumeReading{display:flex;align-items:center;gap:calc(var(--tap) / 4);min-height:var(--tap);width:100%;min-width:0}
-  #readingNow[hidden],#resumeReading[hidden]{display:none}
-  .reading-position .pth{flex:1;min-width:0;font-family:var(--mono)}
-  #resumeReading{padding:calc(var(--tap) / 4);color:var(--teal);font-size:var(--fs-xs)}
-  .r.reading-stop td{box-shadow:inset 0 1px color-mix(in srgb,var(--teal) 30%,transparent)}
-  .hide-rules label{min-height:var(--tap);overflow-wrap:anywhere}
-  .hide-rules code{white-space:pre-wrap}
-  .md strong{font-weight:600;color:var(--ink)}
-  .md del{color:var(--ink-faint)}
-  .md code{font:var(--fs-sm)/1.5 var(--mono);background:var(--s0);border-radius:3px;padding:1px 5px;color:var(--ink)}
-  /* a fence is code the same way the diff is code: same frame as a suggestion, coloured by class `c` */
-  .md pre.mdb{margin:8px 0;padding:8px 10px;background:var(--crust);border:1px solid var(--edge-hi);
-    border-radius:5px;overflow-x:auto;white-space:pre;font:var(--fs-code)/1.55 var(--mono);color:var(--ink)}
-  .md pre.mdb code{background:none;padding:0;font:inherit;color:inherit}
-  /* the page's tables are the diff's, and those are fixed and full width; a written one is neither */
-  .md .mdt{margin:8px 0;overflow-x:auto}
-  .md table{width:auto;table-layout:auto;font-size:var(--fs-sm)}
-  .md th,.md td{padding:4px 9px;border:1px solid var(--edge-hi);white-space:normal;vertical-align:top;text-align:left}
-  .md th{background:var(--s0);font-weight:600;color:var(--ink)}
+.md .nref {
+  display: inline-block;
+  white-space: nowrap;
+  font: var(--fs-sm)/1.5 var(--mono);
+  letter-spacing: 0;
+  text-transform: none;
+  padding: 0 calc(var(--tap) / 4);
+  min-height: var(--tap);
+  min-width: var(--tap);
+  border: 1px solid var(--edge-hi);
+  border-radius: 9px;
+  background: var(--s0);
+  color: var(--mark);
+  cursor: pointer;
+}
+.md .nref .i {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  vertical-align: -2px;
+  margin-right: 4px;
+  color: var(--ink-faint);
+}
+.md button.nref:hover {
+  color: var(--mark);
+  border-color: var(--mark);
+  background: var(--s1);
+}
+.md button.nref:hover .i {
+  color: var(--mark);
+}
+.md .nref.gone {
+  color: var(--ink-faint);
+  cursor: default;
+}
+.md .nref.gone .t {
+  text-decoration: line-through;
+}
+.refpreview {
+  margin: calc(var(--tap) / 2) 0;
+  border: 1px solid var(--edge-hi);
+  border-left: 3px solid var(--teal);
+  border-radius: 5px;
+  background: var(--panel);
+  overflow: hidden;
+}
+.refhead {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: calc(var(--tap) / 3);
+  padding: calc(var(--tap) / 3);
+  border-bottom: 1px solid var(--edge);
+  font-size: var(--fs-sm);
+  color: var(--ink-dim);
+}
+.refhead .pth {
+  flex: 1;
+  min-width: 0;
+}
+.refhead button {
+  min-height: var(--tap);
+  min-width: var(--tap);
+  font: var(--fs-sm) var(--mono);
+}
+.refbody,
+.refmessage {
+  padding: calc(var(--tap) / 2);
+}
+.refcapture pre {
+  margin: 0;
+  max-height: 38vh;
+  overflow: auto;
+  padding: calc(var(--tap) / 3);
+  font-size: var(--fs-code);
+}
+.refreplies summary {
+  cursor: pointer;
+  min-height: var(--tap);
+  padding: calc(var(--tap) / 3);
+  color: var(--teal);
+  font-size: var(--fs-sm);
+  border-top: 1px solid var(--edge);
+}
+.refmessage + .refmessage {
+  border-top: 1px solid var(--edge);
+}
+.refmessage > b {
+  font: 600 var(--fs-sm) var(--sans);
+  color: var(--ink-dim);
+}
+.refpreview.gone {
+  padding: calc(var(--tap) / 2);
+  color: var(--ink-faint);
+}
+.reading-position {
+  flex: none;
+  border-top: 1px solid var(--edge);
+  padding: calc(var(--tap) / 3);
+  font: var(--fs-xs) var(--sans);
+  color: var(--ink-dim);
+}
+#readingNow,
+#resumeReading {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--tap) / 4);
+  min-height: var(--tap);
+  width: 100%;
+  min-width: 0;
+}
+#readingNow[hidden],
+#resumeReading[hidden] {
+  display: none;
+}
+.reading-position .pth {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--mono);
+}
+#resumeReading {
+  padding: calc(var(--tap) / 4);
+  color: var(--teal);
+  font-size: var(--fs-xs);
+}
+.r.reading-stop td {
+  box-shadow: inset 0 1px color-mix(in srgb, var(--teal) 30%, transparent);
+}
+.hide-rules label {
+  min-height: var(--tap);
+  overflow-wrap: anywhere;
+}
+.hide-rules code {
+  white-space: pre-wrap;
+}
+.md strong {
+  font-weight: 600;
+  color: var(--ink);
+}
+.md del {
+  color: var(--ink-faint);
+}
+.md code {
+  font: var(--fs-sm)/1.5 var(--mono);
+  background: var(--s0);
+  border-radius: 3px;
+  padding: 1px 5px;
+  color: var(--ink);
+}
+/* a fence is code the same way the diff is code: same frame as a suggestion, coloured by class `c` */
+.md pre.mdb {
+  margin: 8px 0;
+  padding: 8px 10px;
+  background: var(--crust);
+  border: 1px solid var(--edge-hi);
+  border-radius: 5px;
+  overflow-x: auto;
+  white-space: pre;
+  font: var(--fs-code)/1.55 var(--mono);
+  color: var(--ink);
+}
+.md pre.mdb code {
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+}
+/* the page's tables are the diff's, and those are fixed and full width; a written one is neither */
+.md .mdt {
+  margin: 8px 0;
+  overflow-x: auto;
+}
+.md table {
+  width: auto;
+  table-layout: auto;
+  font-size: var(--fs-sm);
+}
+.md th,
+.md td {
+  padding: 4px 9px;
+  border: 1px solid var(--edge-hi);
+  white-space: normal;
+  vertical-align: top;
+  text-align: left;
+}
+.md th {
+  background: var(--s0);
+  font-weight: 600;
+  color: var(--ink);
+}
 
-  /* ---- notes the diff can no longer hold where they were written ---- */
-  .lost{display:flex;align-items:baseline;gap:9px;padding:6px 12px;background:rgba(250,179,135,.09);
-    border-bottom:1px solid var(--edge);font-family:var(--sans);font-size:var(--fs-sm);color:var(--ink-dim)}
-  .lost .tag{flex:none;font:700 var(--fs-xs)/1.6 var(--mono);text-transform:uppercase;letter-spacing:.06em;
-    color:var(--peach)}
-  .lost .why{min-width:0}
-  .nbox.adrift{border-color:var(--peach);border-style:dashed;background:var(--panel)}
-  .nbox.adrift .lost{background:rgba(243,139,168,.12)}
-  .nbox.adrift .lost .tag{color:var(--red)}
-  /* the lines a note was written on, framed like the suggestion block so a note reads as one thing */
-  .cap{margin:10px 12px 0;border:1px solid var(--edge-hi);border-radius:5px;background:var(--crust);overflow:hidden}
-  .cap .caph{padding:3px 10px;background:var(--s0);color:var(--ink-dim);font:var(--fs-xs)/1.6 var(--mono);
-    text-transform:uppercase;letter-spacing:.05em}
-  /* a long capture is still just context for the note, so it scrolls rather than pushing the text away */
-  .cap .capc{max-height:38vh;overflow:auto;padding:5px 0}
-  .cap .cl{display:flex;gap:6px;padding:0 10px;white-space:pre-wrap;word-break:break-word;
-    line-height:1.5;font-size:var(--fs-code)}
-  .cap .cl .cm{flex:none;width:8px;color:var(--ink-faint)}
-  .cap .cl .c{flex:1;min-width:0}
-  .cap .cl.add{background:var(--add-bg)} .cap .cl.add .cm{color:var(--add)}
-  .cap .cl.del{background:var(--del-bg)} .cap .cl.del .cm{color:var(--del)}
-  /* code that has since been rewritten: shown as a record, not as what is in the file now */
-  .cap.was .caph{background:rgba(250,179,135,.16);color:var(--peach)}
-  .cap.was .capc{opacity:.82}
-  .loose[hidden]{display:none}
-  .loose{border-top:1px solid var(--edge-hi);background:var(--base);padding:2px 0 8px}
-  .looseh{padding:7px 12px 2px;color:var(--peach);font:var(--fs-xs)/1.6 var(--mono);
-    text-transform:uppercase;letter-spacing:.06em}
-  .loose .nrow{display:block}
-  .loose .nbox{margin:8px 12px}
-  /* notes about the review as a whole: the same card as a file's, above the first of them */
-  #diff .gcard{border:1px solid var(--edge);border-radius:6px;margin:12px 14px;overflow:clip;background:var(--panel);
-    border-left:3px solid var(--mark)}
-  #diff .gcard .fh .p{color:var(--mark)}
-  #diff .gcard .loose{border-top:none;padding:2px 0 4px}
-  #diff .file.stray{border-color:var(--peach);border-style:dashed}
-  #diff .file.stray .fh .p{color:var(--peach)}
-  .strayw{padding:2px 0 6px}
-  .strayw .note{margin:9px 12px 0;color:var(--ink-faint);font-family:var(--sans);font-size:var(--fs-sm);line-height:1.5}
+/* ---- notes the diff can no longer hold where they were written ---- */
+.lost {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  padding: 6px 12px;
+  background: rgba(250, 179, 135, 0.09);
+  border-bottom: 1px solid var(--edge);
+  font-family: var(--sans);
+  font-size: var(--fs-sm);
+  color: var(--ink-dim);
+}
+.lost .tag {
+  flex: none;
+  font: 700 var(--fs-xs)/1.6 var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--peach);
+}
+.lost .why {
+  min-width: 0;
+}
+.nbox.adrift {
+  border-color: var(--peach);
+  border-style: dashed;
+  background: var(--panel);
+}
+.nbox.adrift .lost {
+  background: rgba(243, 139, 168, 0.12);
+}
+.nbox.adrift .lost .tag {
+  color: var(--red);
+}
+/* the lines a note was written on, framed like the suggestion block so a note reads as one thing */
+.cap {
+  margin: 10px 12px 0;
+  border: 1px solid var(--edge-hi);
+  border-radius: 5px;
+  background: var(--crust);
+  overflow: hidden;
+}
+.cap .caph {
+  padding: 3px 10px;
+  background: var(--s0);
+  color: var(--ink-dim);
+  font: var(--fs-xs)/1.6 var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+/* a long capture is still just context for the note, so it scrolls rather than pushing the text away */
+.cap .capc {
+  max-height: 38vh;
+  overflow: auto;
+  padding: 5px 0;
+}
+.cap .cl {
+  display: flex;
+  gap: 6px;
+  padding: 0 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+  font-size: var(--fs-code);
+}
+.cap .cl .cm {
+  flex: none;
+  width: 8px;
+  color: var(--ink-faint);
+}
+.cap .cl .c {
+  flex: 1;
+  min-width: 0;
+}
+.cap .cl.add {
+  background: var(--add-bg);
+}
+.cap .cl.add .cm {
+  color: var(--add);
+}
+.cap .cl.del {
+  background: var(--del-bg);
+}
+.cap .cl.del .cm {
+  color: var(--del);
+}
+/* code that has since been rewritten: shown as a record, not as what is in the file now */
+.cap.was .caph {
+  background: rgba(250, 179, 135, 0.16);
+  color: var(--peach);
+}
+.cap.was .capc {
+  opacity: 0.82;
+}
+.loose[hidden] {
+  display: none;
+}
+.loose {
+  border-top: 1px solid var(--edge-hi);
+  background: var(--base);
+  padding: 2px 0 8px;
+}
+.looseh {
+  padding: 7px 12px 2px;
+  color: var(--peach);
+  font: var(--fs-xs)/1.6 var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.loose .nrow {
+  display: block;
+}
+.loose .nbox {
+  margin: 8px 12px;
+}
+/* notes about the review as a whole: the same card as a file's, above the first of them */
+#diff .gcard {
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+  margin: 12px 14px;
+  overflow: clip;
+  background: var(--panel);
+  border-left: 3px solid var(--mark);
+}
+#diff .gcard .fh .p {
+  color: var(--mark);
+}
+#diff .gcard .loose {
+  border-top: none;
+  padding: 2px 0 4px;
+}
+#diff .file.stray {
+  border-color: var(--peach);
+  border-style: dashed;
+}
+#diff .file.stray .fh .p {
+  color: var(--peach);
+}
+.strayw {
+  padding: 2px 0 6px;
+}
+.strayw .note {
+  margin: 9px 12px 0;
+  color: var(--ink-faint);
+  font-family: var(--sans);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+}
 
-  /* ---- all notes: the review read as a conversation, over the top of the diff ---- */
-  .rdr{position:absolute;inset:0;z-index:5;background:var(--bg);display:flex;flex-direction:column}
-  .rdr[hidden]{display:none}
-  .rdrh{flex:none;display:flex;align-items:center;gap:10px;padding:8px 14px;background:var(--panel2);
-    border-bottom:1px solid var(--edge)}
-  .rdrh .ttl{font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.08em;color:var(--ink-faint);flex:none}
-  .rdrh .ct{font-size:var(--fs-xs);color:var(--crust);background:var(--mark);border-radius:9px;padding:1px 6px;
-    font-weight:700;flex:none}
-  .rdrh .spacer{flex:1}
-  .rdrh button{padding:5px 9px;font-size:var(--fs-xs);min-height:var(--tap)}
-  .chips{display:flex;gap:5px;flex-wrap:wrap;margin-left:6px}
-  .chip{padding:4px 9px;font-size:var(--fs-xs);min-height:var(--tap);gap:6px}
-  .chip.on{background:var(--mark);border-color:var(--mark);color:var(--crust);font-weight:700}
-  .chip.on:hover{background:var(--peach);border-color:var(--peach);color:var(--crust)}
-  .chip .n{font-weight:700;color:var(--ink-faint)}
-  .chip.on .n{color:var(--crust)}
-  .rdrb{flex:1;overflow:auto;overflow-anchor:none;padding:0 0 40vh}
-  .rdrg{margin:12px 14px}
-  /* the file a run of notes was written on stays put while they are read */
-  .rdrg .gh{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:10px;padding:7px 12px;
-    background:var(--panel2);border:1px solid var(--edge);border-radius:6px 6px 0 0;box-shadow:0 1px 0 var(--crust)}
-  .rdrg .gh .p{color:var(--ink);overflow:hidden;white-space:nowrap}
-  .rdrg .gh .p.stray{color:var(--peach)}
-  .rdrg .gh .ct,.rdrg .gh .hid{font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.05em;flex:none}
-  .rdrg .gh .ct{color:var(--ink-faint)}
-  .rdrg .gh .hid{color:var(--mark)}
-  .rdrg .gn{border:1px solid var(--edge);border-top:none;border-radius:0 0 6px 6px;background:var(--panel);
-    padding:2px 0 6px}
-  /* clear of the sticky heading, so stepping with j/k lands on the note rather than under its file */
-  .rdrn{scroll-margin-top:2.6em}
-  .rdr .nrow{display:block}
-  .rdr .nbox{margin:9px 12px}
-  /* the captured code is what a note is about, not what it says: it is folded until it is asked for */
-  .rdr .cap .capc{max-height:9.4em}
-  .rdr .cap.open .capc{max-height:38vh}
-  .rdr .cap .caph{cursor:pointer;display:flex;align-items:center}
-  .rdr .cap .caph::after{content:"⌄";margin-left:auto;color:var(--ink-faint);font-size:var(--fs-ui)}
-  .rdr .cap.open .caph::after{content:"⌃"}
+/* ---- all notes: the review read as a conversation, over the top of the diff ---- */
+.rdr {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+}
+.rdr[hidden] {
+  display: none;
+}
+.rdrh {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  background: var(--panel2);
+  border-bottom: 1px solid var(--edge);
+}
+.rdrh .ttl {
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-faint);
+  flex: none;
+}
+.rdrh .ct {
+  font-size: var(--fs-xs);
+  color: var(--crust);
+  background: var(--mark);
+  border-radius: 9px;
+  padding: 1px 6px;
+  font-weight: 700;
+  flex: none;
+}
+.rdrh .spacer {
+  flex: 1;
+}
+.rdrh button {
+  padding: 5px 9px;
+  font-size: var(--fs-xs);
+  min-height: var(--tap);
+}
+.chips {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin-left: 6px;
+}
+.chip {
+  padding: 4px 9px;
+  font-size: var(--fs-xs);
+  min-height: var(--tap);
+  gap: 6px;
+}
+.chip.on {
+  background: var(--mark);
+  border-color: var(--mark);
+  color: var(--crust);
+  font-weight: 700;
+}
+.chip.on:hover {
+  background: var(--peach);
+  border-color: var(--peach);
+  color: var(--crust);
+}
+.chip .n {
+  font-weight: 700;
+  color: var(--ink-faint);
+}
+.chip.on .n {
+  color: var(--crust);
+}
+.rdrb {
+  flex: 1;
+  overflow: auto;
+  overflow-anchor: none;
+  padding: 0 0 40vh;
+}
+.rdrg {
+  margin: 12px 14px;
+}
+/* the file a run of notes was written on stays put while they are read */
+.rdrg .gh {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  background: var(--panel2);
+  border: 1px solid var(--edge);
+  border-radius: 6px 6px 0 0;
+  box-shadow: 0 1px 0 var(--crust);
+}
+.rdrg .gh .p {
+  color: var(--ink);
+  overflow: hidden;
+  white-space: nowrap;
+}
+.rdrg .gh .p.stray {
+  color: var(--peach);
+}
+.rdrg .gh .ct,
+.rdrg .gh .hid {
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  flex: none;
+}
+.rdrg .gh .ct {
+  color: var(--ink-faint);
+}
+.rdrg .gh .hid {
+  color: var(--mark);
+}
+.rdrg .gn {
+  border: 1px solid var(--edge);
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  background: var(--panel);
+  padding: 2px 0 6px;
+}
+/* clear of the sticky heading, so stepping with j/k lands on the note rather than under its file */
+.rdrn {
+  scroll-margin-top: 2.6em;
+}
+.rdr .nrow {
+  display: block;
+}
+.rdr .nbox {
+  margin: 9px 12px;
+}
+/* the captured code is what a note is about, not what it says: it is folded until it is asked for */
+.rdr .cap .capc {
+  max-height: 9.4em;
+}
+.rdr .cap.open .capc {
+  max-height: 38vh;
+}
+.rdr .cap .caph {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+.rdr .cap .caph::after {
+  content: "⌄";
+  margin-left: auto;
+  color: var(--ink-faint);
+  font-size: var(--fs-ui);
+}
+.rdr .cap.open .caph::after {
+  content: "⌃";
+}
 
-  /* History sits over the read without replacing notes or their open editors. */
-  #historyPanel{position:absolute;inset:0;z-index:8;display:flex;flex-direction:column;min-width:0;background:var(--bg)}
-  #historyPanel[hidden],.history-warning[hidden],#historyMessage[hidden]{display:none}
-  .history-warning{font:var(--fs-xs) var(--sans);color:var(--red)}
-  .history-head,.history-tools{display:flex;align-items:center;gap:calc(var(--tap) / 3);padding:calc(var(--tap) / 3) calc(var(--tap) / 2);
-    border-bottom:1px solid var(--edge);background:var(--panel2);flex:none;flex-wrap:wrap}
-  .history-head>b{font-size:var(--fs-ui)}
-  #historyCount,.history-head time{font-size:var(--fs-xs);color:var(--ink-faint)}
-  #historyPanel button{font-size:var(--fs-xs);min-height:var(--tap);padding:calc(var(--tap) / 5) calc(var(--tap) / 3)}
-  .history-help,#historyMessage{margin:0;padding:calc(var(--tap) / 3) calc(var(--tap) / 2);font:var(--fs-sm)/1.5 var(--sans);color:var(--ink-dim)}
-  #historyMessage{color:var(--red);background:var(--del-bg)}
-  .history-tools input,.history-tools select{font:var(--fs-sm) var(--mono);background:var(--crust);color:var(--ink);
-    border:1px solid var(--edge-hi);border-radius:4px;padding:calc(var(--tap) / 4);min-height:var(--tap);min-width:0}
-  .history-tools input{flex:1;min-width:calc(var(--tap) * 6)}
-  .history-content{display:flex;flex:1;min-height:0;min-width:0}
-  .history-timeline{flex:0 0 28%;max-width:calc(var(--tap) * 14);min-width:calc(var(--tap) * 7);
-    overflow:auto;border-right:1px solid var(--edge);padding:calc(var(--tap) / 3)}
-  #historyList{display:flex;flex-direction:column;gap:calc(var(--tap) / 4)}
-  #historyList .revision{display:flex;flex-direction:column;align-items:flex-start;text-align:left;width:100%;
-    text-transform:none;letter-spacing:normal;line-height:1.5;overflow-wrap:anywhere}
-  #historyList .revision.on{background:var(--sel);border-color:var(--accent)}
-  .revision time,.revision span{color:var(--ink-faint);font-size:var(--fs-xs)}
-  #historyMore{margin-top:calc(var(--tap) / 3)}
-  #historyDetail{flex:1;min-width:0;overflow:auto;padding:calc(var(--tap) / 2)}
-  .history-meta{display:flex;flex-wrap:wrap;align-items:center;gap:calc(var(--tap) / 3);font-size:var(--fs-sm);margin-bottom:calc(var(--tap) / 2)}
-  .history-meta time,.history-meta>span{color:var(--ink-faint)}
-  .history-meta .pth{flex-basis:100%}
-  .history-card{border:1px solid var(--edge-hi);border-radius:5px;margin-bottom:calc(var(--tap) / 2);overflow:hidden}
-  .history-card h3{display:flex;flex-wrap:wrap;gap:calc(var(--tap) / 3);align-items:center;background:var(--panel2);
-    margin:0;padding:calc(var(--tap) / 3);font-size:var(--fs-sm);font-weight:500;border-bottom:1px solid var(--edge)}
-  .history-card h3 .pth{flex:1;min-width:0}
-  .history-kinds{color:var(--mark);font-size:var(--fs-xs)}
-  .history-compare{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
-  .history-compare>section{min-width:0}
-  .history-compare .before{border-right:1px solid var(--edge)}
-  .history-compare h4{font:var(--fs-xs) var(--mono);text-transform:uppercase;margin:0;padding:calc(var(--tap) / 3);color:var(--ink-dim)}
-  .history-compare .before h4{background:var(--del-bg)}
-  .history-compare .after h4{background:var(--add-bg)}
-  .history-note{padding:calc(var(--tap) / 3);font:var(--fs-ui)/1.6 var(--sans);overflow-wrap:anywhere}
-  .history-note b{font-size:var(--fs-sm);color:var(--ink-dim)}
-  .history-note .md{margin-top:calc(var(--tap) / 4)}
-  .history-note pre{white-space:pre-wrap;overflow-wrap:anywhere;font-family:var(--mono)}
-  .history-status{color:var(--mark);font-size:var(--fs-sm)}
-  .history-reply{border-top:1px solid var(--edge);padding-top:calc(var(--tap) / 3);margin-top:calc(var(--tap) / 3)}
-  .history-reply.ai>b{color:var(--teal)}
-  .history-reply time{display:block;font-size:var(--fs-xs);color:var(--ink-faint)}
-  .history-capture summary{cursor:pointer;min-height:var(--tap);color:var(--ink-faint)}
-  .history-empty{padding:calc(var(--tap) / 2);color:var(--ink-faint);font:var(--fs-ui)/1.6 var(--sans)}
+/* History sits over the read without replacing notes or their open editors. */
+#historyPanel {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--bg);
+}
+#historyPanel[hidden],
+.history-warning[hidden],
+#historyMessage[hidden] {
+  display: none;
+}
+.history-warning {
+  font: var(--fs-xs) var(--sans);
+  color: var(--red);
+}
+.history-head,
+.history-tools {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--tap) / 3);
+  padding: calc(var(--tap) / 3) calc(var(--tap) / 2);
+  border-bottom: 1px solid var(--edge);
+  background: var(--panel2);
+  flex: none;
+  flex-wrap: wrap;
+}
+.history-head > b {
+  font-size: var(--fs-ui);
+}
+#historyCount,
+.history-head time {
+  font-size: var(--fs-xs);
+  color: var(--ink-faint);
+}
+#historyPanel button {
+  font-size: var(--fs-xs);
+  min-height: var(--tap);
+  padding: calc(var(--tap) / 5) calc(var(--tap) / 3);
+}
+.history-help,
+#historyMessage {
+  margin: 0;
+  padding: calc(var(--tap) / 3) calc(var(--tap) / 2);
+  font: var(--fs-sm)/1.5 var(--sans);
+  color: var(--ink-dim);
+}
+#historyMessage {
+  color: var(--red);
+  background: var(--del-bg);
+}
+.history-tools input,
+.history-tools select {
+  font: var(--fs-sm) var(--mono);
+  background: var(--crust);
+  color: var(--ink);
+  border: 1px solid var(--edge-hi);
+  border-radius: 4px;
+  padding: calc(var(--tap) / 4);
+  min-height: var(--tap);
+  min-width: 0;
+}
+.history-tools input {
+  flex: 1;
+  min-width: calc(var(--tap) * 6);
+}
+.history-content {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+.history-timeline {
+  flex: 0 0 28%;
+  max-width: calc(var(--tap) * 14);
+  min-width: calc(var(--tap) * 7);
+  overflow: auto;
+  border-right: 1px solid var(--edge);
+  padding: calc(var(--tap) / 3);
+}
+#historyList {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--tap) / 4);
+}
+#historyList .revision {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  width: 100%;
+  text-transform: none;
+  letter-spacing: normal;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+#historyList .revision.on {
+  background: var(--sel);
+  border-color: var(--accent);
+}
+.revision time,
+.revision span {
+  color: var(--ink-faint);
+  font-size: var(--fs-xs);
+}
+#historyMore {
+  margin-top: calc(var(--tap) / 3);
+}
+#historyDetail {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  padding: calc(var(--tap) / 2);
+}
+.history-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(var(--tap) / 3);
+  font-size: var(--fs-sm);
+  margin-bottom: calc(var(--tap) / 2);
+}
+.history-meta time,
+.history-meta > span {
+  color: var(--ink-faint);
+}
+.history-meta .pth {
+  flex-basis: 100%;
+}
+.history-card {
+  border: 1px solid var(--edge-hi);
+  border-radius: 5px;
+  margin-bottom: calc(var(--tap) / 2);
+  overflow: hidden;
+}
+.history-card h3 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--tap) / 3);
+  align-items: center;
+  background: var(--panel2);
+  margin: 0;
+  padding: calc(var(--tap) / 3);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  border-bottom: 1px solid var(--edge);
+}
+.history-card h3 .pth {
+  flex: 1;
+  min-width: 0;
+}
+.history-kinds {
+  color: var(--mark);
+  font-size: var(--fs-xs);
+}
+.history-compare {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+.history-compare > section {
+  min-width: 0;
+}
+.history-compare .before {
+  border-right: 1px solid var(--edge);
+}
+.history-compare h4 {
+  font: var(--fs-xs) var(--mono);
+  text-transform: uppercase;
+  margin: 0;
+  padding: calc(var(--tap) / 3);
+  color: var(--ink-dim);
+}
+.history-compare .before h4 {
+  background: var(--del-bg);
+}
+.history-compare .after h4 {
+  background: var(--add-bg);
+}
+.history-note {
+  padding: calc(var(--tap) / 3);
+  font: var(--fs-ui)/1.6 var(--sans);
+  overflow-wrap: anywhere;
+}
+.history-note b {
+  font-size: var(--fs-sm);
+  color: var(--ink-dim);
+}
+.history-note .md {
+  margin-top: calc(var(--tap) / 4);
+}
+.history-note pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--mono);
+}
+.history-status {
+  color: var(--mark);
+  font-size: var(--fs-sm);
+}
+.history-reply {
+  border-top: 1px solid var(--edge);
+  padding-top: calc(var(--tap) / 3);
+  margin-top: calc(var(--tap) / 3);
+}
+.history-reply.ai > b {
+  color: var(--teal);
+}
+.history-reply time {
+  display: block;
+  font-size: var(--fs-xs);
+  color: var(--ink-faint);
+}
+.history-capture summary {
+  cursor: pointer;
+  min-height: var(--tap);
+  color: var(--ink-faint);
+}
+.history-empty {
+  padding: calc(var(--tap) / 2);
+  color: var(--ink-faint);
+  font: var(--fs-ui)/1.6 var(--sans);
+}
 
-  /* One search over the current read, with a quick picker and a detailed overlay. */
-  #reviewSearchBox{position:relative;flex:0 1 calc(var(--tap) * 13);min-width:calc(var(--tap) * 5)}
-  #reviewSearch{width:100%;min-height:var(--tap-lg);border:1px solid var(--edge-hi);border-radius:5px;
-    padding:calc(var(--tap) / 5) calc(var(--tap) / 3);background:var(--crust);color:var(--ink);font:var(--fs-sm) var(--sans)}
-  #reviewSearch:focus{outline:1px solid var(--accent);border-color:var(--accent)}
-  #searchPopup{position:absolute;top:calc(100% + var(--tap) / 3);right:0;z-index:15;
-    width:min(calc(var(--tap) * 23),calc(100vw - var(--tap)));background:var(--panel2);
-    border:1px solid var(--edge-hi);border-radius:6px;box-shadow:0 calc(var(--tap) / 2) var(--tap) #0006;overflow:hidden}
-  #searchPopup[hidden],#searchPanel[hidden]{display:none}
-  #searchSuggestions{max-height:55dvh;overflow:auto}
-  #searchSeeAll{width:100%;border:0;border-top:1px solid var(--edge-hi);border-radius:0;min-height:var(--tap-lg);color:var(--accent)}
-  #searchPanel{position:absolute;inset:0;z-index:9;display:flex;flex-direction:column;min-width:0;background:var(--bg)}
-  .search-head{display:flex;align-items:center;gap:calc(var(--tap) / 3);padding:calc(var(--tap) / 2);
-    border-bottom:1px solid var(--edge);background:var(--panel2);flex:none}
-  .search-head h2{margin:0;font-size:var(--fs-ui);overflow-wrap:anywhere;min-width:0}
-  #searchCount,.search-kind,#searchFilters span{font-size:var(--fs-xs);color:var(--ink-dim)}
-  .search-help{margin:0;padding:calc(var(--tap) / 3) calc(var(--tap) / 2);font:var(--fs-sm)/1.5 var(--sans);color:var(--ink-dim)}
-  #searchFilters{display:flex;flex-wrap:wrap;gap:calc(var(--tap) / 3);padding:calc(var(--tap) / 3) calc(var(--tap) / 2);border-bottom:1px solid var(--edge)}
-  #searchFilters button,#searchClose,#searchMore{min-height:var(--tap);font-size:var(--fs-sm)}
-  #searchFilters button[aria-pressed=true]{color:var(--accent);border-color:var(--accent);background:var(--sel)}
-  #searchResults{flex:1;min-height:0;overflow:auto;padding:calc(var(--tap) / 2)}
-  .search-result{display:block;text-align:left;width:100%;min-height:var(--tap);border:0;border-bottom:1px solid var(--edge);
-    border-radius:0;padding:calc(var(--tap) / 2);color:var(--ink);background:var(--panel);font:var(--fs-sm)/1.6 var(--sans);
-    text-transform:none;letter-spacing:normal}
-  #searchResults .search-result{border:1px solid var(--edge-hi);border-radius:5px;margin-bottom:calc(var(--tap) / 2)}
-  .search-result:hover,.search-result:focus-visible,.search-result[aria-selected=true]{background:var(--sel);outline:1px solid var(--accent);outline-offset:-1px}
-  .search-location{display:flex;align-items:center;gap:calc(var(--tap) / 3);margin-bottom:calc(var(--tap) / 4)}
-  .search-location .pth{flex:1;min-width:0;font-family:var(--mono)}
-  .search-kind{flex:none}
-  .search-preview{display:block;white-space:pre-wrap;overflow-wrap:anywhere}
-  #searchPopup .search-preview{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-  .search-preview.code{font-family:var(--mono)}
-  .search-result mark{background:var(--mark);color:var(--crust);border-radius:2px}
-  .search-empty{padding:calc(var(--tap) / 2);color:var(--ink-dim);font:var(--fs-ui)/1.6 var(--sans)}
-  @media(max-width:1100px){header{gap:calc(var(--tap) / 4)}header>b{display:none}header>.range{max-width:calc(var(--tap) * 5)}}
-  @media(max-width:760px){header>b,header>#range,header>#agentState{display:none}.search-location{flex-wrap:wrap}
-    #reviewSearchBox{flex:1}.search-head{flex-wrap:wrap}#searchPopup{position:fixed;top:calc(var(--tap-lg) + var(--tap) / 2);right:calc(var(--tap) / 2)}}
-  @media(max-width:850px){
-    .history-compare{grid-template-columns:minmax(0,1fr)}
-    .history-compare .before{border-right:0;border-bottom:1px solid var(--edge)}
-    .history-timeline{flex-basis:32%;min-width:calc(var(--tap) * 5)}
+/* One search over the current read, with a quick picker and a detailed overlay. */
+#reviewSearchBox {
+  position: relative;
+  flex: 0 1 calc(var(--tap) * 13);
+  min-width: calc(var(--tap) * 5);
+}
+#reviewSearch {
+  width: 100%;
+  min-height: var(--tap-lg);
+  border: 1px solid var(--edge-hi);
+  border-radius: 5px;
+  padding: calc(var(--tap) / 5) calc(var(--tap) / 3);
+  background: var(--crust);
+  color: var(--ink);
+  font: var(--fs-sm) var(--sans);
+}
+#reviewSearch:focus {
+  outline: 1px solid var(--accent);
+  border-color: var(--accent);
+}
+#searchPopup {
+  position: absolute;
+  top: calc(100% + var(--tap) / 3);
+  right: 0;
+  z-index: 15;
+  width: min(calc(var(--tap) * 23), calc(100vw - var(--tap)));
+  background: var(--panel2);
+  border: 1px solid var(--edge-hi);
+  border-radius: 6px;
+  box-shadow: 0 calc(var(--tap) / 2) var(--tap) #0006;
+  overflow: hidden;
+}
+#searchPopup[hidden],
+#searchPanel[hidden] {
+  display: none;
+}
+#searchSuggestions {
+  max-height: 55dvh;
+  overflow: auto;
+}
+#searchSeeAll {
+  width: 100%;
+  border: 0;
+  border-top: 1px solid var(--edge-hi);
+  border-radius: 0;
+  min-height: var(--tap-lg);
+  color: var(--accent);
+}
+#searchPanel {
+  position: absolute;
+  inset: 0;
+  z-index: 9;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--bg);
+}
+.search-head {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--tap) / 3);
+  padding: calc(var(--tap) / 2);
+  border-bottom: 1px solid var(--edge);
+  background: var(--panel2);
+  flex: none;
+}
+.search-head h2 {
+  margin: 0;
+  font-size: var(--fs-ui);
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+#searchCount,
+.search-kind,
+#searchFilters span {
+  font-size: var(--fs-xs);
+  color: var(--ink-dim);
+}
+.search-help {
+  margin: 0;
+  padding: calc(var(--tap) / 3) calc(var(--tap) / 2);
+  font: var(--fs-sm)/1.5 var(--sans);
+  color: var(--ink-dim);
+}
+#searchFilters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--tap) / 3);
+  padding: calc(var(--tap) / 3) calc(var(--tap) / 2);
+  border-bottom: 1px solid var(--edge);
+}
+#searchFilters button,
+#searchClose,
+#searchMore {
+  min-height: var(--tap);
+  font-size: var(--fs-sm);
+}
+#searchFilters button[aria-pressed="true"] {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--sel);
+}
+#searchResults {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: calc(var(--tap) / 2);
+}
+.search-result {
+  display: block;
+  text-align: left;
+  width: 100%;
+  min-height: var(--tap);
+  border: 0;
+  border-bottom: 1px solid var(--edge);
+  border-radius: 0;
+  padding: calc(var(--tap) / 2);
+  color: var(--ink);
+  background: var(--panel);
+  font: var(--fs-sm)/1.6 var(--sans);
+  text-transform: none;
+  letter-spacing: normal;
+}
+#searchResults .search-result {
+  border: 1px solid var(--edge-hi);
+  border-radius: 5px;
+  margin-bottom: calc(var(--tap) / 2);
+}
+.search-result:hover,
+.search-result:focus-visible,
+.search-result[aria-selected="true"] {
+  background: var(--sel);
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+.search-location {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--tap) / 3);
+  margin-bottom: calc(var(--tap) / 4);
+}
+.search-location .pth {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--mono);
+}
+.search-kind {
+  flex: none;
+}
+.search-preview {
+  display: block;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+#searchPopup .search-preview {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.search-preview.code {
+  font-family: var(--mono);
+}
+.search-result mark {
+  background: var(--mark);
+  color: var(--crust);
+  border-radius: 2px;
+}
+.search-empty {
+  padding: calc(var(--tap) / 2);
+  color: var(--ink-dim);
+  font: var(--fs-ui)/1.6 var(--sans);
+}
+@media (max-width: 1100px) {
+  header {
+    gap: calc(var(--tap) / 4);
   }
-  .nhead .jmp{color:var(--accent)}
-  .nhead .jmp:hover{color:var(--accent);border-color:var(--accent)}
-
-  /* ---- following the agent ---- */
-  .live{width:8px;height:8px;border-radius:50%;flex:none;background:var(--s2)}
-  .live.on{background:var(--green);box-shadow:0 0 0 3px rgba(166,227,161,.16)}
-  .pending{flex:none;color:var(--peach);border-color:var(--peach);padding:4px 9px;min-height:var(--tap);
-    font-size:var(--fs-xs)}
-  .pending:hover{color:var(--crust);background:var(--peach);border-color:var(--peach)}
-  .unread-pill{flex:none;background:var(--mark);border-color:var(--mark);color:var(--crust);font-weight:700;
-    padding:4px 10px;min-height:var(--tap);font-size:var(--fs-xs)}
-  .unread-pill:hover{background:var(--peach);border-color:var(--peach);color:var(--crust)}
-  .toast.reply{border-left-color:var(--sapphire)}
-  .toast.reply .ic{color:var(--sapphire)}
-  .toast.saved .tx{white-space:normal}
-  .toast.saved .sub{color:var(--ink-faint);font-size:var(--fs-sm)}
-  .toast code{color:var(--mark);font-family:var(--mono)}
-  @media (prefers-reduced-motion:no-preference){
-    .nrow .nbox{animation:in .12s ease-out}
-    @keyframes in{from{opacity:0;transform:translateY(-2px)}}
-    /* the one open editor, answering a click that would have opened a second one */
-    .nbox.bump{animation:bump .45s ease-out}
-    @keyframes bump{0%,100%{border-color:var(--edge-hi)}30%{border-color:var(--accent)}}
+  header > b {
+    display: none;
   }
+  header > .range {
+    max-width: calc(var(--tap) * 5);
+  }
+}
+@media (max-width: 760px) {
+  header > b,
+  header > #range,
+  header > #agentState {
+    display: none;
+  }
+  .search-location {
+    flex-wrap: wrap;
+  }
+  #reviewSearchBox {
+    flex: 1;
+  }
+  .search-head {
+    flex-wrap: wrap;
+  }
+  #searchPopup {
+    position: fixed;
+    top: calc(var(--tap-lg) + var(--tap) / 2);
+    right: calc(var(--tap) / 2);
+  }
+}
+@media (max-width: 850px) {
+  .history-compare {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .history-compare .before {
+    border-right: 0;
+    border-bottom: 1px solid var(--edge);
+  }
+  .history-timeline {
+    flex-basis: 32%;
+    min-width: calc(var(--tap) * 5);
+  }
+}
+.nhead .jmp {
+  color: var(--accent);
+}
+.nhead .jmp:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
 
-  /* The live page exposes the same editor, attachment picker, previews and thread as the review. */
-  body.ui-note{overflow:auto}
-  body.ui-note>header,body.ui-note>footer,body.ui-note nav,body.ui-note #diff,body.ui-note .rdr{display:none}
-  body.ui-note main,body.ui-note .pane{display:contents}
-  body.ui-note #historyPanel{position:fixed;inset:0;z-index:20}
-  #uiNote{min-width:0;font-family:var(--sans);flex:1}
-  .ui-note-tools{display:flex;justify-content:flex-end;padding:calc(var(--row) / 3);border-bottom:1px solid var(--edge)}
-  .ui-note-tools a{display:inline-flex;align-items:center;min-height:var(--tap);color:var(--accent);font-size:var(--fs-ui)}
-  .ui-note-body .nbox{margin:0;border:0;border-radius:0}
-  .ui-note-error{padding:var(--row);color:var(--red)}
-  .web-capture{padding:12px;border-bottom:1px solid var(--edge);font:var(--fs-sm)/1.5 var(--sans)}
-  .web-location{color:var(--ink);margin-bottom:12px;overflow-wrap:anywhere}
-  .web-location span{color:var(--ink-faint);font-size:var(--fs-xs)}
-  .web-comparison{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:14px;align-items:start}
-  .web-observation{min-width:0;background:var(--panel2);border:1px solid var(--edge);border-radius:7px;padding:10px}
-  .web-caption{display:flex;flex-wrap:wrap;align-items:center;gap:calc(var(--tap) / 3);color:var(--mauve);margin-bottom:10px}
-  .web-caption-actions{display:inline-flex;align-items:center;gap:calc(var(--tap) / 6);margin-left:auto}
-  .web-caption time{font-size:var(--fs-xs);color:var(--ink-faint)}
-  .web-observation img{max-width:100%;height:auto;display:block;border-radius:4px}
-  .web-observation>a{display:block;overflow:auto;max-height:360px}
-  .web-observation .web-picture{display:block;width:100%;height:auto;min-height:0;padding:0;border:0;background:transparent;
-    text-align:left;overflow:auto;max-height:360px;cursor:crosshair}
-  .web-observation summary{cursor:pointer;color:var(--ink-dim);min-height:var(--tap);padding-top:5px}
-  .web-observation pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:var(--fs-xs);max-height:300px;overflow:auto}
+/* ---- following the agent ---- */
+.live {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--s2);
+}
+.live.on {
+  background: var(--green);
+  box-shadow: 0 0 0 3px rgba(166, 227, 161, 0.16);
+}
+.pending {
+  flex: none;
+  color: var(--peach);
+  border-color: var(--peach);
+  padding: 4px 9px;
+  min-height: var(--tap);
+  font-size: var(--fs-xs);
+}
+.pending:hover {
+  color: var(--crust);
+  background: var(--peach);
+  border-color: var(--peach);
+}
+.unread-pill {
+  flex: none;
+  background: var(--mark);
+  border-color: var(--mark);
+  color: var(--crust);
+  font-weight: 700;
+  padding: 4px 10px;
+  min-height: var(--tap);
+  font-size: var(--fs-xs);
+}
+.unread-pill:hover {
+  background: var(--peach);
+  border-color: var(--peach);
+  color: var(--crust);
+}
+.toast.reply {
+  border-left-color: var(--sapphire);
+}
+.toast.reply .ic {
+  color: var(--sapphire);
+}
+.toast.saved .tx {
+  white-space: normal;
+}
+.toast.saved .sub {
+  color: var(--ink-faint);
+  font-size: var(--fs-sm);
+}
+.toast code {
+  color: var(--mark);
+  font-family: var(--mono);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .nrow .nbox {
+    animation: in 0.12s ease-out;
+  }
+  @keyframes in {
+    from {
+      opacity: 0;
+      transform: translateY(-2px);
+    }
+  }
+  /* the one open editor, answering a click that would have opened a second one */
+  .nbox.bump {
+    animation: bump 0.45s ease-out;
+  }
+  @keyframes bump {
+    0%,
+    100% {
+      border-color: var(--edge-hi);
+    }
+    30% {
+      border-color: var(--accent);
+    }
+  }
+}
 
-  /* Screenshot proposals are separate canvases; the captured evidence stays immutable. */
-  .web-image-label{margin-bottom:calc(var(--tap) / 4);color:var(--ink-dim);font:var(--fs-xs)/1.5 var(--sans)}
-  [data-annotation-editor]{position:fixed;inset:0;width:100vw;max-width:none;height:100dvh;max-height:none;margin:0;padding:0;
-    border:0;border-radius:0;background:var(--crust);color:var(--ink);font:var(--fs-ui)/1.5 var(--sans);overflow:hidden}
-  [data-annotation-editor][open]{display:flex;flex-direction:column}
-  [data-annotation-editor]::backdrop{background:var(--crust)}
-  [data-annotation-editor] button{display:inline-flex;align-items:center;justify-content:center;flex:none;
-    width:var(--tap);height:var(--tap);min-width:var(--tap);min-height:var(--tap);padding:calc(var(--tap) / 6);
-    font:var(--fs-sm)/1.3 var(--sans)}
-  [data-annotation-editor] :is(button,input,select,textarea):focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
-  [data-annotation-editor] button[aria-pressed="true"]{border-color:var(--accent);background:var(--sel);color:var(--accent)}
-  [data-annotation-editor] [hidden]{display:none}
-  [data-annotation-editor] button:disabled{opacity:.45;cursor:default}
-  .annotation-tools{display:flex;align-items:center;gap:calc(var(--tap) / 4);flex:none;min-width:0;
-    padding:calc(var(--tap) / 4);border-bottom:1px solid var(--edge);background:var(--panel2);overflow-x:auto}
-  .annotation-group,.annotation-properties{display:flex;align-items:center;gap:calc(var(--tap) / 6);flex:none}
-  .annotation-group+.annotation-group{padding-left:calc(var(--tap) / 4);border-left:1px solid var(--edge-hi)}
-  .annotation-properties label{display:flex;align-items:center;gap:calc(var(--tap) / 8);color:var(--ink-dim)}
-  .annotation-properties input,.annotation-properties select,.annotation-text-label textarea{min-height:var(--tap);min-width:0;
-    background:var(--crust);color:var(--ink);border:1px solid var(--edge-hi);border-radius:4px;
-    padding:calc(var(--tap) / 7);font:var(--fs-sm)/1.4 var(--sans)}
-  .annotation-properties input{width:calc(var(--tap) * 2.2)}
-  .annotation-properties input[type="range"]{width:calc(var(--tap) * 3);padding:0;accent-color:var(--accent)}
-  .annotation-smoothing{min-width:calc(var(--tap) * 1.6);font-size:var(--fs-xs);font-variant-numeric:tabular-nums}
-  .annotation-properties select{max-width:calc(var(--tap) * 6)}
-  .annotation-commit{margin-left:auto;position:sticky;right:0;z-index:2;background:var(--panel2);padding-left:calc(var(--tap) / 4)}
-  [data-annotation-editor] .annotation-apply{color:var(--accent);border-color:var(--accent)}
-  [data-annotation-editor] .annotation-apply[data-dirty]{background:var(--sel)}
-  [data-annotation-editor] .annotation-zoom-tools{position:fixed;right:calc(var(--tap) / 2);bottom:calc(var(--tap) / 2);
-    z-index:3;padding:calc(var(--tap) / 4);border:1px solid var(--edge-hi);border-radius:6px;background:var(--panel2);box-shadow:0 2px 8px #0005}
-  [data-annotation-editor] .annotation-zoom{width:calc(var(--tap) * 1.8);font-size:var(--fs-xs);font-variant-numeric:tabular-nums}
-  .annotation-color::before,.annotation-palette button::before{content:"";display:block;width:var(--icon);height:var(--icon);
-    border-radius:50%;background:var(--annotation-color);box-shadow:0 0 0 1px var(--edge-hi),inset 0 0 0 1px #0003}
-  .annotation-colors{position:fixed;inset:auto;margin:0;width:calc(var(--tap) * 9);max-width:100vw;
-    padding:calc(var(--tap) / 3);border:1px solid var(--edge-hi);border-radius:6px;background:var(--panel2);color:var(--ink);box-shadow:0 2px 12px #0006}
-  .annotation-palette{display:flex;flex-wrap:wrap;gap:calc(var(--tap) / 5);margin-bottom:calc(var(--tap) / 3)}
-  .annotation-colors label{display:flex;align-items:center;justify-content:space-between;gap:calc(var(--tap) / 3);font-size:var(--fs-sm)}
-  .annotation-colors input[type="color"]{width:var(--tap-lg);height:var(--tap-lg);padding:2px;background:var(--crust);
-    border:1px solid var(--edge-hi);border-radius:4px;cursor:pointer}
-  .annotation-text-label{position:fixed;top:calc(var(--tap) * 2);left:calc(var(--tap) / 2);z-index:2;
-    width:min(calc(var(--tap) * 12),calc(100vw - var(--tap)));padding:calc(var(--tap) / 4);
-    border:1px solid var(--edge-hi);border-radius:6px;background:var(--panel2);box-shadow:0 2px 8px #0005}
-  .annotation-text-label textarea{display:block;width:100%;resize:vertical}
-  .annotation-help{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
-  .annotation-viewport{display:flex;min-height:0;min-width:0;flex:1;overflow:auto;padding:calc(var(--tap) / 2);
-    overscroll-behavior:contain;isolation:isolate}
-  .annotation-surface{position:relative;flex:none;margin:auto;line-height:0;background:#fff;box-shadow:0 0 0 1px var(--edge-hi)}
-  .annotation-surface canvas{display:block;max-width:none;touch-action:none;user-select:none}
-  .annotation-viewport.panning,.annotation-viewport.panning canvas{cursor:grabbing!important}
-  .annotation-source-outline{position:absolute;border:1px dashed #64748b;pointer-events:none}
-  .annotation-feedback{position:fixed;left:calc(var(--tap) / 2);bottom:calc(var(--tap) / 2);z-index:3;
-    max-width:min(calc(var(--tap) * 24),55vw);display:flex;flex-direction:column;align-items:flex-start;gap:calc(var(--tap) / 4);pointer-events:none}
-  .annotation-message,.annotation-error{padding:calc(var(--tap) / 4) calc(var(--tap) / 2);border:1px solid var(--edge-hi);
-    border-radius:4px;background:var(--panel2);font-size:var(--fs-xs);overflow-wrap:anywhere;pointer-events:auto}
-  .annotation-message{color:var(--ink-dim)}
-  .annotation-error{color:var(--del);background:var(--del-bg)}
-  [data-annotation-editor] [data-command="retry"]{width:auto;pointer-events:auto}
+/* The live page exposes the same editor, attachment picker, previews and thread as the review. */
+body.ui-note {
+  overflow: auto;
+}
+body.ui-note > header,
+body.ui-note > footer,
+body.ui-note nav,
+body.ui-note #diff,
+body.ui-note .rdr {
+  display: none;
+}
+body.ui-note main,
+body.ui-note .pane {
+  display: contents;
+}
+body.ui-note #historyPanel {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+}
+#uiNote {
+  min-width: 0;
+  font-family: var(--sans);
+  flex: 1;
+}
+.ui-note-tools {
+  display: flex;
+  justify-content: flex-end;
+  padding: calc(var(--row) / 3);
+  border-bottom: 1px solid var(--edge);
+}
+.ui-note-tools a {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap);
+  color: var(--accent);
+  font-size: var(--fs-ui);
+}
+.ui-note-body .nbox {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
+.ui-note-error {
+  padding: var(--row);
+  color: var(--red);
+}
+.web-capture {
+  padding: 12px;
+  border-bottom: 1px solid var(--edge);
+  font: var(--fs-sm)/1.5 var(--sans);
+}
+.web-location {
+  color: var(--ink);
+  margin-bottom: 12px;
+  overflow-wrap: anywhere;
+}
+.web-location span {
+  color: var(--ink-faint);
+  font-size: var(--fs-xs);
+}
+.web-comparison {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 14px;
+  align-items: start;
+}
+.web-observation {
+  min-width: 0;
+  background: var(--panel2);
+  border: 1px solid var(--edge);
+  border-radius: 7px;
+  padding: 10px;
+}
+.web-caption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(var(--tap) / 3);
+  color: var(--mauve);
+  margin-bottom: 10px;
+}
+.web-caption-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--tap) / 6);
+  margin-left: auto;
+}
+.web-caption time {
+  font-size: var(--fs-xs);
+  color: var(--ink-faint);
+}
+.web-observation img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 4px;
+}
+.web-observation > a {
+  display: block;
+  overflow: auto;
+  max-height: 360px;
+}
+.web-observation .web-picture {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  overflow: auto;
+  max-height: 360px;
+  cursor: crosshair;
+}
+.web-observation summary {
+  cursor: pointer;
+  color: var(--ink-dim);
+  min-height: var(--tap);
+  padding-top: 5px;
+}
+.web-observation pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: var(--fs-xs);
+  max-height: 300px;
+  overflow: auto;
+}
 
-#agentQueue { position:fixed; top:calc(var(--tap) * 2); right:calc(var(--tap) / 2);
-  width:min(calc(var(--tap) * 22),calc(100vw - var(--tap))); max-height:80vh; overflow:auto; z-index:100;
-  background:var(--bg); color:var(--ink); border:1px solid var(--edge); border-radius:8px;
-  padding:calc(var(--tap) / 2); box-shadow:0 8px 32px #0005; font-size:var(--fs-ui); }
-#agentQueue[hidden] { display:none; }
-#agentQueue pre { white-space:pre-wrap; overflow-wrap:anywhere; max-height:calc(var(--row) * 9); overflow:auto; }
-#agentQueue .queue-task { border-top:1px solid var(--edge); padding:calc(var(--tap) / 3) 0; overflow-wrap:anywhere; }
-#agentQueue .queue-task .pth { margin:calc(var(--tap) / 5) 0; }
-#agentQueue button { margin:calc(var(--tap) / 6); font-size:var(--fs-sm); }
-#agentQueue button,#queueToggle { min-width:var(--tap); min-height:var(--tap); }
-#queueToggle { flex:none; }
+/* Screenshot proposals are separate canvases; the captured evidence stays immutable. */
+.web-image-label {
+  margin-bottom: calc(var(--tap) / 4);
+  color: var(--ink-dim);
+  font: var(--fs-xs)/1.5 var(--sans);
+}
+[data-annotation-editor] {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: var(--crust);
+  color: var(--ink);
+  font: var(--fs-ui)/1.5 var(--sans);
+  overflow: hidden;
+}
+[data-annotation-editor][open] {
+  display: flex;
+  flex-direction: column;
+}
+[data-annotation-editor]::backdrop {
+  background: var(--crust);
+}
+[data-annotation-editor] button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: var(--tap);
+  height: var(--tap);
+  min-width: var(--tap);
+  min-height: var(--tap);
+  padding: calc(var(--tap) / 6);
+  font: var(--fs-sm)/1.3 var(--sans);
+}
+[data-annotation-editor] :is(button, input, select, textarea):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+[data-annotation-editor] button[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--sel);
+  color: var(--accent);
+}
+[data-annotation-editor] [hidden] {
+  display: none;
+}
+[data-annotation-editor] button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.annotation-tools {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--tap) / 4);
+  flex: none;
+  min-width: 0;
+  padding: calc(var(--tap) / 4);
+  border-bottom: 1px solid var(--edge);
+  background: var(--panel2);
+  overflow-x: auto;
+}
+.annotation-group,
+.annotation-properties {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--tap) / 6);
+  flex: none;
+}
+.annotation-group + .annotation-group {
+  padding-left: calc(var(--tap) / 4);
+  border-left: 1px solid var(--edge-hi);
+}
+.annotation-properties label {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--tap) / 8);
+  color: var(--ink-dim);
+}
+.annotation-properties input,
+.annotation-properties select,
+.annotation-text-label textarea {
+  min-height: var(--tap);
+  min-width: 0;
+  background: var(--crust);
+  color: var(--ink);
+  border: 1px solid var(--edge-hi);
+  border-radius: 4px;
+  padding: calc(var(--tap) / 7);
+  font: var(--fs-sm)/1.4 var(--sans);
+}
+.annotation-properties input {
+  width: calc(var(--tap) * 2.2);
+}
+.annotation-properties input[type="range"] {
+  width: calc(var(--tap) * 3);
+  padding: 0;
+  accent-color: var(--accent);
+}
+.annotation-smoothing {
+  min-width: calc(var(--tap) * 1.6);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+.annotation-properties select {
+  max-width: calc(var(--tap) * 6);
+}
+.annotation-commit {
+  margin-left: auto;
+  position: sticky;
+  right: 0;
+  z-index: 2;
+  background: var(--panel2);
+  padding-left: calc(var(--tap) / 4);
+}
+[data-annotation-editor] .annotation-apply {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+[data-annotation-editor] .annotation-apply[data-dirty] {
+  background: var(--sel);
+}
+[data-annotation-editor] .annotation-zoom-tools {
+  position: fixed;
+  right: calc(var(--tap) / 2);
+  bottom: calc(var(--tap) / 2);
+  z-index: 3;
+  padding: calc(var(--tap) / 4);
+  border: 1px solid var(--edge-hi);
+  border-radius: 6px;
+  background: var(--panel2);
+  box-shadow: 0 2px 8px #0005;
+}
+[data-annotation-editor] .annotation-zoom {
+  width: calc(var(--tap) * 1.8);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+.annotation-color::before,
+.annotation-palette button::before {
+  content: "";
+  display: block;
+  width: var(--icon);
+  height: var(--icon);
+  border-radius: 50%;
+  background: var(--annotation-color);
+  box-shadow:
+    0 0 0 1px var(--edge-hi),
+    inset 0 0 0 1px #0003;
+}
+.annotation-colors {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  width: calc(var(--tap) * 9);
+  max-width: 100vw;
+  padding: calc(var(--tap) / 3);
+  border: 1px solid var(--edge-hi);
+  border-radius: 6px;
+  background: var(--panel2);
+  color: var(--ink);
+  box-shadow: 0 2px 12px #0006;
+}
+.annotation-palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--tap) / 5);
+  margin-bottom: calc(var(--tap) / 3);
+}
+.annotation-colors label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(var(--tap) / 3);
+  font-size: var(--fs-sm);
+}
+.annotation-colors input[type="color"] {
+  width: var(--tap-lg);
+  height: var(--tap-lg);
+  padding: 2px;
+  background: var(--crust);
+  border: 1px solid var(--edge-hi);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.annotation-text-label {
+  position: fixed;
+  top: calc(var(--tap) * 2);
+  left: calc(var(--tap) / 2);
+  z-index: 2;
+  width: min(calc(var(--tap) * 12), calc(100vw - var(--tap)));
+  padding: calc(var(--tap) / 4);
+  border: 1px solid var(--edge-hi);
+  border-radius: 6px;
+  background: var(--panel2);
+  box-shadow: 0 2px 8px #0005;
+}
+.annotation-text-label textarea {
+  display: block;
+  width: 100%;
+  resize: vertical;
+}
+.annotation-help {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.annotation-viewport {
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+  flex: 1;
+  overflow: auto;
+  padding: calc(var(--tap) / 2);
+  overscroll-behavior: contain;
+  isolation: isolate;
+}
+.annotation-surface {
+  position: relative;
+  flex: none;
+  margin: auto;
+  line-height: 0;
+  background: #fff;
+  box-shadow: 0 0 0 1px var(--edge-hi);
+}
+.annotation-surface canvas {
+  display: block;
+  max-width: none;
+  touch-action: none;
+  user-select: none;
+}
+.annotation-viewport.panning,
+.annotation-viewport.panning canvas {
+  cursor: grabbing !important;
+}
+.annotation-source-outline {
+  position: absolute;
+  border: 1px dashed #64748b;
+  pointer-events: none;
+}
+.annotation-feedback {
+  position: fixed;
+  left: calc(var(--tap) / 2);
+  bottom: calc(var(--tap) / 2);
+  z-index: 3;
+  max-width: min(calc(var(--tap) * 24), 55vw);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: calc(var(--tap) / 4);
+  pointer-events: none;
+}
+.annotation-message,
+.annotation-error {
+  padding: calc(var(--tap) / 4) calc(var(--tap) / 2);
+  border: 1px solid var(--edge-hi);
+  border-radius: 4px;
+  background: var(--panel2);
+  font-size: var(--fs-xs);
+  overflow-wrap: anywhere;
+  pointer-events: auto;
+}
+.annotation-message {
+  color: var(--ink-dim);
+}
+.annotation-error {
+  color: var(--del);
+  background: var(--del-bg);
+}
+[data-annotation-editor] [data-command="retry"] {
+  width: auto;
+  pointer-events: auto;
+}
+
+#agentQueue {
+  position: fixed;
+  top: calc(var(--tap) * 2);
+  right: calc(var(--tap) / 2);
+  width: min(calc(var(--tap) * 22), calc(100vw - var(--tap)));
+  max-height: 80vh;
+  overflow: auto;
+  z-index: 100;
+  background: var(--bg);
+  color: var(--ink);
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  padding: calc(var(--tap) / 2);
+  box-shadow: 0 8px 32px #0005;
+  font-size: var(--fs-ui);
+}
+#agentQueue[hidden] {
+  display: none;
+}
+#agentQueue pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: calc(var(--row) * 9);
+  overflow: auto;
+}
+#agentQueue .queue-task {
+  border-top: 1px solid var(--edge);
+  padding: calc(var(--tap) / 3) 0;
+  overflow-wrap: anywhere;
+}
+#agentQueue .queue-task .pth {
+  margin: calc(var(--tap) / 5) 0;
+}
+#agentQueue button {
+  margin: calc(var(--tap) / 6);
+  font-size: var(--fs-sm);
+}
+#agentQueue button,
+#queueToggle {
+  min-width: var(--tap);
+  min-height: var(--tap);
+}
+#queueToggle {
+  flex: none;
+}

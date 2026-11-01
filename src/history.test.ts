@@ -21,11 +21,13 @@ const line = (id: string, body = "Rename this."): ReviewComment => ({
 
 const workspace = async (files: Record<string, string>) => {
   const dir = await mkdtemp(path.join(tmpdir(), "lcr-history-"));
-  for (const [name, text] of Object.entries(files)) await writeFile(path.join(dir, name), text, "utf8");
+  for (const [name, text] of Object.entries(files))
+    await writeFile(path.join(dir, name), text, "utf8");
   return dir;
 };
 
-const settle = (note: ReviewNote): ReviewNote => Object.assign(note, { status: "applied" as const });
+const settle = (note: ReviewNote): ReviewNote =>
+  Object.assign(note, { status: "applied" as const });
 
 describe("describeReviews", () => {
   test("each file is described by its context and how much of it is still open", async () => {
@@ -35,9 +37,15 @@ describe("describeReviews", () => {
         id: "auth-rework",
         branch: "feat",
         base: "abc123",
-        notes: [settle(noteFromComment(line("a|n12|n12|#1"))), noteFromComment(line("a|n20|n20|#2"))],
+        notes: [
+          settle(noteFromComment(line("a|n12|n12|#1"))),
+          noteFromComment(line("a|n20|n20|#2")),
+        ],
       }),
-      "review-2026-01-02T00-00-00.md": renderMarkdown({ range: "HEAD", notes: [] }),
+      "review-2026-01-02T00-00-00.md": renderMarkdown({
+        range: "HEAD",
+        notes: [],
+      }),
       "notes.md": "not ours",
     });
 
@@ -52,7 +60,15 @@ describe("describeReviews", () => {
         notes: 2,
         open: 1,
       },
-      { file: "review-2026-01-02T00-00-00.md", range: "HEAD", id: "", branch: "", base: "", notes: 0, open: 0 },
+      {
+        file: "review-2026-01-02T00-00-00.md",
+        range: "HEAD",
+        id: "",
+        branch: "",
+        base: "",
+        notes: 0,
+        open: 0,
+      },
     ]);
   });
 });
@@ -72,8 +88,22 @@ describe("collectGhosts", () => {
         noteFromComment(line("a|n12|n12|#g1")),
         noteFromComment(line("a|n20|n20|#g2", "And this.")),
         // No line to be marked on: a whole-file note and an overall note stay in their own file.
-        noteFromComment({ id: "src/app.ts|*|*|#f1", file: "src/app.ts", body: "Split it.", scope: "file", start: 0, end: 0 }),
-        noteFromComment({ id: "|@|@|#o1", file: "", body: "Two things at once.", scope: "global", start: 0, end: 0 }),
+        noteFromComment({
+          id: "src/app.ts|*|*|#f1",
+          file: "src/app.ts",
+          body: "Split it.",
+          scope: "file",
+          start: 0,
+          end: 0,
+        }),
+        noteFromComment({
+          id: "|@|@|#o1",
+          file: "",
+          body: "Two things at once.",
+          scope: "global",
+          start: 0,
+          end: 0,
+        }),
       ],
     }),
     "review-2026-01-03T00-00-00.md": renderMarkdown({
@@ -101,7 +131,10 @@ describe("collectGhosts", () => {
       "review-2026-01-04T00-00-00.md",
     ]);
     expect(ghosts[0]!.range).toBe("main..HEAD");
-    expect(ghosts[0]!.notes.map((note) => note.id)).toEqual(["a|n12|n12|#g1", "a|n20|n20|#g2"]);
+    expect(ghosts[0]!.notes.map((note) => note.id)).toEqual([
+      "a|n12|n12|#g1",
+      "a|n20|n20|#g2",
+    ]);
   });
 
   test("a note some current note already continues stays home", async () => {
@@ -117,7 +150,11 @@ describe("collectGhosts", () => {
 
   test("an unknown branch offers every review rather than none", async () => {
     const dir = await workspace(files());
-    const ghosts = await collectGhosts(dir, ".", { except: "", branch: "", taken: new Set() });
+    const ghosts = await collectGhosts(dir, ".", {
+      except: "",
+      branch: "",
+      taken: new Set(),
+    });
     expect(ghosts).toHaveLength(4);
   });
 });

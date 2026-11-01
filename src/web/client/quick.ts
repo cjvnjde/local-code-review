@@ -1,8 +1,8 @@
-import { renderDiff } from './diff-view.ts';
-import { render } from './load.ts';
-import { busyEditor } from './notes.ts';
-import { persistCfg } from './persistence.ts';
-import { SVG, el, state } from './state.ts';
+import { renderDiff } from "./diff-view.ts";
+import { render } from "./load.ts";
+import { busyEditor } from "./notes.ts";
+import { persistCfg } from "./persistence.ts";
+import { SVG, el, state } from "./state.ts";
 
 /* ---------- settings the header keeps within reach ---------- */
 /**
@@ -14,37 +14,50 @@ import { SVG, el, state } from './state.ts';
  * that has answered for itself still outranks the setting, so flipping one here moves the default
  * and leaves those files exactly where they stand.
  */
-const QUICK=[
+const QUICK = [
   {
-    btn:'qHide',cfg:'hideEnabled',label:'hide patterns',offLabel:'show patterns',
-    on:'Disable hide patterns temporarily; keep the patterns and per-file overrides',
-    off:'Enable saved hide patterns',redraw:false,
+    btn: "qHide",
+    cfg: "hideEnabled",
+    label: "hide patterns",
+    offLabel: "show patterns",
+    on: "Disable hide patterns temporarily; keep the patterns and per-file overrides",
+    off: "Enable saved hide patterns",
+    redraw: false,
   },
   {
-    btn:'qFoldDel', cfg:'foldDel', label:'removed',
-    on:'Show removed lines again in the files that have not answered for themselves',
-    off:'Fold removed lines into blocks I can open',
+    btn: "qFoldDel",
+    cfg: "foldDel",
+    label: "removed",
+    on: "Show removed lines again in the files that have not answered for themselves",
+    off: "Fold removed lines into blocks I can open",
     /** Folding changes how tall every block is, so no measured height survives the switch. */
-    redraw:true,
+    redraw: true,
   },
 ];
 /** Paints every header toggle from the stored preferences. Called once the settings are loaded. */
-export function applyQuick(){
-  QUICK.forEach(q=>{
-    const on=!!state.cfg[q.cfg], btn=el(q.btn);
-    btn.classList.toggle('on',on);
-    btn.title=on?q.on:q.off;
-    btn.setAttribute('aria-pressed',String(on));
-    btn.innerHTML=(on?SVG.eyeOff:SVG.eye)+'<span>'+(!on&&q.offLabel?q.offLabel:q.label)+'</span>';
+export function applyQuick() {
+  QUICK.forEach((q) => {
+    const on = !!state.cfg[q.cfg],
+      btn = el(q.btn);
+    btn.classList.toggle("on", on);
+    btn.title = on ? q.on : q.off;
+    btn.setAttribute("aria-pressed", String(on));
+    btn.innerHTML =
+      (on ? SVG.eyeOff : SVG.eye) +
+      "<span>" +
+      (!on && q.offLabel ? q.offLabel : q.label) +
+      "</span>";
   });
 }
-QUICK.forEach(q=>{
-  el(q.btn).onclick=()=>{
-    if(busyEditor()) return;
-    state.cfg[q.cfg]=!state.cfg[q.cfg];
+QUICK.forEach((q) => {
+  el(q.btn).onclick = () => {
+    if (busyEditor()) return;
+    state.cfg[q.cfg] = !state.cfg[q.cfg];
     persistCfg();
     applyQuick();
-    if(q.redraw){ state.h.clear(); renderDiff(); }
-    else render();
+    if (q.redraw) {
+      state.h.clear();
+      renderDiff();
+    } else render();
   };
 });

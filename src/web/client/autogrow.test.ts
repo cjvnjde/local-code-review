@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { NOTE_MAX, fitHeight } from "./autogrow.ts";
 
-const MIN = 64, MAX = 320;
+const MIN = 64,
+  MAX = 320;
 
 describe("fitHeight", () => {
   test("an empty or one-line box keeps the height it was designed at", () => {

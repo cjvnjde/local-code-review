@@ -3,7 +3,18 @@ import { normalizeId, parseArgs } from "./cli.ts";
 
 describe("parseArgs", () => {
   test("extracts tool flags and preserves Git argument order", () => {
-    expect(parseArgs(["HEAD~2", "--port", "9000", "--staged", "--context", "8", "--", "*.ts"])).toEqual({
+    expect(
+      parseArgs([
+        "HEAD~2",
+        "--port",
+        "9000",
+        "--staged",
+        "--context",
+        "8",
+        "--",
+        "*.ts",
+      ]),
+    ).toEqual({
       port: 9000,
       outDir: ".review",
       context: 8,
@@ -22,8 +33,18 @@ describe("parseArgs", () => {
   });
 
   test("--web adds a live page without changing Git arguments or browser flags", () => {
-    const options = parseArgs(["--web", "http://localhost:3000", "--id", "combined",
-      "--no-open", "--context", "8", "main...HEAD", "--", "src/"]);
+    const options = parseArgs([
+      "--web",
+      "http://localhost:3000",
+      "--id",
+      "combined",
+      "--no-open",
+      "--context",
+      "8",
+      "main...HEAD",
+      "--",
+      "src/",
+    ]);
     expect(options.web).toBe("http://localhost:3000/");
     expect(options.diffArgs).toEqual(["main...HEAD", "--", "src/"]);
     expect(options.id).toBe("combined");
@@ -52,8 +73,17 @@ describe("parseArgs", () => {
   });
 
   test("invalid server options fail before startup", () => {
-    for (const args of [["--port"], ["--port", "abc"], ["--port", "-1"], ["--port", "65536"],
-      ["--context"], ["--context", "1.5"], ["--context", "-1"], ["--out"], ["--out", "--staged"]]) {
+    for (const args of [
+      ["--port"],
+      ["--port", "abc"],
+      ["--port", "-1"],
+      ["--port", "65536"],
+      ["--context"],
+      ["--context", "1.5"],
+      ["--context", "-1"],
+      ["--out"],
+      ["--out", "--staged"],
+    ]) {
       expect(() => parseArgs(args)).toThrow();
     }
     expect(parseArgs(["--port", "0", "--context", "0"]).port).toBe(0);
@@ -75,18 +105,33 @@ describe("normalizeId", () => {
   });
 });
 
-test('ACP configuration stays out of Git arguments', () => {
-  expect(parseArgs(['--acp', '/tmp/agent.json', '--id', 'managed', 'main...HEAD']).acp).toBe('/tmp/agent.json');
-  expect(parseArgs(['--acp', '/tmp/agent.json', 'main...HEAD']).diffArgs).toEqual(['main...HEAD']);
-  expect(parseArgs(['--', '--acp']).acp).toBeUndefined();
-  expect(() => parseArgs(['--acp'])).toThrow('configuration');
+test("ACP configuration stays out of Git arguments", () => {
+  expect(
+    parseArgs(["--acp", "/tmp/agent.json", "--id", "managed", "main...HEAD"])
+      .acp,
+  ).toBe("/tmp/agent.json");
+  expect(
+    parseArgs(["--acp", "/tmp/agent.json", "main...HEAD"]).diffArgs,
+  ).toEqual(["main...HEAD"]);
+  expect(parseArgs(["--", "--acp"]).acp).toBeUndefined();
+  expect(() => parseArgs(["--acp"])).toThrow("configuration");
 });
 
-test('no-agent selects manual operation and the last explicit agent flag wins', () => {
-  expect(parseArgs(['--no-agent', '--staged'])).toMatchObject({ noAgent: true, diffArgs: ['--staged'] });
-  expect(parseArgs(['--acp', 'agent.json', '--no-agent']).acp).toBeUndefined();
-  expect(parseArgs(['--acp', 'agent.json', '--no-agent']).noAgent).toBe(true);
-  expect(parseArgs(['--no-agent', '--acp', 'agent.json']).acp).toBe('agent.json');
-  expect(parseArgs(['--no-agent', '--acp', 'agent.json']).noAgent).toBeUndefined();
-  expect(parseArgs(['--', '--no-agent']).diffArgs).toEqual(['--', '--no-agent']);
+test("no-agent selects manual operation and the last explicit agent flag wins", () => {
+  expect(parseArgs(["--no-agent", "--staged"])).toMatchObject({
+    noAgent: true,
+    diffArgs: ["--staged"],
+  });
+  expect(parseArgs(["--acp", "agent.json", "--no-agent"]).acp).toBeUndefined();
+  expect(parseArgs(["--acp", "agent.json", "--no-agent"]).noAgent).toBe(true);
+  expect(parseArgs(["--no-agent", "--acp", "agent.json"]).acp).toBe(
+    "agent.json",
+  );
+  expect(
+    parseArgs(["--no-agent", "--acp", "agent.json"]).noAgent,
+  ).toBeUndefined();
+  expect(parseArgs(["--", "--no-agent"]).diffArgs).toEqual([
+    "--",
+    "--no-agent",
+  ]);
 });

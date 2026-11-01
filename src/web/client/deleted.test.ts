@@ -49,8 +49,18 @@ describe("folding removed lines", () => {
     const f = fileOf(" --+ - ");
     const runs = delRuns(f, 0, f.rows.length);
     expect([...runs.keys()]).toEqual([1, 5]);
-    expect(runs.get(1)).toMatchObject({ start: 1, end: 2, count: 2, open: false });
-    expect(runs.get(5)).toMatchObject({ start: 5, end: 5, count: 1, open: false });
+    expect(runs.get(1)).toMatchObject({
+      start: 1,
+      end: 2,
+      count: 2,
+      open: false,
+    });
+    expect(runs.get(5)).toMatchObject({
+      start: 5,
+      end: 5,
+      count: 1,
+      open: false,
+    });
     // Each folded run gives its rows back and costs one marker line instead.
     expect(drawnRows(f, 0, f.rows.length)).toBe(7 - 2 + 1 - 1 + 1);
   });
@@ -58,8 +68,16 @@ describe("folding removed lines", () => {
   test("cuts a run at the edges of the block that draws it", () => {
     state.cfg.foldDel = true;
     const f = fileOf(" ---- ");
-    expect(delRuns(f, 0, 3).get(1)).toMatchObject({ start: 1, end: 2, count: 2 });
-    expect(delRuns(f, 3, 6).get(3)).toMatchObject({ start: 3, end: 4, count: 2 });
+    expect(delRuns(f, 0, 3).get(1)).toMatchObject({
+      start: 1,
+      end: 2,
+      count: 2,
+    });
+    expect(delRuns(f, 3, 6).get(3)).toMatchObject({
+      start: 3,
+      end: 4,
+      count: 2,
+    });
     expect(drawnRows(f, 0, 3)).toBe(2);
   });
 
@@ -101,15 +119,24 @@ describe("folding removed lines", () => {
     state.cfg.foldDel = true;
     const f = fileOf(" --- ");
     noteOn(f.path, 0, 0);
-    expect(delRuns(f, 0, f.rows.length).get(1)).toMatchObject({ noted: false, open: false });
+    expect(delRuns(f, 0, f.rows.length).get(1)).toMatchObject({
+      noted: false,
+      open: false,
+    });
     noteOn("src/other.ts", 2, 2);
-    expect(delRuns(f, 0, f.rows.length).get(1)).toMatchObject({ noted: false, open: false });
+    expect(delRuns(f, 0, f.rows.length).get(1)).toMatchObject({
+      noted: false,
+      open: false,
+    });
   });
 
   test("a jump opens the fold over the row it is going to, once", () => {
     state.cfg.foldDel = true;
     const f = fileOf(" --- ");
-    expect(delRunAt(f, 3, 0, f.rows.length)).toMatchObject({ start: 1, end: 3 });
+    expect(delRunAt(f, 3, 0, f.rows.length)).toMatchObject({
+      start: 1,
+      end: 3,
+    });
     expect(delRunAt(f, 0, 0, f.rows.length)).toBe(null);
     expect(revealRow(f, 3, 0, f.rows.length)).toBe(true);
     expect(state.openDel.has("src/a.ts|o2")).toBe(true);
@@ -150,6 +177,8 @@ describe("folding removed lines", () => {
     state.cfg.foldDel = true;
     const f = fileOf("-@-");
     expect([...delRuns(f, 0, f.rows.length).keys()]).toEqual([0, 2]);
-    expect(delRuns({ path: "b.png", rows: [], binary: true }, 0, 0).size).toBe(0);
+    expect(delRuns({ path: "b.png", rows: [], binary: true }, 0, 0).size).toBe(
+      0,
+    );
   });
 });

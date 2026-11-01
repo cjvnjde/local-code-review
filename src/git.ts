@@ -11,7 +11,11 @@ export class GitError extends Error {
   }
 }
 
-export async function runGit(args: string[], cwd?: string, input?: string): Promise<string> {
+export async function runGit(
+  args: string[],
+  cwd?: string,
+  input?: string,
+): Promise<string> {
   const process = Bun.spawn(["git", ...args], {
     cwd,
     stdin: input === undefined ? "ignore" : new Blob([input]),
@@ -25,7 +29,11 @@ export async function runGit(args: string[], cwd?: string, input?: string): Prom
   ]);
 
   if (exitCode !== 0) {
-    throw new GitError(stderr.trim() || `git exited with status ${exitCode}`, args, exitCode);
+    throw new GitError(
+      stderr.trim() || `git exited with status ${exitCode}`,
+      args,
+      exitCode,
+    );
   }
   return stdout;
 }
@@ -35,7 +43,10 @@ export async function runGit(args: string[], cwd?: string, input?: string): Prom
  * text — an image is served to the page exactly as the repository holds it — so this stays apart
  * from `runGit` rather than decoding and re-encoding a PNG through UTF-8.
  */
-export async function runGitBytes(args: string[], cwd?: string): Promise<Uint8Array> {
+export async function runGitBytes(
+  args: string[],
+  cwd?: string,
+): Promise<Uint8Array> {
   const process = Bun.spawn(["git", ...args], {
     cwd,
     stdout: "pipe",
@@ -48,7 +59,11 @@ export async function runGitBytes(args: string[], cwd?: string): Promise<Uint8Ar
   ]);
 
   if (exitCode !== 0) {
-    throw new GitError(stderr.trim() || `git exited with status ${exitCode}`, args, exitCode);
+    throw new GitError(
+      stderr.trim() || `git exited with status ${exitCode}`,
+      args,
+      exitCode,
+    );
   }
   if (stdout.byteLength > MAX_GIT_OUTPUT_BYTES) {
     throw new Error(`git output exceeded ${MAX_GIT_OUTPUT_BYTES} bytes`);
@@ -56,7 +71,10 @@ export async function runGitBytes(args: string[], cwd?: string): Promise<Uint8Ar
   return stdout;
 }
 
-async function readOutput(stream: ReadableStream<Uint8Array>, maxBytes: number): Promise<string> {
+async function readOutput(
+  stream: ReadableStream<Uint8Array>,
+  maxBytes: number,
+): Promise<string> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   let size = 0;
@@ -81,7 +99,9 @@ export async function findRepoRoot(): Promise<string> {
 /** Name of the checked-out branch, or empty on a detached HEAD or when git cannot say. */
 export async function currentBranch(cwd?: string): Promise<string> {
   try {
-    const name = (await runGit(["rev-parse", "--abbrev-ref", "HEAD"], cwd)).trim();
+    const name = (
+      await runGit(["rev-parse", "--abbrev-ref", "HEAD"], cwd)
+    ).trim();
     return name === "HEAD" ? "" : name;
   } catch {
     return "";

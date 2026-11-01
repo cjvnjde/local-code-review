@@ -1,14 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import {
-  START_SLIP,
-  atStart,
-  charRange,
-  pressKind,
-  reaims,
-} from "./drag.ts";
+import { START_SLIP, atStart, charRange, pressKind, reaims } from "./drag.ts";
 
 // The drag started at x 200 on the row spanning y 100..124.
-const x0 = 200, y0 = 112;
+const x0 = 200,
+  y0 = 112;
 
 describe("atStart", () => {
   test("the press point itself counts as back at the start", () => {
@@ -48,11 +43,15 @@ describe("pressKind", () => {
   });
 
   test("a drag that wandered onto other rows answers in rows", () => {
-    expect(pressKind(press({ wandered: true, away: true }), x0 + 60, y0)).toBe("rows");
+    expect(pressKind(press({ wandered: true, away: true }), x0 + 60, y0)).toBe(
+      "rows",
+    );
   });
 
   test("a shift-extend answers in rows even on a code cell", () => {
-    expect(pressKind(press({ extended: true, away: true }), x0 + 60, y0)).toBe("rows");
+    expect(pressKind(press({ extended: true, away: true }), x0 + 60, y0)).toBe(
+      "rows",
+    );
   });
 
   test("travelling and coming back to the press point means the whole line", () => {
@@ -60,7 +59,9 @@ describe("pressKind", () => {
   });
 
   test("a press on the gutter picked its row on the way down", () => {
-    expect(pressKind(press({ cell: null, away: true }), x0 + 60, y0)).toBe("click");
+    expect(pressKind(press({ cell: null, away: true }), x0 + 60, y0)).toBe(
+      "click",
+    );
   });
 });
 

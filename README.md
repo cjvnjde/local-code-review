@@ -173,15 +173,15 @@ With an ACP configuration, **Save & ask AI** saves and queues that note immediat
 
 ## Other options
 
-| Command | Purpose |
-| --- | --- |
-| `lcr --no-agent` | Review manually, ignoring the default agent |
-| `lcr --no-open` | Start without opening a browser |
-| `lcr --port 8080` | Choose a starting port (`0` picks a free one) |
-| `lcr --out .feedback` | Change the review output directory |
-| `lcr --context 8` | Show more surrounding lines |
-| `lcr --help` | List options and examples |
-| `lcr --version` | Print the build stamp |
+| Command               | Purpose                                       |
+| --------------------- | --------------------------------------------- |
+| `lcr --no-agent`      | Review manually, ignoring the default agent   |
+| `lcr --no-open`       | Start without opening a browser               |
+| `lcr --port 8080`     | Choose a starting port (`0` picks a free one) |
+| `lcr --out .feedback` | Change the review output directory            |
+| `lcr --context 8`     | Show more surrounding lines                   |
+| `lcr --help`          | List options and examples                     |
+| `lcr --version`       | Print the build stamp                         |
 
 Unrecognized arguments pass through to `git diff`. Working-tree comparisons include untracked files; commit-to-commit ranges do not.
 

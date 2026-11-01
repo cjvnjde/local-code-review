@@ -31,8 +31,10 @@ describe("cardAt", () => {
 });
 
 // A 22px row inside a pane spanning y 100..500.
-const paneTop = 100, paneBottom = 500;
-const shift = (rowTop: number) => revealShift(paneTop, paneBottom, rowTop, rowTop + 22);
+const paneTop = 100,
+  paneBottom = 500;
+const shift = (rowTop: number) =>
+  revealShift(paneTop, paneBottom, rowTop, rowTop + 22);
 
 describe("revealShift", () => {
   test("a row well inside the pane is left where it is", () => {
@@ -48,7 +50,8 @@ describe("revealShift", () => {
   });
 
   test("a pane too short for both margins still settles the row instead of oscillating", () => {
-    const top = 100, bottom = 130; // 30px of pane for a 22px row
+    const top = 100,
+      bottom = 130; // 30px of pane for a 22px row
     const back = revealShift(top, bottom, 90, 112, LEAD);
     expect(back).toBe(-14); // 4px of lead is all the pane can spare on each side
     expect(revealShift(top, bottom, 90 - back, 112 - back, LEAD)).toBe(0);

@@ -1,5 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { expandRange, gapOf, gapSize, hasTail, insertContext, markTails, retitle } from "./gaps.ts";
+import {
+  expandRange,
+  gapOf,
+  gapSize,
+  hasTail,
+  insertContext,
+  markTails,
+  retitle,
+} from "./gaps.ts";
 
 /** Two hunks over a file whose new-side lines 4-10 the diff left out, and which runs on past line 12. */
 const sample = () => ({
@@ -8,7 +16,11 @@ const sample = () => ({
     { t: "ctx", o: 1, n: 1, text: "a" },
     { t: "add", n: 2, text: "b" },
     { t: "ctx", o: 2, n: 3, text: "c" },
-    { t: "hunk", text: "@@ -10,3 +11,2 @@ function b()", head: " function b()" },
+    {
+      t: "hunk",
+      text: "@@ -10,3 +11,2 @@ function b()",
+      head: " function b()",
+    },
     { t: "ctx", o: 10, n: 11, text: "j" },
     { t: "del", o: 11, text: "k" },
     { t: "ctx", o: 12, n: 12, text: "l" },
@@ -17,7 +29,8 @@ const sample = () => ({
 /** Context rows the server would answer with for an inclusive new-side range. */
 const ctx = (from: number, to: number, shift = 1) => {
   const rows = [];
-  for (let n = from; n <= to; n++) rows.push({ t: "ctx", o: n - shift, n, text: "line " + n });
+  for (let n = from; n <= to; n++)
+    rows.push({ t: "ctx", o: n - shift, n, text: "line " + n });
   return rows;
 };
 
@@ -29,19 +42,39 @@ describe("gapOf", () => {
   });
 
   test("the first hunk hides everything above it", () => {
-    const f = { rows: [{ t: "hunk", text: "@@ -20,1 +20,1 @@" }, { t: "ctx", o: 20, n: 20, text: "a" }] };
+    const f = {
+      rows: [
+        { t: "hunk", text: "@@ -20,1 +20,1 @@" },
+        { t: "ctx", o: 20, n: 20, text: "a" },
+      ],
+    };
     expect(gapOf(f, 0)).toEqual({ from: 1, to: 19 });
   });
 
   test("a hunk that opens on line 1 hides nothing", () => {
-    const f = { rows: [{ t: "hunk", text: "@@ -1,1 +1,1 @@" }, { t: "ctx", o: 1, n: 1, text: "a" }] };
+    const f = {
+      rows: [
+        { t: "hunk", text: "@@ -1,1 +1,1 @@" },
+        { t: "ctx", o: 1, n: 1, text: "a" },
+      ],
+    };
     expect(gapOf(f, 0)).toBe(null);
   });
 
   test("only hunk rows carry a gap, and a hunk with no new-side lines carries none", () => {
     const f = sample();
     expect(gapOf(f, 1)).toBe(null);
-    expect(gapOf({ rows: [{ t: "hunk", text: "@@ -1,1 +0,0 @@" }, { t: "del", o: 1, text: "a" }] }, 0)).toBe(null);
+    expect(
+      gapOf(
+        {
+          rows: [
+            { t: "hunk", text: "@@ -1,1 +0,0 @@" },
+            { t: "del", o: 1, text: "a" },
+          ],
+        },
+        0,
+      ),
+    ).toBe(null);
   });
 
   test("the trailing row reaches on with no known end", () => {
@@ -54,8 +87,12 @@ describe("gapOf", () => {
 
 describe("hasTail", () => {
   const trailing = (run: number) => {
-    const rows: any[] = [{ t: "hunk", text: "@@ -1,1 +1,1 @@" }, { t: "add", n: 1, text: "x" }];
-    for (let k = 0; k < run; k++) rows.push({ t: "ctx", o: k + 1, n: k + 2, text: "c" });
+    const rows: any[] = [
+      { t: "hunk", text: "@@ -1,1 +1,1 @@" },
+      { t: "add", n: 1, text: "x" },
+    ];
+    for (let k = 0; k < run; k++)
+      rows.push({ t: "ctx", o: k + 1, n: k + 2, text: "c" });
     return { rows };
   };
 
@@ -72,9 +109,14 @@ describe("hasTail", () => {
   });
 
   test("markTails only appends where a tail was found", () => {
-    const on = trailing(5), off = trailing(1);
+    const on = trailing(5),
+      off = trailing(1);
     markTails([on, off], 5);
-    expect(on.rows[on.rows.length - 1]).toEqual({ t: "hunk", text: "", tail: true });
+    expect(on.rows[on.rows.length - 1]).toEqual({
+      t: "hunk",
+      text: "",
+      tail: true,
+    });
     expect(off.rows.some((r: any) => r.tail)).toBe(false);
   });
 });
@@ -94,7 +136,10 @@ describe("expandRange", () => {
   });
 
   test("an open-ended gap simply takes one step", () => {
-    expect(expandRange({ from: 12, to: null }, 20, "down")).toEqual({ from: 12, to: 31 });
+    expect(expandRange({ from: 12, to: null }, 20, "down")).toEqual({
+      from: 12,
+      to: 31,
+    });
   });
 });
 
@@ -125,7 +170,8 @@ describe("insertContext", () => {
   });
 
   test("a full answer on the trailing row keeps it, a short one means end of file", () => {
-    const going = sample(), done = sample();
+    const going = sample(),
+      done = sample();
     markTails([going, done], 1);
     const tail = going.rows.length - 1;
     expect(insertContext(going, tail, "down", ctx(13, 15, 0), 3)).toBe(tail);
@@ -142,7 +188,8 @@ describe("insertContext", () => {
 
   test("row-indexed caches are dropped, since every index below the splice moved", () => {
     const f: any = sample();
-    f.wd = new Map(); f.ki = new Map();
+    f.wd = new Map();
+    f.ki = new Map();
     insertContext(f, 4, "down", ctx(4, 6), 3);
     expect(f.wd).toBeUndefined();
     expect(f.ki).toBeUndefined();
@@ -151,14 +198,25 @@ describe("insertContext", () => {
 
 describe("retitle", () => {
   test("a hunk with no old-side lines reports a zero range", () => {
-    const f = { rows: [{ t: "hunk", text: "x" }, { t: "add", n: 1, text: "a" }] };
+    const f = {
+      rows: [
+        { t: "hunk", text: "x" },
+        { t: "add", n: 1, text: "a" },
+      ],
+    };
     retitle(f, 0);
     expect(f.rows[0].text).toBe("@@ -0,0 +1,1 @@");
   });
 
   test("the trailing row and code rows are left alone", () => {
-    const f = { rows: [{ t: "hunk", text: "", tail: true }, { t: "ctx", o: 1, n: 1, text: "a" }] };
-    retitle(f, 0); retitle(f, 1);
+    const f = {
+      rows: [
+        { t: "hunk", text: "", tail: true },
+        { t: "ctx", o: 1, n: 1, text: "a" },
+      ],
+    };
+    retitle(f, 0);
+    retitle(f, 1);
     expect(f.rows[0].text).toBe("");
     expect(f.rows[1].text).toBe("a");
   });

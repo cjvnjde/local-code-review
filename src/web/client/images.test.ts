@@ -1,9 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { imagesHtml, isImage } from "./images.ts";
 
-const file = (over: any = {}) => ({ path: "assets/logo.png", status: "modified", ...over });
+const file = (over: any = {}) => ({
+  path: "assets/logo.png",
+  status: "modified",
+  ...over,
+});
 /** The side each pane is drawn for, in the order the panes appear. */
-const sides = (html: string) => [...html.matchAll(/class="imgf (old|new)"/g)].map((m) => m[1]);
+const sides = (html: string) =>
+  [...html.matchAll(/class="imgf (old|new)"/g)].map((m) => m[1]);
 
 describe("isImage", () => {
   test("reads the extension, whatever its case", () => {
@@ -34,7 +39,9 @@ describe("imagesHtml", () => {
   });
 
   test("a rename says which name the old side is, and still asks under the new one", () => {
-    const html = imagesHtml(file({ status: "renamed", from: "assets/mark.png" }));
+    const html = imagesHtml(
+      file({ status: "renamed", from: "assets/mark.png" }),
+    );
     expect(html).toContain('title="assets/mark.png"');
     expect(html).toContain('<span class="ptx">assets/mark.png</span>');
     // The server maps the rename, so both sides are asked for by the name the diff lists.
