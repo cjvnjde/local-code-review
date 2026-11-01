@@ -1,0 +1,56 @@
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  height: 100%;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: var(--fs-code)/1.5 var(--mono);
+  display: flex;
+  flex-direction: column;
+}
+body.dragging {
+  user-select: none;
+  cursor: row-resize;
+}
+.i {
+  width: var(--icon);
+  height: var(--icon);
+  fill: currentColor;
+  flex: none;
+  display: block;
+}
+/* The invisible full path supplies the flex box's natural width; the measured label over it removes
+     one run from its middle when that box shrinks. Its minimum is the beginning plus the whole name. */
+.pth {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.pth::after {
+  content: attr(data-path);
+  visibility: hidden;
+}
+.pth .ptx {
+  position: absolute;
+  inset: 0;
+  white-space: nowrap;
+}
+.file-path {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.file-path > .pth {
+  flex: 0 1 auto;
+}
+.file-path > .arrow {
+  color: var(--ink-faint);
+  padding: 0 7px;
+  flex: none;
+}

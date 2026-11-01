@@ -1,0 +1,196 @@
+tr.nrow td {
+  padding: 0;
+  background: var(--base);
+}
+.nbox {
+  margin: 8px 10px 10px 28px;
+  border: 1px solid var(--edge-hi);
+  border-radius: 6px;
+  background: var(--panel2);
+  overflow: clip;
+}
+/* the file's own note sits between header and table, full width and without the gutter indent */
+.fnotes:empty {
+  display: none;
+}
+.fnotes {
+  background: var(--base);
+  border-bottom: 1px solid var(--edge);
+}
+.fnotes .nbox {
+  margin: 9px;
+  box-shadow: inset 3px 0 0 var(--mark);
+}
+.nhead {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 6px 11px;
+  border-bottom: 1px solid var(--edge);
+  background: var(--s0);
+  font-size: var(--fs-sm);
+  color: var(--ink-dim);
+  position: sticky;
+  top: var(--note-top, 0px);
+  z-index: 3;
+}
+.nhead .loc {
+  color: var(--mark);
+}
+.nhead .snip {
+  background: var(--cnote);
+  border-radius: 3px;
+  padding: 0 6px;
+  color: var(--ink);
+  max-width: 46%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nhead .all {
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 7px;
+  border-radius: 9px;
+  background: var(--s1);
+  color: var(--ink-dim);
+}
+.nhead .spacer {
+  flex: 1;
+}
+.nhead .stat {
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 7px;
+  border-radius: 9px;
+  background: var(--s1);
+  color: var(--ink-dim);
+}
+.nhead .stat.applied {
+  background: rgba(166, 227, 161, 0.18);
+  color: var(--green);
+}
+.nhead .stat.answered {
+  background: rgba(148, 226, 213, 0.18);
+  color: var(--teal);
+}
+.nhead .stat.skipped {
+  background: rgba(250, 179, 135, 0.18);
+  color: var(--peach);
+}
+.nhead .stat.needs-input {
+  background: rgba(116, 199, 236, 0.18);
+  color: var(--sapphire);
+}
+/* edit/delete live in the header strip, so they sit one step below the standalone button size */
+.nhead button {
+  padding: 5px 9px;
+  min-height: var(--tap);
+  font-size: var(--fs-xs);
+}
+.nhead .sug {
+  color: var(--add);
+}
+.nhead .sug:hover {
+  color: var(--add);
+  border-color: var(--add);
+}
+.nhead .resolve {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--tap) / 4);
+  color: var(--teal);
+}
+button[data-icon-action] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: var(--tap-lg);
+  height: var(--tap-lg);
+  min-width: var(--tap);
+  min-height: var(--tap);
+  padding: 0;
+}
+.nhead button[data-icon-action],
+.msg button[data-icon-action] {
+  width: var(--tap);
+  height: var(--tap);
+  padding: 0;
+}
+#historyPanel button[data-icon-action],
+header > button[data-icon-action],
+.nhead button[data-icon-action],
+.msg .who button[data-icon-action],
+.acts button[data-icon-action] {
+  padding: 0;
+}
+.nhead .refb,
+.acts .refb {
+  color: var(--lav);
+}
+.nhead .refb:hover,
+.acts .refb:hover {
+  color: var(--lav);
+  border-color: var(--lav);
+}
+.nhead .attb,
+.acts .attb {
+  color: var(--teal);
+}
+.nhead .attb:hover,
+.acts .attb:hover {
+  color: var(--teal);
+  border-color: var(--teal);
+}
+.nbox.done {
+  opacity: 0.7;
+}
+.nbox.done:hover {
+  opacity: 1;
+}
+.nbody {
+  padding: 10px 12px;
+  font-family: var(--sans);
+  font-size: var(--fs-code);
+  line-height: 1.55;
+}
+.nstat {
+  padding: 0 12px 9px;
+  color: var(--ink-faint);
+  font-family: var(--sans);
+  font-size: var(--fs-sm);
+}
+.nedit {
+  padding: 10px;
+}
+.acts {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  align-items: center;
+}
+.acts .spacer {
+  flex: 1;
+}
+.acts .tip {
+  color: var(--ink-faint);
+  font-size: var(--fs-xs);
+  font-family: var(--sans);
+}
+/* a picture on its way onto an editor: the whole box says it will take it, because the whole box is
+     what the drop is aimed at rather than the text area inside it */
+.nbox.dropping,
+.reply.dropping,
+.medit.dropping {
+  outline: 2px dashed var(--teal);
+  outline-offset: -2px;
+}
+.nbox.dropping textarea,
+.reply.dropping textarea,
+.medit.dropping textarea {
+  border-color: var(--teal);
+}

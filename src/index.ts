@@ -1,13 +1,13 @@
 #!/usr/bin/env bun
-import { readAcpConfig } from "./acp.ts";
-import { createManagedAgent } from "./managed-agent.ts";
+import { readAcpConfig } from "./agent/acp.ts";
+import { createManagedAgent } from "./agent/managed-agent.ts";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { readAttachment, saveAttachment } from "./attach.ts";
-import { readBlob } from "./blob.ts";
-import { openInBrowser } from "./browser.ts";
-import { HELP, parseArgs } from "./cli.ts";
-import { resolveAcpPath } from "./config.ts";
+import { readAttachment, saveAttachment } from "./review/attach.ts";
+import { readBlob } from "./git/blob.ts";
+import { openInBrowser } from "./browser/open.ts";
+import { HELP, parseArgs } from "./cli/args.ts";
+import { resolveAcpPath } from "./agent/config.ts";
 import {
   diffBase,
   diffRangeLabel,
@@ -17,19 +17,23 @@ import {
   getFileContext,
   resolveWorktreeBase,
   validateDiff,
-} from "./diff.ts";
-import { openInEditor } from "./editor.ts";
-import { createHub } from "./events.ts";
-import { currentBranch, findRepoRoot, runGit } from "./git.ts";
-import { collectGhosts, describeReviews } from "./history.ts";
-import { deleteReviews, excludeRelativeOutput, listReviews } from "./output.ts";
-import { createSession } from "./session.ts";
-import { startServer } from "./server.ts";
-import { collectStatuses } from "./status.ts";
-import { parseReview } from "./thread.ts";
+} from "./git/diff.ts";
+import { openInEditor } from "./cli/editor.ts";
+import { createHub } from "./server/events.ts";
+import { currentBranch, findRepoRoot, runGit } from "./git/commands.ts";
+import { collectGhosts, describeReviews } from "./review/history.ts";
+import {
+  deleteReviews,
+  excludeRelativeOutput,
+  listReviews,
+} from "./review/output.ts";
+import { createSession } from "./review/session.ts";
+import { startServer } from "./server/http.ts";
+import { collectStatuses } from "./review/status.ts";
+import { parseReview } from "./review/thread.ts";
 import { VERSION } from "./version.ts";
-import { createWebReview } from "./web-review.ts";
-import { isNoise, watchDir, watchTree } from "./watch.ts";
+import { createWebReview } from "./web-review/controller.ts";
+import { isNoise, watchDir, watchTree } from "./server/watch.ts";
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));

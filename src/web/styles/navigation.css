@@ -1,0 +1,429 @@
+nav {
+  width: 330px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--edge);
+  background: var(--panel2);
+}
+body.notree nav {
+  display: none;
+}
+.navtop {
+  flex: none;
+  padding: 10px;
+  border-bottom: 1px solid var(--edge);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.navtop input {
+  width: 100%;
+  background: var(--crust);
+  color: var(--ink);
+  border: 1px solid var(--edge-hi);
+  border-radius: 5px;
+  padding: 7px 10px;
+  font: var(--fs-ui)/1.4 var(--sans);
+}
+.navtop input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.navbtns {
+  display: flex;
+  gap: 5px;
+}
+.navbtns button {
+  flex: 1;
+  padding: 0;
+  min-height: var(--tap-lg);
+}
+.fstat {
+  text-align: left;
+  text-transform: none;
+  letter-spacing: 0;
+  border-style: dashed;
+  border-color: var(--edge-hi);
+  color: var(--mark);
+  padding: 5px 8px;
+  font-size: var(--fs-xs);
+  min-height: 28px;
+  justify-content: flex-start;
+}
+.fstat[hidden] {
+  display: none;
+}
+.fstat:hover {
+  color: var(--mark);
+  border-color: var(--mark);
+}
+.tree {
+  flex: 1;
+  overflow: auto;
+  padding: 6px 0 20px;
+}
+.tw {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 2px 8px 2px 0;
+  cursor: pointer;
+  color: var(--ink-dim);
+  white-space: nowrap;
+  min-height: 30px;
+}
+.tw:hover {
+  background: var(--s0);
+  color: var(--ink);
+}
+.tw .nm {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--fs-ui);
+}
+.tw.dir .nm {
+  color: var(--ink);
+}
+.tw.hid .nm {
+  color: var(--ink-faint);
+  text-decoration: line-through;
+}
+.tw.flt .nm {
+  text-decoration-style: dashed;
+  font-style: italic;
+}
+.tw.seen .nm {
+  color: var(--ov1);
+}
+.tw .chev {
+  display: flex;
+  color: var(--ink-faint);
+}
+.tw .st {
+  width: 13px;
+  text-align: center;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+}
+.st.added {
+  color: var(--add);
+}
+.st.deleted {
+  color: var(--del);
+}
+.st.modified {
+  color: var(--mark);
+}
+.st.renamed {
+  color: var(--accent);
+}
+.tw .ct {
+  font-size: var(--fs-xs);
+  color: var(--crust);
+  background: var(--mark);
+  border-radius: 9px;
+  padding: 1px 6px;
+  font-weight: 700;
+}
+.tw .eye,
+.tw .vd,
+.tw .vf {
+  opacity: 0;
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--ink-faint);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--tap);
+  height: var(--tap);
+  min-height: 0;
+  flex: none;
+  border-radius: 4px;
+}
+.tw:hover .eye,
+.tw .eye.on,
+.tw:hover .vd,
+.tw:hover .vf,
+.tw .vd.on,
+.tw .vd.part,
+.tw .vf.on {
+  opacity: 1;
+}
+.tw .eye:focus-visible,
+.tw .vd:focus-visible,
+.tw .vf:focus-visible {
+  opacity: 1;
+}
+.tw .eye:hover,
+.tw .vd:hover,
+.tw .vf:hover {
+  color: var(--ink);
+  background: var(--s1);
+}
+.tw .eye.on {
+  color: var(--mark);
+}
+.tw .vd.on,
+.tw .vf.on {
+  color: var(--green);
+}
+.tw .vd.part {
+  color: var(--ov1);
+}
+/* the file the diff pane is showing: the tree follows the scroll and keeps this row in view */
+.tw.sel {
+  background: var(--s0);
+  box-shadow: inset 2px 0 0 var(--lav);
+}
+.tw.sel .nm {
+  color: var(--ink);
+}
+
+/* two lists under the tree, built the same way: the notes this review has made, and the places the
+     read is jumping between. Notes carry the page's note colour, bookmarks their own. */
+.ntpane,
+.bmpane {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--edge-hi);
+}
+.ntpane {
+  max-height: 38%;
+}
+.bmpane {
+  max-height: 42%;
+}
+.ntpane[hidden],
+.bmpane[hidden] {
+  display: none;
+}
+.nthead,
+.bmhead {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--edge);
+}
+.nthead .ttl,
+.bmhead .ttl {
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-faint);
+}
+.nthead .ct,
+.bmhead .ct {
+  font-size: var(--fs-xs);
+  color: var(--crust);
+  border-radius: 9px;
+  padding: 1px 6px;
+  font-weight: 700;
+}
+.nthead .ct {
+  background: var(--mark);
+}
+.bmhead .ct {
+  background: var(--mauve);
+}
+.nthead .spacer,
+.bmhead .spacer {
+  flex: 1;
+}
+.nthead button,
+.bmhead button {
+  padding: 4px 7px;
+  font-size: var(--fs-xs);
+  min-height: var(--tap);
+  display: flex;
+  align-items: center;
+}
+.ntlist,
+.bmlist {
+  flex: 1;
+  overflow: auto;
+  padding: 4px 0 10px;
+}
+/* either list folds to its header, so a long one leaves the tree room; the count and the stepping
+     buttons stay in that header, which is what makes a folded list still worth having open */
+.nthead .fold,
+.bmhead .fold {
+  flex: none;
+  gap: 7px;
+  padding: 2px 5px;
+  margin-left: -5px;
+  border: none;
+  min-height: var(--tap);
+}
+.nthead .fold:hover .ttl,
+.bmhead .fold:hover .ttl {
+  color: var(--ink);
+}
+.nthead .chev,
+.bmhead .chev {
+  display: flex;
+  color: var(--ink-faint);
+}
+.ntpane.folded,
+.bmpane.folded {
+  max-height: none;
+}
+.ntpane.folded .ntlist,
+.bmpane.folded .bmlist {
+  display: none;
+}
+/* nothing below the header to divide it from, and the pane's own top border already draws the line */
+.ntpane.folded .nthead,
+.bmpane.folded .bmhead {
+  border-bottom: none;
+}
+
+/* one note per row: where it sits, what it says, and what has happened to it since */
+.nw {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  cursor: pointer;
+  color: var(--ink-dim);
+}
+.nw:hover {
+  background: var(--s0);
+}
+.nw.cur {
+  background: var(--s0);
+  box-shadow: inset 2px 0 0 var(--mark);
+}
+.nw .ni {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.nw .loc {
+  color: var(--mark);
+  font-size: var(--fs-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nw .tx {
+  color: var(--ink-faint);
+  font-size: var(--fs-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--sans);
+}
+.nw:hover .tx {
+  color: var(--ink-dim);
+}
+.nw.gone .loc {
+  color: var(--peach);
+  text-decoration: line-through;
+}
+.nw .nb {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.nw .unread {
+  font: 700 var(--fs-xs)/1.5 var(--mono);
+  padding: 1px 6px;
+  border-radius: 9px;
+  background: var(--mark);
+  color: var(--crust);
+}
+/* the verdict an agent reported, in the colours the note's own badge uses */
+.nw .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--s2);
+}
+.nw .dot.applied {
+  background: var(--green);
+}
+.nw .dot.answered {
+  background: var(--teal);
+}
+.nw .dot.skipped {
+  background: var(--peach);
+}
+.nw .dot.needs-input {
+  background: var(--sapphire);
+}
+.bw {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  cursor: pointer;
+  color: var(--ink-dim);
+}
+.bw:hover {
+  background: var(--s0);
+}
+.bw.cur {
+  background: var(--s0);
+  box-shadow: inset 2px 0 0 var(--mauve);
+}
+.bw .bi {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.bw .loc {
+  color: var(--mauve);
+  font-size: var(--fs-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bw .tx {
+  color: var(--ink-faint);
+  font-size: var(--fs-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bw:hover .tx {
+  color: var(--ink-dim);
+}
+.bw.gone .loc {
+  color: var(--ink-faint);
+  text-decoration: line-through;
+}
+.bw .rm {
+  opacity: 0;
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--ink-faint);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--tap);
+  height: var(--tap);
+  min-height: 0;
+  flex: none;
+  border-radius: 4px;
+}
+.bw:hover .rm {
+  opacity: 1;
+}
+.bw .rm:hover {
+  color: var(--del);
+  background: var(--s1);
+}
+.bw .rm:focus-visible {
+  opacity: 1;
+}

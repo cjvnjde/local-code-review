@@ -1,0 +1,81 @@
+/* ---- following the agent ---- */
+.live {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--s2);
+}
+.live.on {
+  background: var(--green);
+  box-shadow: 0 0 0 3px rgba(166, 227, 161, 0.16);
+}
+.pending {
+  flex: none;
+  color: var(--peach);
+  border-color: var(--peach);
+  padding: 4px 9px;
+  min-height: var(--tap);
+  font-size: var(--fs-xs);
+}
+.pending:hover {
+  color: var(--crust);
+  background: var(--peach);
+  border-color: var(--peach);
+}
+.unread-pill {
+  flex: none;
+  background: var(--mark);
+  border-color: var(--mark);
+  color: var(--crust);
+  font-weight: 700;
+  padding: 4px 10px;
+  min-height: var(--tap);
+  font-size: var(--fs-xs);
+}
+.unread-pill:hover {
+  background: var(--peach);
+  border-color: var(--peach);
+  color: var(--crust);
+}
+.toast.reply {
+  border-left-color: var(--sapphire);
+}
+.toast.reply .ic {
+  color: var(--sapphire);
+}
+.toast.saved .tx {
+  white-space: normal;
+}
+.toast.saved .sub {
+  color: var(--ink-faint);
+  font-size: var(--fs-sm);
+}
+.toast code {
+  color: var(--mark);
+  font-family: var(--mono);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .nrow .nbox {
+    animation: in 0.12s ease-out;
+  }
+  @keyframes in {
+    from {
+      opacity: 0;
+      transform: translateY(-2px);
+    }
+  }
+  /* the one open editor, answering a click that would have opened a second one */
+  .nbox.bump {
+    animation: bump 0.45s ease-out;
+  }
+  @keyframes bump {
+    0%,
+    100% {
+      border-color: var(--edge-hi);
+    }
+    30% {
+      border-color: var(--accent);
+    }
+  }
+}

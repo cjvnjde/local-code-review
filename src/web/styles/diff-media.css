@@ -1,0 +1,209 @@
+/* ---- files shown as media ----
+     Two panes for a change and one for a file only added or deleted, in the diff's own order:
+     what was there on the left, what replaces it on the right. Each pane keeps its own room whatever
+     the other holds, so both pictures and recordings can be read against each other. */
+:is(.imgw, .audw) {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1px;
+  background: var(--edge);
+}
+:is(.imgw, .audw).two {
+  grid-template-columns: 1fr 1fr;
+}
+@media (max-width: 800px) {
+  :is(.imgw, .audw).two {
+    grid-template-columns: 1fr;
+  }
+}
+#diff .file.fold :is(.imgw, .audw) {
+  display: none;
+}
+:is(.imgf, .audf) {
+  margin: 0;
+  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+:is(.imgf, .audf) figcaption {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--edge);
+  font-family: var(--sans);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+:is(.imgf, .audf) figcaption .spacer {
+  flex: 1;
+}
+:is(.imgf, .audf) .side {
+  color: var(--ink-dim);
+  flex: none;
+}
+:is(.imgf, .audf).old .side {
+  color: var(--del);
+}
+:is(.imgf, .audf).new .side {
+  color: var(--add);
+}
+/* the name a rename is the old side of: the change is as much the name as the media */
+:is(.imgf, .audf) .was {
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  text-transform: none;
+  letter-spacing: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  min-width: 0;
+}
+:is(.imgf, .audf) .dim {
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  text-transform: none;
+  letter-spacing: 0;
+  flex: none;
+}
+/* a checkerboard, so a transparent image is read as transparent rather than as the panel's colour */
+.imgb {
+  flex: 1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 16px;
+  min-height: 140px;
+  background-color: var(--crust);
+  background-image:
+    linear-gradient(45deg, var(--s0) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--s0) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--s0) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--s0) 75%);
+  background-size: 16px 16px;
+  background-position:
+    0 0,
+    0 8px,
+    8px -8px,
+    -8px 0;
+}
+/* Fit the pane's width without shrinking tall screenshots to the viewport; compare both from the top. */
+.imgb img {
+  max-width: 100%;
+  height: auto;
+  object-fit: contain;
+  display: block;
+  box-shadow: 0 2px 14px rgba(0, 0, 0, 0.45);
+}
+.imgb {
+  position: relative;
+}
+.imgb.editing-image {
+  min-height: calc(var(--tap) * 18);
+}
+.imgstage {
+  position: relative;
+  max-width: 100%;
+  min-width: 0;
+  cursor: crosshair;
+  line-height: 0;
+}
+.imgmarks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.imgregion {
+  position: absolute;
+  border: 2px solid var(--mark);
+  background: rgba(249, 226, 175, 0.12);
+  pointer-events: none;
+}
+.imgregion button {
+  pointer-events: auto;
+  position: absolute;
+  left: -2px;
+  top: -2px;
+  min-height: var(--tap);
+  min-width: var(--tap);
+  padding: 0 calc(var(--tap) / 4);
+  font: var(--fs-xs) var(--mono);
+  line-height: 1.5;
+  background: var(--mark);
+  color: var(--crust);
+  border: 0;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+.imgregion.picking {
+  border-style: dashed;
+}
+.imgdraft {
+  position: absolute;
+  left: var(--fs-sm);
+  right: var(--fs-sm);
+  z-index: 4;
+  line-height: 1.5;
+  cursor: auto;
+}
+.imgdraft .nbox {
+  margin: 0;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+.imgcomment {
+  font: var(--fs-xs) var(--sans);
+  min-height: var(--tap);
+  padding: 0 calc(var(--tap) / 4);
+  flex: none;
+}
+.image-capture {
+  padding: var(--fs-sm);
+  border-bottom: 1px solid var(--edge);
+}
+.image-caption {
+  color: var(--ink-faint);
+  font: var(--fs-xs)/1.5 var(--sans);
+  margin-bottom: calc(var(--tap) / 4);
+}
+.image-capture img {
+  max-width: 100%;
+  max-height: 14em;
+  height: auto;
+  display: block;
+  object-fit: contain;
+}
+.imgdraft .image-capture img {
+  max-height: 7em;
+}
+.image-preview:empty {
+  display: none;
+}
+/* a side that could not be read says so in its caption; an empty frame would read as an empty image */
+.imgf.gone .imgb img {
+  display: none;
+}
+.imgf.gone .dim {
+  color: var(--del);
+}
+/* native controls keep playback and seeking familiar; no bytes are fetched beyond this repository */
+.audb {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  padding: var(--fs-sm);
+  min-height: calc(var(--tap) + var(--tap));
+  background: var(--crust);
+}
+.audb audio {
+  display: block;
+  width: 100%;
+  min-height: var(--tap);
+  color-scheme: dark;
+}
+.audf.gone .audb audio {
+  display: none;
+}
+.audf.gone .dim {
+  color: var(--del);
+}

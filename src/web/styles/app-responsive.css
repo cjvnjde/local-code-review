@@ -1,0 +1,45 @@
+@media (max-width: 1100px) {
+  header {
+    gap: calc(var(--tap) / 4);
+  }
+  header > b {
+    display: none;
+  }
+  header > .range {
+    max-width: calc(var(--tap) * 5);
+  }
+}
+@media (max-width: 760px) {
+  header > b,
+  header > #range,
+  header > #agentState {
+    display: none;
+  }
+  .search-location {
+    flex-wrap: wrap;
+  }
+  #reviewSearchBox {
+    flex: 1;
+  }
+  .search-head {
+    flex-wrap: wrap;
+  }
+  #searchPopup {
+    position: fixed;
+    top: calc(var(--tap-lg) + var(--tap) / 2);
+    right: calc(var(--tap) / 2);
+  }
+}
+@media (max-width: 850px) {
+  .history-compare {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .history-compare .before {
+    border-right: 0;
+    border-bottom: 1px solid var(--edge);
+  }
+  .history-timeline {
+    flex-basis: 32%;
+    min-width: calc(var(--tap) * 5);
+  }
+}

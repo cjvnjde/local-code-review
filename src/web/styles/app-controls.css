@@ -1,0 +1,70 @@
+button {
+  font: var(--fs-sm)/1 var(--mono);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  background: transparent;
+  color: var(--ink-dim);
+  border: 1px solid var(--edge-hi);
+  padding: 7px 12px;
+  border-radius: 5px;
+  cursor: pointer;
+  min-height: var(--tap-lg);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+/* an author `display` on `button` outranks the UA sheet's `[hidden]`, so restore it here */
+button[hidden] {
+  display: none;
+}
+button:hover {
+  color: var(--ink);
+  border-color: var(--ink-faint);
+}
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--crust);
+  font-weight: 600;
+}
+button.primary:hover {
+  background: var(--lav);
+  color: var(--crust);
+}
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+button.danger:hover {
+  color: var(--del);
+  border-color: var(--del);
+}
+button:focus-visible,
+td.g:focus-visible {
+  outline: 2px solid var(--mark);
+  outline-offset: 2px;
+}
+
+footer {
+  flex: none;
+  border-top: 1px solid var(--edge);
+  background: var(--panel2);
+  padding: 10px 16px;
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+footer .count {
+  color: var(--mark);
+  flex: none;
+}
+footer .spacer {
+  flex: 1;
+}
+.empty {
+  padding: 34px 18px;
+  color: var(--ink-faint);
+  font-family: var(--sans);
+  font-size: var(--fs-ui);
+}

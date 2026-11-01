@@ -7,9 +7,12 @@
 
 ## Project shape
 
-- `src/index.ts` is composition root. Keep CLI, Git, diff parsing, review output, server, and browser concerns in focused modules under `src/`.
-- `src/thread.ts` owns the review-file format in both directions: `parseReview` reads one, `renderNote`
-  writes one, and they must stay inverses. `src/session.ts` owns the file the run is talking through.
+- `src/index.ts` is the executable composition root; keep it at that stable path. Server-side modules live by owner under `src/cli/`, `src/git/`, `src/review/`, `src/agent/`, `src/server/`, `src/browser/`, and `src/web-review/`.
+- `src/shared/` holds browser-safe review types and capture/annotation models used by both runtimes. Never import server-only code into it.
+- Browser modules live under `src/web/client/{app,components,diff,notes,history,search,navigation,web-review}/`. Put feature-specific UI beside its feature; reserve `components/` for reused presentation primitives. Keep tests beside their modules and use direct imports, not compatibility shims or barrel exports.
+- `src/review/thread.ts` owns the review-file format in both directions: `parseReview` reads one, `renderNote`
+  writes one, and they must stay inverses. `src/review/session.ts` owns the file the run is talking through.
+- `src/web/styles/index.css` imports the token, base and feature stylesheets in cascade order. Preserve that order when splitting or moving CSS; shared tokens live in `tokens.css`.
 - Keep runtime dependency-free. Do not add package manager files or third-party runtime packages unless explicitly requested.
 - Use Bun for source checks, browser bundling, and standalone compilation.
 - Keep browser assets imported through `src/web/shell.html`; compiled release must remain one standalone executable.
@@ -129,7 +132,7 @@
   proposing for the same lines, and a note that captured nothing — on a whole file or on the review — has no base, so
   its block is shown as the code it is.
 - A note and the answer to it are Markdown. `renderBody` draws both sides of the conversation, and the prose in them
-  goes through `client/markdown.ts`: headings, fenced and inline code, lists and checklists, quotes, tables, emphasis,
+  goes through `client/components/markdown.ts`: headings, fenced and inline code, lists and checklists, quotes, tables, emphasis,
   links, rules. Nothing else is markup — every run of text is escaped and the only tags in the output are the ones that
   file writes, so a body containing HTML shows the HTML. A fence with no language named is coloured as the file the note
   is on, and its `pre` carries class `c` like every other code container. A link is followed only on a safe scheme and
@@ -150,7 +153,7 @@
   `immutable` and a note full of screenshots survive a repaint without refetching them. A name is
   checked against one safe file name before it is joined to a path — the review output directory is the
   whole of what a note can reach — and it is deliberately wider than what lcr mints, so a picture the
-  agent puts in that directory itself is drawn like any other. `client/attach.ts` owns the page's half:
+  agent puts in that directory itself is drawn like any other. `client/components/attach.ts` owns the page's half:
   which links are attachments, the markup, and the paste, drop, and pick. The paste belongs to the text
   box, which is new for every editor; the drop belongs to the box around it, which is not — a note
   edited twice is one box and two text areas, and a reply box stands inside the note box it answers —
@@ -219,7 +222,7 @@
   being drawn is one nobody knows to look for — and a jump opens the fold over the row it lands on.
   `drawnRows` is what an unmounted block's placeholder height is estimated from, and flipping the setting
   drops every measured height with it.
-- The fold setting is toggled from the page header, not from the settings panel: `client/quick.ts` owns
+- The fold setting is toggled from the page header, not from the settings panel: `client/app/quick.ts` owns
   that row of toggles, which are ordinary `state.cfg` preferences written through `persistCfg` rather
   than fields `saveCfg` reads. A setting answered while reading belongs where the reading is; the panel
   keeps the prose that says what it does, and adding another quick toggle is another entry in `QUICK`.
@@ -232,7 +235,7 @@
   The pane holds the topmost row it was showing still, answered for by the marker standing in its place
   when the fold has just taken that row away.
 - A file git prints no lines of may still be worth seeing: an image is drawn as its two sides, old
-  before new, and as the single side it has when it was only added or only deleted. `client/images.ts`
+  before new, and as the single side it has when it was only added or only deleted. `client/diff/images.ts`
   owns which extensions that covers and the markup; `/api/blob` serves one side of one file, and the
   diff on screen is the whole of what may be asked for — a path it does not list is not served, an
   image's old side is looked up under the name a rename moved it from, and the side that added or
@@ -272,7 +275,7 @@
 - `alt+j`/`alt+k` step the note list from anywhere outside a text field, `alt+c` opens the panel and closes it,
   and `j`/`k` step it entry by entry while it is open. `alt` plus the arrows stays the bookmark list's. Letters
   are read off `code` rather than `key`, because alt turns a letter into another character entirely on macOS.
-- Where a note shows is worked out by `client/anchor.ts`, never stored: the agent rewrites the code notes were
+- Where a note shows is worked out by `client/diff/anchor.ts`, never stored: the agent rewrites the code notes were
   written against, so an anchor is re-derived from the diff on every load. It stays on its own rows while they
   still hold its captured code, or follows that code or its surviving unchanged lines only when there is one
   matching location. Missing or ambiguous code makes the note outdated: it is shown under its original file
@@ -306,7 +309,7 @@
 - Avoid shell interpolation for Git commands; use argument arrays.
 - Escape user-controlled values rendered into HTML.
 - Prefer icon-only buttons for familiar actions such as delete/remove (trash), edit (pencil), reply,
-  history, close, copy, and download. Reuse `SVG` and `client/actions.ts` rather than inventing a second
+  history, close, copy, and download. Reuse `SVG` and `client/components/actions.ts` rather than inventing a second
   icon convention. Give every icon button a descriptive accessible name and an immediate tooltip on
   hover and keyboard focus; hide decorative SVGs from assistive technology and keep the `--tap` target.
   Keep text for ambiguous or compound commands such as **Save & ask AI**, and for content-bearing
@@ -314,9 +317,9 @@
 - A path is drawn through `pathHtml` and the `pth` class, never as one run of text. Plain
   `text-overflow` eats the file name, which is the part of a path a reader needs; the two boxes it
   writes shrink the folders first, so what a narrow header loses is the middle.
-- Page sizing comes from the `--fs-*`, `--icon`, `--tap`, and `--row` tokens in `src/web/styles.css`; size new UI from them
+- Page sizing comes from the `--fs-*`, `--icon`, `--tap`, and `--row` tokens in `src/web/styles/tokens.css`; size new UI from them
   rather than from fresh literals, and keep every control at least `--tap` square. `--row` travels with `ROW_H` in
-  `client/diff-view.ts`, which estimates unmounted blocks, and with `ROW_SLIP` in `client/drag.ts`, which must stay above
+  `client/diff/diff-view.ts`, which estimates unmounted blocks, and with `ROW_SLIP` in `client/diff/drag.ts`, which must stay above
   half a row so a wobble cannot turn a text drag into a row selection.
 - Keep server API local-purpose and avoid adding remote access, telemetry, or network dependencies.
 - When applying review feedback, the only permitted edits to generated `.review/review-*.md` files are each

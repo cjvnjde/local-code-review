@@ -1,0 +1,129 @@
+/* The live page exposes the same editor, attachment picker, previews and thread as the review. */
+body.ui-note {
+  overflow: auto;
+}
+body.ui-note > header,
+body.ui-note > footer,
+body.ui-note nav,
+body.ui-note #diff,
+body.ui-note .rdr {
+  display: none;
+}
+body.ui-note main,
+body.ui-note .pane {
+  display: contents;
+}
+body.ui-note #historyPanel {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+}
+#uiNote {
+  min-width: 0;
+  font-family: var(--sans);
+  flex: 1;
+}
+.ui-note-tools {
+  display: flex;
+  justify-content: flex-end;
+  padding: calc(var(--row) / 3);
+  border-bottom: 1px solid var(--edge);
+}
+.ui-note-tools a {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap);
+  color: var(--accent);
+  font-size: var(--fs-ui);
+}
+.ui-note-body .nbox {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
+.ui-note-error {
+  padding: var(--row);
+  color: var(--red);
+}
+.web-capture {
+  padding: 12px;
+  border-bottom: 1px solid var(--edge);
+  font: var(--fs-sm)/1.5 var(--sans);
+}
+.web-location {
+  color: var(--ink);
+  margin-bottom: 12px;
+  overflow-wrap: anywhere;
+}
+.web-location span {
+  color: var(--ink-faint);
+  font-size: var(--fs-xs);
+}
+.web-comparison {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 14px;
+  align-items: start;
+}
+.web-observation {
+  min-width: 0;
+  background: var(--panel2);
+  border: 1px solid var(--edge);
+  border-radius: 7px;
+  padding: 10px;
+}
+.web-caption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(var(--tap) / 3);
+  color: var(--mauve);
+  margin-bottom: 10px;
+}
+.web-caption-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--tap) / 6);
+  margin-left: auto;
+}
+.web-caption time {
+  font-size: var(--fs-xs);
+  color: var(--ink-faint);
+}
+.web-observation img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 4px;
+}
+.web-observation > a {
+  display: block;
+  overflow: auto;
+  max-height: 360px;
+}
+.web-observation .web-picture {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  overflow: auto;
+  max-height: 360px;
+  cursor: crosshair;
+}
+.web-observation summary {
+  cursor: pointer;
+  color: var(--ink-dim);
+  min-height: var(--tap);
+  padding-top: 5px;
+}
+.web-observation pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: var(--fs-xs);
+  max-height: 300px;
+  overflow: auto;
+}
