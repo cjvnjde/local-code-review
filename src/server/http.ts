@@ -27,6 +27,11 @@ import {
   WebSelectionConflict,
 } from "../shared/web-review.ts";
 import { webAnnotation } from "../shared/web-annotation.ts";
+import {
+  DEFAULT_UI_SETTINGS,
+  parseUiSettings,
+  type UiSettings,
+} from "../shared/settings.ts";
 
 export interface ServerOptions {
   web?: import("../web-review/controller.ts").WebReviewController;
@@ -71,6 +76,8 @@ export interface ServerOptions {
   hub: Hub;
   /** Optional ACP connection that queues saved reviewer feedback for managed work. */
   agent?: AgentAdapter;
+  /** File-configured defaults, reapplied for each run without writing the user's configuration. */
+  uiDefaults?: Partial<UiSettings>;
 }
 
 /**
@@ -157,8 +164,10 @@ function isPortTaken(error: unknown): boolean {
 
 function serve(options: ServerOptions, port: number) {
   // Browser storage is partitioned in an editor embedded under the reviewed app's origin.
-  // The full review page supplies this run-local snapshot; embedded editors only read it.
-  let settings: Record<string, unknown> | null = null;
+  // Editors can open before a full review tab, so this run starts with effective file defaults.
+  const runId = crypto.randomUUID();
+  const defaults = parseUiSettings(options.uiDefaults ?? {});
+  let settings: UiSettings = { ...DEFAULT_UI_SETTINGS, ...defaults };
   const server = Bun.serve({
     port,
     hostname: "127.0.0.1",
@@ -185,7 +194,7 @@ function serve(options: ServerOptions, port: number) {
         if (url.pathname === "/api/settings") {
           const headers = { "cache-control": "no-store" };
           if (request.method === "GET")
-            return Response.json({ settings }, { headers });
+            return Response.json({ runId, defaults, settings }, { headers });
           if (request.method !== "PUT")
             return new Response("method not allowed", {
               status: 405,
@@ -209,25 +218,16 @@ function serve(options: ServerOptions, port: number) {
               { status: 403 },
             );
           const payload = await readJson(request);
-          if (
-            !payload ||
-            typeof payload !== "object" ||
-            Array.isArray(payload) ||
-            JSON.stringify(payload).length > 32768 ||
-            !Object.values(payload).every(
-              (value) =>
-                typeof value === "boolean" ||
-                typeof value === "number" ||
-                typeof value === "string" ||
-                (Array.isArray(value) &&
-                  value.every((item) => typeof item === "string")),
-            )
-          )
+          try {
+            if (JSON.stringify(payload).length > 32768)
+              throw new Error("Settings object is too large.");
+            settings = { ...settings, ...parseUiSettings(payload) };
+          } catch {
             return Response.json(
-              { error: "A settings object is required." },
+              { error: "A valid settings object is required." },
               { status: 400 },
             );
-          settings = payload as Record<string, unknown>;
+          }
           options.hub.emit({ type: "settings" });
           return Response.json({ ok: true }, { headers });
         }

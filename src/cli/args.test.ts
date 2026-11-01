@@ -135,3 +135,118 @@ test("no-agent selects manual operation and the last explicit agent flag wins", 
     "--no-agent",
   ]);
 });
+
+describe("startup defaults", () => {
+  const defaults = {
+    port: 8123,
+    outDir: ".feedback",
+    context: 12,
+    open: false,
+    id: " default` review\n",
+    web: "http://localhost:3000/",
+    acp: "/user/config/lcr/agents/default.json",
+    diffArgs: ["origin/main", "--", "src/"],
+  };
+
+  test("bare startup uses all configured CLI defaults", () => {
+    expect(parseArgs([], defaults)).toEqual({
+      ...defaults,
+      id: "default review",
+      help: false,
+      version: false,
+    });
+    expect(parseArgs([], defaults).diffArgs).not.toBe(defaults.diffArgs);
+  });
+
+  test("explicit options override each default independently", () => {
+    expect(
+      parseArgs(
+        [
+          "--port",
+          "0",
+          "--out",
+          ".custom",
+          "--context",
+          "0",
+          "--open",
+          "--id",
+          "",
+          "--web",
+          "http://127.0.0.1:4000",
+          "--acp",
+          "override.json",
+        ],
+        defaults,
+      ),
+    ).toEqual({
+      port: 0,
+      outDir: ".custom",
+      context: 0,
+      open: true,
+      id: "",
+      web: "http://127.0.0.1:4000/",
+      acp: "override.json",
+      diffArgs: defaults.diffArgs,
+      help: false,
+      version: false,
+    });
+    expect(parseArgs(["--no-agent", "--no-web"], defaults)).toMatchObject({
+      noAgent: true,
+      diffArgs: defaults.diffArgs,
+    });
+    expect(parseArgs(["--no-agent", "--no-web"], defaults).acp).toBeUndefined();
+    expect(parseArgs(["--no-agent", "--no-web"], defaults).web).toBeUndefined();
+    expect(parseArgs(["--no-open"], { open: true }).open).toBe(false);
+  });
+
+  test("explicit Git arguments replace rather than append configured diffArgs", () => {
+    for (const args of [
+      ["HEAD~2"],
+      ["--staged"],
+      ["--", "other.ts"],
+      ["--"],
+      ["--not-an-lcr-option"],
+    ]) {
+      expect(parseArgs(args, defaults).diffArgs).toEqual(args);
+    }
+    expect(parseArgs(["--port", "9000"], defaults).diffArgs).toEqual(
+      defaults.diffArgs,
+    );
+  });
+
+  test("--worktree discards configured diffArgs, not explicitly supplied Git arguments", () => {
+    expect(parseArgs(["--worktree"], defaults).diffArgs).toEqual([]);
+    expect(parseArgs(["--worktree", "--no-open"], defaults).diffArgs).toEqual(
+      [],
+    );
+    expect(parseArgs(["--worktree", "HEAD~1"], defaults).diffArgs).toEqual([
+      "HEAD~1",
+    ]);
+    expect(parseArgs(["HEAD~1", "--worktree"], defaults).diffArgs).toEqual([
+      "HEAD~1",
+    ]);
+    expect(parseArgs(["--", "--worktree"], defaults).diffArgs).toEqual([
+      "--",
+      "--worktree",
+    ]);
+  });
+
+  test("browser and agent flags keep last-flag-wins precedence over defaults", () => {
+    expect(
+      parseArgs(["--no-web", "--web", "http://localhost:5000"], defaults).web,
+    ).toBe("http://localhost:5000/");
+    expect(
+      parseArgs(["--web", "http://localhost:5000", "--no-web"], defaults).web,
+    ).toBeUndefined();
+    expect(parseArgs(["--open", "--no-open"], defaults).open).toBe(false);
+    expect(parseArgs(["--no-open", "--open"], defaults).open).toBe(true);
+    expect(
+      parseArgs(["--acp", "agent.json", "--no-agent"], defaults).acp,
+    ).toBeUndefined();
+    expect(parseArgs(["--no-agent", "--acp", "agent.json"], defaults).acp).toBe(
+      "agent.json",
+    );
+    expect(parseArgs(["--", "--no-web"], defaults).web).toBe(defaults.web);
+    expect(parseArgs([], { acp: null }).acp).toBeUndefined();
+  });
+});

@@ -10,9 +10,14 @@ import {
   save,
   saveBookmarks,
   saveCfg,
+  syncCfg,
   unviewCommented,
 } from "./persistence.ts";
 import { isMinted, isResolved, resolutionKey, state } from "./state.ts";
+import {
+  DEFAULT_UI_SETTINGS,
+  type UiSettings,
+} from "../../../shared/settings.ts";
 
 class MemoryStorage {
   private values = new Map<string, string>();
@@ -54,6 +59,13 @@ const documentDescriptor = Object.getOwnPropertyDescriptor(
   globalThis,
   "document",
 );
+const fetchDescriptor = Object.getOwnPropertyDescriptor(globalThis, "fetch");
+let settingsRunId: string;
+let settingsDefaults: Partial<UiSettings>;
+let settingsSnapshot: UiSettings;
+let settingsRead: () => Promise<Response>;
+let settingsWrites: UiSettings[];
+let settingsMethods: string[];
 const savedCfg = { ...state.cfg };
 const savedState = {
   repo: state.repo,
@@ -79,6 +91,9 @@ const savedState = {
   soloKeys: state.soloKeys,
   cfg: state.cfg,
   uiEmbed: state.uiEmbed,
+  draftRow: state.draftRow,
+  draftKey: state.draftKey,
+  draftAt: state.draftAt,
 };
 let local: MemoryStorage;
 let session: MemoryStorage;
@@ -108,7 +123,7 @@ const putStored = (value: unknown) => {
 };
 
 const restoreProperty = (
-  name: "document" | "localStorage" | "sessionStorage",
+  name: "document" | "localStorage" | "sessionStorage" | "fetch",
   descriptor: PropertyDescriptor | undefined,
 ) => {
   if (descriptor) {
@@ -130,6 +145,30 @@ beforeEach(() => {
     value: session,
   });
 
+  state.cfg = { ...DEFAULT_UI_SETTINGS, disabledHide: [] };
+  settingsRunId = "run-a";
+  settingsDefaults = {};
+  settingsSnapshot = { ...DEFAULT_UI_SETTINGS, disabledHide: [] };
+  settingsWrites = [];
+  settingsMethods = [];
+  settingsRead = async () =>
+    Response.json({
+      runId: settingsRunId,
+      defaults: settingsDefaults,
+      settings: settingsSnapshot,
+    });
+  Object.defineProperty(globalThis, "fetch", {
+    configurable: true,
+    value: async (url: unknown, init?: RequestInit) => {
+      expect(url).toBe("/api/settings");
+      settingsMethods.push(init?.method || "GET");
+      if (init?.method !== "PUT") return settingsRead();
+      const snapshot = JSON.parse(String(init.body)) as UiSettings;
+      settingsWrites.push(snapshot);
+      settingsSnapshot = snapshot;
+      return Response.json({ ok: true });
+    },
+  });
   state.repo = "repo-a";
   state.uiEmbed = false;
   state.range = "main..HEAD";
@@ -188,18 +227,19 @@ afterEach(() => {
   restoreProperty("localStorage", localDescriptor);
   restoreProperty("sessionStorage", sessionDescriptor);
   restoreProperty("document", documentDescriptor);
+  restoreProperty("fetch", fetchDescriptor);
 });
 
 describe("settings persistence", () => {
-  test("loadCfg hydrates state and every settings control", () => {
+  test("loadCfg hydrates state and every settings control", async () => {
     local.setItem(
       "gitreview:settings",
       JSON.stringify({
         auto: false,
         back: true,
         toast: false,
-        limit: 240,
-        expand: 12,
+        limit: 500,
+        expand: 10,
         hide: "*.snap",
         hideDeleted: true,
         enterSaves: true,
@@ -209,14 +249,14 @@ describe("settings persistence", () => {
       }),
     );
 
-    loadCfg();
+    await loadCfg();
 
     expect(state.cfg).toMatchObject({
       auto: false,
       back: true,
       toast: false,
-      limit: 240,
-      expand: 12,
+      limit: 500,
+      expand: 10,
       hide: "*.snap",
       hideDeleted: true,
       enterSaves: true,
@@ -228,8 +268,8 @@ describe("settings persistence", () => {
       cfgAuto: { checked: false },
       cfgBack: { checked: true, disabled: true },
       cfgToast: { checked: false },
-      cfgLimit: { value: "240" },
-      cfgExpand: { value: "12" },
+      cfgLimit: { value: "500" },
+      cfgExpand: { value: "10" },
       cfgHide: { value: "*.snap" },
       cfgDeleted: { checked: true },
       cfgEnter: { checked: true },
@@ -242,30 +282,167 @@ describe("settings persistence", () => {
     ).toBe(true);
   });
 
-  test("embedded settings ignore partitioned storage and cannot persist stale defaults", () => {
+  test("embedded settings ignore partitioned storage and cannot publish stale defaults", async () => {
     state.uiEmbed = true;
-    state.cfg.enterSaves = false;
-    local.setItem("gitreview:settings", JSON.stringify({ enterSaves: true }));
-    loadCfg();
-    expect(state.cfg.enterSaves).toBe(false);
+    settingsSnapshot.enterSaves = true;
+    local.setItem("gitreview:settings", JSON.stringify({ enterSaves: false }));
+    await loadCfg();
+    expect(state.cfg.enterSaves).toBe(true);
     state.cfg.editor = "stale editor";
     persistCfg();
     expect(JSON.parse(local.getItem("gitreview:settings")!)).toEqual({
-      enterSaves: true,
+      enterSaves: false,
     });
+    expect(settingsWrites).toEqual([]);
+  });
+
+  test("configured keys reset on a new run while browser changes survive same-run reloads", async () => {
+    settingsDefaults = { enterSaves: true, navHidden: true };
+    settingsSnapshot = { ...settingsSnapshot, ...settingsDefaults };
+    local.setItem(
+      "gitreview:settings",
+      JSON.stringify({
+        enterSaves: false,
+        navHidden: false,
+        ghosts: false,
+        editor: "code",
+        bmFold: true,
+      }),
+    );
+    local.setItem("gitreview:settings-run", "old-run");
+
+    await loadCfg();
+    expect(state.cfg).toMatchObject({
+      enterSaves: true,
+      navHidden: true,
+      ghosts: false,
+      editor: "code",
+      bmFold: true,
+    });
+    expect(controls.cfgEnter.checked).toBe(true);
+    expect(settingsMethods).toEqual(["GET", "PUT"]);
+    expect(settingsWrites[0]?.enterSaves).toBe(true);
+    expect(local.getItem("gitreview:settings-run")).toBe("run-a");
+
+    state.cfg.enterSaves = false;
+    state.cfg.navHidden = false;
+    persistCfg();
+    await syncCfg();
+    await loadCfg();
+    expect(state.cfg.enterSaves).toBe(false);
+    expect(state.cfg.navHidden).toBe(false);
+    expect(controls.cfgEnter.checked).toBe(false);
+
+    settingsRunId = "run-b";
+    settingsSnapshot = { ...DEFAULT_UI_SETTINGS, ...settingsDefaults };
+    await loadCfg();
+    expect(state.cfg).toMatchObject({
+      enterSaves: true,
+      navHidden: true,
+      ghosts: false,
+      editor: "code",
+      bmFold: true,
+    });
+    expect(local.getItem("gitreview:settings-run")).toBe("run-b");
+  });
+
+  test("reconnecting an old tab reads new defaults before publishing its snapshot", async () => {
+    await loadCfg();
+    expect(state.cfg.enterSaves).toBe(false);
+    settingsRunId = "run-b";
+    settingsDefaults = { enterSaves: true };
+    settingsSnapshot = { ...DEFAULT_UI_SETTINGS, ...settingsDefaults };
+
+    await syncCfg();
+    expect(settingsMethods).toEqual(["GET", "PUT", "GET", "PUT"]);
+    expect(settingsWrites[1]?.enterSaves).toBe(true);
+    expect(state.cfg.enterSaves).toBe(true);
+    expect(controls.cfgEnter.checked).toBe(true);
+  });
+
+  test("initial settings loading waits for server defaults before painting or publishing", async () => {
+    const reading = Promise.withResolvers<void>();
+    const response = Promise.withResolvers<Response>();
+    settingsRead = () => {
+      reading.resolve();
+      return response.promise;
+    };
+    const loading = loadCfg();
+    await reading.promise;
+    expect(controls.cfgEnter.checked).toBe(false);
+    expect(settingsWrites).toEqual([]);
+    response.resolve(
+      Response.json({
+        runId: "run-a",
+        defaults: { enterSaves: true },
+        settings: { ...DEFAULT_UI_SETTINGS, enterSaves: true },
+      }),
+    );
+    await loading;
+    expect(controls.cfgEnter.checked).toBe(true);
+    expect(settingsWrites[0]?.enterSaves).toBe(true);
+  });
+
+  test("failed settings loads do not publish stale preferences and can be retried", async () => {
+    const read = settingsRead;
+    local.setItem("gitreview:settings", JSON.stringify({ enterSaves: false }));
+    settingsRead = async () => new Response("unavailable", { status: 503 });
+    await expect(loadCfg()).rejects.toThrow("Could not load review settings");
+    expect(settingsWrites).toEqual([]);
+    expect(local.getItem("gitreview:settings-run")).toBeNull();
+
+    settingsDefaults = { enterSaves: true };
+    settingsRead = read;
+    await loadCfg();
+    expect(controls.cfgEnter.checked).toBe(true);
+    expect(settingsWrites[0]?.enterSaves).toBe(true);
+  });
+
+  test("embedded settings refresh shortcut hints without replacing an active draft", async () => {
+    state.uiEmbed = true;
+    settingsSnapshot.enterSaves = true;
+    const editor = {
+      value: "unsaved draft",
+      selectionStart: 2,
+      selectionEnd: 7,
+    };
+    state.draftRow = editor;
+    const hint = { textContent: "", closest: () => null };
+    Object.defineProperty(globalThis, "document", {
+      configurable: true,
+      value: {
+        getElementById: (id: string) => controls[id] ?? null,
+        querySelectorAll: () => [hint],
+      },
+    });
+    await loadCfg();
+    expect(hint.textContent).toBe("enter save · esc cancel");
+    settingsSnapshot.enterSaves = false;
+    settingsSnapshot.single = true;
+    await syncCfg();
+    expect(hint.textContent).toBe("shift+enter save · esc cancel");
+    expect(state.cfg.single).toBe(true);
+    expect(state.draftRow).toBe(editor);
+    expect(editor).toEqual({
+      value: "unsaved draft",
+      selectionStart: 2,
+      selectionEnd: 7,
+    });
+    expect(settingsWrites).toEqual([]);
+    expect(local.getItem("gitreview:settings")).toBeNull();
   });
 
   test("saveCfg persists controls and reports a display-affecting change", () => {
     controls.cfgAuto.checked = false;
     controls.cfgBack.checked = false;
     controls.cfgToast.checked = false;
-    controls.cfgLimit.value = "320";
+    controls.cfgLimit.value = "1800";
     controls.cfgEnter.checked = true;
     controls.cfgSingle.checked = true;
     controls.cfgEditor.value = "  code  ";
     controls.cfgHide.value = "dist/";
     controls.cfgDeleted.checked = true;
-    controls.cfgExpand.value = "12";
+    controls.cfgExpand.value = "50";
     controls.cfgGhosts.checked = false;
 
     expect(saveCfg()).toBe(true);
@@ -274,13 +451,13 @@ describe("settings persistence", () => {
       auto: false,
       back: false,
       toast: false,
-      limit: 320,
+      limit: 1800,
       enterSaves: true,
       single: true,
       editor: "code",
       hide: "dist/",
       hideDeleted: true,
-      expand: 12,
+      expand: 50,
       ghosts: false,
     });
     expect(controls.cfgBack.disabled).toBe(true);
@@ -290,7 +467,7 @@ describe("settings persistence", () => {
       editor: "code",
       hide: "dist/",
       hideDeleted: true,
-      expand: 12,
+      expand: 50,
       ghosts: false,
     });
   });

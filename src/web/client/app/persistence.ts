@@ -14,6 +14,11 @@ import {
 } from "./state.ts";
 import { adoptAgent } from "./agent.ts";
 import { rememberPage } from "../history/history.ts";
+import {
+  DEFAULT_UI_SETTINGS,
+  parseUiSettings,
+  type UiSettings,
+} from "../../../shared/settings.ts";
 
 // All saves and deletes share a queue, so a late review-wide save cannot resurrect a deleted note.
 let noteWrites: Promise<unknown> = Promise.resolve();
@@ -87,29 +92,86 @@ export function submitNote(note: any, retry = false, ask = true) {
 
 /* ---------- persistence ---------- */
 const CFG_KEY = "gitreview:settings";
+const CFG_RUN_KEY = "gitreview:settings-run";
+let cfgRunId = "";
 let cfgRequests: Promise<unknown> = Promise.resolve();
+function queueCfg(work: () => Promise<void>): Promise<void> {
+  const next = cfgRequests.then(work);
+  cfgRequests = next.catch(() => {});
+  return next;
+}
 function adoptCfg(value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return;
-  for (const key of Object.keys(state.cfg)) {
-    const next = Reflect.get(value, key),
-      current = state.cfg[key];
-    if (Array.isArray(current)) {
-      if (Array.isArray(next) && next.every((item) => typeof item === "string"))
-        state.cfg[key] = next;
-    } else if (typeof next === typeof current) state.cfg[key] = next;
+  for (const key of Object.keys(DEFAULT_UI_SETTINGS)) {
+    if (!Object.hasOwn(value, key)) continue;
+    try {
+      Object.assign(
+        state.cfg,
+        parseUiSettings({ [key]: Reflect.get(value, key) }),
+      );
+    } catch {
+      // Ignore an invalid stored preference without dropping the other browser preferences.
+    }
   }
 }
-export function loadCfg() {
-  // A third-party iframe may see old defaults in a different storage partition. Only the full
-  // review's storage is authoritative; the embedded editor gets its settings from the server.
-  if (!state.uiEmbed) {
-    try {
-      adoptCfg(JSON.parse(localStorage.getItem(CFG_KEY) || "{}"));
-    } catch (e) {}
-  }
-  paintCfg();
-  if (!state.uiEmbed && typeof window !== "undefined")
-    void syncCfg().catch(() => {});
+async function readCfg(): Promise<{
+  runId: string;
+  defaults: Partial<UiSettings>;
+  settings: Partial<UiSettings>;
+}> {
+  const response = await fetch("/api/settings", { cache: "no-store" });
+  if (!response.ok)
+    throw new Error(
+      "Could not load review settings. Retry to load this review.",
+    );
+  const data = await response.json();
+  if (typeof data.runId !== "string" || !data.runId)
+    throw new Error("Invalid review settings. Retry to load this review.");
+  return {
+    runId: data.runId,
+    defaults: parseUiSettings(data.defaults),
+    settings: parseUiSettings(data.settings),
+  };
+}
+async function publishCfg() {
+  const response = await fetch("/api/settings", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(state.cfg),
+  });
+  if (!response.ok)
+    throw new Error(
+      "Could not share review settings. Retry to load this review.",
+    );
+}
+function storeCfg() {
+  try {
+    localStorage.setItem(CFG_KEY, JSON.stringify(state.cfg));
+    localStorage.setItem(CFG_RUN_KEY, cfgRunId);
+  } catch {}
+}
+/** Load the run identity before allowing browser preferences to publish or the UI to render. */
+export function loadCfg(): Promise<void> {
+  const embedded = state.uiEmbed;
+  return queueCfg(async () => {
+    const data = await readCfg();
+    state.cfg = { ...DEFAULT_UI_SETTINGS, disabledHide: [] };
+    if (embedded) {
+      // Third-party storage partitions are not authoritative for an embedded editor.
+      adoptCfg(data.settings);
+    } else {
+      let storedRun = "";
+      try {
+        adoptCfg(JSON.parse(localStorage.getItem(CFG_KEY) || "{}"));
+        storedRun = localStorage.getItem(CFG_RUN_KEY) || "";
+      } catch {}
+      if (storedRun !== data.runId) adoptCfg(data.defaults);
+      cfgRunId = data.runId;
+      storeCfg();
+    }
+    paintCfg();
+    if (!embedded) await publishCfg();
+  });
 }
 function paintCfg() {
   el("cfgAuto").checked = state.cfg.auto;
@@ -137,38 +199,29 @@ function paintCfg() {
 }
 /** The HTTP/SSE handoff crosses browser storage partitions. Only full review tabs may publish. */
 export function syncCfg(): Promise<void> {
-  const embedded = state.uiEmbed,
-    snapshot = JSON.stringify(state.cfg);
-  const next = cfgRequests.then(async () => {
-    const response = await fetch(
-      "/api/settings",
-      embedded
-        ? { cache: "no-store" }
-        : {
-            method: "PUT",
-            headers: { "content-type": "application/json" },
-            body: snapshot,
-          },
-    );
-    if (!response.ok)
-      throw new Error(
-        "Could not load review settings. Reload the editor to try again.",
-      );
+  const embedded = state.uiEmbed;
+  return queueCfg(async () => {
+    const data = await readCfg();
     if (embedded) {
-      const data = await response.json();
       adoptCfg(data.settings);
       paintCfg();
+      return;
     }
+    // An old tab can reconnect to a new server at the same origin. Read before publishing so its
+    // stale snapshot cannot overwrite newly configured defaults, even before the page is reloaded.
+    if (cfgRunId !== data.runId) {
+      adoptCfg(data.defaults);
+      cfgRunId = data.runId;
+      storeCfg();
+      paintCfg();
+    }
+    await publishCfg();
   });
-  cfgRequests = next.catch(() => {});
-  return next;
 }
 /** Writes `state.cfg` out as it stands, for the preferences that are not fields in the settings panel. */
 export function persistCfg() {
   if (state.uiEmbed) return;
-  try {
-    localStorage.setItem(CFG_KEY, JSON.stringify(state.cfg));
-  } catch (e) {}
+  storeCfg();
   paintCfg();
   if (typeof window !== "undefined") void syncCfg().catch(() => {});
 }

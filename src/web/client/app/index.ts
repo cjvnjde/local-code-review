@@ -26,24 +26,53 @@ import { watchNoteHeaders } from "../notes/sticky-notes.ts";
 import { startSearch } from "../search/search.ts";
 
 prepareWebNote();
-loadCfg();
-startWebReviewUI();
-watchActions();
-watchNoteHeaders();
-watchAudio();
-watchImages();
-watchImageComments({
-  busy: busyEditor,
-  open: openImageEditor,
-  jump: jumpToNote,
+const regions = document.querySelectorAll<HTMLElement>(
+  "body > header, body > main, body > footer",
+);
+regions.forEach((region) => {
+  region.inert = true;
 });
-watchPaths();
-watchTooltips();
-watchPreviews(renderBody);
-applyQuick();
-applyNav();
-applySections();
-void load().then(() => {
+void start();
+
+async function start() {
+  try {
+    await loadCfg();
+  } catch (error) {
+    const message = document.createElement("section");
+    message.className = "empty ui-note-error";
+    message.setAttribute("role", "alert");
+    const text = document.createElement("p");
+    text.textContent =
+      error instanceof Error
+        ? error.message
+        : "Could not load review settings.";
+    const retry = document.createElement("button");
+    retry.textContent = "Retry";
+    retry.onclick = () => location.reload();
+    message.append(text, retry);
+    document.body.append(message);
+    return;
+  }
+  regions.forEach((region) => {
+    region.inert = false;
+  });
+  startWebReviewUI();
+  watchActions();
+  watchNoteHeaders();
+  watchAudio();
+  watchImages();
+  watchImageComments({
+    busy: busyEditor,
+    open: openImageEditor,
+    jump: jumpToNote,
+  });
+  watchPaths();
+  watchTooltips();
+  watchPreviews(renderBody);
+  applyQuick();
+  applyNav();
+  applySections();
+  await load();
   if (state.uiEmbed) {
     void startWebNote();
     startHistory();
@@ -61,7 +90,7 @@ void load().then(() => {
   followNoteLink();
   startLive();
   startAgentStatus(() => {
-    state.notes.forEach((note: any) => repaintNote(note.id));
+    state.notes.forEach((note: { id: string }) => repaintNote(note.id));
     updateCount();
   });
-});
+}

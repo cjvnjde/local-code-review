@@ -1,5 +1,6 @@
 import { localWebUrl } from "../shared/web-review.ts";
 import type { CliOptions } from "../shared/review-types.ts";
+import type { StartupSettings } from "./config.ts";
 
 /** A backtick or a control character: what an id may not carry into the review file. */
 const UNSAFE_ID = /[\x00-\x1f\x60]/g;
@@ -14,17 +15,21 @@ export function normalizeId(raw: string): string {
   return raw.replace(UNSAFE_ID, " ").replace(/\s+/g, " ").trim();
 }
 
-export function parseArgs(argv: string[]): CliOptions {
-  let port = 7777;
-  let outDir = ".review";
-  let context = 5;
-  let open = true;
-  let id = "";
+export function parseArgs(
+  argv: string[],
+  defaults: StartupSettings = {},
+): CliOptions {
+  let port = defaults.port ?? 7777;
+  let outDir = defaults.outDir ?? ".review";
+  let context = defaults.context ?? 5;
+  let open = defaults.open ?? true;
+  let id = normalizeId(defaults.id ?? "");
   let version = false;
   let help = false;
-  let web = "";
-  let acp = "";
+  let web = defaults.web ?? "";
+  let acp = defaults.acp ?? "";
   let noAgent = false;
+  let worktree = false;
   const diffArgs: string[] = [];
 
   for (let i = 0; i < argv.length; i++) {
@@ -38,6 +43,8 @@ export function parseArgs(argv: string[]): CliOptions {
     else if (arg === "--context") context = Number(argv[++i]);
     else if (arg === "--id") id = normalizeId(argv[++i] ?? "");
     else if (arg === "--web") web = localWebUrl(argv[++i] ?? "");
+    else if (arg === "--no-web") web = "";
+    else if (arg === "--worktree") worktree = true;
     else if (arg === "--no-open") open = false;
     else if (arg === "--open") open = true;
     else if (arg === "--help" || arg === "-h") help = true;
@@ -72,7 +79,8 @@ export function parseArgs(argv: string[]): CliOptions {
     id,
     version,
     help,
-    diffArgs,
+    diffArgs:
+      diffArgs.length || worktree ? diffArgs : [...(defaults.diffArgs ?? [])],
   };
 }
 
@@ -80,9 +88,10 @@ export function parseArgs(argv: string[]): CliOptions {
 export const HELP = `Usage: lcr [options] [git diff arguments]
 
 Review working-tree, staged, and untracked changes against HEAD by default.
+User startup defaults come from $XDG_CONFIG_HOME/lcr/config.json (or ~/.config/lcr/config.json).
+Explicit CLI options override those defaults; explicit Git arguments replace diffArgs.
 Other arguments are passed to git diff and checked before the server starts.
 Use -- to separate file paths from options and revisions.
-The default agent comes from $XDG_CONFIG_HOME/lcr/config.json (or ~/.config/lcr/config.json).
 
 Options:
   -h, --help                 Show this help and exit
@@ -91,6 +100,8 @@ Options:
   --out <directory>          Review output directory (default: .review)
   --context <lines>          Surrounding diff lines (default: 5)
   --web <url>                Also annotate a localhost UI in a dedicated Chrome window
+  --no-web                   Ignore a configured live page
+  --worktree                 Ignore configured diffArgs; review all working-tree changes
   --id <name>                Name a review to continue it across diff changes
   --no-open                  Do not open the browser
   --open                     Open the browser (default)

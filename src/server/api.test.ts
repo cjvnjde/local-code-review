@@ -20,6 +20,7 @@ import { createWebReview } from "../web-review/controller.ts";
 import { saveAttachment } from "../review/attach.ts";
 import type { WebAnnotation } from "../shared/web-annotation.ts";
 import type { ReviewNote } from "../review/thread.ts";
+import { DEFAULT_UI_SETTINGS } from "../shared/settings.ts";
 import type {
   DiffFile,
   NoteStatus,
@@ -175,14 +176,25 @@ afterAll(() => {
 
 describe("review settings handoff", () => {
   test("retains a run-local snapshot for new editors and announces changes to open editors", async () => {
-    const started = await startTestServer();
+    const configured = { enterSaves: true, disabledHide: ["*.snap"] };
+    const started = await startTestServer({ uiDefaults: configured });
+    configured.disabledHide.push("changed-after-start");
     const initial = await request(started, "/api/settings");
     expect(initial.headers.get("cache-control")).toBe("no-store");
-    expect(await initial.json()).toEqual({ settings: null });
+    const first = await initial.json();
+    expect(first).toEqual({
+      runId: expect.any(String),
+      defaults: { enterSaves: true, disabledHide: ["*.snap"] },
+      settings: {
+        ...DEFAULT_UI_SETTINGS,
+        enterSaves: true,
+        disabledHide: ["*.snap"],
+      },
+    });
     const events: string[] = [];
     const detach = started.hub.add((chunk) => events.push(chunk));
     const settings = {
-      enterSaves: true,
+      enterSaves: false,
       single: true,
       editor: "code",
       disabledHide: ["dist/"],
@@ -195,15 +207,23 @@ describe("review settings handoff", () => {
     expect(put.status).toBe(200);
     expect(events).toEqual(['data: {"type":"settings"}\n\n']);
     expect(await (await request(started, "/api/settings")).json()).toEqual({
-      settings,
+      runId: first.runId,
+      defaults: first.defaults,
+      settings: { ...DEFAULT_UI_SETTINGS, ...settings },
     });
     detach();
 
-    // Settings are browser preferences handed to this server, not a record shared with another run.
-    const other = await startTestServer();
-    expect(await (await request(other, "/api/settings")).json()).toEqual({
-      settings: null,
+    // Browser changes stay in memory, and a new run starts with the file defaults again.
+    const other = await startTestServer({
+      uiDefaults: { enterSaves: true, disabledHide: ["*.snap"] },
     });
+    const restarted = await (await request(other, "/api/settings")).json();
+    expect(restarted).toEqual({
+      runId: expect.any(String),
+      defaults: first.defaults,
+      settings: first.settings,
+    });
+    expect(restarted.runId).not.toBe(first.runId);
   });
 
   test("rejects foreign origins, malformed snapshots and unsupported methods without an event", async () => {
@@ -229,6 +249,14 @@ describe("review settings handoff", () => {
       "true",
       "42",
       '{"enterSaves":{"value":true}}',
+      '{"unknown":true}',
+      '{"clearSaved":false}',
+      '{"limit":-1}',
+      '{"expand":0}',
+      '{"expand":1.5}',
+      '{"limit":1e999}',
+      '{"disabledHide":["dist/",false]}',
+      JSON.stringify({ hide: "x".repeat(32768) }),
     ]) {
       expect(
         (
@@ -248,7 +276,9 @@ describe("review settings handoff", () => {
         .status,
     ).toBe(415);
     expect(await (await request(started, "/api/settings")).json()).toEqual({
-      settings: null,
+      runId: expect.any(String),
+      defaults: {},
+      settings: DEFAULT_UI_SETTINGS,
     });
     expect(events).toEqual([]);
     detach();

@@ -145,6 +145,11 @@ JSON
 
 OMP provides ACP directly; no separate adapter is needed.
 
+Choose OMP's model and thinking level through its profile's `args`, for example
+`["--model", "<provider>/<model-id>", "--thinking", "high", "acp"]`.
+Replace the model placeholder with an ID from `omp models`. lcr does not have a model picker;
+each adapter owns these options. See [model and thinking configuration](docs/agent-connections.md#model-and-thinking-level).
+
 #### Select your default
 
 Copy this block to select Codex, preserving any other settings in `config.json`. It uses Bun or
@@ -185,6 +190,38 @@ permissions and restart recovery.
 ends. **Save note** persists without starting the agent. Without an ACP configuration, only Save is
 offered. Queue state survives restarts, and permissions appear in the page's **Queue** control.
 Working indicators appear beside the agent and on the active note; approval waits are shown separately.
+
+## Default settings
+
+Use `~/.config/lcr/config.json`, or `$XDG_CONFIG_HOME/lcr/config.json` when
+`XDG_CONFIG_HOME` is absolute, for startup and page defaults:
+
+```json
+{
+  "acp": null,
+  "diffArgs": ["origin/main"],
+  "port": 7777,
+  "open": true,
+  "context": 8,
+  "ui": {
+    "enterSaves": true,
+    "foldDel": true
+  }
+}
+```
+
+With this example, plain `lcr` reviews against `origin/main` without an automatic agent,
+and Enter saves a note while Shift+Enter inserts a newline. The revision must exist in
+the repository; lcr does not fetch it.
+
+CLI options override configured defaults. Explicit Git arguments replace `diffArgs`;
+`lcr --worktree` returns to the built-in comparison against `HEAD`. `--no-web` disables
+a configured page URL, and `--open` overrides `"open": false`.
+
+Configured `ui` keys apply again on every server start. Changes in the page stay in browser
+storage and survive page reloads during that run; they never change the config file.
+Preferences omitted from `ui` retain their existing browser persistence.
+See [all configuration fields and precedence](docs/usage.md#configuration).
 
 ## Other options
 

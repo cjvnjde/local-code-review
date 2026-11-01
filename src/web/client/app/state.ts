@@ -1,3 +1,5 @@
+import { DEFAULT_UI_SETTINGS } from "../../../shared/settings.ts";
+
 export const SVG = {
   edit: '<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="m10.5 2 3.5 3.5-8.5 8.5H2v-3.5zM9 3.5 12.5 7" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>',
   history:
@@ -92,26 +94,7 @@ export const state: any = {
   draftRow: null,
   draftKey: null,
   draftAt: null,
-  cfg: {
-    auto: true,
-    back: true,
-    limit: 900,
-    toast: true,
-    hide: "",
-    hideEnabled: true,
-    disabledHide: [],
-    hideDeleted: false,
-    foldDel: false,
-    enterSaves: false,
-    expand: 20,
-    navHidden: false,
-    ntFold: false,
-    bmFold: false,
-    single: false,
-    clearSaved: false,
-    ghosts: true,
-    editor: "",
-  },
+  cfg: { ...DEFAULT_UI_SETTINGS, disabledHide: [] },
   /** Notes from the branch's other review files, shown as dim markers where they still anchor. They
    *  are read-only visitors here: their conversations live in their own files, so none are stored. */
   ghosts: [],

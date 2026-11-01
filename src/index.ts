@@ -7,7 +7,7 @@ import { readAttachment, saveAttachment } from "./review/attach.ts";
 import { readBlob } from "./git/blob.ts";
 import { openInBrowser } from "./browser/open.ts";
 import { HELP, parseArgs } from "./cli/args.ts";
-import { resolveAcpPath } from "./agent/config.ts";
+import { loadUserSettings, resolveAcpPath } from "./cli/config.ts";
 import {
   diffBase,
   diffRangeLabel,
@@ -36,19 +36,22 @@ import { createWebReview } from "./web-review/controller.ts";
 import { isNoise, watchDir, watchTree } from "./server/watch.ts";
 
 async function main() {
-  const options = parseArgs(process.argv.slice(2));
-  if (options.help) {
+  const argv = process.argv.slice(2);
+  const explicit = parseArgs(argv);
+  if (explicit.help) {
     console.log(HELP);
     return;
   }
   // Asked before anything else: which build this is is answerable outside a repository too.
-  if (options.version) {
+  if (explicit.version) {
     console.log(VERSION);
     process.exit(0);
   }
+  const settings = await loadUserSettings(explicit);
+  const options = parseArgs(argv, settings);
   const repoRoot = await findRepoRoot();
   process.chdir(repoRoot);
-  const acpFile = await resolveAcpPath(options, repoRoot);
+  const acpFile = resolveAcpPath(options, repoRoot);
   const agentConfig = acpFile ? await readAcpConfig(acpFile) : undefined;
 
   const range = diffRangeLabel(options.diffArgs);
@@ -142,6 +145,7 @@ async function main() {
       range,
       reviewId: options.id,
       context: options.context,
+      uiDefaults: settings.ui,
       getDiff: () => getDiff(diffSource),
       getContext: (file, start, end) =>
         getFileContext(diffSource, file, start, end),

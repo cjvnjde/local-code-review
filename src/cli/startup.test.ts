@@ -209,7 +209,7 @@ test("startup selects the user default, permits an explicit override and keeps n
     ).not.toContain("session/prompt");
     await writeFile(settings, "{broken");
     await run(["--no-agent"], null);
-    await run(["--acp", path.join(root, "override.json")], "Override");
+    await run(["--acp", "../override.json"], "Override");
     await rm(settings);
     await run([], null);
   } finally {
@@ -320,3 +320,181 @@ test("a server bind failure releases the managed owner lock so startup can be re
     await rm(root, { recursive: true, force: true });
   }
 }, 10000);
+
+test("user startup defaults reach the server, explicit argv wins, and worktree restores the built-in diff", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "lcr-startup-settings-"));
+  const cwd = path.join(root, "repo");
+  const configHome = path.join(root, "config");
+  const settingsFile = path.join(configHome, "lcr/config.json");
+  await mkdir(cwd);
+  await mkdir(path.dirname(settingsFile), { recursive: true });
+  const git = async (args: string[]) => {
+    const child = Bun.spawn(["git", ...args], {
+      cwd,
+      stdout: "ignore",
+      stderr: "pipe",
+    });
+    expect(await child.exited).toBe(0);
+  };
+  const commit = async () => {
+    await git([
+      "-c",
+      "user.name=Test",
+      "-c",
+      "user.email=test@example.invalid",
+      "commit",
+      "-qm",
+      "fixture",
+    ]);
+  };
+  async function run(args: string[]) {
+    const child = Bun.spawn([process.execPath, entry, ...args], {
+      cwd,
+      env: { ...process.env, XDG_CONFIG_HOME: configHome },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    let output = "";
+    const errors = new Response(child.stderr).text();
+    const ready = Promise.withResolvers<string>();
+    const outputDone = (async () => {
+      for await (const chunk of child.stdout) {
+        output += new TextDecoder().decode(chunk);
+        const url = output.match(/http:\/\/localhost:\d+/)?.[0];
+        if (url) ready.resolve(url);
+      }
+    })();
+    try {
+      const url = await Promise.race([
+        ready.promise,
+        child.exited.then(async () => {
+          throw new Error(`Startup exited before serving: ${await errors}`);
+        }),
+      ]);
+      return {
+        diff: await (await fetch(url + "/api/diff")).json(),
+        ui: await (await fetch(url + "/api/settings")).json(),
+        reviews: await (await fetch(url + "/api/reviews")).json(),
+        output,
+      };
+    } finally {
+      child.kill("SIGTERM");
+      await child.exited;
+      await outputDone;
+      expect(await errors).toBe("");
+    }
+  }
+  try {
+    await git(["init", "--quiet"]);
+    await writeFile(path.join(cwd, "tracked.txt"), "baseline\n");
+    await git(["add", "tracked.txt"]);
+    await commit();
+    await git(["branch", "origin/main"]);
+    await writeFile(path.join(cwd, "committed.txt"), "already committed\n");
+    await git(["add", "committed.txt"]);
+    await commit();
+    await writeFile(path.join(cwd, "staged.txt"), "staged\n");
+    await git(["add", "staged.txt"]);
+    await writeFile(path.join(cwd, "tracked.txt"), "unstaged\n");
+    await writeFile(path.join(cwd, "untracked.txt"), "untracked\n");
+    const configured = {
+      acp: null,
+      port: 0,
+      outDir: ".feedback",
+      context: 0,
+      open: false,
+      id: " configured` review\n",
+      web: "http://localhost:3000",
+      diffArgs: ["origin/main"],
+      ui: { auto: false, expand: 50, hide: "*.lock" },
+    };
+    await writeFile(settingsFile, JSON.stringify(configured));
+    const source = await readFile(settingsFile, "utf8");
+
+    const bare = await run([]);
+    expect(bare.diff).toMatchObject({
+      range: "origin/main",
+      context: 0,
+      id: "configured review",
+      web: { url: "http://localhost:3000/" },
+    });
+    expect(
+      bare.diff.files.map((file: { path: string }) => file.path).sort(),
+    ).toEqual(["committed.txt", "staged.txt", "tracked.txt", "untracked.txt"]);
+    expect(bare.reviews.dir).toBe(".feedback");
+    expect(bare.ui.defaults).toEqual(configured.ui);
+    expect(bare.ui.settings).toMatchObject(configured.ui);
+    expect(bare.output).toContain("out:  .feedback/");
+    expect(bare.diff.connection).toBeUndefined();
+
+    const explicit = await run([
+      "--port",
+      "0",
+      "--out",
+      ".override",
+      "--context",
+      "1",
+      "--id",
+      "",
+      "--no-web",
+      "--staged",
+    ]);
+    expect(explicit.diff).toMatchObject({
+      range: "--staged",
+      context: 1,
+      id: "",
+    });
+    expect(explicit.diff.web).toBeUndefined();
+    expect(
+      explicit.diff.files.map((file: { path: string }) => file.path),
+    ).toEqual(["staged.txt"]);
+    expect(explicit.reviews.dir).toBe(".override");
+    expect(explicit.ui.defaults).toEqual(configured.ui);
+
+    const worktree = await run(["--worktree", "--no-web"]);
+    expect(worktree.diff.range).toBe("working tree vs HEAD (incl. untracked)");
+    expect(
+      worktree.diff.files.map((file: { path: string }) => file.path).sort(),
+    ).toEqual(["staged.txt", "tracked.txt", "untracked.txt"]);
+    expect(await readFile(settingsFile, "utf8")).toBe(source);
+
+    await writeFile(
+      settingsFile,
+      JSON.stringify({ ...configured, ui: { auto: true } }),
+    );
+    const restarted = await run(["--no-web"]);
+    expect(restarted.ui.defaults).toEqual({ auto: true });
+    expect(restarted.ui.runId).not.toBe(bare.ui.runId);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+}, 15000);
+
+test("invalid startup defaults fail before Git excludes, even when the corresponding CLI option is valid", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "lcr-settings-errors-"));
+  try {
+    const git = Bun.spawn(["git", "init", "--quiet", cwd]);
+    expect(await git.exited).toBe(0);
+    const settings = path.join(cwd, "config/lcr/config.json");
+    await mkdir(path.dirname(settings), { recursive: true });
+    const exclude = path.join(cwd, ".git/info/exclude");
+    const before = await readFile(exclude, "utf8");
+    for (const [value, message] of [
+      [{ port: "7777" }, "The port setting"],
+      [{ diffArgs: "origin/main" }, "The diffArgs setting"],
+      [{ ui: { expand: 3 } }, "Invalid ui setting"],
+      [{ unexpected: true }, 'Unknown lcr setting "unexpected"'],
+    ] as const) {
+      await writeFile(settings, JSON.stringify(value));
+      const result = await cli(cwd, ["--port", "0", "--no-open"]);
+      expect(result.code).toBe(1);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toContain(message);
+      expect(result.stderr).toContain(settings);
+      expect(result.stderr).toContain("lcr --help");
+      expect(await readFile(exclude, "utf8")).toBe(before);
+    }
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});

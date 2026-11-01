@@ -45,6 +45,44 @@ ACP creates or loads sessions it manages. It does **not** attach to an arbitrary
 ACP is the only automatic connection mode; the old agent-specific attachment flags and bridges have
 been removed. An agent operating manually can still read and answer the Markdown review directly.
 
+### Model and thinking level
+
+lcr has no model or reasoning picker. Set these in the selected agent profile's
+`args` or `env`, or in the agent's own settings. The syntax belongs to the adapter,
+not to ACP generally; do not add `model` or `thinking` fields to lcr's `config.json`.
+
+For OMP, use leading launch flags before `acp`:
+
+```json
+{
+  "name": "OMP",
+  "command": "omp",
+  "args": ["--model", "<provider>/<model-id>", "--thinking", "high", "acp"]
+}
+```
+
+Replace `<provider>/<model-id>` with an available ID from `omp models`. OMP accepts
+`off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, and `auto`; the selected
+model determines which reasoning levels it supports. See the
+[OMP CLI reference](https://github.com/can1357/oh-my-pi/blob/main/docs/cli-reference.md).
+
+For the Codex adapter, add `CODEX_CONFIG` to the profile's existing `env` object:
+
+```json
+{
+  "CODEX_CONFIG": "{\"model\":\"<model-id>\",\"model_reasoning_effort\":\"high\"}"
+}
+```
+
+Replace `<model-id>` with a model available to your authenticated Codex account.
+This environment value is a JSON-encoded string, not a nested object. Keep any
+other environment entries, such as `CODEX_PATH`. See the adapter's
+[runtime options](https://github.com/agentclientprotocol/codex-acp#runtime-options).
+
+Restart lcr after changing a profile. Finish or cancel its queued tasks first:
+changing arguments or environment changes the target fingerprint, and existing
+tasks are never silently transferred to the new configuration.
+
 ### Default agent for all repositories
 
 Keep profiles in `~/.config/lcr/agents/`, then select one in `~/.config/lcr/config.json`:
@@ -60,11 +98,13 @@ With that setting, plain `lcr` starts the selected agent connection and comment 
 Profile paths in settings resolve relative to `config.json`; absolute paths and `~/` paths also work.
 Only user settings are discovered automatically; repository files never select an executable by themselves.
 
-An explicit `lcr --acp /path/to/another-agent.json` overrides the default. `lcr --no-agent` bypasses user
-settings and keeps the review manual. When both flags are given, the last one wins. Set `"acp": null`
-or remove the setting to disable the default globally. A missing settings file also means manual mode.
-Invalid settings or a missing configured profile produce an error; `--no-agent` and explicit `--acp`
-remain available to bypass a broken default. `--help` and `--version` never read user settings.
+An explicit `lcr --acp /path/to/another-agent.json` overrides the default.
+`lcr --no-agent` ignores the configured agent while retaining other startup defaults.
+When both flags are given, the last one wins. Set `"acp": null` or remove the setting
+to disable the default globally. A missing settings file also means manual mode.
+`--no-agent` and explicit `--acp` can bypass a broken agent default.
+`--help` and `--version` never read user settings.
+The same file also supports [startup and web-UI defaults](usage.md#configuration).
 
 ## Using the queue
 

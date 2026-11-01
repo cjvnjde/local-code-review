@@ -59,15 +59,21 @@ Tests live beside the modules they exercise.
 
 | Directory         | Owner                                                                                 |
 | ----------------- | ------------------------------------------------------------------------------------- |
-| `src/cli/`        | Argument parsing, startup checks and opening files in an editor                       |
+| `src/cli/`        | Argument parsing, user-owned startup settings, startup checks and editor launch       |
 | `src/git/`        | Git commands, diff parsing/context and blob reads                                     |
 | `src/review/`     | Markdown rendering/parsing, sessions, statuses, output, attachments and saved reviews |
-| `src/agent/`      | ACP transport, configuration, persistent work queue and managed turns                 |
+| `src/agent/`      | ACP transport and profiles, persistent work queue and managed turns                   |
 | `src/server/`     | HTTP routes, event delivery and filesystem watchers                                   |
 | `src/browser/`    | Browser launch and Chrome DevTools transport                                          |
 | `src/web-review/` | Server-side live-page review controller and browser integration workflow              |
-| `src/shared/`     | Browser-safe review types and capture, region and annotation models                   |
+| `src/shared/`     | Browser-safe review types, UI preference schema, capture and annotation models        |
 | `src/web/`        | HTML shell, feature-organized client and styles                                       |
+
+`src/cli/config.ts` reads the user settings once at startup. `src/shared/settings.ts`
+owns the page-preference defaults and partial-config validation for both runtimes.
+The server's settings relay is run-local: configured keys reapply on each new run,
+while page changes remain in browser storage. Keep configuration reads out of
+help/version and never add a web-UI writer for the user's settings file.
 
 ### Browser features
 

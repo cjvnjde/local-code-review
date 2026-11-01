@@ -10,6 +10,119 @@ Arguments lcr does not recognize go to `git diff`. Use `--` before paths that co
 
 The default address is `http://localhost:7777`. If the port is occupied, lcr tries the next ports and prints the address it actually uses. `--port 0` asks the operating system for a free port. `--no-open` leaves the server running without opening a browser.
 
+## Configuration
+
+lcr reads user-owned settings from `$XDG_CONFIG_HOME/lcr/config.json` when
+`XDG_CONFIG_HOME` is absolute, otherwise `~/.config/lcr/config.json`. It never
+discovers a repository's config file. The file is optional, read once at startup,
+and never written by the web UI. Help and version do not read it.
+
+For example:
+
+```json
+{
+  "acp": null,
+  "diffArgs": ["origin/main"],
+  "port": 7777,
+  "outDir": ".review",
+  "context": 8,
+  "open": true,
+  "ui": {
+    "enterSaves": true,
+    "foldDel": true,
+    "editor": "code"
+  }
+}
+```
+
+Plain `lcr` now compares against `origin/main` without launching an ACP agent.
+The revision must exist locally; lcr does not fetch it. Each Git argument is its
+own array entry: use `["main...HEAD", "--", "src/"]`, not a shell command string.
+
+### Startup fields
+
+All fields are optional. Omitted values use the built-in behavior below.
+
+| Field      | Type                      | Built-in behavior                                          |
+| ---------- | ------------------------- | ---------------------------------------------------------- |
+| `acp`      | Profile path or `null`    | Manual review; no automatic agent                          |
+| `diffArgs` | String array              | Working-tree, staged, and untracked changes against `HEAD` |
+| `port`     | Integer, 0–65535          | `7777`; `0` requests a free port                           |
+| `outDir`   | Non-empty directory path  | `.review`                                                  |
+| `context`  | Non-negative integer      | `5` surrounding lines                                      |
+| `open`     | Boolean                   | `true`; open the browser                                   |
+| `id`       | String                    | Unnamed review                                             |
+| `web`      | Local HTTP(S) URL         | No live-page annotation                                    |
+| `ui`       | Partial preference object | Built-in preferences plus existing browser settings        |
+
+`outDir` remains relative to the repository root unless absolute. An `acp` path
+in this file resolves beside the settings file; an explicit `--acp` path resolves
+from the repository root. `~/` ACP paths are supported. See
+[agent profiles and model selection](agent-connections.md#configure-and-select-an-agent).
+
+Unknown fields and invalid values are reported before the server starts; settings
+are not silently ignored. `--no-agent` or explicit `--acp` can bypass a malformed
+settings file or invalid agent default, but otherwise-valid settings still have
+their non-agent fields validated.
+
+### CLI precedence
+
+Explicit CLI options override only their corresponding defaults. For example,
+`lcr --port 8080 --no-open` keeps the configured diff, output, and UI defaults.
+`--no-agent` disables the configured agent without disabling other valid defaults;
+an explicit `--acp` selects another profile. If both appear, the last one wins.
+Use `"acp": null` for manual review by default.
+
+Explicit Git arguments **replace**, rather than append to, configured `diffArgs`.
+With the example above, `lcr HEAD~2` reviews against `HEAD~2`, and
+`lcr -- src/` reviews the working-tree changes under `src/`, not against `origin/main`.
+`lcr --worktree` ignores the configured diff arguments and restores the built-in
+comparison. `lcr --no-web` disables a configured page URL; `--open` overrides
+`"open": false`. An empty explicit ID (`--id ""`) clears a configured review name.
+
+### Web-UI defaults and browser storage
+
+The `ui` object can configure all current page preferences:
+
+| Key            | Built-in value | Meaning                                                         |
+| -------------- | -------------- | --------------------------------------------------------------- |
+| `auto`         | `true`         | Mark files viewed after scrolling past                          |
+| `back`         | `true`         | Unmark when scrolling back                                      |
+| `limit`        | `900`          | Automatic-viewing scroll-speed threshold; `0` permits any speed |
+| `toast`        | `true`         | Notify when automatically marking viewed                        |
+| `hide`         | `""`           | File-hide patterns, as entered in settings                      |
+| `hideEnabled`  | `true`         | Enable hide patterns                                            |
+| `disabledHide` | `[]`           | Individually disabled hide patterns                             |
+| `hideDeleted`  | `false`        | Hide deleted files                                              |
+| `foldDel`      | `false`        | Fold removed-line runs                                          |
+| `enterSaves`   | `false`        | Enter saves; Shift+Enter inserts a newline when enabled         |
+| `expand`       | `20`           | Context lines revealed per click                                |
+| `navHidden`    | `false`        | Hide the file-tree pane                                         |
+| `ntFold`       | `false`        | Fold the sidebar's note list                                    |
+| `bmFold`       | `false`        | Fold the sidebar's bookmark list                                |
+| `single`       | `false`        | Keep only the newest review file on save                        |
+| `ghosts`       | `true`         | Show other reviews' anchored notes                              |
+| `editor`       | `""`           | Editor executable; empty uses the system default                |
+
+`limit` accepts `0`, `500`, `900`, or `1800`; `expand` accepts `10`, `20`, `50`,
+or `100`, matching the page's controls. All other flags above are booleans;
+`hide` and `editor` are strings, and `disabledHide` is an array of strings.
+
+On **each server start**, keys present in `ui` take precedence over old browser
+values. You can then change them in the page: those choices remain in browser
+storage and survive a page reload during that run. The next server start reapplies
+the configured keys, including when reusing the same port. Keys omitted from `ui`
+keep their existing browser persistence.
+
+With `enterSaves: false`, Enter inserts a newline and Shift+Enter saves.
+Cmd/Ctrl+Enter always saves. These shortcuts apply to note and reply editors,
+including the embedded live-page editor. Effective preferences are shared with
+embedded editors without writing the settings file.
+
+Notes, replies, viewed marks, bookmarks, and other review content are not config
+defaults and retain their separate storage behavior. Configuring `single: true`
+opts into the existing save-time pruning of generated review files.
+
 ## Write and save notes
 
 - **Line or range:** click a diff line, drag across lines, or select part of one line. Selecting inside an already selected line narrows or re-picks its character range; clicking the row returns to the whole line. An overlapping selection re-aims an unsaved draft without losing its text.
