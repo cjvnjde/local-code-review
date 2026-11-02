@@ -64,6 +64,7 @@ export function createWebReview(options: WebReviewOptions) {
   const drafts = new Map<string, WebReview | null>();
   const replyDrafts = new Map<string, string>();
   const draftOwners = new Map<string, string>();
+  let frozen: { id: string; capture: WebCapture } | null = null;
   function discardDraft(id: string) {
     const owner = draftOwners.get(id);
     if (owner) replyDrafts.delete(owner);
@@ -119,6 +120,7 @@ export function createWebReview(options: WebReviewOptions) {
       `globalThis[${JSON.stringify(key)}].${method}(${JSON.stringify(value)})`,
     );
   async function detachPage() {
+    frozen = null;
     unbind();
     const current = browser,
       sid = sessionId,
@@ -261,7 +263,7 @@ export function createWebReview(options: WebReviewOptions) {
     }
     return {};
   }
-  async function screenshot(input: any) {
+  async function screenshot(input: any, freezeId?: unknown) {
     const clean = webCapture({
       ...input,
       annotation: undefined,
@@ -272,6 +274,31 @@ export function createWebReview(options: WebReviewOptions) {
       throw new Error(
         "Invalid page selection. Select an area in the reviewed localhost page.",
       );
+    if (freezeId !== undefined) {
+      if (
+        !frozen ||
+        frozen.id !== freezeId ||
+        !["area", "point"].includes(clean.mode) ||
+        clean.url !== frozen.capture.url ||
+        clean.at !== frozen.capture.at ||
+        JSON.stringify(clean.viewport) !==
+          JSON.stringify(frozen.capture.viewport) ||
+        JSON.stringify(clean.scroll) !== JSON.stringify(frozen.capture.scroll)
+      )
+        throw new Error(
+          "That frozen view expired. Resume and freeze the page again.",
+        );
+      const page = frozen.capture.page;
+      const data = await api("cropFrozen", { id: freezeId, rect: clean.rect });
+      const area = await saveAttachment(
+        options.repoRoot,
+        options.outDir,
+        Buffer.from(data, "base64"),
+        "image/png",
+      );
+      if (!area) throw new Error("Could not save the frozen selection.");
+      return { capture: { ...clean, page, area: attachRef(area) } };
+    }
     const actual = await evaluate(
       "({url:location.href,width:innerWidth,height:innerHeight,x:scrollX,y:scrollY})",
     );
@@ -339,6 +366,27 @@ export function createWebReview(options: WebReviewOptions) {
     }
   }
   async function action(name: string, payload: any) {
+    if (name === "freeze") {
+      const { capture } = await screenshot(payload.capture);
+      const image = await readAttachment(
+        options.repoRoot,
+        options.outDir,
+        capture.page,
+      );
+      if (!image) throw new Error("Could not load the frozen view.");
+      const id = crypto.randomUUID();
+      frozen = { id, capture };
+      return {
+        id,
+        data:
+          "data:image/png;base64," +
+          Buffer.from(image.bytes).toString("base64"),
+      };
+    }
+    if (name === "resume") {
+      if (frozen?.id === payload.id) frozen = null;
+      return {};
+    }
     if (name === "notes")
       return {
         notes: (await options.session.read()).notes.filter((n) => n.web),
@@ -457,7 +505,7 @@ export function createWebReview(options: WebReviewOptions) {
       const draft = hasDraft ? drafts.get(payload.draftId)! : null;
       if (draft && (draft.additional?.length ?? 0) >= 100)
         throw new Error("This note already has 100 additional selections.");
-      const result = await screenshot(payload.capture);
+      const result = await screenshot(payload.capture, payload.freezeId);
       if (hasDraft) {
         const web: WebReview = draft ?? { before: result.capture, after: [] };
         if (draft) (web.additional ??= []).push(result.capture);
@@ -589,7 +637,10 @@ export function createWebReview(options: WebReviewOptions) {
         const frame = (await send("Page.getFrameTree")).frameTree.frame.id;
         listeners.push(
           cdp.on("Runtime.executionContextsCleared", (_, sid) => {
-            if (sid === attachedSession) contextId = 0;
+            if (sid === attachedSession) {
+              contextId = 0;
+              frozen = null;
+            }
           }),
         );
         listeners.push(

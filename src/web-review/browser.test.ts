@@ -466,6 +466,142 @@ browserTest(
       await pressLauncher(true);
       await click('[data-mode="element"]');
       expect(await js('testRoot.querySelector(".bar").hidden')).toBe(true);
+      // Freeze a real CSS hover state, then capture its saved pixels and DOM hints after it disappears.
+      await js(`(()=>{
+        const fixture=document.createElement("div");fixture.id="hover-fixture";fixture.tabIndex=-1;
+        fixture.innerHTML='<style>#hover-fixture{position:fixed;left:20px;top:30px;width:100px;height:40px;z-index:50;background:white}#hover-tooltip{display:none;position:absolute;left:0;top:50px;width:140px;height:50px;background:#ff0000;color:white}#hover-fixture:hover #hover-tooltip{display:block}</style>Hover here<div id="hover-tooltip">Hover-only menu</div><input id="freeze-input" style="position:absolute;left:180px;top:0">';
+        document.body.append(fixture);
+      })()`);
+      async function freezeKey() {
+        for (const type of ["keyDown", "keyUp"])
+          await send("Input.dispatchKeyEvent", {
+            type,
+            key: "f",
+            code: "KeyF",
+            modifiers: 1,
+          });
+      }
+      await js('document.querySelector("#freeze-input").focus()');
+      await freezeKey();
+      expect(await js('!!testRoot.querySelector(".frozen-page")')).toBe(false);
+      await js('document.querySelector("#hover-fixture").focus()');
+      await mouse("mouseMoved", 30, 40);
+      expect(
+        await js(
+          'getComputedStyle(document.querySelector("#hover-tooltip")).display',
+        ),
+      ).toBe("block");
+      await freezeKey();
+      await until(
+        () => js('!!testRoot.querySelector(".frozen-page")'),
+        "hover view frozen",
+      );
+      expect(await js('testRoot.querySelector(".freeze-status").hidden')).toBe(
+        false,
+      );
+      expect(
+        await js(
+          'testRoot.querySelector("[data-mode=area]").getAttribute("aria-pressed")',
+        ),
+      ).toBe("true");
+      expect(
+        await js('testRoot.querySelector("[data-mode=element]").disabled'),
+      ).toBe(true);
+      const freezeSource = await js(
+        'testRoot.querySelector(".frozen-page").src',
+      );
+      await mouse("mouseMoved", 300, 200);
+      expect(
+        await js(
+          'getComputedStyle(document.querySelector("#hover-tooltip")).display',
+        ),
+      ).toBe("none");
+      await js('document.querySelector("#hover-fixture").remove()');
+      await mouse("mousePressed", 22, 82);
+      await mouse("mouseMoved", 150, 120);
+      await mouse("mouseReleased", 150, 120);
+      await frame();
+      const frozenDraftId = await js(
+        'new URL(testRoot.querySelector("iframe").src).searchParams.get("ui-draft")',
+      );
+      const frozenEvidence = web.draft(frozenDraftId)!.before;
+      expect(frozenEvidence.mode).toBe("area");
+      expect(frozenEvidence.rect).toEqual({
+        x: 22,
+        y: 82,
+        width: 128,
+        height: 38,
+      });
+      expect(
+        frozenEvidence.selections!.some(
+          (s) =>
+            s.element?.attributes.id === "hover-tooltip" &&
+            s.element.text === "Hover-only menu",
+        ),
+      ).toBe(true);
+      const frozenPage = await readFile(
+        path.join(dir, ".review", frozenEvidence.page),
+      );
+      const frozenArea = await readFile(
+        path.join(dir, ".review", frozenEvidence.area),
+      );
+      expect("data:image/png;base64," + frozenPage.toString("base64")).toBe(
+        freezeSource,
+      );
+      const cropScale =
+        frozenPage.readUInt32BE(16) / frozenEvidence.viewport.width;
+      expect(frozenArea.readUInt32BE(16)).toBe(Math.round(128 * cropScale));
+      expect(frozenArea.readUInt32BE(20)).toBe(Math.round(38 * cropScale));
+      expect(
+        await js(
+          `(async()=>{const image=new Image();image.src=${JSON.stringify("data:image/png;base64," + frozenArea.toString("base64"))};await image.decode();const canvas=document.createElement('canvas');canvas.width=image.naturalWidth;canvas.height=image.naturalHeight;const ctx=canvas.getContext('2d');ctx.drawImage(image,0,0);return [...ctx.getImageData(canvas.width-2,canvas.height-2,1,1).data]})()`,
+        ),
+      ).toEqual([255, 0, 0, 255]);
+      // Resuming never closes or recreates an editor, including its half-written text and caret.
+      await writeComment("Keep this frozen hover evidence.");
+      await frameJs(
+        'window.frozenEditor=document.querySelector("#uiNote textarea");frozenEditor.setSelectionRange(5,9)',
+      );
+      await click("[data-resume]");
+      expect(await js('!!testRoot.querySelector(".frozen-page")')).toBe(false);
+      expect(
+        await js(
+          'testRoot.querySelector("[data-mode=element]").getAttribute("aria-pressed")',
+        ),
+      ).toBe("true");
+      expect(
+        await frameJs(
+          'document.querySelector("#uiNote textarea")===frozenEditor&&frozenEditor.value==="Keep this frozen hover evidence."&&frozenEditor.selectionStart===5&&frozenEditor.selectionEnd===9',
+        ),
+      ).toBe(true);
+      // The tools action works too; Escape restores the prior mode without discarding the draft.
+      await click("[data-freeze]");
+      await until(
+        () => js('!!testRoot.querySelector(".frozen-page")'),
+        "freeze with a draft",
+      );
+      await click('[data-mode="point"]');
+      await js(
+        'document.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}))',
+      );
+      expect(await js('!!testRoot.querySelector(".frozen-page")')).toBe(false);
+      expect(
+        await frameJs(
+          'document.querySelector("#uiNote textarea")===frozenEditor&&frozenEditor.value==="Keep this frozen hover evidence."',
+        ),
+      ).toBe(true);
+      await click("[data-freeze]");
+      await until(
+        () => js('!!testRoot.querySelector(".frozen-page")'),
+        "freeze before resize",
+      );
+      await js('dispatchEvent(new Event("resize"))');
+      expect(await js('!!testRoot.querySelector(".frozen-page")')).toBe(false);
+      await click("[data-close]");
+      await until(
+        async () => !web.draft(frozenDraftId),
+        "frozen draft discarded",
+      );
       await js("window.clicks=0");
       // Alt uses the app normally; an unmodified click annotates without expanding the launcher.
       await mouse("mousePressed", box.x, box.y, 1);

@@ -99,6 +99,14 @@ export function installPageReview(config: {
   let selected: Element[] = [],
     selectionUrl = location.href,
     multiple = false;
+  let freezing = false;
+  let frozen: {
+    id: string;
+    capture: any;
+    image: HTMLImageElement;
+    mode: string;
+    selectionMode: string;
+  } | null = null;
   let launcherPress: {
     id: number;
     x: number;
@@ -140,11 +148,14 @@ export function installPageReview(config: {
     .selected{position:fixed;pointer-events:none;border:2px solid #9f7cff;background:#9f7cff19;border-radius:3px}
     .selection-tools{pointer-events:auto;position:fixed;bottom:18px;left:50%;transform:translateX(-50%);display:flex;gap:5px;align-items:center;padding:8px;border:1px solid #444858;border-radius:13px;background:#191c26;max-width:calc(100vw - 24px)}
     .error{color:#ffafa8;white-space:pre-wrap}
+    .frozen-page{position:fixed;inset:0;pointer-events:auto;max-width:none!important;max-height:none!important;user-select:none;touch-action:none}
+    .freeze-status{pointer-events:auto;position:fixed;top:calc(var(--tap) / 2);left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:calc(var(--tap) / 4);padding:calc(var(--tap) / 4);border:1px solid #9779f1;border-radius:9px;background:#191c26;max-width:calc(100vw - var(--tap))}.freeze-status[hidden]{display:none}
   </style><div class="outline"><span class="label"></span></div><div class="selections"></div><div class="pins"></div>
+  <div class="freeze-status" hidden role="status"><span data-freeze-status></span><button data-resume>Resume · Alt+F</button></div>
   <div class="selection-tools" hidden><span data-selection-count></span><button data-write>Write note</button><button data-clear>Clear</button></div>
   <div class="dock" hidden><div class="head"><b tabindex="0" title="Drag to move; arrow keys move the note window"></b><button type="button" data-minimize aria-label="Minimize note panel" aria-expanded="true">−</button><button type="button" data-close aria-label="Close note panel">×</button></div><div class="content"></div><button type="button" class="resize" data-resize aria-label="Resize note panel" title="Drag to resize; arrow keys resize; Shift moves farther"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 13 13 3M8 13l5-5M12 13l1-1"/></svg></button></div>
   <button class="launcher" data-launcher aria-label="Selection mode" aria-pressed="true" aria-expanded="false"><span>lcr</span><span class="mode-state" aria-hidden="true">ON</span></button>
-  <div class="bar" hidden><span class="brand">lcr · UI</span><button data-mode="browse">Browse</button><button data-mode="element" aria-pressed="true" title="Click the exact HTML element; Shift-click to select multiple; drag to select an area">Element</button><button data-mode="block" title="Click a containing layout block; Shift-click to select multiple; drag to select an area">Block</button><button data-multiple aria-pressed="false" title="Collect elements for one note, then choose Write note">Multiple</button><button data-mode="area">Area</button><button data-mode="point">Point</button><button data-notes>Notes · 0</button><a class="review-link" data-review target="lcr-review" rel="noopener">Review ↗</a></div>`;
+  <div class="bar" hidden><span class="brand">lcr · UI</span><button data-mode="browse">Browse</button><button data-mode="element" aria-pressed="true" title="Click the exact HTML element; Shift-click to select multiple; drag to select an area">Element</button><button data-mode="block" title="Click a containing layout block; Shift-click to select multiple; drag to select an area">Block</button><button data-multiple aria-pressed="false" title="Collect elements for one note, then choose Write note">Multiple</button><button data-mode="area">Area</button><button data-mode="point">Point</button><button data-freeze title="Hover over the page, then press Alt+F to freeze it for area selection">Freeze · Alt+F</button><button data-notes>Notes · 0</button><a class="review-link" data-review target="lcr-review" rel="noopener">Review ↗</a></div>`;
   (document.body || document.documentElement).append(host);
   const $ = (s: string) => root.querySelector(s) as HTMLElement;
   const dock = $(".dock"),
@@ -330,6 +341,11 @@ export function installPageReview(config: {
     return true;
   }
   function setMode(value: string) {
+    if (freezing) return;
+    if (frozen && value !== "area" && value !== "point") {
+      if (!busy) resume(value);
+      return;
+    }
     mode = value;
     if (mode !== "browse") selectionMode = mode;
     multiple = false;
@@ -346,7 +362,7 @@ export function installPageReview(config: {
       (mode === "browse"
         ? "off — use the page normally"
         : "on — " + mode + " targeting") +
-      ". Click to toggle; hold for tools; drag to move. Hold Alt to use the page temporarily.";
+      ". Click to toggle; hold for tools; drag to move. Hold Alt to use the page temporarily. Alt+F freezes a hovered view for annotation.";
     root
       .querySelectorAll("[data-mode]")
       .forEach((b) =>
@@ -356,6 +372,121 @@ export function installPageReview(config: {
         ),
       );
     pins();
+  }
+  function freezeControls() {
+    $(".freeze-status").hidden = !frozen && !freezing;
+    $("[data-freeze-status]").textContent = freezing
+      ? "Freezing view…"
+      : "Frozen view · drag an area to comment";
+    ($("[data-resume]") as HTMLButtonElement).disabled = freezing;
+    $("[data-freeze]").textContent = frozen
+      ? "Resume · Alt+F"
+      : "Freeze · Alt+F";
+    root
+      .querySelectorAll<HTMLButtonElement>(
+        '[data-mode="element"],[data-mode="block"],[data-multiple]',
+      )
+      .forEach((button) => {
+        button.disabled = !!frozen || freezing;
+      });
+  }
+  function resume(next = frozen?.mode) {
+    if (!frozen) return;
+    const previous = frozen;
+    frozen = null;
+    previous.image.remove();
+    selectionMode = previous.selectionMode;
+    setMode(next || previous.mode);
+    freezeControls();
+    void rpc("resume", { id: previous.id }).catch(() => {});
+  }
+  async function toggleFreeze() {
+    if (busy || freezing || frameSaving || annotationOpen) return;
+    if (frozen) {
+      resume();
+      return;
+    }
+    const previousMode = mode,
+      previousSelectionMode = selectionMode;
+    // Record DOM hints before the screenshot shield changes the page's hovered state.
+    const capture = areaCapture({
+      x: 0,
+      y: 0,
+      width: innerWidth,
+      height: innerHeight,
+    });
+    freezing = true;
+    start = null;
+    outline.style.display = "none";
+    hideTools();
+    freezeControls();
+    tellFrame("capturing", { busy: true });
+    let id = "";
+    try {
+      const result = await rpc("freeze", { capture });
+      id = result.id;
+      const image = document.createElement("img");
+      image.className = "frozen-page";
+      image.alt = "";
+      image.draggable = false;
+      image.style.width = capture.viewport.width + "px";
+      image.style.height = capture.viewport.height + "px";
+      image.src = result.data;
+      await image.decode();
+      if (
+        disposed ||
+        innerWidth !== capture.viewport.width ||
+        innerHeight !== capture.viewport.height
+      )
+        throw new Error(
+          "The viewport changed while freezing. Freeze the page again.",
+        );
+      frozen = {
+        id,
+        capture,
+        image,
+        mode: previousMode,
+        selectionMode: previousSelectionMode,
+      };
+      root.insertBefore(image, $(".outline"));
+      freezing = false;
+      setMode("area");
+    } catch (e) {
+      if (id) void rpc("resume", { id }).catch(() => {});
+      error(e);
+    } finally {
+      freezing = false;
+      freezeControls();
+      tellFrame("capturing", { busy: false });
+    }
+  }
+  function frozenCapture(r: any, kind: string) {
+    const selections =
+      kind === "area"
+        ? (frozen!.capture.selections || []).filter(
+            (s: any) =>
+              s.rect.x < r.x + r.width &&
+              s.rect.x + s.rect.width > r.x &&
+              s.rect.y < r.y + r.height &&
+              s.rect.y + s.rect.height > r.y,
+          )
+        : [];
+    const components: any[] = [],
+      seen = new Set();
+    for (const s of selections)
+      for (const component of s.components) {
+        const key = JSON.stringify(component);
+        if (seen.has(key) || components.length >= 30) continue;
+        seen.add(key);
+        components.push(component);
+      }
+    return {
+      ...frozen!.capture,
+      mode: kind,
+      rect: r,
+      components,
+      selections: selections.length ? selections : undefined,
+    };
   }
   function rect(el: Element) {
     const r = el.getBoundingClientRect();
@@ -704,7 +835,8 @@ export function installPageReview(config: {
     return el;
   }
   function ours(e: Event) {
-    return e.composedPath().includes(host);
+    const path = e.composedPath();
+    return path.includes(host) && !(frozen && path.includes(frozen.image));
   }
   function stop(e: Event) {
     e.preventDefault();
@@ -775,11 +907,11 @@ export function installPageReview(config: {
   }
   async function removeSelection(index: number, key: string, draftId?: string) {
     if (!frame || !activeToken) return;
-    if (busy || frameSaving) {
+    if (busy || freezing || frameSaving) {
       tellFrame("evidence", {
         error: "Wait for the current selection or save to finish.",
       });
-      if (!busy) tellFrame("capturing", { busy: false });
+      if (!busy && !freezing) tellFrame("capturing", { busy: false });
       return;
     }
     const generation = panelGeneration;
@@ -814,7 +946,7 @@ export function installPageReview(config: {
     kind = mode,
     elements: Element[] = [],
   ) {
-    if (busy || frameSaving) return;
+    if (busy || freezing || frameSaving) return;
     const appending = !!frame && !!activeToken;
     if (!appending && !close()) return;
     hideTools();
@@ -832,13 +964,16 @@ export function installPageReview(config: {
     busy = true;
     tellFrame("capturing", { busy: true });
     try {
-      const capture = elements.length
-        ? selectionCapture(elements, kind)
-        : kind === "area"
-          ? areaCapture(r)
-          : metadata(el, r, kind);
+      const capture = frozen
+        ? frozenCapture(r, kind)
+        : elements.length
+          ? selectionCapture(elements, kind)
+          : kind === "area"
+            ? areaCapture(r)
+            : metadata(el, r, kind);
       const result = await rpc("capture", {
         capture,
+        ...(frozen ? { freezeId: frozen.id } : {}),
         ...(appending
           ? frameKind === "draft"
             ? { draftId: activeToken }
@@ -902,7 +1037,7 @@ export function installPageReview(config: {
       if (!annotationOpen) pendingWeb = undefined;
       positionDock();
     } else if (message.action === "ready") {
-      tellFrame("capturing", { busy });
+      tellFrame("capturing", { busy: busy || freezing });
       if (pendingWeb !== undefined)
         tellFrame("evidence", {
           web: pendingWeb,
@@ -1068,7 +1203,7 @@ export function installPageReview(config: {
   function pins() {
     const container = $(".pins");
     container.textContent = "";
-    if (mode === "browse") return;
+    if (mode === "browse" || frozen) return;
     notes.forEach((n, i) =>
       [n.web.before, ...(n.web.additional || [])].forEach((capture: any) => {
         const targets = (["element", "block"].includes(capture.mode) &&
@@ -1135,6 +1270,12 @@ export function installPageReview(config: {
   $("[data-notes]").onclick = () => {
     hideTools();
     void rpc("review").catch(error);
+  };
+  $("[data-freeze]").onclick = () => {
+    void toggleFreeze();
+  };
+  $("[data-resume]").onclick = () => {
+    if (!busy && !freezing) resume();
   };
   const reviewLink = $("[data-review]") as HTMLAnchorElement;
   reviewLink.href = config.reviewUrl;
@@ -1327,11 +1468,11 @@ export function installPageReview(config: {
     document,
     "pointermove",
     (e) => {
-      if (e.altKey) {
+      if (e.altKey && !frozen) {
         outline.style.display = "none";
         return;
       }
-      if (mode === "browse" || busy || ours(e)) return;
+      if (mode === "browse" || busy || freezing || ours(e)) return;
       if (start) {
         if (
           mode !== "point" &&
@@ -1358,9 +1499,10 @@ export function installPageReview(config: {
       if (
         mode === "browse" ||
         busy ||
+        freezing ||
         frameSaving ||
         ours(e) ||
-        e.altKey ||
+        (e.altKey && !frozen) ||
         e.button !== 0
       )
         return;
@@ -1384,7 +1526,14 @@ export function installPageReview(config: {
       if (!start || e.pointerId !== start.id) return;
       const a = start;
       start = null;
-      if (mode === "browse" || busy || ours(e) || e.altKey) return;
+      if (
+        mode === "browse" ||
+        busy ||
+        freezing ||
+        ours(e) ||
+        (e.altKey && !frozen)
+      )
+        return;
       stop(e);
       if (mode === "point") {
         void choose(
@@ -1420,7 +1569,12 @@ export function installPageReview(config: {
       document,
       type,
       (e) => {
-        if (mode !== "browse" && !ours(e) && !(e as MouseEvent).altKey) stop(e);
+        if (
+          (freezing || mode !== "browse") &&
+          !ours(e) &&
+          (frozen || !(e as MouseEvent).altKey)
+        )
+          stop(e);
       },
       true,
     );
@@ -1451,14 +1605,34 @@ export function installPageReview(config: {
     document,
     "keydown",
     (e) => {
+      const typing = (e.composedPath()[0] as Element)?.closest?.(
+        "input,textarea,select,[contenteditable]:not([contenteditable=false])",
+      );
+      if (
+        e.altKey &&
+        e.code === "KeyF" &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.shiftKey &&
+        !typing
+      ) {
+        stop(e);
+        if (!e.repeat) void toggleFreeze();
+        return;
+      }
       if (e.key === "Alt") {
         start = null;
         outline.style.display = "none";
       }
       if (e.key === "Escape") {
         stop(e);
+        if (freezing) return;
         if (expanded) {
           hideTools();
+          return;
+        }
+        if (frozen) {
+          if (!busy) resume();
           return;
         }
         if (selected.length) {
@@ -1493,7 +1667,17 @@ export function installPageReview(config: {
     });
   }
   listen(window, "scroll", schedulePins, true);
+  for (const type of ["wheel", "touchmove"])
+    listen(
+      window,
+      type,
+      (e) => {
+        if (frozen && !ours(e)) stop(e);
+      },
+      { capture: true, passive: false },
+    );
   listen(window, "resize", () => {
+    resume();
     positionLauncher();
     positionDock();
     schedulePins();
@@ -1533,7 +1717,33 @@ export function installPageReview(config: {
         requestAnimationFrame(() => requestAnimationFrame(r)),
       );
     },
+    async cropFrozen(value: any) {
+      if (!frozen || frozen.id !== value.id)
+        throw new Error("That frozen view expired. Freeze the page again.");
+      const image = frozen.image,
+        r = value.rect;
+      const canvas = document.createElement("canvas");
+      const sx = image.naturalWidth / frozen.capture.viewport.width,
+        sy = image.naturalHeight / frozen.capture.viewport.height;
+      canvas.width = Math.max(1, Math.round(r.width * sx));
+      canvas.height = Math.max(1, Math.round(r.height * sy));
+      canvas
+        .getContext("2d")!
+        .drawImage(
+          image,
+          r.x * sx,
+          r.y * sy,
+          r.width * sx,
+          r.height * sy,
+          0,
+          0,
+          canvas.width,
+          canvas.height,
+        );
+      return canvas.toDataURL("image/png").split(",")[1];
+    },
     async focus(id: string) {
+      resume();
       await refresh();
       const n = notes.find((n) => n.id === id);
       if (!n) throw new Error("That UI note no longer exists.");
@@ -1543,6 +1753,7 @@ export function installPageReview(config: {
       showNote(id);
     },
     async prepare(c: any) {
+      resume();
       const grouped = ["element", "block"].includes(c.mode) && c.selections;
       const captures = grouped || [c],
         places = captures.map((s: any) => locate({ ...c, ...s }));
