@@ -23,23 +23,24 @@ body.ui-note #historyPanel {
   font-family: var(--sans);
   flex: 1;
 }
-.ui-note-tools {
-  display: flex;
-  justify-content: flex-end;
-  padding: calc(var(--row) / 3);
-  border-bottom: 1px solid var(--edge);
-}
-.ui-note-tools a {
-  display: inline-flex;
-  align-items: center;
-  min-height: var(--tap);
-  color: var(--accent);
-  font-size: var(--fs-ui);
-}
 .ui-note-body .nbox {
   margin: 0;
   border: 0;
   border-radius: 0;
+}
+.ui-note-body .nhead {
+  flex-wrap: nowrap;
+}
+.ui-note-body .nhead .loc,
+.ui-note-body .nhead button {
+  flex: none;
+  white-space: nowrap;
+}
+.ui-note-body .nhead .web-component-path {
+  flex: 1;
+}
+.ui-note-body .nhead .spacer {
+  display: none;
 }
 .ui-note-error {
   padding: var(--row);

@@ -140,7 +140,7 @@ export function installPageReview(config: {
     .resize{position:absolute;right:0;bottom:0;width:var(--tap);height:var(--tap);padding:0;border:0;border-radius:0;background:transparent;cursor:nwse-resize;touch-action:none;display:grid;place-items:center;color:#c6b7ff}
     .resize svg{width:var(--icon);height:var(--icon);pointer-events:none}.resize:focus-visible{outline:2px solid #c6b7ff;outline-offset:-3px}.dock.minimized .resize{display:none}
     .resize:is(:hover,:focus-visible)::before{content:attr(title);position:absolute;right:calc(var(--tap) / 4);bottom:100%;width:calc(var(--tap) * 9);padding:calc(var(--tap) / 4);border:1px solid #444858;border-radius:7px;background:#242733;font-size:var(--fs-small);pointer-events:none;cursor:default}
-    .bar[hidden],.dock[hidden],.selection-tools[hidden]{display:none}.head{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid #363a47;cursor:move;touch-action:none;user-select:none}.head b{flex:1;min-width:0}.head button{flex:none}.content{display:flex;flex-direction:column;flex:1;min-height:0;overflow:auto}.content iframe{width:100%;flex:1;min-height:0;border:0;background:#191c26}.status,.error{padding:10px 14px;margin:0}
+    .bar[hidden],.dock[hidden],.selection-tools[hidden]{display:none}.head{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid #363a47;cursor:move;touch-action:none;user-select:none}.head b{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.head button,.head .review-link{flex:none}.head .review-link{display:inline-flex;align-items:center}.content{display:flex;flex-direction:column;flex:1;min-height:0;overflow:auto}.content iframe{width:100%;flex:1;min-height:0;border:0;background:#191c26}.status,.error{padding:10px 14px;margin:0}
     .dock.annotating .head,.dock.annotating .resize{display:none}
     .dock.annotating{border:0;border-radius:0;box-shadow:none}
     .dock.annotating~.launcher,.dock.annotating~.bar{display:none}
@@ -153,7 +153,7 @@ export function installPageReview(config: {
   </style><div class="outline"><span class="label"></span></div><div class="selections"></div><div class="pins"></div>
   <div class="freeze-status" hidden role="status"><span data-freeze-status></span><button data-resume>Resume · Ctrl+Shift+F</button></div>
   <div class="selection-tools" hidden><span data-selection-count></span><button data-write>Write note</button><button data-clear>Clear</button></div>
-  <div class="dock" hidden><div class="head"><b tabindex="0" title="Drag to move; arrow keys move the note window"></b><button type="button" data-minimize aria-label="Minimize note panel" aria-expanded="true">−</button><button type="button" data-close aria-label="Close note panel">×</button></div><div class="content"></div><button type="button" class="resize" data-resize aria-label="Resize note panel" title="Drag to resize; arrow keys resize; Shift moves farther"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 13 13 3M8 13l5-5M12 13l1-1"/></svg></button></div>
+  <div class="dock" hidden><div class="head"><b tabindex="0" title="Drag to move; arrow keys move the note window"></b><a class="review-link" data-panel-review target="lcr-review" rel="noopener">Review ↗</a><button type="button" data-minimize aria-label="Minimize note panel" aria-expanded="true">−</button><button type="button" data-close aria-label="Close note panel">×</button></div><div class="content"></div><button type="button" class="resize" data-resize aria-label="Resize note panel" title="Drag to resize; arrow keys resize; Shift moves farther"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 13 13 3M8 13l5-5M12 13l1-1"/></svg></button></div>
   <button class="launcher" data-launcher aria-label="Selection mode" aria-pressed="true" aria-expanded="false"><span>lcr</span><span class="mode-state" aria-hidden="true">ON</span></button>
   <div class="bar" hidden><span class="brand">lcr · UI</span><button data-mode="browse">Browse</button><button data-mode="element" aria-pressed="true" title="Click the exact HTML element; Shift-click to select multiple; drag to select an area">Element</button><button data-mode="block" title="Click a containing layout block; Shift-click to select multiple; drag to select an area">Block</button><button data-multiple aria-pressed="false" title="Collect elements for one note, then choose Write note">Multiple</button><button data-mode="area">Area</button><button data-mode="point">Point</button><button data-freeze title="Hover over the page, then press Ctrl+Shift+F to freeze it for area selection">Freeze · Ctrl+Shift+F</button><button data-notes>Notes · 0</button><a class="review-link" data-review target="lcr-review" rel="noopener">Review ↗</a></div>`;
   (document.body || document.documentElement).append(host);
@@ -846,6 +846,11 @@ export function installPageReview(config: {
     content.textContent = "";
     activeToken = token;
     frameKind = kind;
+    ($("[data-panel-review]") as HTMLAnchorElement).href =
+      config.reviewUrl +
+      (kind === "note"
+        ? "/#note=" + encodeURIComponent(token.split("|#").pop() || token)
+        : "/");
     pendingWeb = undefined;
     frameDirty = false;
     frameSaving = false;
@@ -1279,22 +1284,30 @@ export function installPageReview(config: {
   $("[data-resume]").onclick = () => {
     if (!busy && !freezing) resume();
   };
-  const reviewLink = $("[data-review]") as HTMLAnchorElement;
-  reviewLink.href = config.reviewUrl;
-  reviewLink.onclick = (e) => {
-    hideTools();
-    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)
-      return;
-    e.preventDefault();
-    void rpc("review").catch(error);
-  };
+  root
+    .querySelectorAll<HTMLAnchorElement>("[data-review],[data-panel-review]")
+    .forEach((link) => {
+      link.href = config.reviewUrl;
+      link.onclick = (e) => {
+        hideTools();
+        if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)
+          return;
+        e.preventDefault();
+        void rpc(
+          "review",
+          link.hasAttribute("data-panel-review") && frameKind === "note"
+            ? { id: activeToken }
+            : {},
+        ).catch(error);
+      };
+    });
   $("[data-close]").onclick = () => {
     close(true);
   };
   $("[data-minimize]").onclick = () => minimize(!minimized);
   const head = $(".head");
   head.onpointerdown = (e) => {
-    if (e.button !== 0 || (e.target as Element).closest("button")) return;
+    if (e.button !== 0 || (e.target as Element).closest("button,a")) return;
     dockPress = {
       id: e.pointerId,
       x: e.clientX,

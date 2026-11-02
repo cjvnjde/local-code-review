@@ -5,7 +5,7 @@ import {
   setWebNoteError,
   updateWebNoteEvidence,
 } from "../notes/notes.ts";
-import { noteByRef, refIn, refOf } from "../notes/note-ref.ts";
+import { noteByRef, refIn } from "../notes/note-ref.ts";
 import { state } from "../app/state.ts";
 import { webReview, type WebReview } from "../../../shared/web-review.ts";
 import { syncCfg } from "../app/persistence.ts";
@@ -71,15 +71,9 @@ export async function startWebNote() {
   const host = document.createElement("section");
   host.id = "uiNote";
   host.setAttribute("aria-label", "Review note");
-  const tools = document.createElement("div");
-  tools.className = "ui-note-tools";
-  const link = document.createElement("a");
-  link.textContent = "Full conversation";
-  link.href = "/";
-  tools.append(link);
   const body = document.createElement("div");
   body.className = "ui-note-body";
-  host.append(tools, body);
+  host.append(body);
   document.body.append(host);
   let activeId = noteId || "";
   let capturing = false,
@@ -236,12 +230,6 @@ export async function startWebNote() {
         target instanceof HTMLAnchorElement
           ? refIn(target.getAttribute("href") || "")
           : "";
-      if (target === link) {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        tell("review", state.notes.has(activeId) ? { id: activeId } : {});
-        return;
-      }
       const id = referenced || noteByRef(ref, state.notes.values())?.id;
       if (!id) return;
       event.preventDefault();
@@ -295,10 +283,6 @@ export async function startWebNote() {
       }
     }
     applyEvidence();
-    link.href = state.notes.has(activeId)
-      ? "/#note=" + encodeURIComponent(refOf(activeId))
-      : "/";
-    if (draft) link.textContent = "Review";
     changed();
     tell("ready", { id: activeId });
   } catch (error) {

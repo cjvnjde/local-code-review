@@ -1158,7 +1158,7 @@ browserTest(
       const pagesBefore = (await targets()).filter(
         (t) => t.type === "page",
       ).length;
-      await frameJs('document.querySelector(".ui-note-tools a").click()');
+      await click(".head [data-panel-review]");
       await until(
         () =>
           reviewJs("location.hash===" + JSON.stringify("#note=" + visualRef)),
@@ -1167,7 +1167,7 @@ browserTest(
       expect((await targets()).filter((t) => t.type === "page")).toHaveLength(
         pagesBefore,
       );
-      await frameJs('document.querySelector(".ui-note-tools a").click()');
+      await click(".head [data-panel-review]");
       expect((await targets()).filter((t) => t.type === "page")).toHaveLength(
         pagesBefore,
       );
