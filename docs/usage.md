@@ -226,6 +226,27 @@ A run adopts the newest matching review. Without a name, its range, branch, and 
 
 ## Browser history
 
+### Back, Forward, and addresses
+
+The main review's address represents the open notes panel and filter, focused note, note or reply
+editor, screenshot drawing editor, settings, search results, and revision-history overlay.
+Back reverses these UI transitions; Forward restores them. Opening an overlay leaves the editor
+underneath intact. Search typing and revision-history controls update the current entry rather
+than adding an entry per keystroke or revision.
+
+Navigation uses hash parameters, such as `#notes=open&note=<ref>` or `#editor=reply:<ref>`.
+Saved-note editors and other available views reopen from a copied address or a reload. Missing
+notes, expired drafts, and invalid view parameters are dropped without blocking the rest of the page.
+The address identifies UI state, not a different repository or review; use it with the same running review.
+
+Unsent note and reply text and caret positions survive Back/Forward in memory in the current page.
+They never enter the URL or browser-history state and do not survive a reload. Saving or explicitly
+cancelling an editor finishes that draft. Drawing changes require confirmation before being discarded;
+an in-flight save blocks traversal until it finishes. Browser navigation never undoes a saved note,
+reply, or drawing.
+
+### Review revision history
+
 **History** in the header opens a searchable timeline of note edits, replies, answers, statuses, and removals. A note's history icon filters to that conversation. Each revision has a before/after view and complete review snapshot. **Copy text** reuses earlier wording without changing the current review; **Export** downloads JSON. **All reviews** includes other ranges and names in this repository.
 
 History is an independent IndexedDB journal. Deleting Markdown or notes and starting a new review do not erase it. It records states the page observes, including the first read after a restart, not intermediate file edits made while the page was closed. Identical consecutive observations and display preferences do not create revisions. Page drafts and file observations have separate baselines so unsent notes are not mistaken for file deletions.

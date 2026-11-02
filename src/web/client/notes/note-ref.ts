@@ -27,16 +27,19 @@ export function refIn(url: string) {
     .trim();
   if (/^lcr:[0-9a-z]+$/i.test(raw)) return raw.slice(REF_SCHEME.length);
   if (/^#[0-9a-z]+$/.test(raw)) return raw.slice(1);
-  if (/^#note=[0-9a-z]+$/.test(raw)) return raw.slice(6);
   try {
-    const url = new URL(raw);
+    const url = new URL(
+      raw,
+      raw.startsWith("#") ? "http://localhost/" : undefined,
+    );
     if (
       /^https?:$/.test(url.protocol) &&
       ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname) &&
-      url.pathname === "/" &&
-      /^#note=[0-9a-z]+$/.test(url.hash)
-    )
-      return url.hash.slice(6);
+      url.pathname === "/"
+    ) {
+      const refs = new URLSearchParams(url.hash.slice(1)).getAll("note");
+      if (refs.length === 1 && /^[0-9a-z]+$/.test(refs[0])) return refs[0];
+    }
   } catch {}
   return "";
 }

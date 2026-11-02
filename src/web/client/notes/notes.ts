@@ -1,3 +1,9 @@
+import {
+  registerEditor,
+  trackEditor,
+  finishEditor,
+} from "./editor-navigation.ts";
+import { jumpToNote } from "../app/live.ts";
 import { webCaptureHtml } from "../web-review/web-capture.ts";
 import { pathHtml } from "../components/path.ts";
 import {
@@ -25,8 +31,16 @@ import {
   wireComposer,
 } from "../components/composer.ts";
 import { copyText } from "../components/clipboard.ts";
-import { refToken } from "./note-ref.ts";
-import { globalHost, repaintRow, syncGlobals } from "../diff/diff-view.ts";
+import { noteByRef, refOf, refToken } from "./note-ref.ts";
+import {
+  globalHost,
+  mountRowAt,
+  repaintRow,
+  setFolded,
+  setHidden,
+  syncGlobals,
+} from "../diff/diff-view.ts";
+import { isHidden } from "../diff/filters.ts";
 import { reaims } from "../diff/drag.ts";
 import { updateCount } from "./footer.ts";
 import { codeHtml, langOf } from "../components/highlight.ts";
@@ -160,6 +174,15 @@ function draftFor(key: string) {
   if (!row || !row.isConnected || state.draftKey !== key) return null;
   return row.querySelector("textarea");
 }
+function dropEmptyReply() {
+  const ta = document.querySelector<HTMLTextAreaElement>(
+    ".reply textarea[data-navigation-active]",
+  );
+  if (!ta || ta.value.trim() || ta.closest("[data-evidence],[data-sending]"))
+    return;
+  ta.removeAttribute("data-navigation-active");
+  ta.blur();
+}
 /**
  * The page holds one editor open at a time, replies included. A second box would leave the first one
  * behind, half written and out of view, so an untouched draft steps aside and anything else keeps the
@@ -175,6 +198,7 @@ export function busyEditor() {
   }
   dropEmptyDraft();
   dropCleanEdit();
+  dropEmptyReply();
   const ta: any = activeEditor();
   if (!ta || !ta.isConnected) return false;
   const box = ta.closest(".nbox");
@@ -432,6 +456,73 @@ const webRemoving = new Set<string>();
 const webAnnotating = new Set<string>();
 const webRemovalErrors = new Map<string, string>();
 const webRemovalWired = new WeakSet<HTMLElement>();
+const draftEditors = new Map<string, () => boolean>();
+
+/** Prefer the visible reader copy; otherwise mount the note's real diff location. */
+export function findNoteBox(id: string) {
+  const find = () =>
+    [...document.querySelectorAll<HTMLElement>(".nrow")]
+      .find((row) => row.dataset.nid === id && !row.closest("[hidden]"))
+      ?.querySelector<HTMLElement>(".nbox");
+  if (state.reader) {
+    const row = [...el("rdrbody").querySelectorAll(".nrow")].find(
+      (row: HTMLElement) => row.dataset.nid === id,
+    );
+    if (row) return row.querySelector(".nbox") as HTMLElement;
+  }
+  let box = find();
+  if (!box) {
+    jumpToNote(id);
+    box = find();
+  }
+  return box;
+}
+
+registerEditor((route) => {
+  if (route.startsWith("draft:")) return draftEditors.get(route)?.() ?? false;
+  if (!route.startsWith("note:")) return false;
+  const note = noteByRef(route.slice(5), state.notes.values());
+  if (!note || !canEditNote(note)) return false;
+  const box = findNoteBox(note.id);
+  const edit = box?.querySelector<HTMLButtonElement>(".nhead .edit");
+  if (!edit) return false;
+  edit.click();
+  return !!box?.querySelector(".nedit textarea");
+});
+
+document.addEventListener("lcr:annotation-restore", (event: Event) => {
+  const route = (event as CustomEvent<{ route: string }>).detail.route;
+  const owner = noteByRef(route.split(":")[0], state.notes.values());
+  if (owner) findNoteBox(owner.id);
+  for (const button of document.querySelectorAll<HTMLButtonElement>(
+    "[data-web-annotate]",
+  )) {
+    const box = button.closest<HTMLElement>(".nbox");
+    if (!box || button.disabled || box.closest("[hidden]")) continue;
+    const id = rowOf(box)?.dataset.nid;
+    const reply = button.closest<HTMLElement>(".reply") as
+      (HTMLElement & { __web?: WebReview }) | null;
+    const web = webReview(
+      reply?.__web ?? noteContexts.get(box)?.web ?? state.notes.get(id)?.web,
+    );
+    if (!web) continue;
+    const index = Number(button.dataset.webAnnotate);
+    const capture =
+      button.dataset.webKind === "after"
+        ? web.after[index]
+        : index === 0
+          ? web.before
+          : web.additional?.[index - 1];
+    if (
+      capture &&
+      `${refOf(id)}:${reply ? "reply" : "note"}:${button.dataset.webKind}:${index}:${capture.area}` ===
+        route
+    ) {
+      button.click();
+      return;
+    }
+  }
+});
 /** Busy state follows the box and note id through view/edit repaints. */
 function refreshWebControls(box: HTMLElement) {
   const id = rowOf(box)?.dataset.nid;
@@ -601,48 +692,52 @@ async function annotateWebCapture(box: HTMLElement, button: HTMLButtonElement) {
   webRemovalErrors.delete(id);
   document.querySelectorAll<HTMLElement>(".nbox").forEach(refreshWebControls);
   try {
-    await openAnnotation(capture, async (annotation) => {
-      const note = state.notes.get(id);
-      if (note?.sentAt && !reply && !box.querySelector(".nedit")) {
-        if (annotation)
-          appendReplyText(
-            box,
-            "Annotated proposal for the original selected area:\n\n![Original selected area](" +
-              capture.area +
-              ")\n\n![Annotated proposal](" +
-              annotation.image +
-              ")",
-          );
-        return;
-      }
-      const draftId =
-        reply?.dataset.draftId ||
-        (state.uiEmbed
-          ? new URLSearchParams(location.search).get("ui-draft")
-          : null);
-      const response = await fetch("/api/web/annotation", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          ...(draftId ? { draftId } : { id }),
-          target,
-          annotation,
-        }),
-      });
-      const result = await response.json();
-      if (!response.ok)
-        throw new Error(result.error || "Could not save this drawing.");
-      const next = webReview(result.web);
-      if (!next)
-        throw new Error("The server returned invalid drawing evidence.");
-      updateWebNoteEvidence(
-        document,
-        id,
-        next,
-        reply ? { reply: true, draftId } : undefined,
-      );
-      save();
-    });
+    await openAnnotation(
+      `${refOf(id)}:${reply ? "reply" : "note"}:${kind}:${index}:${capture.area}`,
+      capture,
+      async (annotation) => {
+        const note = state.notes.get(id);
+        if (note?.sentAt && !reply && !box.querySelector(".nedit")) {
+          if (annotation)
+            appendReplyText(
+              box,
+              "Annotated proposal for the original selected area:\n\n![Original selected area](" +
+                capture.area +
+                ")\n\n![Annotated proposal](" +
+                annotation.image +
+                ")",
+            );
+          return;
+        }
+        const draftId =
+          reply?.dataset.draftId ||
+          (state.uiEmbed
+            ? new URLSearchParams(location.search).get("ui-draft")
+            : null);
+        const response = await fetch("/api/web/annotation", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            ...(draftId ? { draftId } : { id }),
+            target: { ...target, expected: capture.annotation?.image || "" },
+            annotation,
+          }),
+        });
+        const result = await response.json();
+        if (!response.ok)
+          throw new Error(result.error || "Could not save this drawing.");
+        const next = webReview(result.web);
+        if (!next)
+          throw new Error("The server returned invalid drawing evidence.");
+        updateWebNoteEvidence(
+          document,
+          id,
+          next,
+          reply ? { reply: true, draftId } : undefined,
+        );
+        save();
+      },
+    );
   } catch (error) {
     webRemovalErrors.set(
       id,
@@ -1007,6 +1102,7 @@ function editUI(box, ctx) {
     renderTree();
     updateCount();
     paintImageNotes();
+    finishEditor(ta);
     void sendNote(note, false, ask);
   };
   const drop = () => {
@@ -1019,6 +1115,7 @@ function editUI(box, ctx) {
       return;
     }
     removeDraftBox(box);
+    finishEditor(ta);
     clearSel();
     if (ch) repaintRow(fi, i);
     syncGlobals();
@@ -1037,9 +1134,49 @@ function editUI(box, ctx) {
       syncGlobals();
       ctx.onCancel?.();
     }
+    finishEditor(ta);
   };
   const cancelButton = box.querySelector(".cancel");
   if (cancelButton) cancelButton.onclick = cancel;
+  const route = (state.notes.has(id) ? "note:" : "draft:") + refOf(id);
+  if (!state.notes.has(id)) {
+    draftEditors.set(route, () => {
+      if (state.notes.has(id) || (fi >= 0 && state.files[fi] !== f))
+        return false;
+      if (fi >= 0) {
+        if (isHidden(f.path)) setHidden([f.path], false);
+        if (state.folded.has(f.path)) setFolded(f.path, false);
+        if (!whole) mountRowAt(fi, j);
+      }
+      const host = global ? el("globalDraft") : el("fn" + fi);
+      const anchor = whole ? null : el("r" + fi + "-" + j);
+      if (whole ? !host : !anchor) return false;
+      if (global) host.hidden = false;
+      const next = whole ? mountFileBox(host, id) : mountRow(anchor, id);
+      state.draftRow = rowOf(next);
+      state.draftKey = locKey(
+        f.path,
+        whole ? (global ? GLOBAL_ANCHOR : FILE_ANCHOR) : rowKey(f.rows[i]),
+        whole ? (global ? GLOBAL_ANCHOR : FILE_ANCHOR) : rowKey(f.rows[j]),
+        ch?.ca,
+        ch?.cb,
+      );
+      state.draftAt = whole ? null : { fi, i, j };
+      editUI(next, { ...ctx, cleanup: null, stage: null });
+      return true;
+    });
+  }
+  trackEditor(
+    route,
+    ta,
+    cancel,
+    () =>
+      webCapturing.has(box) ||
+      webRemoving.has(id) ||
+      webAnnotating.has(id) ||
+      state.noteSending.has(id) ||
+      (!!ctx.image && !ctx.image.capture),
+  );
 }
 
 /** Keep the editor's save gesture local to this note, and repaint only its existing copies. */

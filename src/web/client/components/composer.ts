@@ -44,6 +44,7 @@ export function activeEditor(host: ParentNode = document) {
   return [...host.querySelectorAll<HTMLTextAreaElement>(".nbox textarea")].find(
     (ta) =>
       !ta.closest(".reply") ||
+      ta.hasAttribute("data-navigation-active") ||
       !!ta.value.trim() ||
       ta.closest(".reply")?.matches("[data-sending],[data-evidence]"),
   );

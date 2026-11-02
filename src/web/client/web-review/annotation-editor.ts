@@ -8,6 +8,7 @@ import {
 } from "../../../shared/web-annotation.ts";
 import { attachSrc, upload } from "../components/attach.ts";
 import { SVG } from "../app/state.ts";
+import { registerView, setView } from "../navigation/ui-navigation.ts";
 
 type Tool = AnnotationMark["tool"] | "select" | "pan";
 type Bounds = { x: number; y: number; width: number; height: number };
@@ -32,9 +33,35 @@ const PALETTE = [
 const COLORS_KEY = "lcr:annotation-colors";
 const SMOOTHING_KEY = "lcr:annotation-smoothing";
 let active: Promise<void> | null = null;
+type ActiveAnnotation = {
+  route: string;
+  canLeave(next: string | null): boolean;
+  close(): void;
+};
+let activeEditor: ActiveAnnotation | null = null;
+
+registerView(
+  "annotation",
+  {
+    canLeave(next) {
+      return !activeEditor || activeEditor.canLeave(next);
+    },
+    restore(route) {
+      if (activeEditor?.route === route) return;
+      activeEditor?.close();
+      if (route === null) return;
+      document.dispatchEvent(
+        new CustomEvent("lcr:annotation-restore", { detail: { route } }),
+      );
+      return activeEditor?.route === route;
+    },
+  },
+  30,
+);
 
 /** Opens over the existing note: its textarea, selection and draft DOM are never replaced. */
-export async function openAnnotation(
+export function openAnnotation(
+  route: string,
   capture: WebCapture,
   apply: (annotation: WebAnnotation | null) => Promise<void>,
 ): Promise<void> {
@@ -44,15 +71,13 @@ export async function openAnnotation(
       ?.focus();
     return active;
   }
-  active = editAnnotation(capture, apply);
-  try {
-    await active;
-  } finally {
-    active = null;
-  }
+  active = editAnnotation(route, capture, apply);
+  setView("annotation", route);
+  return active;
 }
 
 function editAnnotation(
+  route: string,
   capture: WebCapture,
   apply: (annotation: WebAnnotation | null) => Promise<void>,
 ): Promise<void> {
@@ -996,17 +1021,23 @@ function editAnnotation(
     ),
   );
   renderColors();
-  function requestClose() {
-    if (saving) return;
-    cancelGesture();
-    if (
-      dirty() &&
-      !window.confirm(
-        "Discard your drawing changes? The original screenshot will be kept.",
-      )
-    )
-      return;
+  function canLeave(next: string | null) {
+    return (
+      !saving &&
+      (next === route ||
+        !(dirty() || gesture || pendingText) ||
+        window.confirm(
+          "Discard your drawing changes? The original screenshot will be kept.",
+        ))
+    );
+  }
+  function close(record = false) {
     dialog.close();
+    finish();
+    if (record) setView("annotation", null, { close: true });
+  }
+  function requestClose() {
+    if (canLeave(null)) close(true);
   }
   async function save() {
     if (loading || saving || !image || !context) return;
@@ -1015,8 +1046,10 @@ function editAnnotation(
     saving = true;
     sync();
     try {
-      if (!marks.length) await apply(null);
-      else {
+      if (!marks.length) {
+        await apply(null);
+        delete capture.annotation;
+      } else {
         const proposal = {
           image: "images/annotation.png",
           width: image.naturalWidth,
@@ -1061,8 +1094,9 @@ function editAnnotation(
             "The uploaded drawing did not return a valid PNG reference.",
           );
         await apply(annotation);
+        capture.annotation = annotation;
       }
-      dialog.close();
+      close(true);
     } catch (reason) {
       fail(reason);
     } finally {
@@ -1198,46 +1232,46 @@ function editAnnotation(
     event.preventDefault();
     requestClose();
   });
-  dialog.addEventListener(
-    "close",
-    () => {
-      closed = true;
-      endPan();
-      cancelGesture();
-      cancelAnimationFrame(paintFrame);
-      resize.disconnect();
-      window.removeEventListener("keydown", onKey, true);
-      window.removeEventListener("keyup", onKeyUp, true);
-      window.removeEventListener("blur", onBlur);
-      image = null;
-      canvas.width = 0;
-      canvas.height = 0;
-      dialog.remove();
-      emit();
-      if (previous?.isConnected) {
-        previous.focus({ preventScroll: true });
-        if (
-          caret &&
-          caret.start !== null &&
-          caret.end !== null &&
-          (previous instanceof HTMLTextAreaElement ||
-            previous instanceof HTMLInputElement)
-        ) {
-          try {
-            previous.setSelectionRange(
-              caret.start,
-              caret.end,
-              caret.direction ?? undefined,
-            );
-          } catch {
-            /* Some input types have no text selection. */
-          }
+  function finish() {
+    if (closed) return;
+    closed = true;
+    active = null;
+    activeEditor = null;
+    endPan();
+    cancelGesture();
+    cancelAnimationFrame(paintFrame);
+    resize.disconnect();
+    window.removeEventListener("keydown", onKey, true);
+    window.removeEventListener("keyup", onKeyUp, true);
+    window.removeEventListener("blur", onBlur);
+    image = null;
+    canvas.width = 0;
+    canvas.height = 0;
+    dialog.remove();
+    emit();
+    if (previous?.isConnected) {
+      previous.focus({ preventScroll: true });
+      if (
+        caret &&
+        caret.start !== null &&
+        caret.end !== null &&
+        (previous instanceof HTMLTextAreaElement ||
+          previous instanceof HTMLInputElement)
+      ) {
+        try {
+          previous.setSelectionRange(
+            caret.start,
+            caret.end,
+            caret.direction ?? undefined,
+          );
+        } catch {
+          /* Some input types have no text selection. */
         }
       }
-      resolve();
-    },
-    { once: true },
-  );
+    }
+    resolve();
+  }
+  dialog.addEventListener("close", finish, { once: true });
   async function load() {
     loading = true;
     clearError();
@@ -1336,17 +1370,11 @@ function editAnnotation(
   sync();
   try {
     dialog.showModal();
+    activeEditor = { route, canLeave, close };
     resize.observe(viewport);
     void load();
   } catch (reason) {
-    dialog.remove();
-    closed = true;
-    window.removeEventListener("keydown", onKey, true);
-    window.removeEventListener("keyup", onKeyUp, true);
-    window.removeEventListener("blur", onBlur);
-    resize.disconnect();
-    emit();
-    resolve();
+    finish();
     throw reason;
   }
   return promise;

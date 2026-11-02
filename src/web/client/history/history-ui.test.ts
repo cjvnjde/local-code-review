@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { historyNoteHtml } from "./history-ui.ts";
+import {
+  historyNoteHtml,
+  historyView,
+  type HistoryView,
+} from "./history-ui.ts";
 import { historySnapshot, historyText } from "./history-model.ts";
 import { historyRevision } from "./history-store.ts";
 
@@ -65,5 +69,35 @@ describe("reading archived conversations", () => {
     expect(copied).toContain("Question");
     expect(copied).toContain("Archived answer");
     expect(copied).toContain("After\n\nNot present");
+  });
+});
+
+describe("history routes", () => {
+  const view: HistoryView = {
+    note: "note-a",
+    selected: "revision-1",
+    mode: "snapshot",
+    query: "answer",
+    source: "page",
+    scope: "repo",
+    limit: 120,
+  };
+  test("preserves selected revision, note and controls", () => {
+    expect(historyView(JSON.stringify(view))).toEqual(view);
+  });
+  test("rejects malformed or unsupported views", () => {
+    for (const value of ["{", "null", "[]", "1", "{}"])
+      expect(historyView(value)).toBeNull();
+    for (const fields of [
+      { mode: "edit" },
+      { source: "<script>" },
+      { scope: "unknown" },
+      { limit: 0 },
+      { limit: 1.5 },
+      { selected: 1 },
+      { note: null },
+      { query: false },
+    ])
+      expect(historyView(JSON.stringify({ ...view, ...fields }))).toBeNull();
   });
 });

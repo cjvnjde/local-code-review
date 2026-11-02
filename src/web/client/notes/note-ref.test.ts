@@ -75,6 +75,12 @@ describe("refIn", () => {
     expect(refIn("http://localhost:4321/other#note=mk1a")).toBe("");
     expect(refIn('lcr:mk1a" onclick=evil')).toBe("");
   });
+  test("composite UI addresses retain their note reference without accepting ambiguity", () => {
+    expect(refIn("#notes=open&note=mk1a&editor=reply%3Amk1a")).toBe("mk1a");
+    expect(refIn("http://localhost:4321/#settings=1&note=mk1a")).toBe("mk1a");
+    expect(refIn("#note=mk1a&note=mk1b")).toBe("");
+    expect(refIn("https://example.com/#settings=1&note=mk1a")).toBe("");
+  });
 });
 
 describe("noteByRef", () => {

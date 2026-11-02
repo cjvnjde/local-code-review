@@ -8,6 +8,11 @@ import { save } from "../app/persistence.ts";
 import { filePathHtml, filePathTitle } from "../components/path.ts";
 import { el, esc, markRead, state, statusOf, unreadOf } from "../app/state.ts";
 import { activeEditor } from "../components/composer.ts";
+import {
+  registerView,
+  setView,
+  setViews,
+} from "../navigation/ui-navigation.ts";
 
 /* ---------- all notes: the review read as a conversation instead of as marks on a diff ---------- */
 /**
@@ -190,23 +195,52 @@ export function openReader() {
   // Reopening keeps the panel where it was left, so only a list that actually moved is rebuilt.
   if (shownIds === null || shownIds !== idsOf(visible())) renderReader();
   else paintHead(visible());
+  setView("notes", state.rdrFilter);
 }
-/** Closes the panel, unless what is being written in it is worth more than the click. Says whether
- *  it went, because a jump to the diff that the reader called off must not happen behind it. */
-export function closeReader() {
+/** Closing keeps drafts in this page's navigation cache. A dispatched write must finish first. */
+export function closeReader(record = true) {
   if (!state.reader) return true;
-  const ta: any = activeEditor(el("reader"));
-  if (
-    ta &&
-    (ta.value.trim() || ta.closest("[data-evidence],[data-sending]")) &&
-    !confirm("Close the notes panel?\n\nWhat you are writing in it is lost.")
-  )
-    return false;
+  if (!canTraverseReader()) return false;
+  hideReader(false);
+  if (record) setViews({ notes: null, editor: null }, { close: true });
+  return true;
+}
+function closeReaderEditor(record = true) {
+  const ta = activeEditor(el("reader")) as
+    (HTMLTextAreaElement & { __navigationClose?: () => void }) | undefined;
+  if (!ta) return;
+  ta.__navigationClose?.();
+  if (record) setView("editor", null, { replace: true });
+}
+function hideReader(record = true) {
+  closeReaderEditor(record);
   state.reader = false;
   el("reader").hidden = true;
   paintHead(visible());
-  return true;
 }
+function canTraverseReader() {
+  if (!state.reader) return true;
+  if (el("reader").querySelector("[data-sending]")) return false;
+  return ![...el("rdrbody").querySelectorAll<HTMLElement>(".rdrn")].some(
+    (row) => state.noteSending.has(row.dataset.nid || ""),
+  );
+}
+registerView("notes", {
+  canLeave: () => canTraverseReader(),
+  restore(value) {
+    if (value === null) {
+      hideReader();
+      return;
+    }
+    if (!FILTERS.includes(value)) return false;
+    if (state.rdrFilter !== value) {
+      closeReaderEditor();
+      state.rdrFilter = value;
+      shownIds = null;
+    }
+    openReader();
+  },
+});
 export const toggleReader = () => (state.reader ? closeReader() : openReader());
 
 el("rdrClose").onclick = () => closeReader();
@@ -226,9 +260,12 @@ el("rdrRead").onclick = () => {
 el("rdrChips").addEventListener("click", (e) => {
   const chip = (e.target as any).closest("[data-chip]");
   if (!chip || chip.disabled) return;
+  if (state.rdrFilter === chip.dataset.chip || !canTraverseReader()) return;
+  closeReaderEditor(false);
   state.rdrFilter = chip.dataset.chip;
   renderReader();
   el("rdrbody").scrollTop = 0; // a different set of notes is a different read, from the top
+  setViews({ notes: state.rdrFilter, editor: null });
 });
 el("rdrbody").addEventListener("click", (e) => {
   const t: any = e.target;

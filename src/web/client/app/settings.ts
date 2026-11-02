@@ -6,6 +6,7 @@ import { compileHide, hidePatterns } from "../diff/filters.ts";
 import { persistCfg } from "./persistence.ts";
 import { resetReadingPosition } from "../navigation/reading-position.ts";
 import { busyEditor } from "../notes/notes.ts";
+import { registerView, setView } from "../navigation/ui-navigation.ts";
 
 /* ---------- settings ---------- */
 el("gear").innerHTML = SVG.sliders;
@@ -17,7 +18,14 @@ const openSettings = (on: boolean) => {
     refreshReviews();
     paintHideRules();
   }
+  setView("settings", on ? "1" : null, { close: !on });
 };
+registerView("settings", {
+  restore(value) {
+    if (value !== null && value !== "1") return false;
+    openSettings(value !== null);
+  },
+});
 el("gear").onclick = (e) => {
   e.stopPropagation();
   openSettings(el("settings").hidden);

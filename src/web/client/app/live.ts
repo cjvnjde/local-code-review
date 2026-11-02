@@ -1,3 +1,8 @@
+import {
+  registerView,
+  setView,
+  setViews,
+} from "../navigation/ui-navigation.ts";
 import { placeNotes, placeOf } from "../diff/anchor.ts";
 import { mountRowAt, setFolded, setHidden } from "../diff/diff-view.ts";
 import { isHidden } from "../diff/filters.ts";
@@ -18,7 +23,7 @@ import {
   noteVisible,
 } from "./state.ts";
 import { paintActive } from "../navigation/tree.ts";
-import { noteByRef, refIn } from "../notes/note-ref.ts";
+import { noteByRef, refOf } from "../notes/note-ref.ts";
 import { activeEditor } from "../components/composer.ts";
 
 /* ---------- following the agent ---------- */
@@ -270,6 +275,7 @@ document.addEventListener("click", (e: any) => {
     return;
   }
   markCurrentNote(id);
+  setView("note", refOf(id));
   wrap.scrollIntoView({ block: "start" });
   const box = wrap.querySelector(".nbox");
   if (!box) return;
@@ -279,12 +285,11 @@ document.addEventListener("click", (e: any) => {
 });
 
 /** Brings one note on screen, opening whatever the reader had put away to get there. */
-export function jumpToNote(id: string) {
+export function jumpToNote(id: string, record = true) {
   const note = state.notes.get(id);
   if (!note) return;
-  // Going to a note means going to its code, so the panel over the diff comes down first. A reader
-  // who would rather keep writing in it keeps the panel, and the jump waits for them.
-  if (!closeReader()) return;
+  const wasReader = state.reader;
+  if (!closeReader(false)) return;
   if (!noteVisible(note)) {
     if (busyEditor()) return;
     state.showResolved = true;
@@ -311,16 +316,34 @@ export function jumpToNote(id: string) {
   if (target)
     (target as any).scrollIntoView({ block: row ? "center" : "start" });
   if (row) (row as any).querySelector(".nbox")?.click();
+  if (record)
+    setViews({
+      note: refOf(id),
+      notes: null,
+      ...(wasReader ? { editor: null } : {}),
+    });
 }
 
-/** A copied comment link also works when opened directly or after the page has loaded. */
-export function followNoteLink() {
-  if (!location.hash.startsWith("#note=")) return;
-  const note = noteByRef(refIn(location.hash), state.notes.values());
-  if (note) jumpToNote(note.id);
-  else
-    alert(
-      "This note is not in the current review. Open the review that contains it.",
-    );
-}
-window.addEventListener("hashchange", followNoteLink);
+registerView(
+  "note",
+  {
+    restore(ref) {
+      if (!ref) {
+        markCurrentNote("");
+        return;
+      }
+      const note = noteByRef(ref, state.notes.values());
+      if (!note) return false;
+      const wrap =
+        state.reader &&
+        [...el("rdrbody").querySelectorAll<HTMLElement>(".rdrn")].find(
+          (row) => row.dataset.nid === note.id,
+        );
+      if (wrap) {
+        markCurrentNote(note.id);
+        wrap.scrollIntoView({ block: "start" });
+      } else jumpToNote(note.id);
+    },
+  },
+  10,
+);

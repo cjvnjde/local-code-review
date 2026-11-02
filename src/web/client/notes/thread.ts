@@ -1,10 +1,16 @@
+import {
+  registerEditor,
+  trackEditor,
+  finishEditor,
+} from "./editor-navigation.ts";
 import { renderBody } from "../components/body.ts";
 import {
+  activeEditor,
   composerHint,
   composerTools,
   wireComposer,
 } from "../components/composer.ts";
-import { busyEditor } from "./notes.ts";
+import { busyEditor, findNoteBox } from "./notes.ts";
 import { save, submitNote } from "../app/persistence.ts";
 import { rememberPage } from "../history/history.ts";
 import { esc, markRead, msgsOf, state } from "../app/state.ts";
@@ -12,6 +18,27 @@ import { capturedLines } from "./suggest.ts";
 import { webReviewLines, type WebReview } from "../../../shared/web-review.ts";
 import { webCaptureHtml } from "../web-review/web-capture.ts";
 import { adoptAgent } from "../app/agent.ts";
+import { noteByRef, refOf } from "./note-ref.ts";
+
+registerEditor((route) => {
+  const match = /^(reply|message):([a-z0-9]+)(?::(.+))?$/.exec(route);
+  if (!match) return false;
+  const note = noteByRef(match[2], state.notes.values());
+  if (!note?.sentAt) return false;
+  const host = findNoteBox(note.id);
+  if (!host) return false;
+  if (match[1] === "reply") {
+    const ta = host.querySelector<HTMLTextAreaElement>(".reply textarea");
+    ta?.focus();
+    return !!ta;
+  }
+  const message = [...host.querySelectorAll<HTMLElement>(".msg")].find(
+    (box) => box.dataset.at === match[3],
+  );
+  const button = message?.querySelector<HTMLButtonElement>(".rewrite");
+  button?.click();
+  return !!message?.querySelector(".medit textarea");
+});
 
 /* ---------- threads ---------- */
 /**
@@ -57,6 +84,7 @@ export function renderThread(host: any, note: any, done: () => void) {
       !msgs.slice(k + 1).some((next: any) => next.role === "agent");
     const box = document.createElement("div");
     box.className = "msg " + (agent ? "a" : "r") + (k >= read ? " fresh" : "");
+    box.dataset.at = m.at || "";
     const head = document.createElement("div");
     head.className = "who";
     // Every message names its speaker, and the agent's carries a badge as well: in a thread that
@@ -107,8 +135,11 @@ function editMessage(box: any, note: any, m: any, done: () => void) {
     save: () => commit(),
     cancel: () => shut(),
   });
-  const shut = () => form.replaceWith(body);
-  form.__shut = shut;
+  const shut = (replace = false) => {
+    form.replaceWith(body);
+    finishEditor(ta, replace);
+  };
+  form.__shut = () => shut(true);
   let sending = false;
   const commit = async () => {
     if (sending) return;
@@ -149,7 +180,13 @@ function editMessage(box: any, note: any, m: any, done: () => void) {
     done();
   };
   form.querySelector(".primary").onclick = commit;
-  form.querySelector(".cancel").onclick = shut;
+  form.querySelector(".cancel").onclick = () => shut();
+  trackEditor(
+    `message:${refOf(note.id)}:${m.at}`,
+    ta,
+    () => shut(),
+    () => sending,
+  );
 }
 
 /**
@@ -259,7 +296,22 @@ function startReply(wrap: any, id: string, done: () => void) {
   const shut = () => {
     ta.value = "";
     ta.dispatchEvent(new Event("input", { bubbles: true }));
+    ta.removeAttribute("data-navigation-active");
+    ta.blur();
+    finishEditor(ta);
   };
+  const activate = () => {
+    const other = activeEditor();
+    if (other && other !== ta && busyEditor()) return;
+    ta.setAttribute("data-navigation-active", "");
+    trackEditor(
+      "reply:" + refOf(id),
+      ta,
+      shut,
+      () => sending || !!box.closest("[data-web-busy]"),
+    );
+  };
+  ta.addEventListener("focus", activate);
   // The button disables itself, but enter still reaches the textarea mid-flight: one send at a time,
   // or a quick double enter would append the same message to the review file twice.
   let sending = false;

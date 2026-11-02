@@ -1,3 +1,4 @@
+import { startNavigation } from "../navigation/ui-navigation.ts";
 import { startWebReviewUI } from "../web-review/web-review-ui.ts";
 import { prepareWebNote, startWebNote } from "../web-review/web-note.ts";
 import "./settings.ts";
@@ -8,7 +9,7 @@ import { busyEditor, openImageEditor, repaintNote } from "../notes/notes.ts";
 import { state } from "./state.ts";
 import { startHistory } from "../history/history-ui.ts";
 import { watchAudio } from "../diff/audio.ts";
-import { followNoteLink, jumpToNote, startLive } from "./live.ts";
+import { jumpToNote, startLive } from "./live.ts";
 import { watchPreviews } from "../notes/ref-preview.ts";
 import { renderBody } from "../components/body.ts";
 import { startReadingPosition } from "../navigation/reading-position.ts";
@@ -87,7 +88,7 @@ async function start() {
   startSearch();
   startHistory();
   startReadingPosition();
-  followNoteLink();
+  startNavigation();
   startLive();
   startAgentStatus(() => {
     state.notes.forEach((note: { id: string }) => repaintNote(note.id));

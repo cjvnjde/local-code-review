@@ -10,9 +10,50 @@ import { historyError, onHistoryChange, readHistory } from "./history.ts";
 import { mdHtml } from "../components/markdown.ts";
 import { pathHtml } from "../components/path.ts";
 import { el, esc } from "../app/state.ts";
-import { historyNavigation, type HistoryView } from "./history-navigation.ts";
+import { registerView, setView } from "../navigation/ui-navigation.ts";
 import { webCaptureHtml } from "../web-review/web-capture.ts";
 import { imageCaptureHtml } from "../diff/image-capture.ts";
+
+export type HistoryView = {
+  note: string;
+  selected: string;
+  mode: "changes" | "snapshot";
+  query: string;
+  source: string;
+  scope: string;
+  limit: number;
+};
+export function historyView(value: string): HistoryView | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object") return null;
+  const v = parsed as Record<string, unknown>;
+  if (
+    typeof v.note !== "string" ||
+    typeof v.selected !== "string" ||
+    (v.mode !== "changes" && v.mode !== "snapshot") ||
+    typeof v.query !== "string" ||
+    (v.source !== "" && v.source !== "page" && v.source !== "file") ||
+    (v.scope !== "current" && v.scope !== "repo") ||
+    typeof v.limit !== "number" ||
+    !Number.isInteger(v.limit) ||
+    v.limit < 1
+  )
+    return null;
+  return {
+    note: v.note,
+    selected: v.selected,
+    mode: v.mode,
+    query: v.query,
+    source: v.source,
+    scope: v.scope,
+    limit: v.limit,
+  };
+}
 
 let entries: HistoryEntry[] = [],
   selected = "",
@@ -22,7 +63,6 @@ let entries: HistoryEntry[] = [],
 let opened = false,
   request = 0,
   returnFocus: HTMLElement | null = null;
-let navigation: ReturnType<typeof historyNavigation> | null = null;
 let painted = "";
 const detailKey = () =>
   JSON.stringify([
@@ -42,6 +82,7 @@ const visible = () =>
 
 /** This overlay never unmounts a note editor or changes the working conversation. */
 export function openHistory(id = "") {
+  const openedBefore = opened;
   const view: HistoryView = {
     note: id,
     selected: "",
@@ -51,8 +92,8 @@ export function openHistory(id = "") {
     scope: el("historyScope").value,
     limit: 60,
   };
-  if (navigation) navigation.open(view);
-  else showHistory(view);
+  showHistory(view);
+  setView("history", JSON.stringify(view), { replace: openedBefore });
 }
 function viewState(): HistoryView {
   return {
@@ -66,7 +107,8 @@ function viewState(): HistoryView {
   };
 }
 function rememberView() {
-  if (opened) navigation?.update(viewState());
+  if (opened)
+    setView("history", JSON.stringify(viewState()), { replace: true });
 }
 function showHistory(view: HistoryView | null) {
   if (!view) {
@@ -90,9 +132,9 @@ function showHistory(view: HistoryView | null) {
   el("historyDetail").textContent = "Loading history…";
   void refresh();
 }
-function closeHistory() {
-  if (navigation) navigation.close();
-  else hideHistory();
+export function closeHistory(record = true) {
+  hideHistory();
+  if (record) setView("history", null, { close: true });
 }
 function hideHistory() {
   if (!opened) return;
@@ -299,10 +341,17 @@ function exportHistory() {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 export function startHistory() {
-  navigation = historyNavigation(window.history, showHistory);
-  window.addEventListener("popstate", () => navigation?.restore());
-  // Starting after /api/diff has supplied the read's identity lets a reload reopen the same view.
-  navigation.restore();
+  registerView("history", {
+    restore(value) {
+      if (value === null) {
+        hideHistory();
+        return;
+      }
+      const view = historyView(value);
+      if (!view) return false;
+      showHistory(view);
+    },
+  });
   el("showHistory").onclick = () => (opened ? closeHistory() : openHistory());
   el("historyClose").onclick = closeHistory;
   el("historyAll").onclick = () => {

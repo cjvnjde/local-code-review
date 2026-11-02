@@ -161,7 +161,7 @@ el("clearAll").onclick = () => {
 const globalButton = el("addGlobal");
 globalButton.innerHTML = SVG.plus + " comment";
 globalButton.onclick = () => {
-  if (!closeReader()) return;
+  if (!closeReader(false)) return;
   openGlobalEditor();
 };
 

@@ -1,3 +1,5 @@
+import { closeHistory } from "../history/history-ui.ts";
+import { refOf } from "../notes/note-ref.ts";
 import { mountRowAt, setFolded, setHidden } from "../diff/diff-view.ts";
 import { jumpToNote } from "../app/live.ts";
 import { closeReader } from "../notes/reader.ts";
@@ -21,6 +23,11 @@ import {
   type SearchKind,
   type SearchResult,
 } from "./search-model.ts";
+import {
+  registerView,
+  setView,
+  setViews,
+} from "../navigation/ui-navigation.ts";
 
 let results: SearchResult[] = [],
   query = "",
@@ -146,7 +153,7 @@ function paintPanel(reset = false) {
     );
   body.scrollTop = top;
 }
-function refresh(reset = false) {
+function refresh(reset = false, record = true) {
   clearTimeout(timer);
   query = input().value.trim();
   active = -1;
@@ -155,21 +162,25 @@ function refresh(reset = false) {
   paintPopup();
   paintPanel(reset);
   highlight();
+  if (opened && record) setView("search", query, { replace: true });
 }
 function openPanel() {
+  const wasOpened = opened;
   opened = true;
   filter = "all";
   limit = 60;
   el("searchPanel").hidden = false;
   closePopup();
-  refresh(true);
+  refresh(true, false);
   el("searchResults").focus();
+  setView("search", query, { replace: wasOpened });
 }
-function closePanel(focus = true) {
+function closePanel(focus = true, record = true) {
   opened = false;
   el("searchPanel").hidden = true;
   if (focus) input().focus();
   closePopup();
+  if (record) setView("search", null, { close: true });
 }
 
 /** Native highlight ranges leave syntax spans, note links and selection anchors intact. */
@@ -216,13 +227,14 @@ function navigate(k: number) {
     return;
   }
   const r = results[k];
-  if (!r || !closeReader()) return;
-  if (!el("historyPanel").hidden) el("historyClose").click();
-  closePanel(false);
+  const wasReader = state.reader;
+  if (!r || !closeReader(false)) return;
+  closeHistory(false);
+  closePanel(false, false);
   closePopup();
   input().blur();
   if (r.noteId) {
-    jumpToNote(r.noteId);
+    jumpToNote(r.noteId, false);
     const row = [...el("diff").querySelectorAll(".nrow")].find(
       (n: any) => n.dataset.nid === r.noteId,
     ) as HTMLElement;
@@ -249,6 +261,13 @@ function navigate(k: number) {
     state.active = r.path;
     paintActive();
   }
+  setViews({
+    search: null,
+    history: null,
+    notes: null,
+    ...(wasReader ? { editor: null } : {}),
+    note: r.noteId ? refOf(r.noteId) : null,
+  });
   requestAnimationFrame(highlight);
 }
 function step(dir: number) {
@@ -269,6 +288,16 @@ function step(dir: number) {
 }
 
 export function startSearch() {
+  registerView("search", {
+    restore(value) {
+      if (value === null) {
+        closePanel(false);
+        return;
+      }
+      input().value = value;
+      openPanel();
+    },
+  });
   // Bun's CSS parser does not recognize this browser-supported selector yet. Install only this
   // rule in the browser, beside the native highlight API it styles, so bundling stays warning-free.
   if ((globalThis.CSS as any)?.highlights) {
