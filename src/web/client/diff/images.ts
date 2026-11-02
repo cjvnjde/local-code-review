@@ -89,6 +89,11 @@ function measured(e: any, failed: boolean) {
   const box = img.closest(".imgf");
   if (!box) return;
   box.classList.toggle("gone", failed);
+  if (!failed) {
+    // Give ratio-only SVGs definite dimensions before their percentage-constrained stage fits them.
+    img.width = img.naturalWidth;
+    img.height = img.naturalHeight;
+  }
   const out = box.querySelector(".dim");
   if (!out) return;
   out.textContent = failed

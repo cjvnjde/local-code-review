@@ -76,16 +76,16 @@ async function capture(img: any, r: any) {
   const context = canvas.getContext("2d");
   if (!context)
     throw new Error("Image capture is unavailable in this browser.");
+  const sx = canvas.width / r.width,
+    sy = canvas.height / r.height;
+  // Clip the scaled image at the canvas edge. Source-rectangle cropping can render
+  // a viewBox-only SVG against the crop's viewport and produce an empty capture.
   context.drawImage(
     img,
-    r.x,
-    r.y,
-    r.width,
-    r.height,
-    0,
-    0,
-    canvas.width,
-    canvas.height,
+    -r.x * sx,
+    -r.y * sy,
+    r.imageWidth * sx,
+    r.imageHeight * sy,
   );
   const blob = await new Promise<Blob>((resolve, reject) =>
     canvas.toBlob(

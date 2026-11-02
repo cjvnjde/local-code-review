@@ -92,6 +92,10 @@ The composer stays at the bottom while captures, metadata, and the conversation 
 The popup and full review use surface colors and spacing instead of nested card outlines. A visual
 note's edit pencil sits beside its “You” message; the header keeps its click-to-copy short reference,
 history, and conversation-wide delete action, without a second page link or Capture after button.
+Controls share the same spacing and sizing as the diff review. The drawing toolbar groups
+tools on quiet surfaces, with color reserved for the selected tool and Apply action. A small
+note window keeps its formatting and save controls reachable without covering them with the
+resize grip; the composer can scroll when the window cannot fit all its controls.
 
 While a note window is open, selecting more of the page adds separate screenshots and metadata,
 including while minimized. Move the window aside to reach the area underneath; the text and caret stay put.

@@ -61,4 +61,13 @@
   --tap: 26px;
   --tap-lg: 30px;
   --row: 24px;
+
+  /* Shared rhythm for chrome and conversations; code rows keep their independent height. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --bar-height: calc(var(--tap-lg) + var(--space-2) * 2);
 }

@@ -139,33 +139,33 @@ export function installPageReview(config: {
     "position:fixed;inset:0;z-index:2147483647;pointer-events:none";
   const root = host.attachShadow({ mode: "open" });
   root.innerHTML = `<style>
-    :host{all:initial;--fs-body:13px;--fs-small:11px;--tap:32px;--icon:16px;--row:36px;color:#e9eaf2;font:var(--fs-body)/1.5 system-ui,sans-serif}
-    *{box-sizing:border-box}button,a{font:inherit}button,.review-link{min-width:var(--tap);min-height:var(--tap);border:0;background:transparent;color:inherit;border-radius:7px;padding:5px 10px;cursor:pointer}
-    button:hover,.review-link:hover{background:#35394b}button:focus-visible,.review-link:focus-visible{outline:2px solid #c6b7ff;outline-offset:2px}button:disabled{opacity:.55;cursor:wait}button[aria-pressed=true]{background:#7554df;color:white}.review-link{text-decoration:none}
-    .launcher{pointer-events:auto;position:fixed;left:18px;bottom:18px;width:calc(var(--tap) + 12px);height:calc(var(--tap) + 12px);padding:0;border-radius:50%;background:#191c26;border-color:#9779f1;font-weight:700;touch-action:none;cursor:grab;box-shadow:0 6px 30px #0005}
+    :host{all:initial;--fs-body:13px;--fs-small:11px;--tap:32px;--tap-lg:30px;--icon:16px;--row:36px;--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--radius-sm:4px;--radius-md:8px;--bar-height:calc(var(--tap-lg) + var(--space-2)*2);--panel:#1e1e2e;--panel2:#181825;--crust:#11111b;--hover:#45475a;--edge:#313244;--ink:#cdd6f4;--ink-dim:#a6adc8;--accent:#89b4fa;--sel:#89b4fa24;--mark:#f9e2af;color:var(--ink);font:var(--fs-body)/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif}
+    *{box-sizing:border-box}button,a{font:inherit}button,.review-link{min-width:var(--tap-lg);min-height:var(--tap-lg);border:0;background:transparent;color:inherit;border-radius:var(--radius-sm);padding:var(--space-1) var(--space-2);cursor:pointer}
+    button:hover,.review-link:hover{background:var(--hover)}button:focus-visible,.review-link:focus-visible,.head b:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}button:disabled{opacity:.55;cursor:wait}button[aria-pressed=true]{background:var(--sel);color:var(--accent)}.review-link{text-decoration:none}
+    .launcher{pointer-events:auto;position:fixed;left:var(--space-4);bottom:var(--space-4);width:calc(var(--tap) + var(--space-3));height:calc(var(--tap) + var(--space-3));padding:0;border-radius:50%;background:var(--panel2);font-weight:700;touch-action:none;cursor:grab;box-shadow:0 4px 24px #0005}
     .launcher:active{cursor:grabbing}
-    .launcher[aria-pressed=true]{box-shadow:0 0 0 3px #9779f155,0 6px 30px #0005}
-    .mode-state{position:absolute;bottom:-5px;left:50%;transform:translateX(-50%);padding:0 4px;border:1px solid #727888;border-radius:5px;background:#242733;color:#e9eaf2;font-size:var(--fs-small);line-height:1.3}
-    .launcher[aria-pressed=true] .mode-state{background:#7554df;border-color:#c6b7ff;color:white}
-    .bar{pointer-events:auto;position:fixed;display:flex;gap:5px;align-items:center;padding:8px;border:1px solid #444858;border-radius:13px;background:#191c26;box-shadow:0 6px 30px #0005;max-width:calc(100vw - 24px);flex-wrap:wrap;justify-content:center}
-    .brand{font-weight:700;padding:0 9px;color:#c6b7ff}
-    .outline{position:fixed;pointer-events:none;border:2px solid #9f7cff;background:#9f7cff19;border-radius:3px;display:none}
-    .label{position:absolute;bottom:100%;left:0;white-space:nowrap;padding:2px 7px;background:#7554df;color:white;font-size:var(--fs-small)}
-    .dock{pointer-events:auto;position:fixed;right:18px;top:18px;height:calc(100vh - 96px);width:min(560px,calc(100vw - 36px));background:#191c26;border:0;box-shadow:0 8px 40px #0006;border-radius:12px;display:flex;flex-direction:column;overflow:hidden}
+    .launcher[aria-pressed=true]{background:var(--accent);color:var(--crust);box-shadow:0 0 0 var(--space-1) var(--sel),0 4px 24px #0005}
+    .mode-state{position:absolute;bottom:calc(-1 * var(--space-1));left:50%;transform:translateX(-50%);padding:0 var(--space-1);border-radius:var(--radius-sm);background:var(--panel);color:var(--ink-dim);font-size:var(--fs-small);line-height:var(--space-4)}
+    .launcher[aria-pressed=true] .mode-state{background:var(--panel);color:var(--accent)}
+    .bar{pointer-events:auto;position:fixed;display:flex;gap:var(--space-1);align-items:center;padding:var(--space-2);border:0;border-radius:var(--radius-md);background:var(--panel2);box-shadow:0 4px 24px #0005;max-width:calc(100vw - var(--space-3)*2);max-height:calc(100dvh - var(--space-3)*2);overflow:auto;flex-wrap:wrap}
+    .brand{font-weight:700;padding:0 var(--space-2);color:var(--accent)}
+    .outline{position:fixed;pointer-events:none;border:2px solid var(--accent);background:var(--sel);border-radius:var(--radius-sm);display:none}
+    .label{position:absolute;bottom:100%;left:0;white-space:nowrap;padding:2px var(--space-2);border-radius:var(--radius-sm) var(--radius-sm) 0 0;background:var(--accent);color:var(--crust);font-size:var(--fs-small)}
+    .dock{pointer-events:auto;position:fixed;right:var(--space-4);top:var(--space-4);height:calc(100dvh - 96px);width:min(560px,calc(100vw - var(--space-3)*2));max-width:calc(100vw - var(--space-3)*2);max-height:calc(100dvh - var(--space-3)*2);background:var(--panel2);border:0;box-shadow:0 8px 32px #0006;border-radius:var(--radius-md);display:flex;flex-direction:column;overflow:hidden}
     .dock.minimized{height:auto}.dock.minimized .content{position:absolute;top:100%;left:0;right:0;flex:none;height:var(--content-height);visibility:hidden;pointer-events:none}
-    .resize{position:absolute;right:0;bottom:0;width:var(--tap);height:var(--tap);padding:0;border:0;border-radius:0;background:transparent;cursor:nwse-resize;touch-action:none;display:grid;place-items:center;color:#c6b7ff}
-    .resize svg{width:var(--icon);height:var(--icon);pointer-events:none}.resize:focus-visible{outline:2px solid #c6b7ff;outline-offset:-3px}.dock.minimized .resize{display:none}
-    .resize:is(:hover,:focus-visible)::before{content:attr(title);position:absolute;right:calc(var(--tap) / 4);bottom:100%;width:calc(var(--tap) * 9);padding:calc(var(--tap) / 4);border:1px solid #444858;border-radius:7px;background:#242733;font-size:var(--fs-small);pointer-events:none;cursor:default}
-    .bar[hidden],.dock[hidden],.selection-tools[hidden]{display:none}.head{display:flex;align-items:center;gap:8px;padding:8px 12px;background:#242733;cursor:move;touch-action:none;user-select:none}.head b{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.head button,.head .review-link{flex:none}.head .review-link{display:inline-flex;align-items:center}.content{display:flex;flex-direction:column;flex:1;min-height:0;overflow:auto}.content iframe{width:100%;flex:1;min-height:0;border:0;background:#191c26}.status,.error{padding:10px 14px;margin:0}
+    .resize{position:absolute;right:0;bottom:0;width:var(--tap-lg);height:var(--tap-lg);padding:0;border:0;border-radius:var(--radius-sm) 0 0 0;background:transparent;cursor:nwse-resize;touch-action:none;display:grid;place-items:center;color:var(--ink-dim)}
+    .resize svg{width:var(--icon);height:var(--icon);pointer-events:none}.resize:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}.dock.minimized .resize{display:none}
+    .resize:is(:hover,:focus-visible)::before{content:attr(title);position:absolute;right:var(--space-2);bottom:100%;width:calc(var(--tap) * 9);max-width:calc(100vw - var(--space-4)*2);padding:var(--space-2);border:1px solid var(--edge);border-radius:var(--radius-sm);background:var(--panel);color:var(--ink);font-size:var(--fs-small);pointer-events:none;cursor:default}
+    .bar[hidden],.dock[hidden],.selection-tools[hidden]{display:none}.head{display:flex;flex:none;align-items:center;gap:var(--space-1);min-height:var(--bar-height);padding:var(--space-2) var(--space-3);background:var(--panel);cursor:move;touch-action:none;user-select:none}.head b{display:flex;align-items:center;flex:1;min-width:0;min-height:var(--tap-lg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-radius:var(--radius-sm)}.head button,.head .review-link{flex:none}.head button{width:var(--tap-lg);padding:0}.head .review-link{display:inline-flex;align-items:center;color:var(--ink-dim)}.content{display:flex;flex-direction:column;flex:1;min-height:0;overflow:auto}.content iframe{width:100%;flex:1;min-height:0;border:0;background:var(--panel2)}.status,.error{padding:var(--space-3) var(--space-4);margin:0}
     .dock.annotating .head,.dock.annotating .resize{display:none}
-    .dock.annotating{border:0;border-radius:0;box-shadow:none}
+    .dock.annotating{border:0;border-radius:0;box-shadow:none;max-width:none;max-height:none}
     .dock.annotating~.launcher,.dock.annotating~.bar{display:none}
-    .pin{pointer-events:auto;position:fixed;border-radius:16px;background:#7554df;border:2px solid #fff;box-shadow:0 2px 8px #0007;color:white;font-weight:700;padding:0 6px;min-width:28px;min-height:28px}
-    .selected{position:fixed;pointer-events:none;border:2px solid #9f7cff;background:#9f7cff19;border-radius:3px}
-    .selection-tools{pointer-events:auto;position:fixed;bottom:18px;left:50%;transform:translateX(-50%);display:flex;gap:5px;align-items:center;padding:8px;border:1px solid #444858;border-radius:13px;background:#191c26;max-width:calc(100vw - 24px)}
-    .error{color:#ffafa8;white-space:pre-wrap}
+    .pin{pointer-events:auto;position:fixed;border-radius:var(--radius-md);background:var(--mark);border:0;box-shadow:0 2px 8px #0007;color:var(--crust);font-weight:700;padding:0 var(--space-2);min-width:var(--tap-lg);min-height:var(--tap-lg)}.pin:hover{background:var(--mark);color:var(--crust);box-shadow:0 0 0 2px var(--crust),0 2px 8px #0007}
+    .selected{position:fixed;pointer-events:none;border:2px solid var(--accent);background:var(--sel);border-radius:var(--radius-sm)}
+    .selection-tools{pointer-events:auto;position:fixed;bottom:var(--space-4);left:50%;transform:translateX(-50%);display:flex;flex-wrap:wrap;gap:var(--space-2);align-items:center;padding:var(--space-2);border:0;border-radius:var(--radius-md);background:var(--panel2);box-shadow:0 4px 24px #0005;max-width:calc(100vw - var(--space-3)*2)}[data-write]{background:var(--accent);color:var(--crust)}[data-write]:hover{background:var(--accent);color:var(--crust)}
+    .error{color:#f38ba8;white-space:pre-wrap}
     .frozen-page{position:fixed;inset:0;pointer-events:auto;max-width:none!important;max-height:none!important;user-select:none;touch-action:none}
-    .freeze-status{pointer-events:auto;position:fixed;top:calc(var(--tap) / 2);left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:calc(var(--tap) / 4);padding:calc(var(--tap) / 4);border:1px solid #9779f1;border-radius:9px;background:#191c26;max-width:calc(100vw - var(--tap))}.freeze-status[hidden]{display:none}
+    .freeze-status{pointer-events:auto;position:fixed;top:var(--space-4);left:50%;transform:translateX(-50%);display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2);padding:var(--space-2);border:1px solid var(--accent);border-radius:var(--radius-md);background:var(--panel2);max-width:calc(100vw - var(--space-3)*2);box-shadow:0 4px 24px #0005}.freeze-status[hidden]{display:none}
   </style><div class="outline"><span class="label"></span></div><div class="selections"></div><div class="pins"></div>
   <div class="freeze-status" hidden role="status"><span data-freeze-status></span><button data-resume>Resume · Ctrl+Shift+F</button></div>
   <div class="selection-tools" hidden><span data-selection-count></span><button data-write>Write note</button><button data-clear>Clear</button></div>
@@ -256,7 +256,7 @@ export function installPageReview(config: {
         Math.min(width, maxWidth),
       ),
       height: Math.max(
-        Math.min(parseFloat(css.getPropertyValue("--row")) * 7, maxHeight),
+        Math.min(parseFloat(css.getPropertyValue("--row")) * 10, maxHeight),
         Math.min(height, maxHeight),
       ),
     };

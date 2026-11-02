@@ -1,5 +1,5 @@
 nav {
-  width: 330px;
+  width: clamp(240px, 23vw, 300px);
   flex: none;
   display: flex;
   flex-direction: column;
@@ -11,29 +11,29 @@ body.notree nav {
 }
 .navtop {
   flex: none;
-  padding: 10px;
+  padding: var(--space-3);
   background: var(--panel2);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .navtop input {
   width: 100%;
   background: var(--crust);
   color: var(--ink);
   border: 1px solid transparent;
-  border-radius: 5px;
-  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  height: var(--tap-lg);
+  padding: var(--space-1) var(--space-2);
   font: var(--fs-ui)/1.4 var(--sans);
 }
 .navtop input:focus {
-  border-color: var(--accent);
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 .navbtns {
   display: flex;
-  gap: 5px;
+  gap: var(--space-1);
 }
 .navbtns button {
   flex: 1;
@@ -51,7 +51,7 @@ body.notree nav {
   border-color: transparent;
   background: var(--cnote);
   color: var(--mark);
-  padding: 5px 8px;
+  padding: var(--space-1) var(--space-2);
   font-size: var(--fs-xs);
   min-height: var(--tap);
   justify-content: flex-start;
@@ -66,17 +66,17 @@ body.notree nav {
 .tree {
   flex: 1;
   overflow: auto;
-  padding: 6px 0 20px;
+  padding: var(--space-1) 0 var(--space-4);
 }
 .tw {
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 2px 8px 2px 0;
+  gap: var(--space-2);
+  padding: 0 var(--space-2) 0 0;
   cursor: pointer;
   color: var(--ink-dim);
   white-space: nowrap;
-  min-height: 30px;
+  min-height: var(--tap-lg);
 }
 .tw:hover {
   background: var(--s0);
@@ -107,7 +107,7 @@ body.notree nav {
   color: var(--ink-faint);
 }
 .tw .st {
-  width: 13px;
+  width: var(--icon);
   text-align: center;
   font-size: var(--fs-xs);
   font-weight: 700;
@@ -195,7 +195,6 @@ body.notree nav {
   flex: none;
   display: flex;
   flex-direction: column;
-  border-top: 1px solid var(--edge);
 }
 .ntpane {
   max-height: 38%;
@@ -212,8 +211,10 @@ body.notree nav {
   flex: none;
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 7px 10px;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  min-height: var(--bar-height);
+  padding: var(--space-2);
   background: var(--panel);
 }
 .nthead .ttl,
@@ -243,7 +244,9 @@ body.notree nav {
 }
 .nthead button,
 .bmhead button {
-  padding: 4px 7px;
+  padding: var(--space-1);
+  flex: none;
+  white-space: nowrap;
   font-size: var(--fs-xs);
   min-height: var(--tap);
   border-color: transparent;
@@ -258,16 +261,16 @@ body.notree nav {
 .bmlist {
   flex: 1;
   overflow: auto;
-  padding: 4px 0 10px;
+  padding: var(--space-1) 0 var(--space-2);
 }
 /* either list folds to its header, so a long one leaves the tree room; the count and the stepping
      buttons stay in that header, which is what makes a folded list still worth having open */
 .nthead .fold,
 .bmhead .fold {
   flex: none;
-  gap: 7px;
-  padding: 2px 5px;
-  margin-left: -5px;
+  gap: var(--space-1);
+  padding: 0 var(--space-1);
+  margin-left: calc(-1 * var(--space-1));
   border: none;
   min-height: var(--tap);
 }
@@ -288,18 +291,13 @@ body.notree nav {
 .bmpane.folded .bmlist {
   display: none;
 }
-/* nothing below the header to divide it from, and the pane's own top border already draws the line */
-.ntpane.folded .nthead,
-.bmpane.folded .bmhead {
-  border-bottom: none;
-}
 
 /* one note per row: where it sits, what it says, and what has happened to it since */
 .nw {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
   cursor: pointer;
   color: var(--ink-dim);
 }
@@ -315,6 +313,7 @@ body.notree nav {
   min-width: 0;
   display: flex;
   flex-direction: column;
+  gap: var(--space-1);
 }
 .nw .loc {
   color: var(--mark);
@@ -342,7 +341,7 @@ body.notree nav {
   flex: none;
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: var(--space-1);
 }
 .nw .unread {
   font: 700 var(--fs-xs)/1.5 var(--mono);
@@ -373,8 +372,8 @@ body.notree nav {
 .bw {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
   cursor: pointer;
   color: var(--ink-dim);
 }
@@ -390,6 +389,7 @@ body.notree nav {
   min-width: 0;
   display: flex;
   flex-direction: column;
+  gap: var(--space-1);
 }
 .bw .loc {
   color: var(--mauve);

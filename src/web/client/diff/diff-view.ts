@@ -209,7 +209,7 @@ function fileHtml(f, fi) {
     (state.stale && state.stale.has(f.path)
       ? '<span class="stale">changed since viewed</span>'
       : "") +
-    '<span class="spacer"></span>' +
+    '<span class="file-actions">' +
     '<button class="cf" data-cf="' +
     esc(f.path) +
     '" data-tooltip="Comment on this file as a whole" aria-label="Comment on this file">' +
@@ -240,7 +240,7 @@ function fileHtml(f, fi) {
     esc(f.path) +
     '" data-tooltip="Hide from diff" aria-label="Hide from diff">' +
     SVG.eye +
-    "</button></div>" +
+    "</button></span></div>" +
     // Whole-file notes hang off the header, so a binary or folded file can still carry several.
     '<div class="fnotes" id="fn' +
     fi +
@@ -298,9 +298,22 @@ function tableHtml(f, fi) {
         "</tbody>",
     );
   }
-  // The action column holds two hover controls, the comment button and the bookmark flag.
+  // Line numbers increase on each side; only the last numbered row on each side sets its width.
+  let oldLine = 0,
+    newLine = 0;
+  for (let i = f.rows.length - 1; i >= 0 && (!oldLine || !newLine); i--) {
+    const row = f.rows[i];
+    if (row.t === "hunk") continue;
+    oldLine ||= row.o || 0;
+    newLine ||= row.n || 0;
+  }
+  // Two 20px actions stay inside their column; each number reserves its digits plus cell padding.
   return (
-    '<colgroup><col style="width:48px"><col style="width:50px"><col style="width:50px"><col></colgroup>' +
+    '<colgroup><col class="action-col"><col class="line-col" style="width:calc(' +
+    Math.max(3, String(oldLine).length) +
+    'ch + var(--space-2))"><col class="line-col" style="width:calc(' +
+    Math.max(3, String(newLine).length) +
+    'ch + var(--space-2))"><col></colgroup>' +
     blocks.join("")
   );
 }
@@ -625,6 +638,7 @@ function delBtnHtml(f) {
     '" aria-pressed="' +
     on +
     '">' +
+    (on ? SVG.eyeOff : SVG.eye) +
     (on ? "show removed" : "fold removed") +
     "</button>"
   );

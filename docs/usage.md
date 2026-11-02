@@ -141,6 +141,12 @@ opts into the existing save-time pruning of generated review files.
 
 Only one active editor keeps the floor at a time. An editor with text keeps focus when you try to start another; an untouched draft can move to the next selection. Empty reply inputs stay visible without blocking new notes or live updates. Live replies update notes in place and preserve a reply being written. A changed diff waits while an editor is active; the header's `diff changed` indicator lets you choose an early refresh after confirmation.
 
+Diff gutters keep line numbers and row actions together without separate bordered rails.
+The comment marker sits beside the code it anchors, and conversations align with the file
+card's inset. Long note headings shorten the directory portion while keeping the filename
+and line label visible. File-header actions become icon-only when the diff pane is narrow;
+hover or focus them for their labels. In a narrow window, search moves to its own header row.
+
 **Save note** writes only that note to `.review/review-<timestamp>.md`, without starting an agent. Subsequent saves update that conversation rather than creating another file. The default directory is ignored by Git. Custom relative output directories set with `--out` are locally excluded too.
 
 With an [ACP agent configured](agent-connections.md), the separate **Save & ask AI** action persists and queues only that note immediately, even while the agent is disconnected or the queue is paused. Without ACP, only **Save note** is offered. Agent and note indicators show working activity; waiting for approval is not shown as thinking.

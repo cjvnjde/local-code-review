@@ -21,8 +21,9 @@
 .history-tools {
   display: flex;
   align-items: center;
-  gap: calc(var(--tap) / 3);
-  padding: calc(var(--tap) / 3) calc(var(--tap) / 2);
+  gap: var(--space-2);
+  min-height: var(--bar-height);
+  padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--edge);
   background: var(--panel2);
   flex: none;
@@ -38,13 +39,13 @@
 }
 #historyPanel button {
   font-size: var(--fs-xs);
-  min-height: var(--tap);
-  padding: calc(var(--tap) / 5) calc(var(--tap) / 3);
+  min-height: var(--tap-lg);
+  padding: var(--space-1) var(--space-2);
 }
 .history-help,
 #historyMessage {
   margin: 0;
-  padding: calc(var(--tap) / 3) calc(var(--tap) / 2);
+  padding: var(--space-2) var(--space-3);
   font: var(--fs-sm)/1.5 var(--sans);
   color: var(--ink-dim);
 }
@@ -57,11 +58,15 @@
   font: var(--fs-sm) var(--mono);
   background: var(--crust);
   color: var(--ink);
-  border: 1px solid var(--edge-hi);
-  border-radius: 4px;
-  padding: calc(var(--tap) / 4);
-  min-height: var(--tap);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  min-height: var(--tap-lg);
   min-width: 0;
+}
+.history-tools :is(input, select):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 .history-tools input {
   flex: 1;
@@ -79,12 +84,12 @@
   min-width: calc(var(--tap) * 7);
   overflow: auto;
   border-right: 1px solid var(--edge);
-  padding: calc(var(--tap) / 3);
+  padding: var(--space-2);
 }
 #historyList {
   display: flex;
   flex-direction: column;
-  gap: calc(var(--tap) / 4);
+  gap: var(--space-1);
 }
 #historyList .revision {
   display: flex;
@@ -99,7 +104,7 @@
 }
 #historyList .revision.on {
   background: var(--sel);
-  border-color: var(--accent);
+  border-color: transparent;
 }
 .revision time,
 .revision span {
@@ -107,21 +112,21 @@
   font-size: var(--fs-xs);
 }
 #historyMore {
-  margin-top: calc(var(--tap) / 3);
+  margin-top: var(--space-2);
 }
 #historyDetail {
   flex: 1;
   min-width: 0;
   overflow: auto;
-  padding: calc(var(--tap) / 2);
+  padding: var(--space-3);
 }
 .history-meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: calc(var(--tap) / 3);
+  gap: var(--space-2);
   font-size: var(--fs-sm);
-  margin-bottom: calc(var(--tap) / 2);
+  margin-bottom: var(--space-3);
 }
 .history-meta time,
 .history-meta > span {
@@ -131,22 +136,22 @@
   flex-basis: 100%;
 }
 .history-card {
-  border: 1px solid var(--edge-hi);
-  border-radius: 5px;
-  margin-bottom: calc(var(--tap) / 2);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  margin-bottom: var(--space-3);
   overflow: hidden;
 }
 .history-card h3 {
   display: flex;
   flex-wrap: wrap;
-  gap: calc(var(--tap) / 3);
+  gap: var(--space-2);
   align-items: center;
   background: var(--panel2);
   margin: 0;
-  padding: calc(var(--tap) / 3);
+  min-height: var(--bar-height);
+  padding: var(--space-2) var(--space-3);
   font-size: var(--fs-sm);
   font-weight: 500;
-  border-bottom: 1px solid var(--edge);
 }
 .history-card h3 .pth {
   flex: 1;
@@ -170,7 +175,7 @@
   font: var(--fs-xs) var(--mono);
   text-transform: uppercase;
   margin: 0;
-  padding: calc(var(--tap) / 3);
+  padding: var(--space-2) var(--space-3);
   color: var(--ink-dim);
 }
 .history-compare .before h4 {
@@ -180,7 +185,7 @@
   background: var(--add-bg);
 }
 .history-note {
-  padding: calc(var(--tap) / 3);
+  padding: var(--space-3);
   font: var(--fs-ui)/1.6 var(--sans);
   overflow-wrap: anywhere;
 }
@@ -189,7 +194,7 @@
   color: var(--ink-dim);
 }
 .history-note .md {
-  margin-top: calc(var(--tap) / 4);
+  margin-top: var(--space-1);
 }
 .history-note pre {
   white-space: pre-wrap;
@@ -202,8 +207,8 @@
 }
 .history-reply {
   border-top: 1px solid var(--edge);
-  padding-top: calc(var(--tap) / 3);
-  margin-top: calc(var(--tap) / 3);
+  padding-top: var(--space-2);
+  margin-top: var(--space-2);
 }
 .history-reply.ai > b {
   color: var(--teal);
@@ -219,7 +224,7 @@
   color: var(--ink-faint);
 }
 .history-empty {
-  padding: calc(var(--tap) / 2);
+  padding: var(--space-3);
   color: var(--ink-faint);
   font: var(--fs-ui)/1.6 var(--sans);
 }

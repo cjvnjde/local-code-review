@@ -11,20 +11,23 @@
 .toast {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-2);
   background: var(--panel2);
-  border: 1px solid var(--edge-hi);
-  border-left: 3px solid var(--green);
-  border-radius: 6px;
-  padding: 8px 12px;
+  border: none;
+  box-shadow:
+    inset 3px 0 0 var(--green),
+    0 10px 26px rgba(0, 0, 0, 0.45);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
   font-family: var(--sans);
   font-size: var(--fs-ui);
   color: var(--ink);
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45);
   max-width: 460px;
 }
 .toast.off {
-  border-left-color: var(--peach);
+  box-shadow:
+    inset 3px 0 0 var(--peach),
+    0 10px 26px rgba(0, 0, 0, 0.45);
 }
 .toast .ic {
   display: flex;
@@ -46,7 +49,7 @@
   letter-spacing: 0.05em;
 }
 .toast button {
-  padding: 5px 9px;
+  padding: var(--space-1) var(--space-2);
   font-size: var(--fs-xs);
   min-height: var(--tap);
 }
@@ -62,6 +65,9 @@ header b {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   font-size: var(--fs-sm);
+}
+header > b {
+  white-space: nowrap;
 }
 /* a long revision spec gives way rather than wrapping the strip onto a second line */
 header .range {
@@ -79,9 +85,9 @@ header .rvid {
   font-size: var(--fs-xs);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  border: 1px solid var(--mauve);
-  border-radius: 9px;
-  padding: 1px 8px;
+  background: color-mix(in srgb, var(--mauve) 12%, transparent);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
   max-width: 220px;
   overflow: hidden;
   text-overflow: ellipsis;

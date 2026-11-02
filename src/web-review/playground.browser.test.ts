@@ -9,7 +9,7 @@ import { runGit } from "../git/commands.ts";
 import type { WebCapture } from "../shared/web-review.ts";
 
 test.skipIf(process.env.LCR_TEST_BROWSER !== "1")(
-  "playground selects the real floating launcher and note card without activating them",
+  "playground selects floating controls and preserves captured SVG regions",
   async () => {
     const repoRoot = await mkdtemp(path.join(tmpdir(), "lcr-playground-test-"));
     let playground: Awaited<ReturnType<typeof startWebPlayground>> | undefined;
@@ -190,6 +190,52 @@ test.skipIf(process.env.LCR_TEST_BROWSER !== "1")(
       await mode("example");
       expect(await js(`${a}.querySelector('iframe').src`)).toBe(frameUrl);
       expect(await js(`${example}.inert`)).toBe(false);
+
+      await send("Page.navigate", { url: playground.showcaseUrl });
+      const image =
+        "document.querySelector('[data-path=\"assets/review-mark.svg\"] .imgf.new .imgstage img')";
+      await until(
+        `${image}?.complete && ${image}.naturalWidth > 0 && ${image}.getBoundingClientRect().width > 0`,
+      );
+      await js(`${image}.scrollIntoView({block:'center'})`);
+      const imageBounds = await bounds(image);
+      const from = {
+        x: imageBounds.x + imageBounds.width * 0.5,
+        y: imageBounds.y + imageBounds.height * 0.25,
+      };
+      const to = {
+        x: imageBounds.x + imageBounds.width * 0.75,
+        y: imageBounds.y + imageBounds.height * 0.75,
+      };
+      await mouse("mouseMoved", from);
+      await mouse("mousePressed", from);
+      await mouse("mouseMoved", to);
+      await mouse("mouseReleased", to);
+      const preview = "document.querySelector('.imgdraft .image-preview img')";
+      await until(`${preview}?.complete && ${preview}.naturalWidth > 0`);
+      const capturedPixel = await js(`(()=>{
+        const img=${preview}, canvas=document.createElement('canvas');
+        canvas.width=img.naturalWidth; canvas.height=img.naturalHeight;
+        const context=canvas.getContext('2d');
+        context.drawImage(img,0,0);
+        return [...context.getImageData(Math.floor(canvas.width/2),Math.floor(canvas.height/2),1,1).data];
+      })()`);
+      expect(capturedPixel).toEqual([166, 218, 149, 255]);
+      await click("document.querySelector('.imgdraft textarea')");
+      await send("Input.insertText", {
+        text: "Keep the green circle centered.",
+      });
+      await click("document.querySelector('.imgdraft [data-save-note]')");
+      const savedNote =
+        "document.querySelector('[data-path=\"assets/review-mark.svg\"] .nbody')";
+      await until(
+        `${savedNote}?.textContent === 'Keep the green circle centered.'`,
+      );
+      await until("!document.querySelector('.imgdraft')");
+      await send("Page.reload");
+      await until(
+        `${savedNote}?.textContent === 'Keep the green circle centered.'`,
+      );
     } finally {
       cdp?.close();
       await playground?.close();

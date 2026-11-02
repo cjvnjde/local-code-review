@@ -11,6 +11,7 @@
 #diff {
   flex: 1;
   min-width: 0;
+  container-type: inline-size;
   overflow: auto;
   overflow-anchor: none;
   padding: 0 0 40vh;
@@ -19,8 +20,8 @@
 /* clip, not hidden: overflow hidden would make each card its own scrollport and kill the sticky header */
 #diff .file {
   border: none;
-  border-radius: 6px;
-  margin: 12px 14px;
+  border-radius: var(--radius-md);
+  margin: var(--space-3);
   overflow: clip;
   background: var(--panel);
 }
@@ -35,10 +36,12 @@
   top: 0;
   z-index: 2;
   background: var(--panel2);
-  padding: 7px 12px;
+  min-height: var(--bar-height);
+  padding: var(--space-2) var(--space-3);
   border-bottom: none;
   display: flex;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: var(--space-2);
   align-items: center;
   box-shadow: none;
 }
@@ -50,11 +53,11 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: var(--tap);
-  height: var(--tap);
+  width: var(--tap-lg);
+  height: var(--tap-lg);
   min-height: 0;
   flex: none;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 .fh .fchev:hover {
   background: var(--s1);
@@ -62,7 +65,18 @@
 }
 .fh .p {
   color: var(--ink);
+  min-width: 0;
   overflow: hidden;
+  white-space: nowrap;
+}
+.file .fh .file-path {
+  flex: 1 1 0;
+}
+.file .fh .spacer {
+  display: none;
+}
+.fh :is(.s, .plus, .minus, .stale) {
+  flex: none;
   white-space: nowrap;
 }
 .fh .s {
@@ -70,6 +84,7 @@
   color: var(--ink-faint);
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  white-space: nowrap;
 }
 .fh .plus {
   color: var(--add);
@@ -82,6 +97,14 @@
 .fh .spacer {
   flex: 1;
 }
+.file-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1);
+  margin-left: auto;
+}
 .fh .eye,
 .fh .vw,
 .fh .cf,
@@ -90,16 +113,17 @@
   border: none;
   background: none;
   color: var(--ink-faint);
-  padding: 5px 8px;
+  padding: 0 var(--space-2);
   display: flex;
-  gap: 6px;
+  gap: var(--space-1);
   align-items: center;
-  min-height: var(--tap);
+  height: var(--tap-lg);
+  min-height: var(--tap-lg);
   flex: none;
   font-size: var(--fs-xs);
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 .fh .eye:hover,
 .fh .vw:hover,
@@ -113,8 +137,8 @@
   color: var(--green);
 }
 .file .fh :is(.eye, .op, .cp) {
-  width: var(--tap);
-  height: var(--tap);
+  width: var(--tap-lg);
+  height: var(--tap-lg);
   padding: 0;
   justify-content: center;
 }
@@ -122,7 +146,7 @@
   border: 0;
   background: none;
   color: var(--ink-faint);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   flex: none;
@@ -139,9 +163,9 @@
   z-index: 100;
   pointer-events: none;
   max-width: calc(100vw - var(--tap));
-  padding: calc(var(--tap) / 4) calc(var(--tap) / 3);
+  padding: var(--space-1) var(--space-2);
   border: 1px solid var(--edge-hi);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: var(--crust);
   color: var(--ink);
   font: var(--fs-xs)/1.5 var(--sans);
@@ -160,4 +184,16 @@
   font-size: var(--fs-xs);
   text-transform: uppercase;
   letter-spacing: 0.05em;
+}
+/* Pane width, not viewport width, determines when labels would crowd out the filename. The
+   existing path fitter keeps the final name; wrapping is the fallback for long rename pairs. */
+@container (max-width: 760px) {
+  .file .fh :is(.cf, .dl, .vw) {
+    width: var(--tap-lg);
+    padding: 0;
+    gap: 0;
+    justify-content: center;
+    font-size: 0;
+    letter-spacing: 0;
+  }
 }

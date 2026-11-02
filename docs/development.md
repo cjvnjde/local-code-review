@@ -55,6 +55,13 @@ their automatically assigned ports.
 notes or pictures. After source changes, stop and rerun the command; this
 playground does not hot-reload the injected tools.
 
+Shared UI rhythm lives in `src/web/styles/tokens.css`: spacing steps, corner radii, control
+targets, and header height. Diff line height remains independent at `--row: 24px`, matching
+`ROW_H`; changing toolbar or conversation spacing must not change virtualized row estimates.
+Check the full review at wide and narrow pane widths, plus the popup at its minimum size with
+formatting expanded and a long reply. A visible control must not become blank when its text
+label is hidden.
+
 ## Check and build
 
 ```sh

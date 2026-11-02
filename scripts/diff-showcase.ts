@@ -82,7 +82,7 @@ const files: DiffFile[] = [
     status: "modified",
     added: 1,
     removed: 1,
-    hash: "showcase-review-mark",
+    hash: "showcasereviewmark",
     rows: [
       { t: "hunk", text: "@@ -1,3 +1,3 @@" },
       {
@@ -110,7 +110,7 @@ const files: DiffFile[] = [
     added: 0,
     removed: 0,
     binary: true,
-    hash: "showcase-new-preview",
+    hash: "showcasenewpreview",
     rows: [],
   },
   {

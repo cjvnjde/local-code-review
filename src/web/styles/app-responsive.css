@@ -1,6 +1,6 @@
 @media (max-width: 1100px) {
   header {
-    gap: calc(var(--tap) / 4);
+    gap: var(--space-1);
   }
   header > b {
     display: none;
@@ -10,24 +10,47 @@
   }
 }
 @media (max-width: 760px) {
-  header > b,
-  header > #range,
-  header > #agentState {
-    display: none;
+  nav {
+    width: 240px;
   }
   .search-location {
     flex-wrap: wrap;
   }
-  #reviewSearchBox {
-    flex: 1;
-  }
-  .search-head {
+}
+@media (max-width: 1000px) {
+  header {
     flex-wrap: wrap;
   }
-  #searchPopup {
-    position: fixed;
-    top: calc(var(--tap-lg) + var(--tap) / 2);
-    right: calc(var(--tap) / 2);
+  header > #range,
+  header > #agentState {
+    display: none;
+  }
+  header > .rvid {
+    max-width: calc(var(--tap) * 6);
+  }
+  #reviewSearchBox {
+    order: 1;
+    flex: 1 0 100%;
+  }
+  footer,
+  .rdrh {
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+  .acts .tip {
+    display: none;
+  }
+}
+@media (max-width: 600px) {
+  .quick button > span {
+    display: none;
+  }
+  .quick button {
+    width: var(--tap-lg);
+    padding: 0;
+  }
+  header > .rvid {
+    max-width: calc(var(--tap) * 4);
   }
 }
 @media (max-width: 850px) {

@@ -14,8 +14,8 @@
   flex: none;
   color: var(--peach);
   border-color: var(--peach);
-  padding: 4px 9px;
-  min-height: var(--tap);
+  padding: var(--space-1) var(--space-2);
+  min-height: var(--tap-lg);
   font-size: var(--fs-xs);
 }
 .pending:hover {
@@ -29,8 +29,8 @@
   border-color: var(--mark);
   color: var(--crust);
   font-weight: 700;
-  padding: 4px 10px;
-  min-height: var(--tap);
+  padding: var(--space-1) var(--space-2);
+  min-height: var(--tap-lg);
   font-size: var(--fs-xs);
 }
 .unread-pill:hover {
@@ -39,7 +39,9 @@
   color: var(--crust);
 }
 .toast.reply {
-  border-left-color: var(--sapphire);
+  box-shadow:
+    inset 3px 0 0 var(--sapphire),
+    0 10px 26px rgba(0, 0, 0, 0.45);
 }
 .toast.reply .ic {
   color: var(--sapphire);
@@ -72,10 +74,12 @@
   @keyframes bump {
     0%,
     100% {
-      border-color: var(--edge-hi);
+      outline: 2px solid transparent;
+      outline-offset: -2px;
     }
     30% {
-      border-color: var(--accent);
+      outline: 2px solid var(--accent);
+      outline-offset: -2px;
     }
   }
 }

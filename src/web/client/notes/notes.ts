@@ -855,12 +855,15 @@ function headHtml(f, label, snippet, extra, scope?, image?, web?) {
     ? web.before.components.map((c) => c.name).join(" → ") || web.before.mode
     : "";
   return (
-    '<div class="nhead"><span class="loc">' +
+    '<div class="nhead"><span class="loc' +
+    (web || global ? "" : " file-path") +
+    '">' +
     (web
       ? esc(web.before.element?.tag || web.before.mode) + " · UI"
       : global
         ? "Overall"
-        : esc(f.path) + (label ? ":" + label : "")) +
+        : pathHtml(f.path, { title: f.path }) +
+          (label ? '<span class="lines">:' + esc(label) + "</span>" : "")) +
     "</span>" +
     (image
       ? '<span class="all">' + esc(regionLabel(image)) + "</span>"
@@ -881,7 +884,7 @@ function headHtml(f, label, snippet, extra, scope?, image?, web?) {
         "</span>"
       : "") +
     '<span class="spacer"></span>' +
-    (extra || "") +
+    (extra ? '<span class="nhead-actions">' + extra + "</span>" : "") +
     "</div>"
   );
 }

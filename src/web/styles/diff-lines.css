@@ -3,11 +3,20 @@ table {
   border-collapse: collapse;
   table-layout: fixed;
 }
+col.action-col {
+  width: 44px;
+}
+col.line-col {
+  font-size: var(--fs-sm);
+}
 #diff .file.fold table {
   display: none;
 }
 tr.r {
   height: var(--row);
+}
+tr.r > td {
+  line-height: var(--row);
 }
 td {
   padding: 0;
@@ -19,27 +28,28 @@ td {
 td.act {
   padding: 0;
   text-align: center;
-  border-right: 1px solid var(--edge);
+  white-space: nowrap;
 }
 /* sized to the row rather than to --tap: a taller button would stretch every line of the diff */
 td.act button {
   opacity: 0;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: var(--accent);
   color: var(--crust);
   padding: 0;
   width: 20px;
   height: 20px;
   min-height: 0;
-  margin: 2px 1px 0;
+  margin: 2px 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   vertical-align: top;
 }
-tr.r:hover td.act button {
+tr.r:hover td.act button,
+tr.r:focus-within td.act button {
   opacity: 1;
 }
 td.act button:focus-visible {
@@ -62,20 +72,21 @@ td.act .bm.on {
 }
 td.g {
   text-align: right;
-  padding: 0 8px 0 5px;
+  padding: 0 var(--space-1);
   color: var(--ink-faint);
   user-select: none;
   font-size: var(--fs-sm);
+  white-space: nowrap;
   cursor: pointer;
 }
 td.gn {
-  border-right: 1px solid var(--edge);
+  color: var(--ink-dim);
 }
 tr.r:hover td.g {
   color: var(--ink-dim);
 }
 td.c {
-  padding: 0 12px;
+  padding: 0 var(--space-3);
 }
 tr.add td.g {
   background: var(--add-gut);
@@ -106,10 +117,8 @@ tr.ctx td.c::before {
 tr.hunk td {
   color: var(--sapphire);
   background: var(--mantle);
-  padding: 4px 12px;
+  padding: var(--space-1) var(--space-3);
   font-size: var(--fs-sm);
-  border-top: 1px solid var(--edge);
-  border-bottom: 1px solid var(--edge);
 }
 /* hidden-region expanders sit where the gutters would be, so hunk text still lines up with code */
 tr.hunk td.exp {
@@ -117,7 +126,6 @@ tr.hunk td.exp {
   text-align: right;
   white-space: nowrap;
   user-select: none;
-  border-right: 1px solid var(--edge);
 }
 tr.hunk.busy td.exp {
   opacity: 0.4;
@@ -129,10 +137,10 @@ td.exp .xp {
   color: var(--ink-faint);
   padding: 0;
   width: 26px;
-  height: 24px;
+  height: var(--row);
   min-height: 0;
   margin: 0;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -151,8 +159,6 @@ td.exp .xp:focus-visible {
 tr.dfold td {
   padding: 0;
   background: var(--del-bg);
-  border-top: 1px solid var(--edge);
-  border-bottom: 1px solid var(--edge);
 }
 tr.dfold.open td {
   background: var(--mantle);
@@ -161,10 +167,10 @@ tr.dfold.open td {
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 9px;
+  gap: var(--space-2);
   width: 100%;
   min-height: var(--tap);
-  padding: 2px 12px;
+  padding: var(--space-1) var(--space-3);
   border: none;
   border-radius: 0;
   background: none;
@@ -218,8 +224,8 @@ tr.sel td.c,
 tr.sel td.g {
   background: var(--sel);
 }
-tr.noted td.act {
-  box-shadow: inset 3px 0 0 var(--mark);
+tr.noted td.c {
+  box-shadow: inset 2px 0 0 var(--mark);
 }
 /* the row a bookmark jump just landed on, dropped again a moment later */
 tr.bmhit td.c,

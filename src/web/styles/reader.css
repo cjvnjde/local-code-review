@@ -14,8 +14,9 @@
   flex: none;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 14px;
+  gap: var(--space-2);
+  min-height: var(--bar-height);
+  padding: var(--space-2) var(--space-3);
   background: var(--panel2);
   border-bottom: 1px solid var(--edge);
 }
@@ -39,21 +40,21 @@
   flex: 1;
 }
 .rdrh button {
-  padding: 5px 9px;
+  padding: var(--space-1) var(--space-2);
   font-size: var(--fs-xs);
   min-height: var(--tap);
 }
 .chips {
   display: flex;
-  gap: 5px;
+  gap: var(--space-1);
   flex-wrap: wrap;
-  margin-left: 6px;
+  margin-left: var(--space-1);
 }
 .chip {
-  padding: 4px 9px;
+  padding: var(--space-1) var(--space-2);
   font-size: var(--fs-xs);
   min-height: var(--tap);
-  gap: 6px;
+  gap: var(--space-1);
 }
 .chip.on {
   background: var(--mark);
@@ -80,7 +81,7 @@
   padding: 0 0 40vh;
 }
 .rdrg {
-  margin: 12px 14px;
+  margin: var(--space-3);
 }
 /* the file a run of notes was written on stays put while they are read */
 .rdrg .gh {
@@ -89,12 +90,11 @@
   z-index: 2;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 7px 12px;
+  gap: var(--space-2);
+  min-height: var(--bar-height);
+  padding: var(--space-2) var(--space-3);
   background: var(--panel2);
-  border: 1px solid var(--edge);
-  border-radius: 6px 6px 0 0;
-  box-shadow: 0 1px 0 var(--crust);
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
 }
 .rdrg .gh .p {
   color: var(--ink);
@@ -118,21 +118,19 @@
   color: var(--mark);
 }
 .rdrg .gn {
-  border: 1px solid var(--edge);
-  border-top: none;
-  border-radius: 0 0 6px 6px;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
   background: var(--panel);
-  padding: 2px 0 6px;
+  padding: var(--space-1) 0 var(--space-2);
 }
 /* clear of the sticky heading, so stepping with j/k lands on the note rather than under its file */
 .rdrn {
-  scroll-margin-top: 2.6em;
+  scroll-margin-top: var(--bar-height);
 }
 .rdr .nrow {
   display: block;
 }
 .rdr .nbox {
-  margin: 9px 12px;
+  margin: var(--space-2) var(--space-3);
 }
 /* the captured code is what a note is about, not what it says: it is folded until it is asked for */
 .rdr .cap .capc {

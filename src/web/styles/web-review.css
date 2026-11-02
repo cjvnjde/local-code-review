@@ -42,9 +42,10 @@ body.ui-note #historyPanel {
   flex: none;
   display: flex;
   flex-direction: column;
-  max-height: 50%;
-  overflow: hidden;
-  padding-bottom: calc(var(--tap) / 2);
+  max-height: max(50%, min(100%, calc(var(--row) * 7)));
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding-bottom: var(--space-3);
 }
 .ui-note-body .nbox {
   margin: 0;
@@ -58,6 +59,7 @@ body.ui-note #historyPanel {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  flex: 1 1 auto;
 }
 .ui-note-body .composer-input {
   flex: 1 1 auto;
@@ -71,6 +73,7 @@ body.ui-note #historyPanel {
 }
 .ui-note-body .acts {
   flex-wrap: wrap;
+  padding-right: calc(var(--tap-lg) + var(--space-1));
 }
 @media (max-width: 420px) {
   .ui-note-body .acts .tip {
@@ -78,7 +81,8 @@ body.ui-note #historyPanel {
   }
 }
 .ui-note-body .nhead {
-  flex-wrap: nowrap;
+  position: static;
+  flex-wrap: wrap;
 }
 .ui-note-body .nhead .loc,
 .ui-note-body .nhead button {
@@ -92,17 +96,19 @@ body.ui-note #historyPanel {
   display: block;
 }
 .ui-note-error {
-  padding: var(--row);
+  padding: var(--space-4);
   color: var(--red);
 }
 .web-capture {
-  padding: calc(var(--tap) / 2);
+  padding: var(--space-3);
   font: var(--fs-sm)/1.5 var(--sans);
 }
 .web-targets ol {
   max-height: calc(var(--row) * 8);
   overflow: auto;
   overflow-wrap: anywhere;
+  margin: var(--space-2) 0;
+  padding-left: var(--space-4);
 }
 .nhead .web-component-path {
   min-width: 0;
@@ -112,29 +118,31 @@ body.ui-note #historyPanel {
 .web-comparison {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
-  gap: 14px;
+  gap: var(--space-3);
   align-items: start;
 }
 .web-observation {
   min-width: 0;
   background: var(--panel2);
-  border-radius: calc(var(--tap) / 4);
-  padding: calc(var(--tap) / 3);
+  border-radius: var(--radius-md);
+  padding: var(--space-2);
 }
 .web-capture-actions {
   display: flex;
   justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
 }
 .web-image-label {
   color: var(--ink-dim);
-  font-size: var(--fs-xs);
-  margin-bottom: calc(var(--tap) / 4);
+  font: var(--fs-xs)/1.5 var(--sans);
+  margin-bottom: var(--space-2);
 }
 .web-observation img {
   max-width: 100%;
   height: auto;
   display: block;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 .web-observation > a {
   display: block;
@@ -144,7 +152,8 @@ body.ui-note #historyPanel {
 .web-observation .web-picture {
   position: relative;
   display: block;
-  width: 100%;
+  width: fit-content;
+  max-width: 100%;
   height: auto;
   min-height: 0;
   padding: 0;
@@ -154,48 +163,57 @@ body.ui-note #historyPanel {
   overflow: auto;
   max-height: calc(var(--row) * 14);
   cursor: pointer;
-  border-radius: calc(var(--tap) / 6);
+  border-radius: var(--radius-sm);
 }
 .web-picture-action {
   position: absolute;
-  top: calc(var(--tap) / 4);
-  right: calc(var(--tap) / 4);
+  top: var(--space-2);
+  right: var(--space-2);
   display: flex;
   align-items: center;
-  gap: calc(var(--tap) / 4);
-  padding: calc(var(--tap) / 4) calc(var(--tap) / 3);
-  border-radius: calc(var(--tap) / 4);
-  background: var(--accent);
-  color: var(--crust);
+  gap: var(--space-1);
+  min-height: var(--tap-lg);
+  max-width: calc(100% - var(--space-2) * 2);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: 0 2px 8px #0005;
   font: 600 var(--fs-sm)/1.5 var(--sans);
-  opacity: 0;
-  transform: translateY(-3px);
+  opacity: 1;
   transition:
-    opacity 120ms ease,
-    transform 120ms ease;
+    background 120ms ease,
+    color 120ms ease;
   pointer-events: none;
 }
 .web-picture:is(:hover, :focus-visible) .web-picture-action {
-  opacity: 1;
-  transform: none;
+  background: var(--accent);
+  color: var(--crust);
 }
 .web-picture:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
-@media (hover: none) {
-  .web-picture-action {
-    opacity: 1;
-    transform: none;
-  }
-}
 .web-observation summary {
   cursor: pointer;
   color: var(--ink-dim);
-  min-height: var(--tap);
-  padding-top: 5px;
+  min-height: var(--tap-lg);
+  padding: var(--space-1) 0;
+  line-height: calc(var(--tap-lg) - var(--space-2));
+}
+.web-observation summary:is(:hover, :focus-visible) {
+  color: var(--ink);
+}
+.web-observation summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
 }
 .web-observation pre {
+  margin: var(--space-2) 0;
+  padding: var(--space-2);
+  background: var(--crust);
+  border-radius: var(--radius-sm);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   font-size: var(--fs-xs);
@@ -203,19 +221,20 @@ body.ui-note #historyPanel {
   overflow: auto;
 }
 .note-message {
-  margin: 0 calc(var(--tap) / 2) calc(var(--tap) / 2);
-  background: color-mix(in srgb, var(--mauve) 9%, var(--panel2));
-  border-radius: 0 0 calc(var(--tap) / 4) calc(var(--tap) / 4);
+  margin: 0 var(--space-3) var(--space-3);
+  background: color-mix(in srgb, var(--mauve) 7%, var(--panel2));
+  border-radius: var(--radius-md);
 }
 .note-author {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: calc(var(--tap) / 4);
-  padding: calc(var(--tap) / 4) calc(var(--tap) / 3) 0;
+  gap: var(--space-2);
+  min-height: var(--bar-height);
+  padding: var(--space-2) var(--space-3) 0;
   color: var(--mauve);
   font: var(--fs-sm)/1.5 var(--sans);
 }
 .note-message .nbody {
-  padding-top: calc(var(--tap) / 4);
+  padding: var(--space-2) var(--space-3) var(--space-3);
 }

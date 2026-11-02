@@ -4,11 +4,11 @@ textarea.composer-input {
   background: var(--crust);
   color: var(--ink);
   border: 1px solid transparent;
-  border-radius: 5px;
-  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
   font: var(--fs-code)/1.55 var(--sans);
   resize: none;
-  min-height: var(--composer-min, 76px);
+  min-height: calc(var(--row) * 3);
   display: block;
   overflow-y: hidden;
 }
@@ -19,15 +19,14 @@ textarea.composer-input:focus,
 }
 .reply,
 .medit {
-  --composer-min: 62px;
   --composer-focus: var(--mauve);
 }
 .composer-toolbar {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: calc(var(--tap) / 6);
-  padding-bottom: calc(var(--tap) / 4);
+  gap: var(--space-1);
+  padding-bottom: var(--space-2);
 }
 .composer-toolbar[hidden] {
   display: none;
@@ -37,12 +36,19 @@ textarea.composer-input:focus,
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: var(--tap);
-  min-height: var(--tap);
+  width: var(--tap-lg);
+  height: var(--tap-lg);
+  min-width: var(--tap-lg);
+  min-height: var(--tap-lg);
+  padding: 0;
   border: 0;
   background: transparent;
   color: var(--ink-dim);
   font-size: var(--fs-sm);
+}
+.composer-toolbar .refb {
+  width: auto;
+  padding-inline: var(--space-2);
 }
 .composer-toolbar button:hover,
 .format-toggle:hover {
@@ -57,9 +63,9 @@ textarea.composer-input:focus,
 /* Suggestions have the same presentation in a note and either side of its thread. */
 .nbody .sugb,
 .msg .mb .sugb {
-  margin: 8px 0;
-  border: 1px solid var(--edge-hi);
-  border-radius: 5px;
+  margin: var(--space-2) 0;
+  border: none;
+  border-radius: var(--radius-sm);
   background: var(--crust);
   overflow: hidden;
 }
@@ -73,8 +79,8 @@ textarea.composer-input:focus,
 }
 .nbody .sugh,
 .msg .mb .sugh {
-  padding: 3px 10px;
-  background: var(--add-gut);
+  padding: var(--space-1) var(--space-3);
+  background: var(--add-bg);
   color: var(--add);
   font: var(--fs-xs)/1.6 var(--mono);
   text-transform: uppercase;
@@ -82,21 +88,21 @@ textarea.composer-input:focus,
 }
 .nbody .sugb pre {
   margin: 0;
-  padding: 8px 10px;
+  padding: var(--space-2) var(--space-3);
   overflow-x: auto;
   white-space: pre;
   font: var(--fs-code)/1.55 var(--mono);
   color: var(--ink);
 }
 .sugb .sugc {
-  padding: 5px 0;
+  padding: var(--space-1) 0;
   font: var(--fs-code)/1.5 var(--mono);
   color: var(--ink);
 }
 .sugb .sugc .cl {
   display: flex;
-  gap: 6px;
-  padding: 0 10px;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
   white-space: pre-wrap;
   word-break: break-word;
 }

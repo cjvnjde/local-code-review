@@ -1,14 +1,18 @@
-/* one row high and no taller: the header is a strip, so nothing in it may wrap the page open */
+/* A single aligned strip on wide screens; the search gets its own row in a narrow window. */
 header {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 3px 12px;
-  border-bottom: 1px solid var(--edge);
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  box-shadow: inset 0 -1px 0 var(--edge);
   background: var(--panel2);
   flex: none;
-  min-height: calc(var(--tap-lg) + 6px);
+  min-height: var(--bar-height);
+}
+header > button {
+  flex: none;
+  white-space: nowrap;
 }
 #gear,
 #navToggle {
@@ -22,7 +26,7 @@ header {
   width: var(--tap-lg);
   height: var(--tap-lg);
   flex: none;
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
 }
 #gear:hover,
 #gear.on,
@@ -35,7 +39,7 @@ header {
 .quick {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   flex: none;
 }
 .quick button,
@@ -43,16 +47,17 @@ header > .cf {
   border: none;
   background: none;
   color: var(--ink-faint);
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   display: flex;
-  gap: 6px;
+  gap: var(--space-1);
   align-items: center;
-  min-height: var(--tap);
+  min-height: var(--tap-lg);
   flex: none;
   font-size: var(--fs-xs);
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
 }
 .quick button:hover,
 header > .cf:hover {
@@ -69,13 +74,13 @@ header > .cf:hover {
      card at the top of the diff. It overlays the read instead of moving or scrolling it. */
 #globalDraft {
   position: absolute;
-  right: 12px;
-  top: calc(100% + 6px);
+  right: var(--space-3);
+  top: calc(100% + var(--space-2));
   z-index: 11;
-  width: min(760px, calc(100vw - 24px));
-  max-height: calc(100dvh - 100% - 18px);
+  width: min(760px, calc(100vw - var(--space-3) * 2));
+  max-height: calc(100dvh - 100% - var(--space-3) * 2);
   overflow-y: auto;
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   box-shadow: 0 14px 34px rgba(0, 0, 0, 0.5);
 }
 #globalDraft[hidden] {

@@ -1,18 +1,18 @@
 button {
-  font: var(--fs-sm)/1 var(--mono);
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  background: transparent;
+  font: var(--fs-sm)/1.4 var(--sans);
+  letter-spacing: 0;
+  text-transform: none;
+  background: var(--panel);
   color: var(--ink-dim);
-  border: 1px solid var(--edge-hi);
-  padding: 7px 12px;
-  border-radius: 5px;
+  border: 1px solid transparent;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
   cursor: pointer;
   min-height: var(--tap-lg);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: var(--space-1);
 }
 /* an author `display` on `button` outranks the UA sheet's `[hidden]`, so restore it here */
 button[hidden] {
@@ -20,7 +20,7 @@ button[hidden] {
 }
 button:hover {
   color: var(--ink);
-  border-color: var(--ink-faint);
+  background: var(--s0);
 }
 button.primary {
   background: var(--accent);
@@ -38,7 +38,7 @@ button:disabled {
 }
 button.danger:hover {
   color: var(--del);
-  border-color: var(--del);
+  background: var(--del-bg);
 }
 button:focus-visible,
 td.g:focus-visible {
@@ -50,9 +50,9 @@ footer {
   flex: none;
   border-top: 1px solid var(--edge);
   background: var(--panel2);
-  padding: 10px 16px;
+  padding: var(--space-2) var(--space-3);
   display: flex;
-  gap: 14px;
+  gap: var(--space-3);
   align-items: center;
 }
 footer .count {
@@ -63,7 +63,7 @@ footer .spacer {
   flex: 1;
 }
 .empty {
-  padding: 34px 18px;
+  padding: var(--space-4);
   color: var(--ink-faint);
   font-family: var(--sans);
   font-size: var(--fs-ui);

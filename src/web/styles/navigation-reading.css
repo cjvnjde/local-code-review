@@ -1,7 +1,7 @@
 .reading-position {
   flex: none;
   border-top: 1px solid var(--edge);
-  padding: calc(var(--tap) / 3);
+  padding: var(--space-2) var(--space-3);
   font: var(--fs-xs) var(--sans);
   color: var(--ink-dim);
 }
@@ -9,7 +9,8 @@
 #resumeReading {
   display: flex;
   align-items: center;
-  gap: calc(var(--tap) / 4);
+  gap: var(--space-1);
+  flex-wrap: wrap;
   min-height: var(--tap);
   width: 100%;
   min-width: 0;
@@ -19,12 +20,13 @@
   display: none;
 }
 .reading-position .pth {
-  flex: 1;
+  flex: 1 1 100%;
+  order: 1;
   min-width: 0;
   font-family: var(--mono);
 }
 #resumeReading {
-  padding: calc(var(--tap) / 4);
+  padding: var(--space-1);
   color: var(--teal);
   font-size: var(--fs-xs);
 }
