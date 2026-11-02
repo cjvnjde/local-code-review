@@ -476,15 +476,31 @@ browserTest(
         for (const type of ["keyDown", "keyUp"])
           await send("Input.dispatchKeyEvent", {
             type,
-            key: "f",
+            key: "F",
             code: "KeyF",
-            modifiers: 1,
+            modifiers: 10,
           });
       }
       await js('document.querySelector("#freeze-input").focus()');
-      await freezeKey();
+      // Option+F is ordinary macOS text input; the freeze shortcut must not depend on it.
+      await send("Input.dispatchKeyEvent", {
+        type: "keyDown",
+        key: "ƒ",
+        code: "KeyF",
+        text: "ƒ",
+        modifiers: 1,
+      });
+      await send("Input.dispatchKeyEvent", {
+        type: "keyUp",
+        key: "ƒ",
+        code: "KeyF",
+        modifiers: 1,
+      });
       expect(await js('!!testRoot.querySelector(".frozen-page")')).toBe(false);
-      await js('document.querySelector("#hover-fixture").focus()');
+      expect(await js('document.querySelector("#freeze-input").value')).toBe(
+        "ƒ",
+      );
+      // Hovering does not blur a text field. Freeze must still work without editing its value.
       await mouse("mouseMoved", 30, 40);
       expect(
         await js(
@@ -495,6 +511,9 @@ browserTest(
       await until(
         () => js('!!testRoot.querySelector(".frozen-page")'),
         "hover view frozen",
+      );
+      expect(await js('document.querySelector("#freeze-input").value')).toBe(
+        "ƒ",
       );
       expect(await js('testRoot.querySelector(".freeze-status").hidden')).toBe(
         false,
@@ -562,7 +581,12 @@ browserTest(
       await frameJs(
         'window.frozenEditor=document.querySelector("#uiNote textarea");frozenEditor.setSelectionRange(5,9)',
       );
-      await click("[data-resume]");
+      // The note textarea keeps keyboard focus even when the pointer is over the page.
+      await freezeKey();
+      await until(
+        () => js('!testRoot.querySelector(".frozen-page")'),
+        "resume from the focused note editor",
+      );
       expect(await js('!!testRoot.querySelector(".frozen-page")')).toBe(false);
       expect(
         await js(
@@ -574,8 +598,8 @@ browserTest(
           'document.querySelector("#uiNote textarea")===frozenEditor&&frozenEditor.value==="Keep this frozen hover evidence."&&frozenEditor.selectionStart===5&&frozenEditor.selectionEnd===9',
         ),
       ).toBe(true);
-      // The tools action works too; Escape restores the prior mode without discarding the draft.
-      await click("[data-freeze]");
+      // Freeze works from the editor too; Escape restores the mode without discarding the draft.
+      await freezeKey();
       await until(
         () => js('!!testRoot.querySelector(".frozen-page")'),
         "freeze with a draft",

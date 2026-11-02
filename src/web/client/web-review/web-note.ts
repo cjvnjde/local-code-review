@@ -30,6 +30,7 @@ export async function startWebNote() {
       | "close"
       | "review"
       | "ready"
+      | "freeze"
       | "remove-selection"
       | "annotation"
       | "reply-sent",
@@ -48,6 +49,25 @@ export async function startWebNote() {
       { type: "lcr:ui", token, action, ...value },
       parentOrigin,
     );
+  // Keyboard events do not cross the editor iframe into the reviewed page.
+  window.addEventListener(
+    "keydown",
+    (event) => {
+      if (
+        !event.ctrlKey ||
+        !event.shiftKey ||
+        event.code !== "KeyF" ||
+        event.altKey ||
+        event.metaKey ||
+        event.isComposing
+      )
+        return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (!event.repeat) tell("freeze");
+    },
+    true,
+  );
   const host = document.createElement("section");
   host.id = "uiNote";
   host.setAttribute("aria-label", "Review note");

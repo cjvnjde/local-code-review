@@ -151,11 +151,11 @@ export function installPageReview(config: {
     .frozen-page{position:fixed;inset:0;pointer-events:auto;max-width:none!important;max-height:none!important;user-select:none;touch-action:none}
     .freeze-status{pointer-events:auto;position:fixed;top:calc(var(--tap) / 2);left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:calc(var(--tap) / 4);padding:calc(var(--tap) / 4);border:1px solid #9779f1;border-radius:9px;background:#191c26;max-width:calc(100vw - var(--tap))}.freeze-status[hidden]{display:none}
   </style><div class="outline"><span class="label"></span></div><div class="selections"></div><div class="pins"></div>
-  <div class="freeze-status" hidden role="status"><span data-freeze-status></span><button data-resume>Resume · Alt+F</button></div>
+  <div class="freeze-status" hidden role="status"><span data-freeze-status></span><button data-resume>Resume · Ctrl+Shift+F</button></div>
   <div class="selection-tools" hidden><span data-selection-count></span><button data-write>Write note</button><button data-clear>Clear</button></div>
   <div class="dock" hidden><div class="head"><b tabindex="0" title="Drag to move; arrow keys move the note window"></b><button type="button" data-minimize aria-label="Minimize note panel" aria-expanded="true">−</button><button type="button" data-close aria-label="Close note panel">×</button></div><div class="content"></div><button type="button" class="resize" data-resize aria-label="Resize note panel" title="Drag to resize; arrow keys resize; Shift moves farther"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 13 13 3M8 13l5-5M12 13l1-1"/></svg></button></div>
   <button class="launcher" data-launcher aria-label="Selection mode" aria-pressed="true" aria-expanded="false"><span>lcr</span><span class="mode-state" aria-hidden="true">ON</span></button>
-  <div class="bar" hidden><span class="brand">lcr · UI</span><button data-mode="browse">Browse</button><button data-mode="element" aria-pressed="true" title="Click the exact HTML element; Shift-click to select multiple; drag to select an area">Element</button><button data-mode="block" title="Click a containing layout block; Shift-click to select multiple; drag to select an area">Block</button><button data-multiple aria-pressed="false" title="Collect elements for one note, then choose Write note">Multiple</button><button data-mode="area">Area</button><button data-mode="point">Point</button><button data-freeze title="Hover over the page, then press Alt+F to freeze it for area selection">Freeze · Alt+F</button><button data-notes>Notes · 0</button><a class="review-link" data-review target="lcr-review" rel="noopener">Review ↗</a></div>`;
+  <div class="bar" hidden><span class="brand">lcr · UI</span><button data-mode="browse">Browse</button><button data-mode="element" aria-pressed="true" title="Click the exact HTML element; Shift-click to select multiple; drag to select an area">Element</button><button data-mode="block" title="Click a containing layout block; Shift-click to select multiple; drag to select an area">Block</button><button data-multiple aria-pressed="false" title="Collect elements for one note, then choose Write note">Multiple</button><button data-mode="area">Area</button><button data-mode="point">Point</button><button data-freeze title="Hover over the page, then press Ctrl+Shift+F to freeze it for area selection">Freeze · Ctrl+Shift+F</button><button data-notes>Notes · 0</button><a class="review-link" data-review target="lcr-review" rel="noopener">Review ↗</a></div>`;
   (document.body || document.documentElement).append(host);
   const $ = (s: string) => root.querySelector(s) as HTMLElement;
   const dock = $(".dock"),
@@ -362,7 +362,7 @@ export function installPageReview(config: {
       (mode === "browse"
         ? "off — use the page normally"
         : "on — " + mode + " targeting") +
-      ". Click to toggle; hold for tools; drag to move. Hold Alt to use the page temporarily. Alt+F freezes a hovered view for annotation.";
+      ". Click to toggle; hold for tools; drag to move. Hold Alt to use the page temporarily. Ctrl+Shift+F freezes a hovered view for annotation.";
     root
       .querySelectorAll("[data-mode]")
       .forEach((b) =>
@@ -380,8 +380,8 @@ export function installPageReview(config: {
       : "Frozen view · drag an area to comment";
     ($("[data-resume]") as HTMLButtonElement).disabled = freezing;
     $("[data-freeze]").textContent = frozen
-      ? "Resume · Alt+F"
-      : "Freeze · Alt+F";
+      ? "Resume · Ctrl+Shift+F"
+      : "Freeze · Ctrl+Shift+F";
     root
       .querySelectorAll<HTMLButtonElement>(
         '[data-mode="element"],[data-mode="block"],[data-multiple]',
@@ -1036,6 +1036,8 @@ export function installPageReview(config: {
       dock.classList.toggle("annotating", annotationOpen);
       if (!annotationOpen) pendingWeb = undefined;
       positionDock();
+    } else if (message.action === "freeze") {
+      void toggleFreeze();
     } else if (message.action === "ready") {
       tellFrame("capturing", { busy: busy || freezing });
       if (pendingWeb !== undefined)
@@ -1602,19 +1604,16 @@ export function installPageReview(config: {
     }
   });
   listen(
-    document,
+    window,
     "keydown",
     (e) => {
-      const typing = (e.composedPath()[0] as Element)?.closest?.(
-        "input,textarea,select,[contenteditable]:not([contenteditable=false])",
-      );
       if (
-        e.altKey &&
+        e.ctrlKey &&
+        e.shiftKey &&
         e.code === "KeyF" &&
-        !e.ctrlKey &&
+        !e.altKey &&
         !e.metaKey &&
-        !e.shiftKey &&
-        !typing
+        !e.isComposing
       ) {
         stop(e);
         if (!e.repeat) void toggleFreeze();

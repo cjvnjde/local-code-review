@@ -58,18 +58,19 @@ application controls. An element partly outside the viewport captures only its v
 Escape inside the shared editor cancels its draft or edit as in the main review. From the surrounding
 page, Escape closes the note panel, asking before discarding half-written text, then returns to browsing.
 
-To comment on a tooltip, hover menu, or another temporary state, reveal it and press **Alt+F**
+To comment on a tooltip, hover menu, or another temporary state, reveal it and press **Ctrl+Shift+F**
 while the pointer is still over the page. The current viewport freezes as a screenshot and switches
 to **Area** selection: drag around what you want to comment on, then write the note as usual.
 **Point** selection also works on the frozen view. The screenshot and available DOM hints come
 from the freeze, even if the application changes or the hovered content disappears underneath.
 The application keeps running behind the snapshot; this does not pause its scripts or requests.
 
-The **Frozen view** banner stays visible until you choose **Resume**, press **Alt+F** again, or
+The **Frozen view** banner stays visible until you choose **Resume**, press **Ctrl+Shift+F** again, or
 press **Escape** on the surrounding page. Resuming restores your previous selection mode and
 keeps any open note draft. Switching to Browse or resizing the viewport also resumes the page.
-Element, Block, and Multiple selection are unavailable while frozen. The shortcut leaves text
-fields alone, and the same **Freeze** action is available in the targeting tools.
+Element, Block, and Multiple selection are unavailable while frozen. On macOS, use
+**Control+Shift+F (⌃⇧F)**, not Option. The shortcut works with a text field or the note editor
+focused without inserting text. The same **Freeze** action is available in the targeting tools.
 
 The on-page panel embeds the main app's actual editor and note components, not a reduced copy:
 the configured Enter/Shift+Enter behavior, Markdown, image paste/drop/picker, image previews,
