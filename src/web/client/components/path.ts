@@ -4,10 +4,10 @@ import { esc } from "../app/state.ts";
 
 const ELLIPSIS = "…";
 
-/** The shortest useful form of a path: its beginning and its complete file name. */
-function shortestPath(path: string) {
-  const slash = path.lastIndexOf("/");
-  if (slash < 3) return path;
+/** The shortest useful form of a path: its beginning and its complete final segment. */
+function shortestPath(path: string, separator = "/") {
+  const slash = path.lastIndexOf(separator);
+  if (slash < (separator === "/" ? 3 : 1)) return path;
   return Array.from(path)[0] + ELLIPSIS + path.slice(slash);
 }
 
@@ -15,12 +15,17 @@ function shortestPath(path: string) {
  * Removes one contiguous run from the middle of a path until it fits. The file name is outside the
  * removable run, so it never acquires an ellipsis of its own; the kept directory characters are
  * balanced between the beginning and end, like a native middle-truncated label.
+ * Component paths use their arrow separator to keep the final component intact instead.
  */
-export function middleElidePath(path: string, fits: (text: string) => boolean) {
+export function middleElidePath(
+  path: string,
+  fits: (text: string) => boolean,
+  separator = "/",
+) {
   const text = String(path),
     chars = Array.from(text),
-    slash = text.lastIndexOf("/");
-  if (fits(text) || slash < 3) return text;
+    slash = text.lastIndexOf(separator);
+  if (fits(text) || slash < (separator === "/" ? 3 : 1)) return text;
 
   const name = Array.from(text.slice(slash));
   const directory = chars.slice(0, chars.length - name.length);
@@ -38,7 +43,7 @@ export function middleElidePath(path: string, fits: (text: string) => boolean) {
 
   let low = 1,
     high = directory.length - 1,
-    answer = shortestPath(text);
+    answer = shortestPath(text, separator);
   while (low <= high) {
     const removed = Math.floor((low + high) / 2),
       next = candidate(removed);
@@ -50,7 +55,11 @@ export function middleElidePath(path: string, fits: (text: string) => boolean) {
   return answer;
 }
 
-type PathOptions = { className?: "from" | "to" | "was"; title?: string };
+type PathOptions = {
+  className?: "from" | "to" | "was";
+  title?: string;
+  separator?: string;
+};
 
 /** One measured label; `watchPaths` decides how much of its middle can be shown once it is mounted. */
 export function pathHtml(path: unknown, options: PathOptions = {}) {
@@ -61,6 +70,9 @@ export function pathHtml(path: unknown, options: PathOptions = {}) {
     cls +
     '"' +
     (options.title ? ' title="' + esc(options.title) + '"' : "") +
+    (options.separator
+      ? ' data-path-separator="' + esc(options.separator) + '"'
+      : "") +
     ' data-path="' +
     esc(text) +
     '"><span class="ptx">' +
@@ -109,8 +121,9 @@ function reserveFileNames(container: HTMLElement) {
 function fitPath(container: HTMLElement) {
   const label = container.querySelector<HTMLElement>(".ptx");
   if (!label) return;
-  const path = container.dataset.path || "";
-  const required = Math.ceil(measure(label, shortestPath(path)));
+  const path = container.dataset.path || "",
+    separator = container.dataset.pathSeparator || "/";
+  const required = Math.ceil(measure(label, shortestPath(path, separator)));
   const minWidth = required + "px";
   if (container.style.minWidth !== minWidth)
     container.style.minWidth = minWidth;
@@ -119,6 +132,7 @@ function fitPath(container: HTMLElement) {
   label.textContent = middleElidePath(
     path,
     (text) => measure(label, text) <= available,
+    separator,
   );
 }
 

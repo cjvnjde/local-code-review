@@ -1,4 +1,5 @@
 import { webCaptureHtml } from "../web-review/web-capture.ts";
+import { pathHtml } from "../components/path.ts";
 import {
   webReview,
   webSelectionKey,
@@ -767,6 +768,9 @@ function statusChip(st) {
  */
 function headHtml(f, label, snippet, extra, scope?, image?, web?) {
   const global = scope === "global";
+  const componentPath = web
+    ? web.before.components.map((c) => c.name).join(" → ") || web.before.mode
+    : "";
   return (
     '<div class="nhead"><span class="loc">' +
     (web
@@ -778,11 +782,8 @@ function headHtml(f, label, snippet, extra, scope?, image?, web?) {
     (image
       ? '<span class="all">' + esc(regionLabel(image)) + "</span>"
       : web
-        ? '<span class="all">' +
-          esc(
-            web.before.components.map((c) => c.name).join(" → ") ||
-              web.before.mode,
-          ) +
+        ? '<span class="all web-component-path">' +
+          pathHtml(componentPath, { title: componentPath, separator: " → " }) +
           "</span>"
         : global
           ? '<span class="all">whole review</span>'

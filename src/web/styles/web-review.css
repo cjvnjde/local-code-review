@@ -64,6 +64,11 @@ body.ui-note #historyPanel {
   overflow: auto;
   overflow-wrap: anywhere;
 }
+.nhead .web-component-path {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
 .web-comparison {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
