@@ -5,6 +5,7 @@ import {
 } from "../../../shared/web-review.ts";
 import { attachSrc } from "../components/attach.ts";
 import { esc } from "../app/state.ts";
+import { pathHtml } from "../components/path.ts";
 export function webCaptureHtml(value: unknown, removable = false) {
   const web = webReview(value);
   if (!web) return "";
@@ -101,12 +102,12 @@ export function webCaptureHtml(value: unknown, removable = false) {
     picture(c.page, label + " page screenshot") +
     "</details>" +
     (c.selections
-      ? '<div class="web-targets"><b>' +
+      ? '<details class="web-targets"><summary>' +
         c.selections.length +
         (c.mode === "area"
           ? " elements in area (up to 100)"
           : " selected targets") +
-        "</b><ol>" +
+        "</summary><ol>" +
         c.selections
           .map(
             (target) =>
@@ -128,7 +129,7 @@ export function webCaptureHtml(value: unknown, removable = false) {
               "</pre></li>",
           )
           .join("") +
-        "</ol></div>"
+        "</ol></details>"
       : "") +
     "<details><summary>Selection metadata</summary><pre>" +
     esc(JSON.stringify({ ...c, page: undefined, area: undefined }, null, 2)) +
@@ -136,9 +137,8 @@ export function webCaptureHtml(value: unknown, removable = false) {
   return (
     '<div class="web-capture"><div class="web-location">' +
     esc(web.before.title || "UI note") +
-    "<br><span>" +
-    esc(web.before.url) +
-    "</span></div>" +
+    pathHtml(web.before.url, { title: web.before.url }) +
+    "</div>" +
     '<div class="web-comparison">' +
     capture(web.before, "Before", 0, "selection") +
     (web.additional ?? [])

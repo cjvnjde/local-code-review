@@ -55,9 +55,14 @@ body.ui-note #historyPanel {
   margin-bottom: 12px;
   overflow-wrap: anywhere;
 }
-.web-location span {
+.web-location .pth {
   color: var(--ink-faint);
   font-size: var(--fs-xs);
+}
+.web-targets ol {
+  max-height: calc(var(--row) * 8);
+  overflow: auto;
+  overflow-wrap: anywhere;
 }
 .web-comparison {
   display: grid;
