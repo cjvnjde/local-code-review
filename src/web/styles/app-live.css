@@ -8,7 +8,7 @@
 }
 .live.on {
   background: var(--green);
-  box-shadow: 0 0 0 3px rgba(166, 227, 161, 0.16);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 16%, transparent);
 }
 .pending {
   flex: none;
@@ -19,7 +19,7 @@
   font-size: var(--fs-xs);
 }
 .pending:hover {
-  color: var(--crust);
+  color: var(--on-accent);
   background: var(--peach);
   border-color: var(--peach);
 }
@@ -27,7 +27,7 @@
   flex: none;
   background: var(--mark);
   border-color: var(--mark);
-  color: var(--crust);
+  color: var(--on-accent);
   font-weight: 700;
   padding: var(--space-1) var(--space-2);
   min-height: var(--tap-lg);
@@ -36,12 +36,12 @@
 .unread-pill:hover {
   background: var(--peach);
   border-color: var(--peach);
-  color: var(--crust);
+  color: var(--on-accent);
 }
 .toast.reply {
   box-shadow:
     inset 3px 0 0 var(--sapphire),
-    0 10px 26px rgba(0, 0, 0, 0.45);
+    0 10px 26px var(--shadow);
 }
 .toast.reply .ic {
   color: var(--sapphire);

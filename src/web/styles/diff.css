@@ -170,7 +170,7 @@
   color: var(--ink);
   font: var(--fs-xs)/1.5 var(--sans);
   overflow-wrap: anywhere;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 2px 8px var(--shadow);
 }
 .tooltip[hidden] {
   display: none;

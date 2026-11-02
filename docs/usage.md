@@ -90,7 +90,7 @@ See [existing browser setup](web-ui.md#attach-to-your-existing-browser) and [pro
 
 ### Web-UI defaults and browser storage
 
-The `ui` object can configure all current page preferences:
+The `ui` object configures the server-shared page preferences:
 
 | Key            | Built-in value | Meaning                                                         |
 | -------------- | -------------- | --------------------------------------------------------------- |
@@ -130,6 +130,27 @@ embedded editors without writing the settings file.
 Notes, replies, viewed marks, bookmarks, and other review content are not config
 defaults and retain their separate storage behavior. Configuring `single: true`
 opts into the existing save-time pruning of generated review files.
+
+## Appearance
+
+The two selectors beside **Settings** change colors immediately:
+
+- **Color theme:** Default (neutral slate), Catppuccin (Latte in light mode,
+  Mocha in dark mode), or Gruvbox.
+- **Color mode:** Light, Dark, or Auto. Auto follows your operating system's
+  appearance, including changes made while the review is open.
+
+Theme and mode are independent. A new browser starts with Default and Auto;
+both choices survive reloads in browser storage for the review's origin
+(host and port). They are separate from the server's `ui` configuration and
+are never written into review Markdown.
+
+Switching colors leaves open drafts, caret positions, and the reading position
+intact. Themes do not change fonts, spacing, sizing, captured images, or drawing
+ink. They use CSS `light-dark()` and `color-mix()`, so use a current browser.
+
+See [adding a color theme](development.md#color-themes) to extend the selector
+with a CSS palette and a registry entry.
 
 ## Write and save notes
 

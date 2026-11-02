@@ -53,7 +53,7 @@
   padding: 2px 7px;
   border-radius: 9px;
   background: var(--sapphire);
-  color: var(--crust);
+  color: var(--on-accent);
   flex: none;
 }
 .msg .newtag {
@@ -62,7 +62,7 @@
   padding: 2px 7px;
   border-radius: 9px;
   background: var(--mark);
-  color: var(--crust);
+  color: var(--on-accent);
   flex: none;
 }
 .msg .when {
@@ -123,7 +123,7 @@
   padding: 2px 7px;
   border-radius: 9px;
   background: var(--mark);
-  color: var(--crust);
+  color: var(--on-accent);
   font-weight: 700;
 }
 .nhead .unread[hidden] {

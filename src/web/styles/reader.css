@@ -29,7 +29,7 @@
 }
 .rdrh .ct {
   font-size: var(--fs-xs);
-  color: var(--crust);
+  color: var(--on-accent);
   background: var(--mark);
   border-radius: 9px;
   padding: 1px 6px;
@@ -59,20 +59,20 @@
 .chip.on {
   background: var(--mark);
   border-color: var(--mark);
-  color: var(--crust);
+  color: var(--on-accent);
   font-weight: 700;
 }
 .chip.on:hover {
   background: var(--peach);
   border-color: var(--peach);
-  color: var(--crust);
+  color: var(--on-accent);
 }
 .chip .n {
   font-weight: 700;
   color: var(--ink-faint);
 }
 .chip.on .n {
-  color: var(--crust);
+  color: var(--on-accent);
 }
 .rdrb {
   flex: 1;

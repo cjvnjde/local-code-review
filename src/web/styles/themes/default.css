@@ -1,0 +1,27 @@
+:root {
+  --base: light-dark(#f8fafc, #0f172a);
+  --mantle: light-dark(#f1f5f9, #0b1220);
+  --crust: light-dark(#e2e8f0, #070d19);
+  --s0: light-dark(#dbe3ed, #1e293b);
+  --s1: light-dark(#cbd5e1, #334155);
+  --s2: light-dark(#94a3b8, #475569);
+  --ov0: light-dark(#64748b, #94a3b8);
+  --ov1: light-dark(#526277, #a3b2c7);
+  --ov2: light-dark(#475569, #b8c5d6);
+  --text: light-dark(#172033, #e2e8f0);
+  --sub1: light-dark(#334155, #cbd5e1);
+  --sub0: light-dark(#475569, #a8b8cd);
+  --green: light-dark(#15803d, #86efac);
+  --red: light-dark(#b91c1c, #fca5a5);
+  --yellow: light-dark(#a16207, #fde047);
+  --blue: light-dark(#1d4ed8, #93c5fd);
+  --mauve: light-dark(#7e22ce, #d8b4fe);
+  --peach: light-dark(#c2410c, #fdba74);
+  --teal: light-dark(#0f766e, #5eead4);
+  --sky: light-dark(#0369a1, #7dd3fc);
+  --sapphire: light-dark(#0e7490, #67e8f9);
+  --lav: light-dark(#4338ca, #a5b4fc);
+  --pink: light-dark(#be185d, #f9a8d4);
+  --on-accent: light-dark(#ffffff, #0f172a);
+  --shadow: light-dark(rgb(15 23 42 / 18%), rgb(0 5 15 / 55%));
+}

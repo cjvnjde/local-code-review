@@ -39,7 +39,7 @@ td.c .ghm .n {
   background: var(--panel2);
   border: 1px solid var(--edge-hi);
   border-radius: 8px;
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 14px 34px var(--shadow);
   font-family: var(--sans);
   font-size: var(--fs-ui);
 }
@@ -87,19 +87,19 @@ td.c .ghm .n {
   color: var(--ink-dim);
 }
 #ghpop .ghsrc .stat.applied {
-  background: rgba(166, 227, 161, 0.18);
+  background: color-mix(in srgb, var(--green) 18%, transparent);
   color: var(--green);
 }
 #ghpop .ghsrc .stat.answered {
-  background: rgba(148, 226, 213, 0.18);
+  background: color-mix(in srgb, var(--teal) 18%, transparent);
   color: var(--teal);
 }
 #ghpop .ghsrc .stat.skipped {
-  background: rgba(250, 179, 135, 0.18);
+  background: color-mix(in srgb, var(--peach) 18%, transparent);
   color: var(--peach);
 }
 #ghpop .ghsrc .stat.needs-input {
-  background: rgba(116, 199, 236, 0.18);
+  background: color-mix(in srgb, var(--sapphire) 18%, transparent);
   color: var(--sapphire);
 }
 #ghpop .ghbody {
@@ -142,7 +142,7 @@ td.c .ghm .n {
   background: var(--panel2);
   border: 1px solid var(--edge-hi);
   border-radius: 8px;
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 14px 34px var(--shadow);
   font-family: var(--sans);
   font-size: var(--fs-ui);
 }

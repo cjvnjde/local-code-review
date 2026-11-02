@@ -1,28 +1,5 @@
-/* catppuccin mocha */
 :root {
-  --base: #1e1e2e;
-  --mantle: #181825;
-  --crust: #11111b;
-  --s0: #313244;
-  --s1: #45475a;
-  --s2: #585b70;
-  --ov0: #6c7086;
-  --ov1: #7f849c;
-  --ov2: #9399b2;
-  --text: #cdd6f4;
-  --sub1: #bac2de;
-  --sub0: #a6adc8;
-  --green: #a6e3a1;
-  --red: #f38ba8;
-  --yellow: #f9e2af;
-  --blue: #89b4fa;
-  --mauve: #cba6f7;
-  --peach: #fab387;
-  --teal: #94e2d5;
-  --sky: #89dceb;
-  --sapphire: #74c7ec;
-  --lav: #b4befe;
-  --pink: #f5c2e7;
+  color-scheme: light dark;
 
   --bg: var(--base);
   --panel: var(--base);
@@ -30,21 +7,21 @@
   --edge: var(--s0);
   --edge-hi: var(--s1);
   --ink: var(--text);
-  --ink-dim: var(--sub0);
-  --ink-faint: var(--ov0);
+  --ink-dim: var(--sub1);
+  --ink-faint: var(--sub0);
   --add: var(--green);
   --del: var(--red);
   --mark: var(--yellow);
   --accent: var(--blue);
-  --add-bg: rgba(166, 227, 161, 0.08);
-  --add-gut: rgba(166, 227, 161, 0.16);
-  --add-w: rgba(166, 227, 161, 0.28);
-  --del-bg: rgba(243, 139, 168, 0.08);
-  --del-gut: rgba(243, 139, 168, 0.16);
-  --del-w: rgba(243, 139, 168, 0.28);
-  --sel: rgba(137, 180, 250, 0.14);
-  --csel: rgba(137, 180, 250, 0.34);
-  --cnote: rgba(249, 226, 175, 0.24);
+  --add-bg: color-mix(in srgb, var(--add) 8%, transparent);
+  --add-gut: color-mix(in srgb, var(--add) 16%, transparent);
+  --add-w: color-mix(in srgb, var(--add) 28%, transparent);
+  --del-bg: color-mix(in srgb, var(--del) 8%, transparent);
+  --del-gut: color-mix(in srgb, var(--del) 16%, transparent);
+  --del-w: color-mix(in srgb, var(--del) 28%, transparent);
+  --sel: color-mix(in srgb, var(--accent) 14%, transparent);
+  --csel: color-mix(in srgb, var(--accent) 34%, transparent);
+  --cnote: color-mix(in srgb, var(--mark) 24%, transparent);
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
 

@@ -25,12 +25,12 @@ button:hover {
 button.primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: var(--crust);
+  color: var(--on-accent);
   font-weight: 600;
 }
 button.primary:hover {
   background: var(--lav);
-  color: var(--crust);
+  color: var(--on-accent);
 }
 button:disabled {
   cursor: not-allowed;

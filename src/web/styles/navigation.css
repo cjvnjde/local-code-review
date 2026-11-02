@@ -126,7 +126,7 @@ body.notree nav {
 }
 .tw .ct {
   font-size: var(--fs-xs);
-  color: var(--crust);
+  color: var(--on-accent);
   background: var(--mark);
   border-radius: 9px;
   padding: 1px 6px;
@@ -227,7 +227,7 @@ body.notree nav {
 .nthead .ct,
 .bmhead .ct {
   font-size: var(--fs-xs);
-  color: var(--crust);
+  color: var(--on-accent);
   border-radius: 9px;
   padding: 1px 6px;
   font-weight: 700;
@@ -348,7 +348,7 @@ body.notree nav {
   padding: 1px 6px;
   border-radius: 9px;
   background: var(--mark);
-  color: var(--crust);
+  color: var(--on-accent);
 }
 /* the verdict an agent reported, in the colours the note's own badge uses */
 .nw .dot {

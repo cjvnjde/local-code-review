@@ -62,6 +62,66 @@ Check the full review at wide and narrow pane widths, plus the popup at its mini
 formatting expanded and a long reply. A visible control must not become blank when its text
 label is hidden.
 
+## Color themes
+
+Themes are color tokens, not alternate component styles. Each palette lives in
+`src/web/styles/themes/` and defines a single `:root` block; `light-dark(light, dark)`
+provides the two variants of every color. The selected CSS `color-scheme` chooses
+the variant, and Auto follows the system without JavaScript media-query listeners.
+Typography, spacing, sizing, and derived diff/selection tints stay in `tokens.css`.
+
+To add a theme:
+
+1. Copy `src/web/styles/themes/default.css` to a new palette file and change only
+   its color values. Keep the token names; do not add component selectors, fonts,
+   dimensions, or layout rules.
+2. Import that file as text and add its entry in
+   `src/web/client/app/theme-registry.ts`:
+
+   ```ts
+   import oceanColors from "../../styles/themes/ocean.css" with { type: "text" };
+
+   export const THEMES = [
+     { id: "default", label: "Default", colors: defaultColors },
+     { id: "catppuccin", label: "Catppuccin", colors: catppuccinColors },
+     { id: "gruvbox", label: "Gruvbox", colors: gruvboxColors },
+     { id: "ocean", label: "Ocean", colors: oceanColors },
+   ];
+   ```
+
+3. Build normally. The selector is generated from this registry, and Bun embeds
+   the palette in the browser bundle inside the standalone executable. No change
+   to UI components, switching logic, server endpoints, or the stylesheet import list is needed.
+
+Palette tokens:
+
+| Role                                       | Tokens                                                                                                             |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| Page and recessed surfaces                 | `--base`, `--mantle`, `--crust`                                                                                    |
+| Raised surfaces and borders                | `--s0`, `--s1`, `--s2`                                                                                             |
+| Decorative overlays                        | `--ov0`, `--ov1`, `--ov2`                                                                                          |
+| Main and muted text                        | `--text`, `--sub1`, `--sub0`                                                                                       |
+| Diff, status, selection, and syntax colors | `--green`, `--red`, `--yellow`, `--blue`, `--mauve`, `--peach`, `--teal`, `--sky`, `--sapphire`, `--lav`, `--pink` |
+| Text on filled accent controls             | `--on-accent`                                                                                                      |
+| Translucent chrome shadows                 | `--shadow`                                                                                                         |
+
+Use colors with readable contrast in both variants. Semantic tokens such as
+`--bg`, `--ink`, `--add`, `--del`, and `--accent` map these colors centrally;
+diff backgrounds, word highlights, status badges, and selection tints derive
+from them instead of retaining another theme's RGB values. The default CSS is
+also the initial page palette; replacing the active palette never carries colors
+over from a previously selected theme.
+
+`src/web/client/app/appearance.ts` owns the two header controls and the browser-local
+`gitreview:appearance` preference. It replaces only a palette stylesheet and the
+root color scheme, without rerendering the diff or editors. Appearance uses the
+browser's origin/storage partition, not the server-shared review settings.
+
+Verify new palettes in Light, Dark, and Auto; change the emulated system scheme
+while Auto is selected, reload to check persistence, and switch with an unsaved
+editor open. Check diff additions/removals, syntax, notes, dialogs, native controls,
+and narrow headers. Fonts and dimensions must remain unchanged across themes.
+
 ## Check and build
 
 ```sh

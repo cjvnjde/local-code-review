@@ -1,5 +1,6 @@
 @import "./conversation.css";
 @import "./tokens.css";
+@import "./themes/default.css";
 @import "./base.css";
 @import "./app-header.css";
 @import "./app-settings.css";

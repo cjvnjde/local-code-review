@@ -1,3 +1,4 @@
+import { startAppearance } from "./appearance.ts";
 import { startNavigation } from "../navigation/ui-navigation.ts";
 import { startWebReviewUI } from "../web-review/web-review-ui.ts";
 import { prepareWebNote, startWebNote } from "../web-review/web-note.ts";
@@ -26,6 +27,7 @@ import { watchActions } from "../components/actions.ts";
 import { watchNoteHeaders } from "../notes/sticky-notes.ts";
 import { startSearch } from "../search/search.ts";
 
+startAppearance();
 prepareWebNote();
 const regions = document.querySelectorAll<HTMLElement>(
   "body > header, body > main, body > footer",

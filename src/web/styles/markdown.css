@@ -86,7 +86,7 @@
 .md a {
   color: var(--accent);
   text-decoration: none;
-  border-bottom: 1px solid rgba(137, 180, 250, 0.4);
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
 }
 .md a:hover {
   border-bottom-color: var(--accent);

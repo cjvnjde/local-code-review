@@ -138,7 +138,7 @@
 [data-annotation-editor] .annotation-apply[data-dirty],
 [data-annotation-editor] .annotation-apply[data-dirty]:hover:not(:disabled) {
   background: var(--accent);
-  color: var(--crust);
+  color: var(--on-accent);
 }
 [data-annotation-editor] .annotation-zoom-tools {
   position: fixed;
@@ -149,7 +149,7 @@
   border: 0;
   border-radius: var(--radius-md);
   background: var(--panel2);
-  box-shadow: 0 2px 8px #0005;
+  box-shadow: 0 2px 8px var(--shadow);
 }
 [data-annotation-editor] .annotation-zoom {
   width: calc(var(--space-3) * 4);
@@ -166,7 +166,7 @@
   background: var(--annotation-color);
   box-shadow:
     0 0 0 1px var(--edge-hi),
-    inset 0 0 0 1px #0003;
+    inset 0 0 0 1px var(--shadow);
 }
 .annotation-colors {
   position: fixed;
@@ -181,7 +181,7 @@
   border-radius: var(--radius-md);
   background: var(--panel2);
   color: var(--ink);
-  box-shadow: 0 2px 12px #0006;
+  box-shadow: 0 2px 12px var(--shadow);
 }
 .annotation-palette {
   display: flex;
@@ -217,7 +217,7 @@
   border: 1px solid var(--edge);
   border-radius: var(--radius-md);
   background: var(--panel2);
-  box-shadow: 0 2px 8px #0005;
+  box-shadow: 0 2px 8px var(--shadow);
 }
 .annotation-text-label textarea {
   display: block;
@@ -265,7 +265,7 @@
 }
 .annotation-source-outline {
   position: absolute;
-  border: 1px dashed #64748b;
+  border: 1px dashed var(--ov0);
   pointer-events: none;
 }
 .annotation-feedback {

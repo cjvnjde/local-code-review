@@ -94,7 +94,7 @@
   height: auto;
   object-fit: contain;
   display: block;
-  box-shadow: 0 2px 14px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 2px 14px var(--shadow);
 }
 .imgb {
   position: relative;
@@ -117,7 +117,7 @@
 .imgregion {
   position: absolute;
   border: 2px solid var(--mark);
-  background: rgba(249, 226, 175, 0.12);
+  background: color-mix(in srgb, var(--mark) 12%, transparent);
   pointer-events: none;
 }
 .imgregion button {
@@ -131,7 +131,7 @@
   font: var(--fs-xs) var(--mono);
   line-height: 1.5;
   background: var(--mark);
-  color: var(--crust);
+  color: var(--on-accent);
   border: 0;
   border-radius: 3px;
   white-space: nowrap;
@@ -149,7 +149,7 @@
 }
 .imgdraft .nbox {
   margin: 0;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 4px 20px var(--shadow);
 }
 .imgcomment {
   font: var(--fs-xs) var(--sans);
@@ -198,7 +198,6 @@
   display: block;
   width: 100%;
   min-height: var(--tap);
-  color-scheme: dark;
 }
 .audf.gone .audb audio {
   display: none;

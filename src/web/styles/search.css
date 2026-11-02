@@ -27,7 +27,7 @@
   background: var(--panel2);
   border: 1px solid var(--edge-hi);
   border-radius: var(--radius-md);
-  box-shadow: 0 calc(var(--tap) / 2) var(--tap) #0006;
+  box-shadow: 0 calc(var(--tap) / 2) var(--tap) var(--shadow);
   overflow: hidden;
 }
 #searchPopup[hidden],
@@ -163,7 +163,7 @@
 }
 .search-result mark {
   background: var(--mark);
-  color: var(--crust);
+  color: var(--on-accent);
   border-radius: 2px;
 }
 .search-empty {

@@ -178,7 +178,7 @@ body.ui-note #historyPanel {
   border-radius: var(--radius-sm);
   background: var(--panel);
   color: var(--ink);
-  box-shadow: 0 2px 8px #0005;
+  box-shadow: 0 2px 8px var(--shadow);
   font: 600 var(--fs-sm)/1.5 var(--sans);
   opacity: 1;
   transition:
@@ -188,7 +188,7 @@ body.ui-note #historyPanel {
 }
 .web-picture:is(:hover, :focus-visible) .web-picture-action {
   background: var(--accent);
-  color: var(--crust);
+  color: var(--on-accent);
 }
 .web-picture:focus-visible {
   outline: 2px solid var(--accent);

@@ -35,6 +35,31 @@ header > button {
   color: var(--ink);
   background: var(--s0);
 }
+.appearance {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex: none;
+}
+.appearance select {
+  min-width: var(--tap-lg);
+  max-width: calc(var(--tap) * 5);
+  min-height: var(--tap-lg);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--ink);
+  font: var(--fs-sm) var(--sans);
+  cursor: pointer;
+}
+.appearance select:hover {
+  border-color: var(--edge-hi);
+}
+.appearance select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
 /* Reading-time controls in the permanent page header match those in each sticky file header. */
 .quick {
   display: flex;
@@ -81,7 +106,7 @@ header > .cf:hover {
   max-height: calc(100dvh - 100% - var(--space-3) * 2);
   overflow-y: auto;
   border-radius: var(--radius-md);
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 14px 34px var(--shadow);
 }
 #globalDraft[hidden] {
   display: none;

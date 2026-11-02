@@ -9,7 +9,7 @@
   border: 1px solid var(--edge-hi);
   border-radius: var(--radius-md);
   padding: var(--space-4);
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 14px 34px var(--shadow);
   font-family: var(--sans);
   font-size: var(--fs-ui);
   display: flex;
