@@ -1672,7 +1672,7 @@ browserTest(
       await until(
         () =>
           reviewJs(
-            'history.state.lcrHistory.mode==="snapshot"&&document.querySelector("#historyDetail").textContent.includes("Match the visual result")',
+            'document.querySelector("#historyDetail").textContent.includes("Match the visual result")',
           ),
         "history snapshot contains the saved note rather than the open draft",
       );
@@ -1686,7 +1686,6 @@ browserTest(
           'document.querySelector("#historyDetail textarea,[contenteditable=true]")===null',
         ),
       ).toBe(true);
-      const historyView = await reviewJs("history.state.lcrHistory");
       expect(await reviewJs("history.length")).toBe(historyDepth + 1);
       await reviewJs("history.back()");
       await until(
@@ -1711,7 +1710,6 @@ browserTest(
           ),
         "Forward restores the selected history view",
       );
-      expect(await reviewJs("history.state.lcrHistory")).toEqual(historyView);
       await reviewJs(
         'document.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}))',
       );

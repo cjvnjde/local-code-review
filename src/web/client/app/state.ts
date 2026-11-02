@@ -53,6 +53,12 @@ export const SVG = {
   minus:
     '<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
   hand: '<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 8V4.5a1 1 0 0 1 2 0V7 2.5a1 1 0 0 1 2 0V7 3.5a1 1 0 0 1 2 0V8 5a1 1 0 0 1 2 0v5c0 2-1.5 4-4 4h-1c-1.5 0-2.3-.8-3.2-2L2.5 9.5a1 1 0 0 1 1.5-1.3l.5.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  circle:
+    '<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.8" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>',
+  triangle:
+    '<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="m8 2 6 11H2z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>',
+  line: '<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="m3 13 10-10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
+  path: '<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 12C3 2 13 14 13 4M3 12 3 3M13 4v9" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M1.5 10.5h3v3h-3zm10-8h3v3h-3z" fill="currentColor"/></svg>',
 };
 
 export const state: any = {

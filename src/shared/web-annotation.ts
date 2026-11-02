@@ -1,4 +1,9 @@
 export type AnnotationPoint = { x: number; y: number };
+export type AnnotationNode = AnnotationPoint & {
+  kind: "corner" | "smooth";
+  in?: AnnotationPoint;
+  out?: AnnotationPoint;
+};
 export type AnnotationMark =
   | { tool: "pen"; color: string; width: number; points: AnnotationPoint[] }
   | {
@@ -7,6 +12,34 @@ export type AnnotationMark =
       width: number;
       from: AnnotationPoint;
       to: AnnotationPoint;
+    }
+  | {
+      tool: "line";
+      color: string;
+      width: number;
+      from: AnnotationPoint;
+      to: AnnotationPoint;
+    }
+  | {
+      tool: "ellipse";
+      color: string;
+      width: number;
+      from: AnnotationPoint;
+      to: AnnotationPoint;
+    }
+  | {
+      tool: "triangle";
+      color: string;
+      width: number;
+      from: AnnotationPoint;
+      to: AnnotationPoint;
+    }
+  | {
+      tool: "path";
+      color: string;
+      width: number;
+      nodes: AnnotationNode[];
+      closed: boolean;
     }
   | {
       tool: "rectangle";
@@ -31,7 +64,7 @@ export interface WebAnnotation {
   marks: AnnotationMark[];
 }
 
-/** Limits apply to the padded output canvas, including all editable pen points. */
+/** Limits apply to the padded canvas; pen points, path nodes and controls share one budget. */
 export const ANNOTATION_LIMITS = {
   maxDimension: 16384,
   maxPixels: 16777216,
@@ -119,12 +152,51 @@ export function webAnnotation(value: unknown): WebAnnotation | null {
         clean.push(p);
       }
       marks.push({ tool: "pen", color, width: mark.width, points: clean });
-    } else if (mark.tool === "arrow" || mark.tool === "rectangle") {
+    } else if (mark.tool === "path") {
+      if (
+        typeof mark.closed !== "boolean" ||
+        !Array.isArray(mark.nodes) ||
+        mark.nodes.length < (mark.closed ? 3 : 2) ||
+        (points += mark.nodes.length) > limits.maxPoints
+      )
+        return null;
+      const nodes: AnnotationNode[] = [];
+      for (const input of mark.nodes) {
+        const at = point(input);
+        if (
+          !at ||
+          !record(input) ||
+          (input.kind !== "corner" && input.kind !== "smooth")
+        )
+          return null;
+        const node: AnnotationNode = { ...at, kind: input.kind };
+        for (const side of ["in", "out"] as const) {
+          if (input[side] === undefined) continue;
+          const control = point(input[side]);
+          if (!control || ++points > limits.maxPoints) return null;
+          node[side] = control;
+        }
+        nodes.push(node);
+      }
+      marks.push({
+        tool: "path",
+        color,
+        width: mark.width,
+        nodes,
+        closed: mark.closed,
+      });
+    } else if (
+      mark.tool === "arrow" ||
+      mark.tool === "line" ||
+      mark.tool === "ellipse" ||
+      mark.tool === "triangle" ||
+      mark.tool === "rectangle"
+    ) {
       const from = point(mark.from),
         to = point(mark.to);
       if (!from || !to) return null;
-      if (mark.tool === "arrow")
-        marks.push({ tool: "arrow", color, width: mark.width, from, to });
+      if (mark.tool !== "rectangle")
+        marks.push({ tool: mark.tool, color, width: mark.width, from, to });
       else {
         if (
           !bounded(

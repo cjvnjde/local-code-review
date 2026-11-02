@@ -6,12 +6,24 @@ import {
   type AnnotationPoint,
   type WebAnnotation,
 } from "../../../shared/web-annotation.ts";
+import {
+  drawMark,
+  editHandle,
+  hitMark,
+  insertPathNode,
+  markBounds,
+  markHandles,
+  moveMark,
+  nearestPathSegment,
+  smoothNode,
+  type AnnotationHandle,
+} from "./annotation-geometry.ts";
 import { attachSrc, upload } from "../components/attach.ts";
 import { SVG } from "../app/state.ts";
 import { registerView, setView } from "../navigation/ui-navigation.ts";
 
 type Tool = AnnotationMark["tool"] | "select" | "pan";
-type Bounds = { x: number; y: number; width: number; height: number };
+type PathMark = Extract<AnnotationMark, { tool: "path" }>;
 type Gesture = {
   id: number;
   start: AnnotationPoint;
@@ -19,6 +31,9 @@ type Gesture = {
   index: number;
   move: boolean;
   points: number;
+  handle?: AnnotationHandle;
+  path?: boolean;
+  previousPath?: PathMark | null;
 };
 const PALETTE = [
   "#ef4444",
@@ -104,6 +119,7 @@ function editAnnotation(
   for (let i = Math.max(0, marks.length - 100); i < marks.length; i++)
     undo.push(marks.slice(0, i));
   let selected = -1,
+    selectedNode = -1,
     tool: Tool = "pen",
     color = PALETTE[0]!,
     stroke = 3,
@@ -126,6 +142,7 @@ function editAnnotation(
     gesture: Gesture | null = null,
     paintFrame = 0;
   let pendingText: AnnotationPoint | null = null;
+  let pathDraft: PathMark | null = null;
   let space = false,
     pan: {
       id: number;
@@ -156,11 +173,15 @@ function editAnnotation(
   dialog.setAttribute("aria-describedby", "annotation-help");
   dialog.innerHTML = `<div class="annotation-tools" role="toolbar" aria-label="Drawing tools">
         <div class="annotation-group" role="group" aria-label="Tools">
-          <button type="button" data-tool="select" aria-pressed="false" aria-label="Select and move drawings" data-tooltip="Select / move">${SVG.cursor}</button>
+          <button type="button" data-tool="select" aria-pressed="false" aria-label="Select and edit drawings" data-tooltip="Select / resize / edit points">${SVG.cursor}</button>
           <button type="button" data-tool="pan" aria-pressed="false" aria-label="Pan image" data-tooltip="Hand / pan image">${SVG.hand}</button>
           <button type="button" data-tool="pen" aria-pressed="true" aria-label="Draw with pen" data-tooltip="Pen">${SVG.edit}</button>
           <button type="button" data-tool="arrow" aria-pressed="false" aria-label="Draw an arrow" data-tooltip="Arrow">${SVG.open}</button>
           <button type="button" data-tool="rectangle" aria-pressed="false" aria-label="Draw a rectangle" data-tooltip="Rectangle">${SVG.box}</button>
+          <button type="button" data-tool="ellipse" aria-pressed="false" aria-label="Draw a circle or ellipse" data-tooltip="Circle / ellipse (Shift for circle)">${SVG.circle}</button>
+          <button type="button" data-tool="triangle" aria-pressed="false" aria-label="Draw a triangle" data-tooltip="Triangle">${SVG.triangle}</button>
+          <button type="button" data-tool="line" aria-pressed="false" aria-label="Draw a line" data-tooltip="Line">${SVG.line}</button>
+          <button type="button" data-tool="path" aria-pressed="false" aria-label="Draw a vector path" data-tooltip="Path: click points; drag for curves">${SVG.path}</button>
           <button type="button" data-tool="text" aria-pressed="false" aria-label="Add text" data-tooltip="Text">${SVG.text}</button>
         </div>
         <button type="button" class="annotation-color" data-command="colors" aria-label="Drawing color" aria-haspopup="dialog" aria-expanded="false" aria-controls="annotation-colors" data-tooltip="Drawing color"></button>
@@ -171,6 +192,13 @@ function editAnnotation(
           <label data-property="size" data-tooltip="Text size" hidden><span aria-hidden="true">${SVG.text}</span><input type="number" data-field="size" min="1" max="${LIMITS.maxTextSize}" step="1" value="20" aria-label="Text size in image pixels"></label>
           <label data-property="mark" hidden><select data-field="mark" aria-label="Select an editable drawing"><option value="-1">No drawing selected</option></select></label>
           <button type="button" data-command="delete" aria-label="Delete selected drawing" data-tooltip="Delete selected drawing" hidden>${SVG.trash}</button>
+        </div>
+        <div class="annotation-group" data-path-tools role="group" aria-label="Path editing" hidden>
+          <button type="button" data-command="finish-path" aria-label="Finish open path" data-tooltip="Finish path (Enter)">${SVG.check}</button>
+          <button type="button" data-command="close-path" aria-label="Close path" data-tooltip="Close / open path">${SVG.box}</button>
+          <button type="button" data-command="smooth-node" aria-label="Smooth selected path point" data-tooltip="Smooth point">${SVG.path}</button>
+          <button type="button" data-command="corner-node" aria-label="Make selected path point a corner" data-tooltip="Corner point">${SVG.triangle}</button>
+          <button type="button" data-command="delete-node" aria-label="Delete selected path point" data-tooltip="Delete point">${SVG.trash}</button>
         </div>
         <div class="annotation-group" role="group" aria-label="History">
           <button type="button" data-command="undo" aria-label="Undo drawing" data-tooltip="Undo (⌘/Ctrl Z)">${SVG.reply}</button>
@@ -193,8 +221,8 @@ function editAnnotation(
         <label>Custom color <input type="color" data-field="color" value="${color}" aria-label="Custom drawing color"></label>
       </div>
       <label class="annotation-text-label" hidden><textarea data-field="text" rows="2" maxlength="${LIMITS.maxText}" aria-label="Text to draw" placeholder="Type text, then click to place it"></textarea></label>
-      <p id="annotation-help" class="annotation-help">White margins are drawable blank space, not page context. Wheel or pinch to zoom; hold Space and drag to pan. Select a drawing to move it or edit its properties.</p>
-      <div class="annotation-viewport"><div class="annotation-surface"><canvas tabindex="0" aria-label="Screenshot drawing canvas. Choose a tool and drag to draw; text is placed with a click."></canvas><div class="annotation-source-outline" aria-hidden="true"></div></div></div>
+      <p id="annotation-help" class="annotation-help">Select a drawing to resize it using handles. Drag line endpoints or path points and curve handles. Double-click a path segment to add a point. Path tool: click points, drag for curves, Enter or double-click to finish; click the first point to close. Shift draws squares and circles. Escape cancels an active gesture or unfinished path. White margins are drawing space, not page context. Wheel to zoom; Space and drag to pan.</p>
+      <div class="annotation-viewport"><div class="annotation-surface"><canvas tabindex="0" aria-label="Screenshot drawing canvas. Select to resize or edit points. Path: click points, drag for curves, Enter to finish."></canvas><div class="annotation-source-outline" aria-hidden="true"></div></div></div>
       <div class="annotation-feedback"><div class="annotation-message" role="status" aria-live="polite">Loading original screenshot…</div>
         <div class="annotation-error" role="alert" hidden></div><button type="button" data-command="retry" hidden>Retry image load</button></div>`;
   const find = <T extends Element>(selector: string) =>
@@ -213,7 +241,7 @@ function editAnnotation(
     find<HTMLButtonElement>('[data-command="' + name + '"]');
   const colorPopup = find<HTMLElement>(".annotation-colors");
   const context = canvas.getContext("2d");
-  const dirty = () => JSON.stringify(marks) !== initial;
+  const dirty = () => !!pathDraft || JSON.stringify(marks) !== initial;
   function emit() {
     const state = {
       open: !closed,
@@ -255,16 +283,16 @@ function editAnnotation(
             !saving
           );
       });
-    button("undo").disabled = busy || !undo.length;
-    button("redo").disabled = busy || !redo.length;
-    button("clear").disabled = busy || !marks.length;
+    button("redo").disabled = busy || !redo.length || !!pathDraft;
+    button("clear").disabled = busy || (!marks.length && !pathDraft);
+    button("undo").disabled = busy || (!undo.length && !pathDraft);
     button("delete").disabled = busy || selected < 0;
     button("apply").disabled = busy || !image;
     button("in").disabled = busy || zoom >= 8;
     button("out").disabled = busy || zoom <= 0.01;
     const applyLabel = saving
       ? "Applying drawing…"
-      : marks.length
+      : marks.length || pathDraft
         ? "Apply drawing"
         : "Apply without drawings";
     button("apply").setAttribute("aria-label", applyLabel);
@@ -303,6 +331,19 @@ function editAnnotation(
     button("colors").hidden = tool === "pan";
     find<HTMLElement>(".annotation-text-label").hidden = activeTool !== "text";
     button("delete").hidden = selected < 0;
+    const path = pathDraft ?? (current?.tool === "path" ? current : null);
+    find<HTMLElement>("[data-path-tools]").hidden = !path;
+    button("finish-path").hidden = !pathDraft;
+    button("finish-path").disabled =
+      busy || !pathDraft || pathDraft.nodes.length < 2;
+    button("close-path").disabled = busy || !path || path.nodes.length < 3;
+    button("close-path").setAttribute("aria-pressed", String(!!path?.closed));
+    for (const command of ["smooth-node", "corner-node", "delete-node"])
+      button(command).disabled = busy || !!pathDraft || selectedNode < 0;
+    message.hidden = !pathDraft;
+    message.textContent = pathDraft
+      ? "Path: click to add points; drag for curves. Enter finishes, first point closes, Escape discards."
+      : "";
     canvas.style.cursor =
       space || tool === "pan"
         ? "grab"
@@ -321,6 +362,7 @@ function editAnnotation(
     markSelect.value = String(selected);
   }
   function select(index: number) {
+    if (index !== selected) selectedNode = -1;
     selected = index >= 0 && index < marks.length ? index : -1;
     const mark = marks[selected];
     if (mark) {
@@ -345,15 +387,27 @@ function editAnnotation(
     redo.length = 0;
     marks = next;
     selected = nextSelected;
+    if (marks[selected]?.tool !== "path") selectedNode = -1;
     pendingText = null;
     const current = marks[selected];
     if (current?.tool === "rectangle") radius = current.radius;
+    if (current?.tool === "text") size = current.size;
     refreshMarks();
     sync();
     paint();
   }
   function history(back: boolean) {
     cancelGesture();
+    if (pathDraft) {
+      if (!back) return;
+      pathDraft =
+        pathDraft.nodes.length > 1
+          ? { ...pathDraft, nodes: pathDraft.nodes.slice(0, -1) }
+          : null;
+      sync();
+      paint();
+      return;
+    }
     pendingText = null;
     const from = back ? undo : redo,
       to = back ? redo : undo;
@@ -369,108 +423,74 @@ function editAnnotation(
     sync();
     paint();
   }
-  function bounds(mark: AnnotationMark): Bounds {
-    if (mark.tool === "text") {
-      const lines = mark.text.split("\n");
-      if (context) context.font = mark.size + "px sans-serif";
-      return {
-        x: mark.at.x,
-        y: mark.at.y,
-        width: Math.max(
-          1,
-          ...lines.map(
-            (line) =>
-              context?.measureText(line).width ?? line.length * mark.size,
-          ),
-        ),
-        height: lines.length * mark.size * 1.25,
-      };
-    }
-    const points = mark.tool === "pen" ? mark.points : [mark.from, mark.to];
-    let x = Infinity,
-      y = Infinity,
-      right = -Infinity,
-      bottom = -Infinity;
-    for (const p of points) {
-      x = Math.min(x, p.x);
-      y = Math.min(y, p.y);
-      right = Math.max(right, p.x);
-      bottom = Math.max(bottom, p.y);
-    }
-    return { x, y, width: right - x, height: bottom - y };
+  const measure = (value: string, fontSize: number) => {
+    if (!context) return value.length * fontSize;
+    context.font = fontSize + "px sans-serif";
+    return context.measureText(value).width;
+  };
+  const bounds = (mark: AnnotationMark) => markBounds(mark, measure);
+  const handles = (mark: AnnotationMark) => markHandles(mark, measure);
+  function handleAt(mark: AnnotationMark, at: AnnotationPoint) {
+    return handles(mark).find(
+      (handle) => Math.hypot(handle.x - at.x, handle.y - at.y) <= 10 / zoom,
+    );
   }
-  function drawMark(ctx: CanvasRenderingContext2D, mark: AnnotationMark) {
-    ctx.save();
-    ctx.strokeStyle = mark.color;
-    ctx.fillStyle = mark.color;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    if (mark.tool === "text") {
-      ctx.font = mark.size + "px sans-serif";
-      ctx.textBaseline = "top";
-      mark.text
-        .split("\n")
-        .forEach((line, i) =>
-          ctx.fillText(line, mark.at.x, mark.at.y + i * mark.size * 1.25),
-        );
-    } else {
-      ctx.lineWidth = mark.width;
-      ctx.beginPath();
-      if (mark.tool === "pen") {
-        const first = mark.points[0]!;
-        if (mark.points.length === 1) {
-          ctx.arc(first.x, first.y, mark.width / 2, 0, Math.PI * 2);
-          ctx.fill();
-        } else {
-          ctx.moveTo(first.x, first.y);
-          for (let i = 1; i < mark.points.length; i++) {
-            const p = mark.points[i]!;
-            ctx.lineTo(p.x, p.y);
-          }
-          ctx.stroke();
-        }
-      } else if (mark.tool === "rectangle") {
-        const x = Math.min(mark.from.x, mark.to.x),
-          y = Math.min(mark.from.y, mark.to.y);
-        const w = Math.abs(mark.to.x - mark.from.x),
-          h = Math.abs(mark.to.y - mark.from.y);
-        ctx.roundRect(x, y, w, h, Math.min(mark.radius, w / 2, h / 2));
-        ctx.stroke();
-      } else {
-        const angle = Math.atan2(
-          mark.to.y - mark.from.y,
-          mark.to.x - mark.from.x,
-        );
-        const length = Math.min(
-          Math.hypot(mark.to.x - mark.from.x, mark.to.y - mark.from.y),
-          Math.max(10 * sourceScale, mark.width * 4),
-        );
-        ctx.moveTo(mark.from.x, mark.from.y);
-        ctx.lineTo(mark.to.x, mark.to.y);
-        ctx.moveTo(
-          mark.to.x - length * Math.cos(angle - Math.PI / 6),
-          mark.to.y - length * Math.sin(angle - Math.PI / 6),
-        );
-        ctx.lineTo(mark.to.x, mark.to.y);
-        ctx.lineTo(
-          mark.to.x - length * Math.cos(angle + Math.PI / 6),
-          mark.to.y - length * Math.sin(angle + Math.PI / 6),
-        );
-        ctx.stroke();
-      }
+  function finishPath(closed = false) {
+    cancelGesture();
+    if (!pathDraft) return;
+    const path = pathDraft;
+    if (path.nodes.length < (closed ? 3 : 2)) {
+      fail(
+        closed
+          ? "A closed path needs at least three points."
+          : "A path needs at least two points.",
+      );
+      return;
     }
-    ctx.restore();
+    pathDraft = null;
+    tool = "select";
+    selectedNode = -1;
+    commit([...marks, { ...path, closed }], marks.length);
+  }
+  function updatePath(next: PathMark) {
+    if (
+      pointCount() - markPointCount(marks[selected]!) + markPointCount(next) >
+      LIMITS.maxPoints
+    ) {
+      fail("This edit exceeds the drawing point limit.");
+      return;
+    }
+    commit(
+      marks.map((mark, i) => (i === selected ? next : mark)),
+      selected,
+    );
+  }
+  function deleteNode() {
+    const mark = marks[selected];
+    if (mark?.tool !== "path" || selectedNode < 0) return;
+    const nodes = mark.nodes.filter((_, i) => i !== selectedNode);
+    if (nodes.length < (mark.closed ? 3 : 2)) {
+      fail(
+        "Deleting that point would leave too few points. Open the path first, or delete the drawing.",
+      );
+      return;
+    }
+    selectedNode = -1;
+    updatePath({ ...mark, nodes });
   }
   function render(ctx: CanvasRenderingContext2D, guides: boolean) {
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, width, height);
     if (image) ctx.drawImage(image, padding, padding);
     marks.forEach((mark, i) => {
-      if (!gesture || !gesture.move || i !== gesture.index) drawMark(ctx, mark);
+      if (!gesture?.move || i !== gesture.index)
+        drawMark(ctx, mark, sourceScale);
     });
-    if (gesture) drawMark(ctx, gesture.mark);
+    if (pathDraft && !gesture?.path) drawMark(ctx, pathDraft, sourceScale);
+    if (gesture) drawMark(ctx, gesture.mark, sourceScale);
     if (guides && selected >= 0) {
-      const b = bounds(gesture?.move ? gesture.mark : marks[selected]!);
+      const current = gesture?.move ? gesture.mark : marks[selected]!;
+      const b = bounds(current);
       ctx.save();
       ctx.strokeStyle = "#2563eb";
       ctx.lineWidth = 1 / zoom;
@@ -481,6 +501,57 @@ function editAnnotation(
         b.width + 8 / zoom,
         b.height + 8 / zoom,
       );
+      ctx.setLineDash([]);
+      if (tool === "select") {
+        if (current.tool === "path") {
+          for (const node of current.nodes) {
+            for (const control of [node.in, node.out]) {
+              if (!control) continue;
+              ctx.beginPath();
+              ctx.moveTo(node.x, node.y);
+              ctx.lineTo(control.x, control.y);
+              ctx.stroke();
+            }
+          }
+        }
+        for (const handle of handles(current)) {
+          const r = (handle.kind === "control" ? 3 : 4) / zoom;
+          ctx.fillStyle =
+            handle.kind === "node" && handle.index === selectedNode
+              ? "#2563eb"
+              : "#ffffff";
+          ctx.beginPath();
+          if (handle.kind === "control")
+            ctx.arc(handle.x, handle.y, r, 0, Math.PI * 2);
+          else ctx.rect(handle.x - r, handle.y - r, 2 * r, 2 * r);
+          ctx.fill();
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+    }
+    if (guides && (gesture?.path || pathDraft)) {
+      const path = gesture?.path ? (gesture.mark as PathMark) : pathDraft!;
+      ctx.save();
+      ctx.strokeStyle = "#2563eb";
+      ctx.fillStyle = "#ffffff";
+      ctx.lineWidth = 1 / zoom;
+      for (const node of path.nodes) {
+        for (const control of [node.in, node.out]) {
+          if (!control) continue;
+          ctx.beginPath();
+          ctx.moveTo(node.x, node.y);
+          ctx.lineTo(control.x, control.y);
+          ctx.stroke();
+        }
+        ctx.fillRect(node.x - 4 / zoom, node.y - 4 / zoom, 8 / zoom, 8 / zoom);
+        ctx.strokeRect(
+          node.x - 4 / zoom,
+          node.y - 4 / zoom,
+          8 / zoom,
+          8 / zoom,
+        );
+      }
       ctx.restore();
     }
     if (guides && pendingText) {
@@ -675,31 +746,24 @@ function editAnnotation(
   function cancelGesture() {
     if (!gesture) return;
     const id = gesture.id;
+    if (gesture.path) pathDraft = gesture.previousPath ?? null;
     gesture = null;
     if (canvas.hasPointerCapture(id)) canvas.releasePointerCapture(id);
+    sync();
     paint();
   }
-  function pointCount() {
-    return marks.reduce(
-      (sum, mark) => sum + (mark.tool === "pen" ? mark.points.length : 0),
-      0,
-    );
+  function markPointCount(mark: AnnotationMark) {
+    return mark.tool === "pen"
+      ? mark.points.length
+      : mark.tool === "path"
+        ? mark.nodes.reduce(
+            (sum, node) => sum + 1 + Number(!!node.in) + Number(!!node.out),
+            0,
+          )
+        : 0;
   }
-  function moved(mark: AnnotationMark, dx: number, dy: number): AnnotationMark {
-    const b = bounds(mark);
-    dx = Math.max(
-      -b.x,
-      Math.min(width - b.x - Math.min(b.width, width - b.x), dx),
-    );
-    dy = Math.max(
-      -b.y,
-      Math.min(height - b.y - Math.min(b.height, height - b.y), dy),
-    );
-    const translate = (p: AnnotationPoint) => ({ x: p.x + dx, y: p.y + dy });
-    if (mark.tool === "text") return { ...mark, at: translate(mark.at) };
-    if (mark.tool === "pen")
-      return { ...mark, points: mark.points.map(translate) };
-    return { ...mark, from: translate(mark.from), to: translate(mark.to) };
+  function pointCount() {
+    return marks.reduce((sum, mark) => sum + markPointCount(mark), 0);
   }
   canvas.addEventListener("pointerdown", (event) => {
     if (
@@ -716,23 +780,62 @@ function editAnnotation(
     canvas.focus({ preventScroll: true });
     clearError();
     const at = point(event);
-    if (tool === "select") {
-      const tolerance = 8 / zoom;
-      let index = -1;
-      for (let i = marks.length - 1; i >= 0; i--) {
-        const b = bounds(marks[i]!);
-        if (
-          at.x >= b.x - tolerance &&
-          at.x <= b.x + b.width + tolerance &&
-          at.y >= b.y - tolerance &&
-          at.y <= b.y + b.height + tolerance
-        ) {
-          index = i;
-          break;
-        }
+    if (tool === "path") {
+      if (event.detail > 1) return;
+      const first = pathDraft?.nodes[0];
+      if (
+        first &&
+        pathDraft!.nodes.length >= 3 &&
+        Math.hypot(first.x - at.x, first.y - at.y) < 10 / zoom
+      ) {
+        finishPath(true);
+        return;
       }
+      const last = pathDraft?.nodes.at(-1);
+      if (last && Math.hypot(last.x - at.x, last.y - at.y) < 4 / zoom) return;
+      if (
+        marks.length >= LIMITS.maxMarks ||
+        pointCount() + (pathDraft ? markPointCount(pathDraft) : 0) + 3 >
+          LIMITS.maxPoints
+      ) {
+        fail("This drawing has reached its mark or point limit.");
+        return;
+      }
+      const previousPath = pathDraft;
+      const node = { ...at, kind: "corner" as const };
+      pathDraft = pathDraft
+        ? { ...pathDraft, nodes: [...pathDraft.nodes, node] }
+        : { tool: "path", color, width: stroke, nodes: [node], closed: false };
+      selected = -1;
+      gesture = {
+        id: event.pointerId,
+        start: at,
+        mark: pathDraft,
+        index: -1,
+        move: false,
+        points: pointCount(),
+        path: true,
+        previousPath,
+      };
+      canvas.setPointerCapture(event.pointerId);
+      sync();
+      paint();
+      return;
+    }
+    if (tool === "select") {
+      const current = marks[selected];
+      let handle = current && handleAt(current, at);
+      const index = handle
+        ? selected
+        : marks.findLastIndex((mark) =>
+            hitMark(mark, at, 8 / zoom, measure, sourceScale),
+          );
       select(index);
       if (index < 0) return;
+      handle ??= handleAt(marks[index]!, at);
+      if (handle?.kind === "node" || handle?.kind === "control")
+        selectedNode = handle.index;
+      else selectedNode = -1;
       gesture = {
         id: event.pointerId,
         start: at,
@@ -740,6 +843,7 @@ function editAnnotation(
         index,
         move: true,
         points: 0,
+        handle,
       };
     } else {
       if (marks.length >= LIMITS.maxMarks) {
@@ -775,8 +879,9 @@ function editAnnotation(
           ? { tool, color, width: stroke, points: [at] }
           : tool === "rectangle"
             ? { tool, color, width: stroke, from: at, to: at, radius: 0 }
-            : { tool: "arrow", color, width: stroke, from: at, to: at };
+            : { tool, color, width: stroke, from: at, to: at };
       selected = -1;
+      selectedNode = -1;
       refreshMarks();
       sync();
       gesture = {
@@ -794,12 +899,49 @@ function editAnnotation(
   function updateGesture(event: PointerEvent) {
     if (!gesture || gesture.id !== event.pointerId) return;
     const at = point(event);
+    if (gesture.path && gesture.mark.tool === "path") {
+      const mark = gesture.mark;
+      const index = mark.nodes.length - 1;
+      const node = mark.nodes[index]!;
+      const dx = at.x - gesture.start.x,
+        dy = at.y - gesture.start.y;
+      if (Math.hypot(dx, dy) > 2 / zoom) {
+        const reach = Math.min(
+          1,
+          dx ? (dx > 0 ? width - node.x : node.x) / Math.abs(dx) : 1,
+          dx ? (dx > 0 ? node.x : width - node.x) / Math.abs(dx) : 1,
+          dy ? (dy > 0 ? height - node.y : node.y) / Math.abs(dy) : 1,
+          dy ? (dy > 0 ? node.y : height - node.y) / Math.abs(dy) : 1,
+        );
+        gesture.mark = {
+          ...mark,
+          nodes: mark.nodes.map((p, i) =>
+            i !== index
+              ? p
+              : {
+                  x: node.x,
+                  y: node.y,
+                  kind: "smooth",
+                  in: { x: node.x - dx * reach, y: node.y - dy * reach },
+                  out: { x: node.x + dx * reach, y: node.y + dy * reach },
+                },
+          ),
+        };
+      }
+      paint();
+      return;
+    }
     if (gesture.move) {
-      gesture.mark = moved(
-        marks[gesture.index]!,
-        at.x - gesture.start.x,
-        at.y - gesture.start.y,
-      );
+      const original = marks[gesture.index]!;
+      gesture.mark = gesture.handle
+        ? editHandle(original, gesture.handle, at, { width, height }, measure)
+        : moveMark(
+            original,
+            at.x - gesture.start.x,
+            at.y - gesture.start.y,
+            { width, height },
+            measure,
+          );
     } else if (gesture.mark.tool === "pen") {
       const points = gesture.mark.points,
         last = points[points.length - 1]!;
@@ -820,24 +962,56 @@ function editAnnotation(
         x: last.x + (at.x - last.x) * weight,
         y: last.y + (at.y - last.y) * weight,
       });
-    } else if (gesture.mark.tool === "rectangle") {
-      gesture.mark = {
-        ...gesture.mark,
-        to: at,
-        radius: Math.min(
+    } else if (gesture.mark.tool !== "text" && gesture.mark.tool !== "path") {
+      let end = at;
+      if (
+        event.shiftKey &&
+        ["rectangle", "ellipse", "triangle"].includes(gesture.mark.tool)
+      ) {
+        const dx = at.x - gesture.start.x,
+          dy = at.y - gesture.start.y;
+        const side = Math.min(
+          Math.max(Math.abs(dx), Math.abs(dy)),
+          dx >= 0 ? width - gesture.start.x : gesture.start.x,
+          dy >= 0 ? height - gesture.start.y : gesture.start.y,
+        );
+        end = {
+          x: gesture.start.x + (dx < 0 ? -side : side),
+          y: gesture.start.y + (dy < 0 ? -side : side),
+        };
+      }
+      gesture.mark = { ...gesture.mark, to: end };
+      if (gesture.mark.tool === "rectangle")
+        gesture.mark.radius = Math.min(
           radius,
-          Math.abs(at.x - gesture.start.x) / 2,
-          Math.abs(at.y - gesture.start.y) / 2,
-        ),
-      };
-    } else if (gesture.mark.tool === "arrow")
-      gesture.mark = { ...gesture.mark, to: at };
+          Math.abs(end.x - gesture.start.x) / 2,
+          Math.abs(end.y - gesture.start.y) / 2,
+        );
+    }
     paint();
   }
   canvas.addEventListener("pointermove", (event) => {
     if (gesture) {
       event.preventDefault();
       updateGesture(event);
+    } else if (tool === "select") {
+      const mark = marks[selected];
+      const handle = mark && handleAt(mark, point(event));
+      canvas.style.cursor =
+        handle?.kind === "resize"
+          ? {
+              nw: "nwse",
+              se: "nwse",
+              ne: "nesw",
+              sw: "nesw",
+              n: "ns",
+              s: "ns",
+              e: "ew",
+              w: "ew",
+            }[handle.edge] + "-resize"
+          : handle
+            ? "crosshair"
+            : "move";
     }
   });
   canvas.addEventListener("pointerup", (event) => {
@@ -848,6 +1022,12 @@ function editAnnotation(
     gesture = null;
     if (canvas.hasPointerCapture(event.pointerId))
       canvas.releasePointerCapture(event.pointerId);
+    if (done.path && done.mark.tool === "path") {
+      pathDraft = done.mark;
+      sync();
+      paint();
+      return;
+    }
     if (done.mark.tool === "pen" && !done.move && smoothing) {
       const points = done.mark.points,
         at = point(event),
@@ -865,7 +1045,9 @@ function editAnnotation(
       return;
     }
     if (
-      (done.mark.tool === "arrow" || done.mark.tool === "rectangle") &&
+      done.mark.tool !== "pen" &&
+      done.mark.tool !== "path" &&
+      done.mark.tool !== "text" &&
       Math.hypot(
         done.mark.to.x - done.mark.from.x,
         done.mark.to.y - done.mark.from.y,
@@ -874,10 +1056,28 @@ function editAnnotation(
       paint();
       return;
     }
+    if (done.mark.tool !== "pen") tool = "select";
     commit([...marks, done.mark], marks.length);
   });
   canvas.addEventListener("pointercancel", cancelGesture);
   canvas.addEventListener("lostpointercapture", cancelGesture);
+  canvas.addEventListener("dblclick", (event) => {
+    if (loading || saving || gesture) return;
+    event.preventDefault();
+    if (pathDraft) {
+      finishPath();
+      return;
+    }
+    const mark = marks[selected];
+    if (tool !== "select" || mark?.tool !== "path") return;
+    const at = point(event as unknown as PointerEvent);
+    if (handleAt(mark, at)) return;
+    const best = nearestPathSegment(mark, at, 10 / zoom);
+    if (best) {
+      selectedNode = best.index + 1;
+      updatePath(insertPathNode(mark, best.index, best.t));
+    }
+  });
   function changeProperty(name: string, value: string) {
     const numeric = Number(value);
     if (name === "smoothing") {
@@ -910,6 +1110,12 @@ function editAnnotation(
         1,
         Math.min(LIMITS.maxTextSize, Number.isFinite(numeric) ? numeric : size),
       );
+    if (pathDraft && (name === "color" || name === "width")) {
+      pathDraft = { ...pathDraft, color, width: stroke };
+      sync();
+      paint();
+      return;
+    }
     const mark = marks[selected];
     if (mark) {
       let next: AnnotationMark = mark;
@@ -1042,6 +1248,10 @@ function editAnnotation(
   async function save() {
     if (loading || saving || !image || !context) return;
     cancelGesture();
+    if (pathDraft) {
+      finishPath();
+      if (pathDraft) return;
+    }
     clearError();
     saving = true;
     sync();
@@ -1116,9 +1326,13 @@ function editAnnotation(
     if (loading || saving) return;
     if (target.dataset.tool) {
       cancelGesture();
+      if (pathDraft) {
+        if (pathDraft.nodes.length >= 2) finishPath();
+        else pathDraft = null;
+      }
       pendingText = null;
       tool = target.dataset.tool as Tool;
-      select(-1);
+      select(tool === "select" ? selected : -1);
       if (tool === "text") text.focus();
       return;
     }
@@ -1128,6 +1342,35 @@ function editAnnotation(
       return;
     }
     switch (target.dataset.command) {
+      case "finish-path":
+        finishPath();
+        break;
+      case "close-path": {
+        if (pathDraft) finishPath(true);
+        else {
+          const mark = marks[selected];
+          if (mark?.tool === "path")
+            updatePath({ ...mark, closed: !mark.closed });
+        }
+        break;
+      }
+      case "smooth-node":
+      case "corner-node": {
+        const mark = marks[selected];
+        if (mark?.tool === "path" && selectedNode >= 0)
+          updatePath(
+            smoothNode(
+              mark,
+              selectedNode,
+              target.dataset.command === "smooth-node",
+              { width, height },
+            ),
+          );
+        break;
+      }
+      case "delete-node":
+        deleteNode();
+        break;
       case "undo":
         history(true);
         break;
@@ -1136,6 +1379,7 @@ function editAnnotation(
         break;
       case "clear":
         cancelGesture();
+        pathDraft = null;
         commit([]);
         break;
       case "delete":
@@ -1170,7 +1414,12 @@ function editAnnotation(
       event.preventDefault();
       event.stopImmediatePropagation();
       if (colorPopup.matches(":popover-open")) colorPopup.hidePopover();
-      else requestClose();
+      else if (gesture) cancelGesture();
+      else if (pathDraft) {
+        pathDraft = null;
+        sync();
+        paint();
+      } else requestClose();
       return;
     }
     const target = event.target as HTMLElement;
@@ -1179,6 +1428,12 @@ function editAnnotation(
       target instanceof HTMLTextAreaElement ||
       target instanceof HTMLSelectElement ||
       target.isContentEditable;
+    if (!typing && event.key === "Enter" && pathDraft) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (!loading && !saving) finishPath();
+      return;
+    }
     if (!typing && event.code === "Space") {
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -1222,8 +1477,10 @@ function editAnnotation(
     if (!typing && (event.key === "Delete" || event.key === "Backspace")) {
       event.preventDefault();
       event.stopImmediatePropagation();
-      if (!loading && !saving && selected >= 0)
-        commit(marks.filter((_, i) => i !== selected));
+      if (!loading && !saving && selected >= 0) {
+        if (selectedNode >= 0) deleteNode();
+        else commit(marks.filter((_, i) => i !== selected));
+      }
       return;
     }
     if (event.key !== "Tab") event.stopImmediatePropagation();

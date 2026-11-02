@@ -358,6 +358,10 @@ export function webReviewLines(web: WebReview): string[] {
   ];
   captures.forEach(({ capture: c, label }) => {
     const annotation = c.annotation;
+    // Old sealed blocks are matched byte-for-byte by the review parser.
+    const vectorGeometry = annotation?.marks.some((mark) =>
+      ["line", "ellipse", "triangle", "path"].includes(mark.tool),
+    );
     const summary = annotation
       ? {
           image: annotation.image,
@@ -365,7 +369,15 @@ export function webReviewLines(web: WebReview): string[] {
           height: annotation.height,
           padding: annotation.padding,
           toolCounts: Object.fromEntries(
-            ["pen", "arrow", "rectangle", "text"].map((tool) => [
+            [
+              "pen",
+              "arrow",
+              "rectangle",
+              "text",
+              ...(vectorGeometry
+                ? ["line", "ellipse", "triangle", "path"]
+                : []),
+            ].map((tool) => [
               tool,
               annotation.marks.filter((mark) => mark.tool === tool).length,
             ]),
@@ -379,6 +391,7 @@ export function webReviewLines(web: WebReview): string[] {
                 ]
               : [],
           ),
+          ...(vectorGeometry ? { marks: annotation.marks } : {}),
         }
       : undefined;
     const data = JSON.stringify(
@@ -418,6 +431,21 @@ export function webReviewLines(web: WebReview): string[] {
         "The proposal has " +
           c.annotation.padding +
           " px of blank white padding on each side; padding is not page context.",
+        ...(vectorGeometry
+          ? [
+              "Drawing geometry uses output-image pixels with (0, 0) at the padded canvas top-left; x increases right and y down. The original screenshot starts at (" +
+                c.annotation.padding +
+                ", " +
+                c.annotation.padding +
+                "); output size is " +
+                (c.annotation.width + 2 * c.annotation.padding) +
+                " × " +
+                (c.annotation.height + 2 * c.annotation.padding) +
+                " px. Stroke widths and text sizes are also output-image pixels.",
+              "Marks are listed in paint order. Line and arrow use from/to endpoints; rectangle, ellipse and triangle use the normalized from/to bounding box. Rectangle radius rounds its corners; an ellipse is inscribed in its box; a triangle joins the top-center apex to the two bottom corners. Pen points form a polyline; text starts at at.",
+              "Path nodes are ordered anchors. Each segment runs from one node to the next using the first node's out and next node's in as absolute cubic Bézier controls (a missing control equals its anchor); no controls means a straight segment. closed joins the last node back to the first. Smooth nodes keep tangent handles aligned during editing; corner handles move independently. The listed coordinates, including controls, are the exact saved geometry.",
+            ]
+          : []),
         "",
         "![" +
           imageLabel +

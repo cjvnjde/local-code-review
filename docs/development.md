@@ -27,6 +27,7 @@ With Chrome installed, run the opt-in real-browser workflow:
 
 ```sh
 LCR_TEST_BROWSER=1 bun test src/web-review/browser.test.ts
+LCR_TEST_BROWSER=1 bun test src/web/client/web-review/annotation-editor.browser.test.ts
 ```
 
 It uses a temporary Git repository, local application, and isolated browser profile. See [web annotation](web-ui.md) for browser lifecycle and limits.
@@ -52,6 +53,10 @@ cases use isolated temporary resources and close them after each scenario. The o
 also exercises screenshot annotations, editor preservation, stale updates, browser restart,
 cross-origin isolation, and history Back/Forward navigation over an unsaved editor. It is skipped by the
 ordinary suite so contributors still need only Bun and Git.
+The focused drawing workflow exercises pre-save resizing, new shapes, endpoint and curve edits,
+point insertion/deletion, path closure, cancel/undo/redo, reopening vectors, and PNG guide exclusion.
+Its browser uses an isolated profile and a local screenshot/upload fixture; pure geometry and
+metadata boundary/roundtrip tests run in the ordinary suite.
 
 Bun's coverage report describes modules loaded into the test process, not every source file or code
 executed in a browser or child process. Use it to find gaps, not as proof of whole-project coverage.
