@@ -17,9 +17,10 @@ bun run demo:web
 ```
 
 This source-only playground opens a dedicated Chrome/Chromium/Edge window with
-the real annotation tools and a second, independent reviewer. No install or
-additional package is needed. The launcher and sample page are not included in
-the standalone executable, and neither review starts an agent.
+the real annotation tools, a second independent reviewer, and a populated
+**git review** tab for the diff UI. No install or additional package is needed.
+The launcher, fixtures, and sample page are not included in the standalone
+executable, and no review starts an agent.
 
 1. In **Example**, select a sample card to take a real screenshot and open the
    floating note popup. Click the captured screenshot to open its drawing editor,
@@ -33,6 +34,10 @@ the standalone executable, and neither review starts an agent.
    controls. Its **Freeze** tool also works for area/point feedback on a still image.
 4. Switch back to **Example** to continue using its tools. Switching modes does
    not discard either side's draft or reload its editor.
+5. Open the **git review** tab to inspect the real diff UI against deterministic
+   modified, added, deleted, renamed, image, audio, and unsupported-binary files.
+   The fixtures include hidden context and folded removals so their controls can
+   be expanded in place. Notes saved there use a separate development review.
 
 The popup's embedded editor and drawing canvas are selected as one floating card.
 To review an individual control inside that iframe, drag a rectangle around it.
@@ -41,11 +46,12 @@ keep selectors that can find those controls again after they move. The mode
 switch belongs to the playground and is not an annotation target.
 
 Real feedback is saved under `.review/playground/feedback/`; disposable example
-notes are separate under `.review/playground/example/`. Both use ordinary
-timestamped Markdown reviews and keep their pictures. The terminal prints the
-playground and review URLs with their automatically assigned ports.
+notes are separate under `.review/playground/example/`; diff-showcase notes go
+under `.review/playground/diff/`. All use ordinary timestamped Markdown reviews
+and keep their pictures. The terminal prints the playground and review URLs with
+their automatically assigned ports.
 
-**Ctrl+C** stops both review servers and the dedicated browser without deleting
+**Ctrl+C** stops all review servers and the dedicated browser without deleting
 notes or pictures. After source changes, stop and rerun the command; this
 playground does not hot-reload the injected tools.
 

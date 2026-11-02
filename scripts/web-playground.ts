@@ -1,6 +1,10 @@
+import type { Server } from "bun";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { launchReviewBrowser } from "../src/browser/review-browser.ts";
+import {
+  launchReviewBrowser,
+  type ReviewBrowser,
+} from "../src/browser/review-browser.ts";
 import { openInEditor } from "../src/cli/editor.ts";
 import { readBlob } from "../src/git/blob.ts";
 import { currentBranch, findRepoRoot } from "../src/git/commands.ts";
@@ -23,7 +27,7 @@ import {
 import { createSession } from "../src/review/session.ts";
 import { collectStatuses } from "../src/review/status.ts";
 import { parseReview } from "../src/review/thread.ts";
-import { createHub } from "../src/server/events.ts";
+import { createHub, type Hub } from "../src/server/events.ts";
 import { startServer } from "../src/server/http.ts";
 import {
   isNoise,
@@ -31,7 +35,17 @@ import {
   watchTree,
   type Watcher,
 } from "../src/server/watch.ts";
-import { createWebReview } from "../src/web-review/controller.ts";
+import {
+  createWebReview,
+  type WebReviewController,
+} from "../src/web-review/controller.ts";
+import {
+  SHOWCASE_CONTEXT,
+  SHOWCASE_RANGE,
+  showcaseBlob,
+  showcaseContext,
+  showcaseDiff,
+} from "./diff-showcase.ts";
 
 /** Developer composition only: nothing in src/index.ts imports this launcher or its page. */
 export async function startWebPlayground(
@@ -87,12 +101,13 @@ export async function startWebPlayground(
   });
   const url = `http://127.0.0.1:${app.port}/`;
   const reviews: Array<{
-    web: ReturnType<typeof createWebReview>;
-    server: ReturnType<typeof startServer>;
-    hub: ReturnType<typeof createHub>;
+    web?: WebReviewController;
+    server: Server<unknown>;
+    hub: Hub;
+    liveDiff: boolean;
   }> = [];
   const watchers: Watcher[] = [];
-  let browser: Awaited<ReturnType<typeof launchReviewBrowser>> | undefined;
+  let browser: ReviewBrowser | undefined;
   let heartbeat: ReturnType<typeof setInterval> | undefined;
   let closing: Promise<void> | undefined;
   const close = () =>
@@ -100,18 +115,19 @@ export async function startWebPlayground(
       clearInterval(heartbeat);
       for (const watcher of watchers) watcher.close();
       for (const review of [...reviews].reverse()) {
-        await review.web.close();
+        await review.web?.close();
         review.server.stop(true);
       }
       await browser?.close();
       app.stop(true);
     })());
 
-  async function createReview(name: string, owner: string) {
+  async function createReview(name: string, owner?: string, showcase = false) {
     const outDir = path.join(directory, name);
     const id = `lcr-ui-${name}`;
-    const session = createSession(repoRoot, outDir, range, {
-      range,
+    const reviewRange = showcase ? SHOWCASE_RANGE : range;
+    const session = createSession(repoRoot, outDir, reviewRange, {
+      range: reviewRange,
       branch,
       base,
       id,
@@ -119,36 +135,43 @@ export async function startWebPlayground(
     await session.adoptMatching();
     const hub = createHub();
     let reviewUrl = "";
-    const web = createWebReview({
-      url,
-      repoRoot,
-      outDir,
-      session,
-      hub,
-      browserProfile: "existing",
-      browserDataDir: profile,
-      overlayOwnerKey: owner,
-      reviewUrl: () => reviewUrl,
-    });
+    const web = owner
+      ? createWebReview({
+          url,
+          repoRoot,
+          outDir,
+          session,
+          hub,
+          browserProfile: "existing",
+          browserDataDir: profile,
+          overlayOwnerKey: owner,
+          reviewUrl: () => reviewUrl,
+        })
+      : undefined;
     const server = startServer({
       port: 0,
       repoRoot,
       outDir,
-      range,
+      range: reviewRange,
       reviewId: id,
-      context: source.context,
+      context: showcase ? SHOWCASE_CONTEXT : source.context,
       session,
       hub,
       web,
-      getDiff: () => getDiff(source),
-      getContext: (file, start, end) =>
-        getFileContext(source, file, start, end),
-      readBlob: (side, file) =>
-        readBlob(repoRoot, side === "old" ? sides.old : sides.new, file),
+      getDiff: showcase ? async () => showcaseDiff() : () => getDiff(source),
+      getContext: showcase
+        ? async (file, start, end) => showcaseContext(file, start, end)
+        : (file, start, end) => getFileContext(source, file, start, end),
+      readBlob: showcase
+        ? async (side, file) => showcaseBlob(side, file)
+        : (side, file) =>
+            readBlob(repoRoot, side === "old" ? sides.old : sides.new, file),
       saveAttachment: (bytes, type) =>
         saveAttachment(repoRoot, outDir, bytes, type),
       readAttachment: (name) => readAttachment(repoRoot, outDir, name),
-      openFile: (file, editor) => openInEditor(repoRoot, file, editor),
+      openFile: showcase
+        ? async () => false
+        : (file, editor) => openInEditor(repoRoot, file, editor),
       getStatuses: () => collectStatuses(repoRoot, outDir),
       listReviews: () => listReviews(repoRoot, outDir),
       deleteReviews: () => deleteReviews(repoRoot, outDir),
@@ -174,9 +197,17 @@ export async function startWebPlayground(
           ? session.import(comment, note.messages, `${from.file}#${note.id}`)
           : null;
       },
+      ...(showcase ? { uiDefaults: { foldDel: true } } : {}),
     });
     reviewUrl = `http://localhost:${server.port}`;
-    const review = { web, server, hub, url: reviewUrl, outDir };
+    const review = {
+      web,
+      server,
+      hub,
+      url: reviewUrl,
+      outDir,
+      liveDiff: !showcase,
+    };
     reviews.push(review);
     watchers.push(
       watchDir(path.resolve(repoRoot, outDir), () => {
@@ -223,10 +254,18 @@ export async function startWebPlayground(
     } finally {
       await browser.cdp.send("Target.detachFromTarget", { sessionId });
     }
+    if (!feedback.web) throw new Error("Feedback overlay was not created.");
     await feedback.web.open();
     options.signal?.throwIfAborted();
     const example = await createReview("example", "__lcr_playground_example__");
+    if (!example.web) throw new Error("Example overlay was not created.");
     await example.web.open();
+    options.signal?.throwIfAborted();
+    const showcase = await createReview("diff", undefined, true);
+    await browser.cdp.send("Target.createTarget", {
+      url: showcase.url,
+      background: true,
+    });
     options.signal?.throwIfAborted();
     let digest = fingerprint(
       initial.map((file) => `${file.path}:${file.hash}`).join("\n"),
@@ -234,7 +273,7 @@ export async function startWebPlayground(
     let checking = false;
     let again = false;
     async function checkDiff() {
-      if (!reviews.some((review) => review.hub.size)) return;
+      if (!reviews.some((review) => review.liveDiff && review.hub.size)) return;
       if (checking) {
         again = true;
         return;
@@ -248,7 +287,8 @@ export async function startWebPlayground(
             files.map((file) => `${file.path}:${file.hash}`).join("\n"),
           );
           if (next !== digest)
-            for (const review of reviews) review.hub.emit({ type: "diff" });
+            for (const review of reviews)
+              if (review.liveDiff) review.hub.emit({ type: "diff" });
           digest = next;
         } while (again);
       } catch (error) {
@@ -283,6 +323,7 @@ export async function startWebPlayground(
       "Example → open a capture, popup, or drawing. Review → click a control or drag an area.",
     );
     console.log(`Feedback: ${feedback.url} → ${feedback.outDir}/`);
+    console.log(`Diff showcase: ${showcase.url} → ${showcase.outDir}/`);
     console.log(`Example notes (separate): ${example.outDir}/`);
     console.log(
       "Ctrl+C stops the playground and its dedicated browser. Notes and pictures are kept.\n",
@@ -291,6 +332,7 @@ export async function startWebPlayground(
       url,
       feedbackUrl: feedback.url,
       exampleUrl: example.url,
+      showcaseUrl: showcase.url,
       profile,
       close,
     };
