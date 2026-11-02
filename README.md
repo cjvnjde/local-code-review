@@ -49,20 +49,46 @@ Click an element or drag an area to comment. Click the **lcr** circle to switch 
 
 Visual and code notes share the same Markdown review. Captures include screenshots and element metadata; **Capture after** records the result after a fix. Requires an installed Chrome, Chromium, or Edge. [Web annotation guide →](docs/web-ui.md)
 
-The dedicated browser keeps logins across worktrees in `~/.config/lcr/browser/` (or
-`$XDG_CONFIG_HOME/lcr/browser/`). Use `--browser-profile project` for separate state in
-`<output-directory>/.browser/`, or set `"browserProfile": "project"` in your user config.
-One run can use a profile at a time; shared state also shares cookies between projects.
+### Choose a browser profile
 
-To annotate a tab in your existing Chrome session, enable remote debugging at
-`chrome://inspect/#remote-debugging` in Chrome 144+, then run:
+| `--browser-profile` | Browser and saved state                                                                                                                                                                      |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `shared` (default)  | Launch a dedicated browser with logins shared across projects and worktrees. State lives at `~/.config/lcr/browser/`, or `$XDG_CONFIG_HOME/lcr/browser/` when `XDG_CONFIG_HOME` is absolute. |
+| `project`           | Launch a dedicated browser using `<output-directory>/.browser/`. Each worktree and output directory keeps separate logins. Existing profiles from older lcr builds remain here.              |
+| `existing`          | Attach to your running Chrome session, using its existing logins and app state. Your personal profile is never copied into the project.                                                      |
+
+One run can own a dedicated profile at a time. Use `project` in separate worktrees or output
+directories for simultaneous dedicated browsers. Shared state also shares cookies between projects;
+choose `project` when you need separate accounts.
+
+### Use your existing Chrome session
+
+1. Start Chrome 144 or newer and enable remote debugging at `chrome://inspect/#remote-debugging`.
+2. Open your app at the exact URL you will pass to `--web`, including its path, query, and fragment.
+3. Run:
+
+   ```sh
+   lcr --web http://localhost:3000 --browser-profile existing
+   ```
+
+4. Allow the connection in Chrome's dialog. lcr waits up to one minute for approval.
+
+lcr reuses the matching tab without reloading it, preserving unfinished forms, scroll position,
+and in-memory app state. If no tab matches, it opens one; if several match, close duplicates or
+use a distinct URL. Each app tab can belong to one lcr review at a time. Stopping lcr removes its
+overlay and leaves Chrome and all tabs open. No AI, extension, or MCP server is required.
+
+Chrome stable's user data directory is discovered automatically. For another installation or
+compatible browser, pass its user data directory, rather than its `Default` or `Profile 1` subdirectory:
 
 ```sh
-lcr --web http://localhost:3000 --browser-profile existing
+lcr --web http://localhost:3000 --browser-profile existing --browser-data-dir "/path/to/browser/User Data"
 ```
 
-Allow Chrome's connection dialog. lcr reuses the matching tab without reloading it and leaves
-your browser and tabs open when it stops. [Existing browser setup →](docs/web-ui.md#attach-to-your-existing-browser)
+`--no-open` defers attachment until you choose **Open page** in lcr. On macOS, your terminal may
+need access to Chrome under **Privacy & Security → Files & Folders**. Approving the connection
+grants debugging access to your browser; use `shared` or `project` when you prefer a dedicated
+development profile. [Setup, troubleshooting, and profile safety →](docs/web-ui.md#attach-to-your-existing-browser)
 
 ## Hand feedback to an agent
 
@@ -218,6 +244,7 @@ Use `~/.config/lcr/config.json`, or `$XDG_CONFIG_HOME/lcr/config.json` when
   "port": 7777,
   "open": true,
   "context": 8,
+  "browserProfile": "shared",
   "ui": {
     "enterSaves": true,
     "foldDel": true
@@ -232,6 +259,12 @@ the repository; lcr does not fetch it.
 CLI options override configured defaults. Explicit Git arguments replace `diffArgs`;
 `lcr --worktree` returns to the built-in comparison against `HEAD`. `--no-web` disables
 a configured page URL, and `--open` overrides `"open": false`.
+
+Set `"browserProfile": "existing"` to attach to your running browser by default, or `"project"`
+to keep dedicated browser state in each worktree. `--browser-profile` overrides this for one run.
+The optional `browserDataDir` setting selects the user data directory for existing-browser attachment;
+it resolves beside `config.json`, while `--browser-data-dir` resolves from the repository root.
+Both accept `~/` paths. These browser settings apply when `--web` or a configured `web` URL is used.
 
 Configured `ui` keys apply again on every server start. Changes in the page stay in browser
 storage and survive page reloads during that run; they never change the config file.
