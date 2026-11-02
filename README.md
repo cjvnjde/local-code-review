@@ -14,6 +14,18 @@ On macOS, the binary is unsigned. After verifying the release checksum, remove q
 xattr -d com.apple.quarantine ./lcr
 ```
 
+### Install or update from source
+
+With Bun installed, run from the repository root to replace your local executable:
+
+```sh
+mkdir -p ~/.local/bin
+bun build ./src/index.ts --compile --minify --outfile lcr && mv lcr ~/.local/bin/lcr
+~/.local/bin/lcr --version
+```
+
+Keep `~/.local/bin` on your `PATH` to run it as `lcr`. Restart any running lcr instances to use the updated build.
+
 ## Review code
 
 Run inside a Git repository:
