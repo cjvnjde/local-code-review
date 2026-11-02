@@ -144,6 +144,7 @@ function dropEmptyDraft() {
   const row = state.draftRow;
   state.draftRow = state.draftKey = state.draftAt = null;
   if (!row || !row.isConnected) return;
+  if (state.notes.has(row.dataset.nid)) return;
   const ta = row.querySelector("textarea");
   if (!ta || ta.value.trim()) return;
   const host = row.parentElement;
@@ -962,6 +963,9 @@ function editUI(box, ctx) {
     // Editing a note that is already in the review file leaves it in the same conversation.
     if (kept && kept.sentAt) note.sentAt = kept.sentAt;
     state.notes.set(id, note);
+    // The row now holds a saved conversation, including an empty reply input, not a draft.
+    if (state.draftRow === rowOf(box))
+      state.draftRow = state.draftKey = state.draftAt = null;
     state.place.set(
       id,
       global
