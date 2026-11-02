@@ -38,6 +38,8 @@ export interface WebReviewOptions {
   reviewUrl: () => string;
   /** Used by browser integration tests; ordinary launches always have a visible window. */
   browserArgs?: string[];
+  /** Separate ownership for the source-only playground's example overlay. */
+  overlayOwnerKey?: string;
 }
 export function createWebReview(options: WebReviewOptions) {
   const url = localWebUrl(options.url),
@@ -709,6 +711,9 @@ export function createWebReview(options: WebReviewOptions) {
             binding,
             origin,
             reviewUrl: options.reviewUrl(),
+            ...(options.overlayOwnerKey
+              ? { ownerKey: options.overlayOwnerKey }
+              : {}),
           }) +
           ")";
         // Register before navigation: full reloads retain the toolbar; SPA navigation retains its DOM.

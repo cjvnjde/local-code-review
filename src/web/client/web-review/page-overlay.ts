@@ -4,6 +4,7 @@ export function installPageReview(config: {
   binding: string;
   origin: string;
   reviewUrl: string;
+  ownerKey?: string;
 }) {
   const win = globalThis as any;
   if (
@@ -12,22 +13,36 @@ export function installPageReview(config: {
     win[config.key]
   )
     return;
-  const ownerKey = "__lcr_page_review__";
+  const ownerKey = config.ownerKey ?? "__lcr_page_review__";
   if (win[ownerKey] && win[ownerKey] !== config.key)
     throw new Error(
       "This tab is already connected to another lcr review. Stop that review or reload the tab before attaching.",
     );
   const lifecycle = new AbortController();
+  let suspended = false;
   function listen(
     target: EventTarget,
     type: string,
     handler: (event: any) => void,
     options: boolean | AddEventListenerOptions = false,
   ) {
-    target.addEventListener(type, handler, {
-      ...(typeof options === "boolean" ? { capture: options } : options),
-      signal: lifecycle.signal,
-    });
+    const interaction =
+      config.ownerKey &&
+      /^(pointerdown|pointermove|pointerup|pointercancel|click|dblclick|contextmenu|keydown|blur|focusout|wheel|touchmove)$/.test(
+        type,
+      );
+    target.addEventListener(
+      type,
+      interaction
+        ? (event) => {
+            if (!suspended) handler(event);
+          }
+        : handler,
+      {
+        ...(typeof options === "boolean" ? { capture: options } : options),
+        signal: lifecycle.signal,
+      },
+    );
   }
   if (document.readyState === "loading") {
     win[ownerKey] = config.key;
@@ -1713,6 +1728,15 @@ export function installPageReview(config: {
   win[ownerKey] = config.key;
   win[config.key] = {
     dispose,
+    suspend(value: boolean) {
+      suspended = value;
+      host.inert = value;
+      start = null;
+      dockPress = null;
+      resizePress = null;
+      outline.style.display = "none";
+      endLauncher(true);
+    },
     resolve(seq: number, result: any) {
       const call = pending.get(seq);
       if (!call) return;

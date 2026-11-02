@@ -10,6 +10,42 @@ bun ./src/index.ts --no-open
 
 Run inside a repository with changes. Omit `--no-open` to launch the review page automatically. Source runs accept the same options as the [standalone executable](../README.md).
 
+### Review the web-annotation tools themselves
+
+```sh
+bun run demo:web
+```
+
+This source-only playground opens a dedicated Chrome/Chromium/Edge window with
+the real annotation tools and a second, independent reviewer. No install or
+additional package is needed. The launcher and sample page are not included in
+the standalone executable, and neither review starts an agent.
+
+1. In **Example**, select a sample card to take a real screenshot and open the
+   floating note popup. Click the captured screenshot to open its drawing editor,
+   or hold the example's lower-left **lcr** circle to open its targeting menu.
+2. Click **Review** in the bottom switch. The example stays visible, including its
+   open menu, popup, drawing and draft, but only the second reviewer receives input.
+   Its **lcr** circle starts at the lower right.
+3. Drag an area around the example control you want to discuss, then save the note.
+   The reviewer's screenshot includes the example interface, not its own controls.
+   Its **Freeze** tool also works for area/point feedback on a still image.
+4. Switch back to **Example** to continue using its tools. Switching modes does
+   not discard either side's draft or reload its editor.
+
+Use area selection for the tools: their shadow DOM and embedded drawing editor
+are captured visually, not inspected as individual DOM elements. The mode switch
+belongs to the playground and is not an annotation target.
+
+Real feedback is saved under `.review/playground/feedback/`; disposable example
+notes are separate under `.review/playground/example/`. Both use ordinary
+timestamped Markdown reviews and keep their pictures. The terminal prints the
+playground and review URLs with their automatically assigned ports.
+
+**Ctrl+C** stops both review servers and the dedicated browser without deleting
+notes or pictures. After source changes, stop and rerun the command; this
+playground does not hot-reload the injected tools.
+
 ## Check and build
 
 ```sh

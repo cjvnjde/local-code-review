@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>lcr annotation playground</title>
+    <link rel="stylesheet" href="/tokens.css" />
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font: var(--fs-code)/1.6 var(--sans);
+      }
+      main {
+        max-width: 960px;
+        margin: auto;
+        padding: calc(var(--tap) * 2) var(--tap) calc(var(--tap) * 5);
+      }
+      h1 {
+        line-height: 1.2;
+      }
+      p {
+        color: var(--ink-dim);
+      }
+      code,
+      kbd {
+        font-family: var(--mono);
+      }
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: var(--tap);
+        margin-top: calc(var(--tap) * 2);
+      }
+      article {
+        background: var(--panel2);
+        border: 1px solid var(--edge);
+        border-radius: calc(var(--tap) / 2);
+        padding: var(--tap);
+      }
+      button,
+      input {
+        min-width: var(--tap);
+        min-height: var(--tap);
+        font: inherit;
+        border-radius: calc(var(--tap) / 4);
+        border: 1px solid var(--edge-hi);
+        padding: calc(var(--tap) / 4) calc(var(--tap) / 2);
+        color: var(--ink);
+        background: var(--s0);
+      }
+      button {
+        cursor: pointer;
+      }
+      button:hover,
+      button:focus-visible {
+        border-color: var(--accent);
+      }
+      label {
+        display: grid;
+        gap: calc(var(--tap) / 4);
+        margin: var(--tap) 0;
+      }
+      .art {
+        width: 100%;
+        height: 150px;
+        color: var(--mauve);
+      }
+      #playground-controls {
+        position: fixed;
+        z-index: 2147483647;
+        left: 50%;
+        bottom: calc(var(--tap) / 2);
+        transform: translateX(-50%);
+        display: flex;
+        align-items: center;
+        gap: calc(var(--tap) / 2);
+        max-width: calc(100vw - var(--tap));
+        padding: calc(var(--tap) / 3);
+        background: var(--crust);
+        border: 1px solid var(--edge-hi);
+        border-radius: calc(var(--tap) / 2);
+        box-shadow: 0 4px 24px #0006;
+        font-size: var(--fs-ui);
+      }
+      #playground-controls button {
+        white-space: nowrap;
+      }
+      #playground-controls [aria-pressed="true"] {
+        background: var(--accent);
+        color: var(--crust);
+      }
+      #playground-status {
+        color: var(--ink-dim);
+      }
+      @media (max-width: 650px) {
+        #playground-status {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p>lcr / development</p>
+      <h1>Review the annotation tools themselves.</h1>
+      <p>
+        In <strong>Example</strong>, click a card to capture it and open the
+        real note popup. Click its screenshot to open the drawing editor. Hold
+        the floating lcr circle to open its tools.
+      </p>
+      <p>
+        Switch to <strong>Review</strong> to comment on that interface. Drag an
+        area around the circle, menu, popup, or drawing controls. The example
+        stays visible and keeps its draft; only the reviewer receives input. Use
+        the reviewer’s Freeze tool for a still image.
+      </p>
+      <div class="cards">
+        <article id="workspace-card">
+          <h2>Workspace settings</h2>
+          <p>A sample surface for real element and area captures.</p>
+          <label>Workspace name <input value="Design studio" /></label>
+          <button id="save-workspace" type="button">Save workspace</button>
+          <p id="save-result" role="status">No changes saved.</p>
+        </article>
+        <article id="picture-card">
+          <h2>Picture and drawing</h2>
+          <svg
+            class="art"
+            viewBox="0 0 320 150"
+            role="img"
+            aria-label="Mountains under a crescent moon"
+          >
+            <path
+              d="M0 140 85 35 145 115 210 55 320 140Z"
+              fill="currentColor"
+              opacity=".3"
+            />
+            <path
+              d="M0 150 110 65 185 145 245 90 320 150Z"
+              fill="currentColor"
+            />
+            <path
+              d="M263 15a26 26 0 1 0 27 32 24 24 0 0 1-27-32Z"
+              fill="currentColor"
+            />
+          </svg>
+          <p>Capture this card, then use the screenshot’s drawing controls.</p>
+        </article>
+        <article id="popup-card">
+          <h2>Menus and temporary states</h2>
+          <p>Turn example selection off to use these ordinary page controls.</p>
+          <button type="button" popovertarget="sample-popover">
+            Open popover
+          </button>
+          <div id="sample-popover" popover>
+            <h3>A temporary popup</h3>
+            <p>Freeze the example page to capture this state.</p>
+          </div>
+        </article>
+      </div>
+    </main>
+    <nav id="playground-controls" aria-label="Playground input mode">
+      <button type="button" data-playground-mode="example" aria-pressed="true">
+        Example
+      </button>
+      <button type="button" data-playground-mode="review" aria-pressed="false">
+        Review
+      </button>
+      <span id="playground-status" role="status"
+        >Starting the two interfaces…</span
+      >
+    </nav>
+    <script>
+      const controls = document.querySelector("#playground-controls");
+      const status = document.querySelector("#playground-status");
+      let mode = "example";
+      function overlay(owner) {
+        const key = window[owner];
+        return key && { api: window[key], host: document.getElementById(key) };
+      }
+      function sync() {
+        const example = overlay("__lcr_playground_example__");
+        const reviewer = overlay("__lcr_page_review__");
+        if (!example?.api.suspend || !reviewer?.api.suspend) {
+          reviewer?.api.suspend?.(true);
+          if (reviewer?.host) reviewer.host.style.display = "none";
+          return;
+        }
+        // Suspend before changing inert/focus; the example must keep an open menu.
+        if (mode === "review") {
+          example.api.suspend(true);
+          example.host.style.zIndex = "2147483646";
+          reviewer.host.style.display = "";
+          reviewer.api.suspend(false);
+        } else {
+          reviewer.api.suspend(true);
+          reviewer.host.style.display = "none";
+          example.host.style.zIndex = "2147483647";
+          example.api.suspend(false);
+        }
+        for (const button of controls.querySelectorAll("button")) {
+          button.setAttribute(
+            "aria-pressed",
+            String(button.dataset.playgroundMode === mode),
+          );
+        }
+        status.textContent =
+          mode === "example"
+            ? "Use the example tools"
+            : "Drag an area to leave feedback";
+        controls.dataset.ready = "true";
+        controls.dataset.mode = mode;
+      }
+      // Installed before lcr's document handlers, so either mode can be switched.
+      for (const type of [
+        "pointerdown",
+        "pointerup",
+        "click",
+        "dblclick",
+        "contextmenu",
+      ]) {
+        window.addEventListener(
+          type,
+          (event) => {
+            if (!event.composedPath().includes(controls)) return;
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            if (
+              type !== "pointerdown" &&
+              !(type === "click" && event.detail === 0)
+            )
+              return;
+            const button = event.target.closest("[data-playground-mode]");
+            if (button) {
+              mode = button.dataset.playgroundMode;
+              sync();
+            }
+          },
+          true,
+        );
+      }
+      // Keep the switch above the example even when its drawing editor fills the viewport.
+      const observer = new MutationObserver(() => {
+        if (document.body.lastElementChild !== controls)
+          document.body.append(controls);
+        sync();
+      });
+      observer.observe(document.body, { childList: true });
+      document.querySelector("#save-workspace").onclick = () => {
+        document.querySelector("#save-result").textContent = "Workspace saved.";
+      };
+      sync();
+    </script>
+  </body>
+</html>
