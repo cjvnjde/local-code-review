@@ -4,8 +4,7 @@ import {
   type WebCapture,
 } from "../../../shared/web-review.ts";
 import { attachSrc } from "../components/attach.ts";
-import { esc } from "../app/state.ts";
-import { pathHtml } from "../components/path.ts";
+import { esc, SVG } from "../app/state.ts";
 export function webCaptureHtml(value: unknown, removable = false) {
   const web = webReview(value);
   if (!web) return "";
@@ -37,7 +36,10 @@ export function webCaptureHtml(value: unknown, removable = false) {
         esc(attachSrc(ref)) +
         '" alt="' +
         esc(alt) +
-        '"></button>'
+        '"><span class="web-picture-action" aria-hidden="true">' +
+        SVG.edit +
+        (c.annotation ? "Edit drawing" : "Draw on capture") +
+        "</span></button>"
       : picture(ref, alt);
   const capture = (
     c: WebCapture,
@@ -45,40 +47,12 @@ export function webCaptureHtml(value: unknown, removable = false) {
     index: number,
     kind: "selection" | "after",
   ) =>
-    '<section class="web-observation"><div class="web-caption"><b>' +
-    esc(label) +
-    "</b><time>" +
-    esc(new Date(c.at).toLocaleString()) +
-    "</time>" +
-    (removable ? '<span class="web-caption-actions">' : "") +
-    (removable
-      ? '<button type="button" data-web-annotate="' +
-        index +
-        '" data-web-kind="' +
-        kind +
-        '" data-web-key="' +
-        esc(webSelectionKey(c)) +
-        '" aria-label="' +
-        (c.annotation ? "Edit drawing on " : "Annotate ") +
-        esc(label.toLowerCase()) +
-        ' screenshot">' +
-        (c.annotation ? "Edit drawing" : "Annotate") +
-        "</button>"
+    '<section class="web-observation" aria-label="' +
+    esc(label + " capture") +
+    '">' +
+    (web.additional?.length || web.after.length
+      ? '<div class="web-image-label">' + esc(label) + "</div>"
       : "") +
-    (removable && kind === "selection"
-      ? '<button type="button" class="danger" data-web-remove="' +
-        index +
-        '" data-web-key="' +
-        esc(webSelectionKey(c)) +
-        '" aria-label="' +
-        (index === 0
-          ? "Remove first selection" +
-            (web.after.length ? " and its comparisons" : "")
-          : "Remove selection " + (index + 1)) +
-        '">Remove</button>'
-      : "") +
-    (removable ? "</span>" : "") +
-    "</div>" +
     (c.annotation
       ? '<div class="web-image-label">Annotated proposal · margin is drawing space, not captured UI</div>' +
         editablePicture(
@@ -133,13 +107,22 @@ export function webCaptureHtml(value: unknown, removable = false) {
       : "") +
     "<details><summary>Selection metadata</summary><pre>" +
     esc(JSON.stringify({ ...c, page: undefined, area: undefined }, null, 2)) +
-    "</pre></details></section>";
+    "</pre></details>" +
+    (removable && kind === "selection"
+      ? '<div class="web-capture-actions"><button type="button" class="danger" data-web-remove="' +
+        index +
+        '" data-web-key="' +
+        esc(webSelectionKey(c)) +
+        '" aria-label="' +
+        (index === 0
+          ? "Remove first selection" +
+            (web.after.length ? " and its comparisons" : "")
+          : "Remove selection " + (index + 1)) +
+        '">Remove</button></div>'
+      : "") +
+    "</section>";
   return (
-    '<div class="web-capture"><div class="web-location">' +
-    esc(web.before.title || "UI note") +
-    pathHtml(web.before.url, { title: web.before.url }) +
-    "</div>" +
-    '<div class="web-comparison">' +
+    '<div class="web-capture"><div class="web-comparison">' +
     capture(web.before, "Before", 0, "selection") +
     (web.additional ?? [])
       .map((c, i) => capture(c, "Selection " + (i + 2), i + 1, "selection"))

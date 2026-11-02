@@ -4,7 +4,7 @@ tr.nrow td {
 }
 .nbox {
   margin: 8px 10px 10px 28px;
-  border: 1px solid var(--edge-hi);
+  border: none;
   border-radius: 6px;
   background: var(--panel2);
   overflow: clip;
@@ -15,7 +15,7 @@ tr.nrow td {
 }
 .fnotes {
   background: var(--base);
-  border-bottom: 1px solid var(--edge);
+  padding-block: calc(var(--row) / 4);
 }
 .fnotes .nbox {
   margin: 9px;
@@ -27,8 +27,7 @@ tr.nrow td {
   flex-wrap: wrap;
   gap: 10px;
   padding: 6px 11px;
-  border-bottom: 1px solid var(--edge);
-  background: var(--s0);
+  background: var(--panel);
   font-size: var(--fs-sm);
   color: var(--ink-dim);
   position: sticky;
@@ -88,6 +87,7 @@ tr.nrow td {
 /* edit/delete live in the header strip, so they sit one step below the standalone button size */
 .nhead button {
   padding: 5px 9px;
+  border-color: transparent;
   min-height: var(--tap);
   font-size: var(--fs-xs);
 }
@@ -104,6 +104,9 @@ tr.nrow td {
   gap: calc(var(--tap) / 4);
   color: var(--teal);
 }
+.nhead button:hover {
+  background: var(--s1);
+}
 button[data-icon-action] {
   display: inline-flex;
   align-items: center;
@@ -114,6 +117,13 @@ button[data-icon-action] {
   min-width: var(--tap);
   min-height: var(--tap);
   padding: 0;
+}
+.nbox button[data-icon-action] {
+  border-color: transparent;
+  background: transparent;
+}
+.nbox button[data-icon-action]:hover {
+  background: var(--s1);
 }
 .nhead button[data-icon-action],
 .msg button[data-icon-action] {
@@ -172,6 +182,12 @@ header > button[data-icon-action],
   gap: 8px;
   margin-top: 8px;
   align-items: center;
+}
+.nbox .acts button:not(.primary) {
+  border-color: transparent;
+}
+.nbox .acts button:not(.primary):hover {
+  background: var(--s1);
 }
 .acts .spacer {
   flex: 1;

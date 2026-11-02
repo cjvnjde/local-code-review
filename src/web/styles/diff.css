@@ -18,7 +18,7 @@
 }
 /* clip, not hidden: overflow hidden would make each card its own scrollport and kill the sticky header */
 #diff .file {
-  border: 1px solid var(--edge);
+  border: none;
   border-radius: 6px;
   margin: 12px 14px;
   overflow: clip;
@@ -36,14 +36,11 @@
   z-index: 2;
   background: var(--panel2);
   padding: 7px 12px;
-  border-bottom: 1px solid var(--edge);
+  border-bottom: none;
   display: flex;
   gap: 10px;
   align-items: center;
-  box-shadow: 0 1px 0 var(--crust);
-}
-#diff .file.fold .fh {
-  border-bottom: none;
+  box-shadow: none;
 }
 .fh .fchev {
   border: none;

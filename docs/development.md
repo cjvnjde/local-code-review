@@ -199,9 +199,9 @@ the server serializes it into the reviewed page rather than loading the ordinary
 - Browser `notes/notes.ts` owns note placement and editing; `notes/thread.ts` owns reply lifecycle
   and server reconciliation. Keep commit guards, deletion, cancellation, in-flight state and
   single-editor ownership in those controllers.
-- `components/composer.ts` shares attachment/reference controls, shortcut hints, textarea growth
-  and save/cancel key handling. Insert the textarea and set its value before `wireComposer`; pass
-  the existing attachment drop host, not a new wrapper.
+- `components/composer.ts` shares collapsible Markdown formatting, attachment/reference controls,
+  shortcut hints, textarea growth and save/cancel key handling. Insert the textarea and set its value
+  before `wireComposer`; pass the existing attachment drop host, not a new wrapper.
 - `components/body.ts` renders Markdown and captured-code suggestion diffs. Read-only consumers
   import it directly rather than the reply controller. Reference previews receive the renderer as
   a callback so nested references never recursively embed conversations.

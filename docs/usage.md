@@ -171,9 +171,14 @@ Click a note's short `#id` tag to copy it, then paste it into another note or re
 
 References work between code and visual notes within the same review. IDs survive reordering and restarts. Previously copied comment URLs and older `lcr:` links remain readable. An agent's reply must still answer its own note fully; references add context rather than replace an answer.
 
+Note and reply inputs offer **Formatting options**, collapsed by default. Open it to insert bold,
+italic, inline code, fenced code blocks, links, images, or note references. The input and saved
+review remain ordinary Markdown; selecting text before an action formats that selection, and
+inserting a link leaves its URL selected for replacement. Save actions sit on the right.
+
 ### Attach pictures
 
-Paste a screenshot into any note or reply, drop an image on the box, or use the image icon. The picture is stored beside the review in `images/` and linked as ordinary Markdown:
+Paste a screenshot into any note or reply, drop an image on the box, or open **Formatting options** and choose the image icon. The picture is stored beside the review in `images/` and linked as ordinary Markdown:
 
 ```md
 ![Screenshot](images/<name>.png)

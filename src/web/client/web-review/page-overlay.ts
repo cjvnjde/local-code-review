@@ -140,8 +140,8 @@ export function installPageReview(config: {
   const root = host.attachShadow({ mode: "open" });
   root.innerHTML = `<style>
     :host{all:initial;--fs-body:13px;--fs-small:11px;--tap:32px;--icon:16px;--row:36px;color:#e9eaf2;font:var(--fs-body)/1.5 system-ui,sans-serif}
-    *{box-sizing:border-box}button,a{font:inherit}button,.review-link{min-width:var(--tap);min-height:var(--tap);border:1px solid #414553;background:#242733;color:inherit;border-radius:7px;padding:5px 10px;cursor:pointer}
-    button:hover,.review-link:hover{background:#35394b}button:disabled{opacity:.55;cursor:wait}button[aria-pressed=true]{background:#7554df;border-color:#9779f1;color:white}.review-link{text-decoration:none}
+    *{box-sizing:border-box}button,a{font:inherit}button,.review-link{min-width:var(--tap);min-height:var(--tap);border:0;background:transparent;color:inherit;border-radius:7px;padding:5px 10px;cursor:pointer}
+    button:hover,.review-link:hover{background:#35394b}button:focus-visible,.review-link:focus-visible{outline:2px solid #c6b7ff;outline-offset:2px}button:disabled{opacity:.55;cursor:wait}button[aria-pressed=true]{background:#7554df;color:white}.review-link{text-decoration:none}
     .launcher{pointer-events:auto;position:fixed;left:18px;bottom:18px;width:calc(var(--tap) + 12px);height:calc(var(--tap) + 12px);padding:0;border-radius:50%;background:#191c26;border-color:#9779f1;font-weight:700;touch-action:none;cursor:grab;box-shadow:0 6px 30px #0005}
     .launcher:active{cursor:grabbing}
     .launcher[aria-pressed=true]{box-shadow:0 0 0 3px #9779f155,0 6px 30px #0005}
@@ -151,12 +151,12 @@ export function installPageReview(config: {
     .brand{font-weight:700;padding:0 9px;color:#c6b7ff}
     .outline{position:fixed;pointer-events:none;border:2px solid #9f7cff;background:#9f7cff19;border-radius:3px;display:none}
     .label{position:absolute;bottom:100%;left:0;white-space:nowrap;padding:2px 7px;background:#7554df;color:white;font-size:var(--fs-small)}
-    .dock{pointer-events:auto;position:fixed;right:18px;top:18px;height:calc(100vh - 96px);width:min(560px,calc(100vw - 36px));background:#191c26;border:1px solid #444858;box-shadow:0 8px 40px #0006;border-radius:12px;display:flex;flex-direction:column;overflow:hidden}
+    .dock{pointer-events:auto;position:fixed;right:18px;top:18px;height:calc(100vh - 96px);width:min(560px,calc(100vw - 36px));background:#191c26;border:0;box-shadow:0 8px 40px #0006;border-radius:12px;display:flex;flex-direction:column;overflow:hidden}
     .dock.minimized{height:auto}.dock.minimized .content{position:absolute;top:100%;left:0;right:0;flex:none;height:var(--content-height);visibility:hidden;pointer-events:none}
     .resize{position:absolute;right:0;bottom:0;width:var(--tap);height:var(--tap);padding:0;border:0;border-radius:0;background:transparent;cursor:nwse-resize;touch-action:none;display:grid;place-items:center;color:#c6b7ff}
     .resize svg{width:var(--icon);height:var(--icon);pointer-events:none}.resize:focus-visible{outline:2px solid #c6b7ff;outline-offset:-3px}.dock.minimized .resize{display:none}
     .resize:is(:hover,:focus-visible)::before{content:attr(title);position:absolute;right:calc(var(--tap) / 4);bottom:100%;width:calc(var(--tap) * 9);padding:calc(var(--tap) / 4);border:1px solid #444858;border-radius:7px;background:#242733;font-size:var(--fs-small);pointer-events:none;cursor:default}
-    .bar[hidden],.dock[hidden],.selection-tools[hidden]{display:none}.head{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid #363a47;cursor:move;touch-action:none;user-select:none}.head b{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.head button,.head .review-link{flex:none}.head .review-link{display:inline-flex;align-items:center}.content{display:flex;flex-direction:column;flex:1;min-height:0;overflow:auto}.content iframe{width:100%;flex:1;min-height:0;border:0;background:#191c26}.status,.error{padding:10px 14px;margin:0}
+    .bar[hidden],.dock[hidden],.selection-tools[hidden]{display:none}.head{display:flex;align-items:center;gap:8px;padding:8px 12px;background:#242733;cursor:move;touch-action:none;user-select:none}.head b{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.head button,.head .review-link{flex:none}.head .review-link{display:inline-flex;align-items:center}.content{display:flex;flex-direction:column;flex:1;min-height:0;overflow:auto}.content iframe{width:100%;flex:1;min-height:0;border:0;background:#191c26}.status,.error{padding:10px 14px;margin:0}
     .dock.annotating .head,.dock.annotating .resize{display:none}
     .dock.annotating{border:0;border-radius:0;box-shadow:none}
     .dock.annotating~.launcher,.dock.annotating~.bar{display:none}

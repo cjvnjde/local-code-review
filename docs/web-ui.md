@@ -88,6 +88,11 @@ keeps the editor, draft, selection, and iframe viewport intact. The size carries
 the page reloads. **×** intentionally discards a new unsaved draft, so that editor has no second Cancel
 button. Closing a saved note keeps its conversation; unsubmitted wording changes are discarded.
 
+The composer stays at the bottom while captures, metadata, and the conversation scroll above it.
+The popup and full review use surface colors and spacing instead of nested card outlines. A visual
+note's edit pencil sits beside its “You” message; the header keeps its click-to-copy short reference,
+history, and conversation-wide delete action, without a second page link or Capture after button.
+
 While a note window is open, selecting more of the page adds separate screenshots and metadata,
 including while minimized. Move the window aside to reach the area underneath; the text and caret stay put.
 Captures remain draft-only for a new note until Save. When viewing a saved note, new selections go to the
@@ -108,9 +113,11 @@ without destructive controls. A stale removal from another tab is rejected rathe
 different selection.
 
 Familiar actions use icons instead of redundant labels: trash for remove/delete, pencil for edit,
-a clock for history, and a picture for attaching an image. Replies have an always-open input. Hover or focus an icon to
-read its immediate tooltip; every icon also has a descriptive accessible name. Compound commands
-such as **Save & ask AI** retain text, as do content-bearing labels such as note references.
+and a clock for history. Replies have an always-open input and right-aligned save actions. The
+**Formatting options** toggle reveals Markdown controls for bold, italic, inline code, code blocks,
+links, images, and note references; it starts collapsed. Image paste and drop work while it is hidden.
+Hover or focus an icon to read its immediate tooltip; every icon also has a descriptive accessible
+name. Compound commands such as **Save & ask AI** retain text, as do note references.
 
 Saving a visual comment persists it immediately and closes the panel, leaving the page ready for
 another selection. Saved visual comments appear under **Overall** above the unchanged Git diff.
@@ -132,9 +139,12 @@ its header's **Open page** control opens or focuses the application.
 
 ## Draw on a capture
 
-Click a capture's selected-area image, annotated proposal, or pencil to open the drawing editor
-without opening another tab. It works for the first selection, additional selections, and comparison
-captures, from either the live page or the full review. The editor uses the full viewport with one
+Click a capture's selected-area image or annotated proposal to open the drawing editor
+without opening another tab. A colored drawing affordance appears on hover or keyboard focus,
+and remains visible on touch devices. Page title, URL, and capture time are under **Selection metadata**
+rather than repeated in screenshot headers. Drawing works for the first selection, additional
+selections, and existing comparison captures, from either the live page or the full review.
+The editor uses the full viewport with one
 compact icon toolbar, no title header or footer, and floating zoom controls. On the live page the
 note window expands edge to edge, then returns to its chosen size and position. Text and caret stay put.
 
@@ -220,13 +230,11 @@ browser's display scale; selection coordinates remain CSS pixels. Ordinary relat
 resolve beside the review Markdown. Content-addressed attachments are immutable and remain usable
 after the page, source, or review changes.
 
-**Capture after** records another observation of the **first selection** without changing the original.
-For elements it finds every target of that selection again and brings the group into view; for an
-area it requires matching DOM anchors and uses the region they identify. A point capture requires the
-original viewport and document position. Restore the original route, dialog/menu state, relevant data,
-and viewport before comparing. Additional selections remain separate evidence, not comparisons.
-Automatic replay of interactions and pixel-difference scoring are not included. The complete review
-shows before/after crops together, with expandable page screenshots and metadata.
+To compare a result, reopen the saved note and select the updated page again. New captures belong
+to the next reply and never replace the original evidence. Restore the route, dialog/menu state,
+relevant data, and viewport when you want a meaningful comparison. Automatic replay and
+pixel-difference scoring are not included. Existing before/after captures remain readable together,
+with expandable page screenshots and metadata.
 
 A screenshot can contain anything visible on the page. Element metadata excludes form values,
 component props, component state, and browser cookies. Component discovery does not need framework

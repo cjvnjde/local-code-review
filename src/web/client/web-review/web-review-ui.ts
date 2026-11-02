@@ -58,39 +58,18 @@ export function startWebReviewUI() {
   restoreReplyEvidence();
   document.addEventListener("click", async (event) => {
     const button = (event.target as Element)?.closest?.(
-      "[data-web-open],[data-web-after],[data-web-focus]",
+      "[data-web-open]",
     ) as HTMLButtonElement;
     if (!button) return;
-    const action = button.hasAttribute("data-web-after")
-      ? "capture"
-      : button.hasAttribute("data-web-focus")
-        ? "focus"
-        : "";
-    const id = button.dataset.webAfter || button.dataset.webFocus;
     const label = button.textContent;
     button.disabled = true;
-    button.textContent = action === "capture" ? "Capturing…" : "Opening…";
+    button.textContent = "Opening…";
     try {
-      const response = await fetch("/api/web" + (action ? "/" + action : ""), {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id }),
-      });
+      const response = await fetch("/api/web", { method: "POST" });
       const result = await response.json();
       if (!response.ok)
         throw new Error(result.error || "Could not reach the review browser.");
-      if (!action) configureWebReview(result);
-      else if (action === "capture" && id && result.reply === true) {
-        const web = webReview(result.web);
-        if (!web || typeof result.draftId !== "string")
-          throw new Error(
-            "The comparison capture did not return follow-up evidence.",
-          );
-        updateWebNoteEvidence(document, id, web, {
-          reply: true,
-          draftId: result.draftId,
-        });
-      }
+      configureWebReview(result);
     } catch (error) {
       alert(error instanceof Error ? error.message : String(error));
     } finally {

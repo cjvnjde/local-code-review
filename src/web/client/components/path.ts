@@ -137,26 +137,49 @@ function fitPath(container: HTMLElement) {
 }
 
 /**
- * Paths are created by several independent renders. One observer adopts each label as it appears,
- * and the resize observer re-fits it when a pane or window changes width.
+ * Paths are created by several independent renders. One observer adopts each label as it appears.
+ * Resize delivery only queues work: reserving filename minimums can resize the observed paths, so
+ * fitting runs once per path in the next frame, outside the observer's layout-delivery loop.
  */
 export function watchPaths() {
+  const pending = new Set<HTMLElement>();
+  let frame: number | undefined;
+  const schedule = (path: HTMLElement) => {
+    if (!path.isConnected) return;
+    pending.add(path);
+    if (frame !== undefined) return;
+    frame = requestAnimationFrame(() => {
+      frame = undefined;
+      const paths = [...pending];
+      pending.clear();
+      paths.forEach((path) => {
+        if (path.isConnected) fitPath(path);
+      });
+    });
+  };
   const resize = new ResizeObserver((entries) =>
-    entries.forEach((entry) => fitPath(entry.target as HTMLElement)),
+    entries.forEach((entry) => schedule(entry.target as HTMLElement)),
   );
+  const adopt = (path: HTMLElement) => {
+    if (!path.isConnected) return;
+    resize.observe(path);
+    schedule(path);
+  };
   const visit = (node: Node, observe: boolean) => {
     if (!(node instanceof Element)) return;
     const paths = [
       ...(node.matches(".pth[data-path]") ? [node] : []),
-      ...node.querySelectorAll(".pth[data-path]"),
+      ...node.querySelectorAll<HTMLElement>(".pth[data-path]"),
     ];
-    paths.forEach((path) =>
-      observe ? resize.observe(path) : resize.unobserve(path),
-    );
+    paths.forEach((path) => {
+      if (observe) adopt(path as HTMLElement);
+      else if (!path.isConnected) {
+        resize.unobserve(path);
+        pending.delete(path as HTMLElement);
+      }
+    });
   };
-  document
-    .querySelectorAll(".pth[data-path]")
-    .forEach((path) => resize.observe(path));
+  document.querySelectorAll<HTMLElement>(".pth[data-path]").forEach(adopt);
   new MutationObserver((entries) =>
     entries.forEach((entry) => {
       entry.addedNodes.forEach((node) => visit(node, true));

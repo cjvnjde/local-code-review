@@ -1005,7 +1005,7 @@ browserTest(
       await until(
         () =>
           frameJs(
-            'document.querySelectorAll("#uiNote .reply .web-observation").length===1',
+            'document.querySelectorAll("#uiNote [data-reply-evidence] .web-observation").length===1',
           ),
         "saved original routes new page selection to follow-up",
       );
@@ -1013,7 +1013,7 @@ browserTest(
         (await session.read()).notes.find((n) => n.id === note.id)!.web,
       ).toEqual(note.web);
       await frameJs(
-        'document.querySelector("#uiNote .reply [data-web-remove=\\"0\\"]").click()',
+        'document.querySelector("#uiNote [data-reply-evidence] [data-web-remove=\\"0\\"]").click()',
       );
       await until(
         () =>
@@ -1072,7 +1072,7 @@ browserTest(
       await until(
         () =>
           frameJs(
-            'document.querySelectorAll("#uiNote .reply .web-observation").length===1',
+            'document.querySelectorAll("#uiNote [data-reply-evidence] .web-observation").length===1',
           ),
         "answered note selection belongs to the next reply",
       );
@@ -1086,17 +1086,17 @@ browserTest(
       await until(
         () =>
           frameJs(
-            'document.querySelectorAll("#uiNote .reply .web-observation").length===2',
+            'document.querySelectorAll("#uiNote [data-reply-evidence] .web-observation").length===2',
           ),
         "next reply collects its own additional selection",
       );
       await frameJs(
-        'document.querySelector("#uiNote .reply [data-web-remove=\\"0\\"]").click()',
+        'document.querySelector("#uiNote [data-reply-evidence] [data-web-remove=\\"0\\"]").click()',
       );
       await until(
         () =>
           frameJs(
-            'document.querySelectorAll("#uiNote .reply .web-observation").length===1&&!document.querySelector("#uiNote .reply [data-reply-save]").disabled',
+            'document.querySelectorAll("#uiNote [data-reply-evidence] .web-observation").length===1&&!document.querySelector("#uiNote .reply [data-reply-save]").disabled',
           ),
         "reply selection removed without changing original evidence",
       );

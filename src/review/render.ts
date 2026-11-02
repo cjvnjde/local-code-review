@@ -93,8 +93,8 @@ const FOOTER = [
     "selected-area images, plus any separately linked annotated proposal. A proposal shows requested " +
     "changes, not the current UI; its blank margin is drawing space, not captured page content. " +
     "Compare it with the untouched original. Component names and source locations are best-effort runtime hints; verify " +
-    "them in the project. Preserve this evidence when answering. The reviewer can capture the result " +
-    "with Capture after once the original route and relevant page state are restored.",
+    "them in the project. Preserve this evidence when answering. The reviewer can select the updated " +
+    "page and add a follow-up capture to the same conversation.",
   "",
   "A screenshot-region note includes its before/after side, a rectangle in original image pixels " +
     "measured from the top-left, and a cropped capture linked relative to this file. Open that " +

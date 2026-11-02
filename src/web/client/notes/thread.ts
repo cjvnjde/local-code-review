@@ -123,10 +123,11 @@ function editMessage(box: any, note: any, m: any, done: () => void) {
   form.className = "medit";
   form.innerHTML =
     "<textarea></textarea>" +
-    '<div class="acts"><button class="primary">Save reply</button><button class="cancel">Cancel</button>' +
+    '<div class="acts">' +
     composerTools(note.id) +
+    '<button class="cancel">Cancel</button>' +
     composerHint("save") +
-    "</div>";
+    '<button class="primary">Save reply</button></div>';
   const ta: any = form.querySelector("textarea");
   ta.value = m.body || "";
   ta.dataset.was = m.body || ""; // what says the box is untouched and may step aside for the next one
@@ -240,11 +241,13 @@ export function setReplyEvidence(
   reply.__web = web;
   reply.dataset.draftId = draftId || "";
   reply.toggleAttribute("data-evidence", !!web);
-  let preview = reply.querySelector("[data-reply-evidence]");
+  let preview = box.querySelector<HTMLElement>("[data-reply-evidence]");
   if (!preview) {
     preview = document.createElement("div");
     preview.dataset.replyEvidence = "";
-    reply.prepend(preview);
+    const scroll = box.querySelector(".ui-note-scroll");
+    if (scroll) scroll.append(preview);
+    else reply.prepend(preview);
   }
   preview.innerHTML = webCaptureHtml(web, true);
   reply.dispatchEvent(new Event("input", { bubbles: true }));
@@ -278,13 +281,13 @@ function startReply(wrap: any, id: string, done: () => void) {
   box.__done = done;
   box.innerHTML =
     '<textarea aria-label="Reply to the agent" placeholder="Reply to the agent"></textarea>' +
-    '<div class="acts"><button data-reply-save>Save reply</button>' +
-    '<button class="primary" data-ask-note' +
-    (state.agent ? "" : " hidden") +
-    ">Save &amp; ask AI</button>" +
+    '<div class="acts">' +
     composerTools(id) +
     composerHint("save") +
-    "</div>";
+    "<button data-reply-save>Save reply</button>" +
+    '<button class="primary" data-ask-note' +
+    (state.agent ? "" : " hidden") +
+    ">Save &amp; ask AI</button></div>";
   const ta: any = box.querySelector("textarea");
   ta.dataset.nid = id;
   wrap.replaceWith(box);

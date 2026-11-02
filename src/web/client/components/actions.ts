@@ -5,12 +5,6 @@ const ACTIONS: [string, keyof typeof SVG, string][] = [
   ["button.edit,button.rewrite", "edit", "Edit"],
   ["button.history,#showHistory", "history", "History"],
   ["button.attb", "pic", "Attach image"],
-  ["button[data-web-focus]", "open", "On page"],
-  [
-    "button[data-web-annotate]:not(.web-picture)",
-    "edit",
-    "Annotate screenshot",
-  ],
   [
     '[data-annotation-editor] button[data-command="undo"]',
     "reply",

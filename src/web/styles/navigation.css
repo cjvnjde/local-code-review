@@ -12,7 +12,7 @@ body.notree nav {
 .navtop {
   flex: none;
   padding: 10px;
-  border-bottom: 1px solid var(--edge);
+  background: var(--panel2);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -21,14 +21,15 @@ body.notree nav {
   width: 100%;
   background: var(--crust);
   color: var(--ink);
-  border: 1px solid var(--edge-hi);
+  border: 1px solid transparent;
   border-radius: 5px;
   padding: 7px 10px;
   font: var(--fs-ui)/1.4 var(--sans);
 }
 .navtop input:focus {
-  outline: none;
   border-color: var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .navbtns {
   display: flex;
@@ -38,17 +39,21 @@ body.notree nav {
   flex: 1;
   padding: 0;
   min-height: var(--tap-lg);
+  border-color: transparent;
+}
+.navbtns button:hover {
+  background: var(--s1);
 }
 .fstat {
   text-align: left;
   text-transform: none;
   letter-spacing: 0;
-  border-style: dashed;
-  border-color: var(--edge-hi);
+  border-color: transparent;
+  background: var(--cnote);
   color: var(--mark);
   padding: 5px 8px;
   font-size: var(--fs-xs);
-  min-height: 28px;
+  min-height: var(--tap);
   justify-content: flex-start;
 }
 .fstat[hidden] {
@@ -190,7 +195,7 @@ body.notree nav {
   flex: none;
   display: flex;
   flex-direction: column;
-  border-top: 1px solid var(--edge-hi);
+  border-top: 1px solid var(--edge);
 }
 .ntpane {
   max-height: 38%;
@@ -209,7 +214,7 @@ body.notree nav {
   align-items: center;
   gap: 7px;
   padding: 7px 10px;
-  border-bottom: 1px solid var(--edge);
+  background: var(--panel);
 }
 .nthead .ttl,
 .bmhead .ttl {
@@ -241,8 +246,13 @@ body.notree nav {
   padding: 4px 7px;
   font-size: var(--fs-xs);
   min-height: var(--tap);
+  border-color: transparent;
   display: flex;
   align-items: center;
+}
+.nthead button:hover,
+.bmhead button:hover {
+  background: var(--s1);
 }
 .ntlist,
 .bmlist {

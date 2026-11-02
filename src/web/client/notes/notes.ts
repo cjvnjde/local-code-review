@@ -484,12 +484,22 @@ registerEditor((route) => {
   const note = noteByRef(route.slice(5), state.notes.values());
   if (!note || !canEditNote(note)) return false;
   const box = findNoteBox(note.id);
-  const edit = box?.querySelector<HTMLButtonElement>(".nhead .edit");
+  const edit = box?.querySelector<HTMLButtonElement>("button.edit");
   if (!edit) return false;
   edit.click();
   return !!box?.querySelector(".nedit textarea");
 });
 
+/** Pending reply captures scroll with the thread, independently of the popup's bottom composer. */
+function captureReply(box: HTMLElement, button: HTMLElement) {
+  type Reply = HTMLElement & { __web?: WebReview };
+  return (
+    button.closest<Reply>(".reply") ||
+    (button.closest("[data-reply-evidence]")
+      ? box.querySelector<Reply>(".reply")
+      : null)
+  );
+}
 document.addEventListener("lcr:annotation-restore", (event: Event) => {
   const route = (event as CustomEvent<{ route: string }>).detail.route;
   const owner = noteByRef(route.split(":")[0], state.notes.values());
@@ -500,8 +510,7 @@ document.addEventListener("lcr:annotation-restore", (event: Event) => {
     const box = button.closest<HTMLElement>(".nbox");
     if (!box || button.disabled || box.closest("[hidden]")) continue;
     const id = rowOf(box)?.dataset.nid;
-    const reply = button.closest<HTMLElement>(".reply") as
-      (HTMLElement & { __web?: WebReview }) | null;
+    const reply = captureReply(box, button);
     const web = webReview(
       reply?.__web ?? noteContexts.get(box)?.web ?? state.notes.get(id)?.web,
     );
@@ -614,27 +623,6 @@ export function updateWebNoteEvidence(
         next = heading.querySelector(selector);
       if (current && next) current.replaceWith(next);
     }
-    if (!web)
-      box
-        .querySelectorAll("[data-web-focus],[data-web-after]")
-        .forEach((button) => button.remove());
-    else if (
-      note &&
-      state.web &&
-      !box.querySelector(".nedit") &&
-      !box.querySelector("[data-web-focus]")
-    ) {
-      const history = box.querySelector(".history");
-      for (const [action, label] of [
-        ["webFocus", "On page"],
-        ["webAfter", "Capture after"],
-      ]) {
-        const button = document.createElement("button");
-        button.dataset[action] = id;
-        button.textContent = label;
-        history?.before(button);
-      }
-    }
     const ta = box.querySelector<HTMLTextAreaElement>(".nedit textarea");
     if (ta && ctx?.scope === "global")
       ta.placeholder = web
@@ -656,7 +644,7 @@ async function annotateWebCapture(box: HTMLElement, button: HTMLButtonElement) {
   )
     return;
   const ctx = noteContexts.get(box),
-    reply: any = button.closest(".reply"),
+    reply = captureReply(box, button),
     web = webReview(reply?.__web ?? ctx?.web ?? state.notes.get(id)?.web);
   if (!web) return;
   const index = Number(button.dataset.webAnnotate),
@@ -783,7 +771,7 @@ function wireWebRemoval(box: HTMLElement) {
     const index = Number(button.dataset.webRemove),
       key = button.dataset.webKey;
     if (key === undefined) return;
-    const reply = button.closest<HTMLElement>(".reply");
+    const reply = captureReply(box, button);
     const draftId = reply?.dataset.draftId;
     webRemovalErrors.delete(id);
     if (state.uiEmbed) {
@@ -910,11 +898,12 @@ function editUI(box, ctx) {
       SVG.plus +
       " suggest</button>";
   box.innerHTML =
+    (state.uiEmbed ? '<div class="ui-note-scroll">' : "") +
     headHtml(
       f,
       whole ? null : sp.label,
       whole ? null : sp.snippet,
-      suggest + composerTools(id),
+      suggest,
       ctx.scope,
       ctx.image,
       ctx.web,
@@ -925,6 +914,7 @@ function editUI(box, ctx) {
     "<div data-web-evidence>" +
     webCaptureHtml(ctx.web, true) +
     "</div>" +
+    (state.uiEmbed ? "</div>" : "") +
     '<div class="nedit"><textarea placeholder="' +
     (ctx.web
       ? "What should change here?"
@@ -938,18 +928,20 @@ function editUI(box, ctx) {
               ? "What should change in this part of the line?"
               : "What should change here?") +
     '"></textarea>' +
-    '<div class="acts"><button data-save-note' +
+    '<div class="acts">' +
+    composerTools(id) +
+    (state.uiEmbed && !state.notes.has(id)
+      ? ""
+      : '<button class="cancel">Cancel</button>') +
+    (state.notes.has(id) ? '<button class="danger del">Delete</button>' : "") +
+    composerHint("save") +
+    "<button data-save-note" +
     (webCapturing.has(box) ? " disabled" : "") +
     ">" +
     esc(noteSaveLabel()) +
     '</button><button class="primary" data-ask-note' +
     (state.agent ? "" : " hidden") +
     ">Save &amp; ask AI</button>" +
-    (state.uiEmbed && !state.notes.has(id)
-      ? ""
-      : '<button class="cancel">Cancel</button>') +
-    (state.notes.has(id) ? '<button class="danger del">Delete</button>' : "") +
-    composerHint("save") +
     "</div></div>";
   wireWebRemoval(box);
   const ta = box.querySelector("textarea");
@@ -1334,6 +1326,7 @@ export function viewUI(box, note, ctx) {
   box.classList.toggle("adrift", lost);
   box.classList.toggle("unread-on", !!unread);
   box.innerHTML =
+    (state.uiEmbed ? '<div class="ui-note-scroll">' : "") +
     headHtml(
       ctx.f,
       note.label,
@@ -1368,16 +1361,17 @@ export function viewUI(box, note, ctx) {
             (isResolved(note) ? "Reopen" : "Resolve") +
             "</button>"
           : "") +
-        (note.web && state.web
-          ? '<button data-web-focus="' +
-            esc(note.id) +
-            '">On page</button><button data-web-after="' +
-            esc(note.id) +
-            '">Capture after</button>'
-          : "") +
         '<button class="history" title="See earlier versions of this note">History</button>' +
-        (canEditNote(note) ? '<button class="edit">Edit</button>' : "") +
-        (!canResolve(note) ? '<button class="danger del">Delete</button>' : ""),
+        (!note.web && canEditNote(note)
+          ? '<button class="edit">Edit</button>'
+          : "") +
+        (!canResolve(note)
+          ? '<button class="danger del" aria-label="' +
+            (note.web
+              ? "Delete visual note and its conversation"
+              : "Delete note and its conversation") +
+            '">Delete</button>'
+          : ""),
       ctx.scope,
       note.image,
       note.web,
@@ -1393,9 +1387,17 @@ export function viewUI(box, note, ctx) {
       note.image,
       !!ctx.f.hash && note.image?.source !== ctx.f.hash,
     ) +
-    '<div class="nbody"></div>' +
+    (note.web
+      ? '<div class="note-message"><div class="note-author"><b>You</b>' +
+        (canEditNote(note)
+          ? '<button class="edit" aria-label="Edit your note">Edit</button>'
+          : "") +
+        '</div><div class="nbody"></div></div>'
+      : '<div class="nbody"></div>') +
     (st && st.detail ? '<div class="nstat"></div>' : "") +
-    '<div class="thread"></div><div class="replyhost"></div>';
+    '<div class="thread"></div>' +
+    (state.uiEmbed ? "</div>" : "") +
+    '<div class="replyhost"></div>';
   renderBody(
     box.querySelector(".nbody"),
     note.body,

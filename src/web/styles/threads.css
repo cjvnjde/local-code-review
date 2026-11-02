@@ -6,7 +6,6 @@
   display: none;
 }
 .thread {
-  border-top: 1px solid var(--edge);
   background: var(--panel2);
   padding: 11px 12px;
   display: flex;
@@ -14,32 +13,34 @@
   gap: 10px;
 }
 .msg {
-  border: 1px solid var(--edge-hi);
-  border-radius: 6px;
+  max-width: calc(100% - var(--tap) / 2);
+  border: 0;
+  border-radius: calc(var(--tap) / 4);
   background: var(--panel);
   overflow: hidden;
 }
 .msg.a {
-  border-left: 3px solid var(--sapphire);
+  align-self: flex-start;
+  background: color-mix(in srgb, var(--sapphire) 7%, var(--panel));
 }
 .msg.r {
-  border-left: 3px solid var(--mauve);
+  align-self: flex-end;
+  background: color-mix(in srgb, var(--mauve) 10%, var(--panel));
 }
 .msg .who {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 6px 11px;
-  border-bottom: 1px solid var(--edge);
   font-family: var(--sans);
   font-size: var(--fs-sm);
   color: var(--ink-dim);
 }
 .msg.a .who {
-  background: rgba(116, 199, 236, 0.13);
+  color: var(--sapphire);
 }
 .msg.r .who {
-  background: rgba(203, 166, 247, 0.11);
+  color: var(--mauve);
 }
 .msg .who b {
   font-weight: 600;
@@ -98,18 +99,7 @@
   font: var(--fs-code)/1.55 var(--mono);
   color: var(--ink);
 }
-/* a message that arrived while the page was open, until the note is looked at */
-.msg.fresh {
-  border-color: var(--mark);
-}
-.msg.fresh.a {
-  border-left-color: var(--sapphire);
-}
-.msg.fresh.r {
-  border-left-color: var(--mauve);
-}
 .replyhost {
-  border-top: 1px solid var(--edge);
   background: var(--panel2);
 }
 .thread:not(:empty) + .replyhost {
