@@ -28,6 +28,7 @@ export function parseArgs(
   let help = false;
   let web = defaults.web ?? "";
   let browserProfile = defaults.browserProfile;
+  let browserDataDir = defaults.browserDataDir;
   let acp = defaults.acp ?? "";
   let noAgent = false;
   let worktree = false;
@@ -47,9 +48,21 @@ export function parseArgs(
     else if (arg === "--no-web") web = "";
     else if (arg === "--browser-profile") {
       const value = argv[++i];
-      if (value !== "shared" && value !== "project")
-        throw new Error('--browser-profile requires "shared" or "project".');
+      if (value !== "shared" && value !== "project" && value !== "existing")
+        throw new Error(
+          '--browser-profile requires "shared", "project", or "existing".',
+        );
       browserProfile = value;
+    } else if (arg === "--browser-data-dir") {
+      browserDataDir = argv[++i];
+      if (
+        !browserDataDir?.trim() ||
+        browserDataDir.startsWith("-") ||
+        browserDataDir.includes("\0")
+      )
+        throw new Error(
+          "--browser-data-dir requires a browser user data directory.",
+        );
     } else if (arg === "--worktree") worktree = true;
     else if (arg === "--no-open") open = false;
     else if (arg === "--open") open = true;
@@ -79,6 +92,7 @@ export function parseArgs(
     ...(acp ? { acp } : {}),
     ...(web ? { web } : {}),
     ...(browserProfile ? { browserProfile } : {}),
+    ...(browserDataDir ? { browserDataDir } : {}),
     port,
     outDir,
     context,
@@ -106,9 +120,10 @@ Options:
   --port <number>            Starting port (default: 7777; 0 picks a free port)
   --out <directory>          Review output directory (default: .review)
   --context <lines>          Surrounding diff lines (default: 5)
-  --web <url>                Also annotate a localhost UI in a dedicated Chrome window
+  --web <url>                Also annotate a localhost UI in Chrome
   --no-web                   Ignore a configured live page
-  --browser-profile <scope>  Browser state: shared (default) or project
+  --browser-profile <scope>  Browser: shared (default), project, or existing
+  --browser-data-dir <dir>   Existing browser's data directory (default: Chrome stable)
   --worktree                 Ignore configured diffArgs; review all working-tree changes
   --id <name>                Name a review to continue it across diff changes
   --no-open                  Do not open the browser

@@ -5,7 +5,7 @@ import type { CliOptions } from "../shared/review-types.ts";
 export function reviewBrowserProfile(
   repoRoot: string,
   outDir: string,
-  scope: CliOptions["browserProfile"] = "shared",
+  scope: Exclude<CliOptions["browserProfile"], "existing"> = "shared",
   configFile = userConfigFile(),
 ): string {
   return scope === "project"

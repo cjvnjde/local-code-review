@@ -14,6 +14,7 @@ export interface StartupSettings {
   id?: string;
   web?: string;
   browserProfile?: CliOptions["browserProfile"];
+  browserDataDir?: string;
   diffArgs?: string[];
   ui?: Partial<UiSettings>;
 }
@@ -138,9 +139,22 @@ export async function loadUserSettings(
         settings.diffArgs = entry;
         break;
       case "browserProfile":
-        if (entry !== "shared" && entry !== "project")
-          invalid(key, '"shared" or "project"');
+        if (entry !== "shared" && entry !== "project" && entry !== "existing")
+          invalid(key, '"shared", "project", or "existing"');
         settings.browserProfile = entry;
+        break;
+      case "browserDataDir":
+        if (
+          typeof entry !== "string" ||
+          !entry.trim() ||
+          entry.includes("\0") ||
+          entry.startsWith("-")
+        )
+          invalid(key, "a non-empty browser user data directory path");
+        settings.browserDataDir = path.resolve(
+          path.dirname(settingsFile),
+          expandHome(entry),
+        );
         break;
       case "ui":
         try {
@@ -165,4 +179,11 @@ export function resolveAcpPath(
 ): string | null {
   if (options.noAgent || !options.acp) return null;
   return path.resolve(repoRoot, expandHome(options.acp));
+}
+
+export function resolveBrowserDataDir(
+  file: string | undefined,
+  repoRoot: string,
+): string | undefined {
+  return file ? path.resolve(repoRoot, expandHome(file)) : undefined;
 }

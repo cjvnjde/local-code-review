@@ -62,6 +62,28 @@ describe("parseArgs", () => {
     const defaults = { browserProfile: "project" as const };
     expect(parseArgs([], defaults).browserProfile).toBe("project");
     expect(
+      parseArgs(
+        [
+          "--browser-profile",
+          "existing",
+          "--browser-data-dir",
+          "profile with spaces",
+          "HEAD~1",
+        ],
+        defaults,
+      ),
+    ).toMatchObject({
+      browserProfile: "existing",
+      browserDataDir: "profile with spaces",
+      diffArgs: ["HEAD~1"],
+    });
+    expect(
+      parseArgs(["--browser-profile", "project"], {
+        browserProfile: "existing",
+        browserDataDir: "/chrome",
+      }),
+    ).toMatchObject({ browserProfile: "project", browserDataDir: "/chrome" });
+    expect(
       parseArgs(["--browser-profile", "shared", "HEAD~1"], defaults),
     ).toMatchObject({ browserProfile: "shared", diffArgs: ["HEAD~1"] });
     expect(
@@ -80,6 +102,12 @@ describe("parseArgs", () => {
       ["--browser-profile", "--staged"],
     ])
       expect(() => parseArgs(args)).toThrow("--browser-profile requires");
+    for (const args of [
+      ["--browser-data-dir"],
+      ["--browser-data-dir", "--staged"],
+      ["--browser-data-dir", "\0"],
+    ])
+      expect(() => parseArgs(args)).toThrow("--browser-data-dir requires");
   });
 
   test("--id with nothing after it leaves the review unnamed", () => {

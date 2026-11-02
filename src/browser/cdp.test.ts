@@ -219,3 +219,37 @@ test("CDP connection failure rejects instead of returning a disconnected transpo
     server.stop(true);
   }
 });
+
+test.each(["cancel", "timeout"] as const)(
+  "a pending browser approval can %s without leaving a connection",
+  async (mode) => {
+    const gate = Promise.withResolvers<void>();
+    const arrived = Promise.withResolvers<void>();
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      async fetch() {
+        arrived.resolve();
+        await gate.promise;
+        return new Response("Denied", { status: 403 });
+      },
+    });
+    const abort = new AbortController();
+    const pending = Cdp.connect(
+      `ws://127.0.0.1:${server.port}/devtools/browser`,
+      { signal: abort.signal, timeout: mode === "timeout" ? 30 : 1000 },
+    );
+    const result = Promise.allSettled([pending]);
+    try {
+      await arrived.promise;
+      if (mode === "cancel") abort.abort();
+      expect((await result)[0].status).toBe("rejected");
+      await expect(pending).rejects.toThrow(
+        mode === "cancel" ? "cancelled" : "timed out",
+      );
+    } finally {
+      gate.resolve();
+      server.stop(true);
+    }
+  },
+);

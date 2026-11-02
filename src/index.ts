@@ -7,7 +7,11 @@ import { readAttachment, saveAttachment } from "./review/attach.ts";
 import { readBlob } from "./git/blob.ts";
 import { openInBrowser } from "./browser/open.ts";
 import { HELP, parseArgs } from "./cli/args.ts";
-import { loadUserSettings, resolveAcpPath } from "./cli/config.ts";
+import {
+  loadUserSettings,
+  resolveAcpPath,
+  resolveBrowserDataDir,
+} from "./cli/config.ts";
 import {
   diffBase,
   diffRangeLabel,
@@ -132,6 +136,10 @@ async function main() {
       ? createWebReview({
           url: options.web,
           browserProfile: options.browserProfile,
+          browserDataDir: resolveBrowserDataDir(
+            options.browserDataDir,
+            repoRoot,
+          ),
           repoRoot,
           outDir: options.outDir,
           session,

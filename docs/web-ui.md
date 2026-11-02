@@ -232,24 +232,64 @@ your previous logins, choose `project`. To migrate one profile to shared storage
 its browser, then copy that entire `.browser` directory to the shared `browser` location only
 if that destination does not already exist. Do not merge profiles or copy a running browser's data.
 
-Only one run can own a profile at a time. For simultaneous UI reviews, use `project` in separate
+Only one run can own a dedicated profile at a time. For simultaneous UI reviews, use `project` in separate
 worktrees or output directories. A second run reports the conflict without attaching to or closing
 the first browser. After an unclean shutdown, a `.lcr-owner.lock` may remain inside the profile;
 remove only that lock after verifying that its lcr process and browser have stopped.
 
-### Existing profiles and safety
+### Attach to your existing browser
 
-lcr currently launches and owns its dedicated browser; it does not attach to an existing personal
-browser. Chrome 136+ ignores remote-debugging launch flags against its default data directory.
-Chrome 144+ offers a separate connection flow with explicit user consent, but lcr does not yet
-implement it. See Chrome's [launch restrictions](https://developer.chrome.com/blog/remote-debugging-port)
-and [existing-session connection flow](https://developer.chrome.com/blog/chrome-devtools-mcp-debug-your-browser-session).
+To use your existing Chrome session, including its logins and current app state:
 
-The profile directory is restricted to its owner on POSIX systems (`0700`; the owner lock is
+1. Start Chrome 144 or newer and enable remote debugging at `chrome://inspect/#remote-debugging`.
+2. Open the app at the exact URL you will give to `--web` (including its path, query, and fragment).
+3. Run `lcr --web http://localhost:3000 --browser-profile existing`.
+4. Allow the connection in Chrome's dialog. lcr waits up to one minute for approval.
+
+lcr reuses the one tab matching that URL without reloading it, preserving form values, scroll, and
+in-memory app state. If no tab matches, it opens one in that browser. Duplicate matching tabs produce
+an error; close duplicates or use a distinct URL. One app tab can belong to one lcr review at a time.
+Different app tabs can be reviewed by separate runs, each with its own Chrome connection.
+
+The default discovery location is Chrome stable's user data directory for your OS. For another
+installation or a compatible browser, specify the **user data directory**, not its `Default` or
+`Profile 1` subdirectory:
+
+```sh
+lcr --web http://localhost:3000 --browser-profile existing --browser-data-dir "/path/to/browser/User Data"
+```
+
+You can set `"browserProfile": "existing"` and optionally `"browserDataDir": "/path/to/browser/User Data"`
+in your user config. Configured paths resolve beside `config.json`; CLI paths resolve from the
+repository root. Both support `~/`. The directory override applies only to `existing` mode.
+Use `--browser-profile shared` or `project` to launch a dedicated browser again.
+
+Attachment only reads the browser's `DevToolsActivePort` discovery file and connects on loopback;
+it never copies, changes permissions on, or locks the personal profile. Chrome owns the consent
+decision. A denied, revoked, missing, or unreadable connection leaves lcr's server available to retry.
+On macOS, you may need to allow your terminal access to Chrome under **Privacy & Security → Files & Folders**.
+
+Stopping lcr removes its overlay, event handlers, binding, and reload script, then disconnects.
+It leaves Chrome and all tabs open, including any app or review tabs it created. After a crash or
+revoked connection, an idle overlay removes itself when its connection requests time out; an
+unfinished editor stays visible and switches to browse mode. Reopen the page from the same lcr run
+to reconnect, or reload the tab after preserving any unsaved work.
+
+This is a direct Chrome DevTools Protocol connection; no AI, extension, MCP server, or automation
+package is required. See Chrome's [existing-session connection flow](https://developer.chrome.com/blog/chrome-devtools-mcp-debug-your-browser-session).
+Chrome 136+ [restricts launch flags against the default data directory](https://developer.chrome.com/blog/remote-debugging-port);
+use the consent toggle above for an everyday browser session.
+
+### Profile safety
+
+The dedicated profile directory is restricted to its owner on POSIX systems (`0700`; the owner lock is
 `0600`); Windows uses the containing directory's account permissions. Moving it outside a checkout
 also keeps browser credentials out of repository files. This is ordinary sensitive browser data,
 not an encrypted lcr vault: programs running as your user can access it, and the local debugging
 connection can control the browser. Use a dedicated development account for logins.
+With `existing`, approving Chrome's connection grants debugging access to your personal browser;
+lcr uses it for the selected app tab and its review tab. Choose a dedicated profile when that
+broader browser access is undesirable.
 
 A shared profile shares site state across all projects. In particular, cookies are not isolated by
 port: apps on different localhost ports may receive the same cookies. Local storage and IndexedDB
@@ -269,7 +309,7 @@ The ordinary suite runs without a browser. With Chrome installed, exercise the r
 screenshot, framework-hint, conversation, comparison, reload, and shared-review workflow with:
 
 ```sh
-LCR_TEST_BROWSER=1 bun test src/web-review/browser.test.ts src/browser/profile.test.ts
+LCR_TEST_BROWSER=1 bun test src/web-review/browser.test.ts src/web-review/existing-browser.test.ts src/browser/profile.test.ts
 ```
 
 The tests use temporary profiles and a temporary local application, including a login cookie

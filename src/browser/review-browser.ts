@@ -2,6 +2,12 @@ import { chmod, mkdir, open, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { Cdp } from "./cdp.ts";
 
+export interface ReviewBrowser {
+  cdp: Cdp;
+  child?: ReturnType<typeof Bun.spawn>;
+  close(): Promise<void>;
+}
+
 export function chromeCandidates(platform = process.platform): string[] {
   if (process.env.LCR_BROWSER_PATH) return [process.env.LCR_BROWSER_PATH];
   if (platform === "darwin")

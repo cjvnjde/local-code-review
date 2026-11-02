@@ -41,32 +41,43 @@ export class Cdp {
       this.fail(new Error("The review browser connection failed.")),
     );
   }
-  static async connect(url: string): Promise<Cdp> {
+  static async connect(
+    url: string,
+    options: { timeout?: number; signal?: AbortSignal } = {},
+  ): Promise<Cdp> {
+    options.signal?.throwIfAborted();
     const socket = new WebSocket(url);
     const cdp = new Cdp(socket);
     await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        socket.close();
-        reject(new Error("Browser connection timed out."));
-      }, 10_000);
-      socket.addEventListener(
-        "open",
-        () => {
-          clearTimeout(timer);
-          resolve();
-        },
-        { once: true },
+      const finish = (error?: Error) => {
+        clearTimeout(timer);
+        socket.removeEventListener("open", opened);
+        socket.removeEventListener("error", failed);
+        socket.removeEventListener("close", failed);
+        options.signal?.removeEventListener("abort", aborted);
+        if (error) {
+          socket.close();
+          reject(error);
+        } else resolve();
+      };
+      const opened = () => finish();
+      const failed = () =>
+        finish(new Error("Could not connect to the review browser."));
+      const aborted = () => finish(new Error("Browser connection cancelled."));
+      const timer = setTimeout(
+        () => finish(new Error("Browser connection timed out.")),
+        options.timeout ?? 10000,
       );
-      socket.addEventListener(
-        "error",
-        () => {
-          clearTimeout(timer);
-          reject(new Error("Could not connect to the review browser."));
-        },
-        { once: true },
-      );
+      socket.addEventListener("open", opened);
+      socket.addEventListener("error", failed);
+      socket.addEventListener("close", failed);
+      options.signal?.addEventListener("abort", aborted, { once: true });
     });
     return cdp;
+  }
+  onDisconnect(listener: () => void): () => void {
+    this.socket.addEventListener("close", listener, { once: true });
+    return () => this.socket.removeEventListener("close", listener);
   }
   get connected() {
     return this.socket.readyState === WebSocket.OPEN;

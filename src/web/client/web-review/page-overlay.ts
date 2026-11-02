@@ -12,14 +12,46 @@ export function installPageReview(config: {
     win[config.key]
   )
     return;
+  const ownerKey = "__lcr_page_review__";
+  if (win[ownerKey] && win[ownerKey] !== config.key)
+    throw new Error(
+      "This tab is already connected to another lcr review. Stop that review or reload the tab before attaching.",
+    );
+  const lifecycle = new AbortController();
+  function listen(
+    target: EventTarget,
+    type: string,
+    handler: (event: any) => void,
+    options: boolean | AddEventListenerOptions = false,
+  ) {
+    target.addEventListener(type, handler, {
+      ...(typeof options === "boolean" ? { capture: options } : options),
+      signal: lifecycle.signal,
+    });
+  }
   if (document.readyState === "loading") {
-    document.addEventListener(
+    win[ownerKey] = config.key;
+    win[config.key] = {
+      dispose() {
+        lifecycle.abort();
+        delete win[config.key];
+        if (win[ownerKey] === config.key) delete win[ownerKey];
+      },
+    };
+    listen(
+      document,
       "DOMContentLoaded",
-      () => installPageReview(config),
+      () => {
+        delete win[config.key];
+        delete win[ownerKey];
+        installPageReview(config);
+      },
       { once: true },
     );
     return;
   }
+  let disposed = false,
+    lastReply = Date.now();
   const pending = new Map<
     number,
     {
@@ -239,6 +271,8 @@ export function installPageReview(config: {
     positionLauncher();
   }
   function rpc(action: string, payload: any = {}): Promise<any> {
+    if (disposed)
+      return Promise.reject(new Error("The review connection closed."));
     const seq = ++sequence;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -250,6 +284,7 @@ export function installPageReview(config: {
     });
   }
   function error(e: any) {
+    if (disposed) return;
     if (dock.hidden) {
       dock.hidden = false;
       $(".head b").textContent = "UI review";
@@ -841,7 +876,7 @@ export function installPageReview(config: {
         tellFrame("capturing", { busy: false });
     }
   }
-  window.addEventListener("message", (event) => {
+  listen(window, "message", (event) => {
     const message = event.data;
     if (
       event.origin !== reviewOrigin ||
@@ -903,7 +938,7 @@ export function installPageReview(config: {
       ).catch(error);
     }
   });
-  document.addEventListener("securitypolicyviolation", (event) => {
+  listen(document, "securitypolicyviolation", (event) => {
     if (
       frame &&
       event.effectiveDirective === "frame-src" &&
@@ -1077,6 +1112,7 @@ export function installPageReview(config: {
   }
   async function refresh() {
     const result = await rpc("notes");
+    if (disposed) return;
     notes = result.notes;
     $("[data-notes]").textContent = "Notes · " + notes.length;
     pins();
@@ -1199,7 +1235,7 @@ export function installPageReview(config: {
       void choose(selected[0], rect(selected[0]), mode, [...selected]);
   };
   $("[data-clear]").onclick = clearSelections;
-  root.addEventListener("focusout", (event) => {
+  listen(root, "focusout", (event) => {
     if (
       !(event.relatedTarget instanceof Node) ||
       !root.contains(event.relatedTarget)
@@ -1287,7 +1323,8 @@ export function installPageReview(config: {
       height: Math.max(1, Math.abs(a.y - y)),
     });
   }
-  document.addEventListener(
+  listen(
+    document,
     "pointermove",
     (e) => {
       if (e.altKey) {
@@ -1313,7 +1350,8 @@ export function installPageReview(config: {
     },
     true,
   );
-  document.addEventListener(
+  listen(
+    document,
     "pointerdown",
     (e) => {
       if (!ours(e)) hideTools();
@@ -1339,7 +1377,8 @@ export function installPageReview(config: {
     },
     true,
   );
-  document.addEventListener(
+  listen(
+    document,
     "pointerup",
     (e) => {
       if (!start || e.pointerId !== start.id) return;
@@ -1377,14 +1416,16 @@ export function installPageReview(config: {
     true,
   );
   for (const type of ["click", "dblclick", "contextmenu"])
-    document.addEventListener(
+    listen(
+      document,
       type,
       (e) => {
         if (mode !== "browse" && !ours(e) && !(e as MouseEvent).altKey) stop(e);
       },
       true,
     );
-  document.addEventListener(
+  listen(
+    document,
     "pointercancel",
     () => {
       start = null;
@@ -1392,7 +1433,7 @@ export function installPageReview(config: {
     },
     true,
   );
-  window.addEventListener("blur", () => {
+  listen(window, "blur", () => {
     start = null;
     dockPress = null;
     resizePress = null;
@@ -1400,13 +1441,14 @@ export function installPageReview(config: {
     endLauncher(true);
     hideTools();
   });
-  window.addEventListener("beforeunload", (e) => {
+  listen(window, "beforeunload", (e) => {
     if (frameDirty || busy) {
       e.preventDefault();
       e.returnValue = "";
     }
   });
-  document.addEventListener(
+  listen(
+    document,
     "keydown",
     (e) => {
       if (e.key === "Alt") {
@@ -1439,28 +1481,48 @@ export function installPageReview(config: {
     },
     true,
   );
-  let scheduled = false;
+  let scheduled = false,
+    pinsFrame = 0;
   function schedulePins() {
-    if (scheduled) return;
+    if (scheduled || disposed) return;
     scheduled = true;
-    requestAnimationFrame(() => {
+    pinsFrame = requestAnimationFrame(() => {
       scheduled = false;
       pins();
       paintSelections();
     });
   }
-  window.addEventListener("scroll", schedulePins, true);
-  window.addEventListener("resize", () => {
+  listen(window, "scroll", schedulePins, true);
+  listen(window, "resize", () => {
     positionLauncher();
     positionDock();
     schedulePins();
   });
+  function dispose() {
+    if (disposed) return;
+    disposed = true;
+    lifecycle.abort();
+    clearInterval(refreshTimer);
+    cancelAnimationFrame(pinsFrame);
+    if (launcherPress) clearTimeout(launcherPress.timer);
+    for (const call of pending.values()) {
+      clearTimeout(call.timer);
+      call.reject(new Error("The review connection closed."));
+    }
+    pending.clear();
+    host.remove();
+    delete win[config.key];
+    if (win[ownerKey] === config.key) delete win[ownerKey];
+  }
+  win[ownerKey] = config.key;
   win[config.key] = {
+    dispose,
     resolve(seq: number, result: any) {
       const call = pending.get(seq);
       if (!call) return;
       pending.delete(seq);
       clearTimeout(call.timer);
+      lastReply = Date.now();
       result.ok
         ? call.resolve(result.value)
         : call.reject(new Error(result.error));
@@ -1512,7 +1574,15 @@ export function installPageReview(config: {
   setMode(mode);
   positionLauncher();
   void refresh().catch(error);
-  setInterval(() => {
-    void refresh().catch(() => {});
+  const refreshTimer = setInterval(() => {
+    void refresh().catch(() => {
+      if (Date.now() - lastReply < 30000) return;
+      if (frameDirty || frameSaving || busy) {
+        setMode("browse");
+        error(
+          "The review connection closed. Your unfinished note is still here; reopen the page from lcr to reconnect.",
+        );
+      } else dispose();
+    });
   }, 2000);
 }

@@ -54,6 +54,16 @@ The dedicated browser keeps logins across worktrees in `~/.config/lcr/browser/` 
 `<output-directory>/.browser/`, or set `"browserProfile": "project"` in your user config.
 One run can use a profile at a time; shared state also shares cookies between projects.
 
+To annotate a tab in your existing Chrome session, enable remote debugging at
+`chrome://inspect/#remote-debugging` in Chrome 144+, then run:
+
+```sh
+lcr --web http://localhost:3000 --browser-profile existing
+```
+
+Allow Chrome's connection dialog. lcr reuses the matching tab without reloading it and leaves
+your browser and tabs open when it stops. [Existing browser setup →](docs/web-ui.md#attach-to-your-existing-browser)
+
 ## Hand feedback to an agent
 
 Any agent can read the review directly:

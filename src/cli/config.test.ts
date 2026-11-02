@@ -3,7 +3,12 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { parseArgs } from "./args.ts";
-import { loadUserSettings, resolveAcpPath, userConfigFile } from "./config.ts";
+import {
+  loadUserSettings,
+  resolveAcpPath,
+  resolveBrowserDataDir,
+  userConfigFile,
+} from "./config.ts";
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -165,6 +170,7 @@ test("every settings field rejects invalid types and boundaries with actionable 
     ["id", [0, null, false]],
     ["web", ["", "https://example.com", "http://u:p@localhost", null, 3]],
     ["browserProfile", ["", "global", "/profile", null, false, 3]],
+    ["browserDataDir", ["", " ", "--staged", "a\0b", null, false, 3]],
     ["diffArgs", ["main", [1], [null], ["a\0b"], null]],
     ["ui", [null, [], { unknown: true }, { auto: "false" }]],
   ];
@@ -201,8 +207,28 @@ test("zero and upper port boundaries, empty lists and optional blank ids remain 
 
 test("both browser profile scopes can be configured", async () => {
   const f = await fixture();
-  for (const browserProfile of ["shared", "project"]) {
+  for (const browserProfile of ["shared", "project", "existing"]) {
     await f.write({ browserProfile });
     expect(await loadUserSettings({}, f.settings)).toEqual({ browserProfile });
   }
+});
+
+test("existing browser directory defaults resolve beside config; explicit paths resolve in the repository", async () => {
+  const f = await fixture();
+  await f.write({ browserProfile: "existing", browserDataDir: "chrome data" });
+  const settings = await loadUserSettings({}, f.settings);
+  expect(settings.browserDataDir).toBe(path.join(f.root, "lcr/chrome data"));
+  expect(
+    resolveBrowserDataDir(parseArgs([], settings).browserDataDir, "/repo"),
+  ).toBe(settings.browserDataDir);
+  expect(
+    resolveBrowserDataDir(
+      parseArgs(["--browser-data-dir", "custom"], settings).browserDataDir,
+      "/repo",
+    ),
+  ).toBe(path.resolve("/repo/custom"));
+  expect(resolveBrowserDataDir("~/chrome", "/repo")).toBe(
+    path.join(homedir(), "chrome"),
+  );
+  expect(resolveBrowserDataDir(undefined, "/repo")).toBeUndefined();
 });

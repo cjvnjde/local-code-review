@@ -1,6 +1,10 @@
 import { attachRef, readAttachment, saveAttachment } from "../review/attach.ts";
 import type { Hub } from "../server/events.ts";
-import { launchReviewBrowser } from "../browser/review-browser.ts";
+import {
+  launchReviewBrowser,
+  type ReviewBrowser,
+} from "../browser/review-browser.ts";
+import { attachReviewBrowser } from "../browser/existing-browser.ts";
 import { reviewBrowserProfile } from "../browser/profile.ts";
 import type { CliOptions } from "../shared/review-types.ts";
 import type { ReviewSession } from "../review/session.ts";
@@ -28,6 +32,7 @@ export interface WebReviewOptions {
   repoRoot: string;
   outDir: string;
   browserProfile?: CliOptions["browserProfile"];
+  browserDataDir?: string;
   session: ReviewSession;
   hub: Hub;
   reviewUrl: () => string;
@@ -37,9 +42,13 @@ export interface WebReviewOptions {
 export function createWebReview(options: WebReviewOptions) {
   const url = localWebUrl(options.url),
     origin = new URL(url).origin;
-  let browser: Awaited<ReturnType<typeof launchReviewBrowser>> | null = null,
+  let browser: ReviewBrowser | null = null,
     sessionId = "",
     contextId = 0;
+  let scriptId = "",
+    closing = false;
+  let connectionAbort: AbortController | undefined;
+  let offDisconnect = () => {};
   let reviewTargetId = "",
     reviewOpening: Promise<{
       targetId: string;
@@ -109,7 +118,49 @@ export function createWebReview(options: WebReviewOptions) {
     evaluate(
       `globalThis[${JSON.stringify(key)}].${method}(${JSON.stringify(value)})`,
     );
-  /** Only top-level pages in our owned browser can be the conversation tab, never editor frames. */
+  async function detachPage() {
+    unbind();
+    const current = browser,
+      sid = sessionId,
+      script = scriptId;
+    sessionId = "";
+    contextId = 0;
+    scriptId = "";
+    if (!current || !sid || !current.cdp.connected) return;
+    if (script)
+      await current.cdp
+        .send(
+          "Page.removeScriptToEvaluateOnNewDocument",
+          { identifier: script },
+          sid,
+        )
+        .catch(() => {});
+    await current.cdp
+      .send(
+        "Runtime.evaluate",
+        {
+          expression: `globalThis[${JSON.stringify(key)}]?.dispose()`,
+        },
+        sid,
+      )
+      .catch(() => {});
+    await current.cdp
+      .send("Runtime.removeBinding", { name: binding }, sid)
+      .catch(() => {});
+    await current.cdp
+      .send("Target.detachFromTarget", { sessionId: sid })
+      .catch(() => {});
+  }
+  async function releaseBrowser() {
+    offDisconnect();
+    offDisconnect = () => {};
+    await detachPage();
+    const current = browser;
+    browser = null;
+    reviewTargetId = "";
+    if (current) await current.close();
+  }
+  /** Only top-level review pages can be the conversation tab, never editor frames. */
   async function ensureReviewTarget(destination = options.reviewUrl()) {
     if (reviewOpening) return reviewOpening;
     if (!browser) throw new Error("Browser disconnected.");
@@ -467,58 +518,70 @@ export function createWebReview(options: WebReviewOptions) {
     throw new Error("Unknown web review action.");
   }
   async function open() {
+    if (closing) throw new Error("The browser connection is closing.");
     if (opening) return opening;
-    if (browser && !browser.cdp.connected) {
-      await browser.close();
-      browser = null;
-      sessionId = "";
-      reviewTargetId = "";
-    }
-    if (browser && sessionId) {
-      try {
-        const targetId = (await send("Target.getTargetInfo")).targetInfo
-          .targetId;
-        await ensureReviewTarget();
-        await browser.cdp.send("Target.activateTarget", { targetId });
-        return;
-      } catch {
-        sessionId = "";
-      }
-    }
     opening = (async () => {
-      state = "opening";
-      detail = "Starting the review browser…";
+      const existing = options.browserProfile === "existing";
       try {
+        if (browser && !browser.cdp.connected) await releaseBrowser();
+        if (browser && sessionId) {
+          try {
+            const targetId = (await send("Target.getTargetInfo")).targetInfo
+              .targetId;
+            await ensureReviewTarget();
+            await browser.cdp.send("Target.activateTarget", { targetId });
+            return;
+          } catch {
+            await detachPage();
+          }
+        }
+        state = "opening";
+        detail = existing
+          ? "Allow the connection in Chrome's dialog…"
+          : "Starting the review browser…";
         if (!browser) {
-          browser = await launchReviewBrowser(
-            reviewBrowserProfile(
-              options.repoRoot,
-              options.outDir,
-              options.browserProfile,
-            ),
-            options.browserArgs,
-          );
-          const launched = browser;
-          void launched.child.exited.then(() => {
-            launched.cdp.close();
-            if (browser !== launched) return;
-            browser = null;
-            sessionId = "";
-            reviewTargetId = "";
+          connectionAbort = new AbortController();
+          browser = existing
+            ? await attachReviewBrowser(
+                options.browserDataDir,
+                connectionAbort.signal,
+              )
+            : await launchReviewBrowser(
+                reviewBrowserProfile(
+                  options.repoRoot,
+                  options.outDir,
+                  options.browserProfile === "project" ? "project" : "shared",
+                ),
+                options.browserArgs,
+              );
+          const connected = browser;
+          offDisconnect = connected.cdp.onDisconnect(() => {
+            if (browser !== connected) return;
             state = "closed";
-            detail = "The review browser closed. Reopen it to continue.";
+            detail = "The browser disconnected. Use Open page to reconnect.";
           });
         }
-        unbind();
+        await detachPage();
         const cdp = browser.cdp;
         const targets = await cdp.send("Target.getTargets");
-        const target = targets.targetInfos.find(
-          (t: any) => t.type === "page" && t.url === "about:blank",
+        const matches = targets.targetInfos.filter(
+          (t: any) =>
+            t.type === "page" && t.url === (existing ? url : "about:blank"),
         );
+        if (existing && matches.length > 1)
+          throw new Error(
+            "More than one browser tab matches " +
+              url +
+              ". Close duplicate tabs or use a distinct --web URL, then retry.",
+          );
+        const target = matches[0];
         const targetId =
           target?.targetId ||
-          (await cdp.send("Target.createTarget", { url: "about:blank" }))
-            .targetId;
+          (
+            await cdp.send("Target.createTarget", {
+              url: existing ? url : "about:blank",
+            })
+          ).targetId;
         sessionId = (
           await cdp.send("Target.attachToTarget", { targetId, flatten: true })
         ).sessionId;
@@ -598,16 +661,24 @@ export function createWebReview(options: WebReviewOptions) {
           }) +
           ")";
         // Register before navigation: full reloads retain the toolbar; SPA navigation retains its DOM.
-        await send("Page.addScriptToEvaluateOnNewDocument", { source });
-        const navigation = await send("Page.navigate", { url });
-        if (navigation.errorText)
-          throw new Error(
-            "Could not load " + url + ": " + navigation.errorText,
-          );
+        scriptId = (
+          await send("Page.addScriptToEvaluateOnNewDocument", { source })
+        ).identifier;
+        if (existing) await evaluate(source);
+        else {
+          const navigation = await send("Page.navigate", { url });
+          if (navigation.errorText)
+            throw new Error(
+              "Could not load " + url + ": " + navigation.errorText,
+            );
+        }
         let installed = false;
         for (let i = 0; i < 100; i++) {
+          if (closing) throw new Error("The browser connection is closing.");
           installed = await evaluate(
-            "!!globalThis[" + JSON.stringify(key) + "]",
+            "typeof globalThis[" +
+              JSON.stringify(key) +
+              "]?.prepare==='function'",
           ).catch(() => false);
           if (installed) break;
           await Bun.sleep(100);
@@ -637,12 +708,7 @@ export function createWebReview(options: WebReviewOptions) {
       } catch (error) {
         state = "error";
         detail = error instanceof Error ? error.message : String(error);
-        if (browser) {
-          await browser.close();
-          browser = null;
-        }
-        sessionId = "";
-        reviewTargetId = "";
+        await releaseBrowser();
         throw error;
       } finally {
         opening = null;
@@ -727,12 +793,15 @@ export function createWebReview(options: WebReviewOptions) {
       return api("focus", note.id);
     },
     async close() {
-      unbind();
-      const current = browser;
-      browser = null;
-      sessionId = "";
-      reviewTargetId = "";
-      if (current) await current.close();
+      closing = true;
+      connectionAbort?.abort();
+      try {
+        await opening?.catch(() => {});
+        await releaseBrowser();
+        state = "closed";
+      } finally {
+        closing = false;
+      }
     },
   };
 }

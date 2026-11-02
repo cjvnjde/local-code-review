@@ -43,18 +43,19 @@ own array entry: use `["main...HEAD", "--", "src/"]`, not a shell command string
 
 All fields are optional. Omitted values use the built-in behavior below.
 
-| Field            | Type                      | Built-in behavior                                          |
-| ---------------- | ------------------------- | ---------------------------------------------------------- |
-| `acp`            | Profile path or `null`    | Manual review; no automatic agent                          |
-| `diffArgs`       | String array              | Working-tree, staged, and untracked changes against `HEAD` |
-| `port`           | Integer, 0–65535          | `7777`; `0` requests a free port                           |
-| `outDir`         | Non-empty directory path  | `.review`                                                  |
-| `context`        | Non-negative integer      | `5` surrounding lines                                      |
-| `open`           | Boolean                   | `true`; open the browser                                   |
-| `id`             | String                    | Unnamed review                                             |
-| `web`            | Local HTTP(S) URL         | No live-page annotation                                    |
-| `browserProfile` | `"shared"` or `"project"` | `"shared"`; dedicated browser state beside user config     |
-| `ui`             | Partial preference object | Built-in preferences plus existing browser settings        |
+| Field            | Type                                     | Built-in behavior                                                           |
+| ---------------- | ---------------------------------------- | --------------------------------------------------------------------------- |
+| `acp`            | Profile path or `null`                   | Manual review; no automatic agent                                           |
+| `diffArgs`       | String array                             | Working-tree, staged, and untracked changes against `HEAD`                  |
+| `port`           | Integer, 0–65535                         | `7777`; `0` requests a free port                                            |
+| `outDir`         | Non-empty directory path                 | `.review`                                                                   |
+| `context`        | Non-negative integer                     | `5` surrounding lines                                                       |
+| `open`           | Boolean                                  | `true`; open the browser                                                    |
+| `id`             | String                                   | Unnamed review                                                              |
+| `web`            | Local HTTP(S) URL                        | No live-page annotation                                                     |
+| `browserProfile` | `"shared"`, `"project"`, or `"existing"` | `"shared"`; dedicated browser state beside user config                      |
+| `browserDataDir` | User data directory path                 | Chrome stable's OS-specific directory when attaching to an existing browser |
+| `ui`             | Partial preference object                | Built-in preferences plus existing browser settings                         |
 
 `outDir` remains relative to the repository root unless absolute. An `acp` path
 in this file resolves beside the settings file; an explicit `--acp` path resolves
@@ -80,9 +81,12 @@ With the example above, `lcr HEAD~2` reviews against `HEAD~2`, and
 `lcr --worktree` ignores the configured diff arguments and restores the built-in
 comparison. `lcr --no-web` disables a configured page URL; `--open` overrides
 `"open": false`. An empty explicit ID (`--id ""`) clears a configured review name.
-`--browser-profile shared` or `--browser-profile project` overrides `browserProfile`.
+`--browser-profile shared`, `project`, or `existing` overrides `browserProfile`.
 Shared state persists across projects and worktrees; project state stays at
-`<outDir>/.browser/`. See [browser profiles and safety](web-ui.md#existing-profiles-and-safety).
+`<outDir>/.browser/`. Existing mode connects to a running browser after its consent dialog,
+using `--browser-data-dir` or `browserDataDir` when supplied. Configured directory paths resolve
+beside the config file; CLI paths resolve from the repository root. Both support `~/`.
+See [existing browser setup](web-ui.md#attach-to-your-existing-browser) and [profile safety](web-ui.md#profile-safety).
 
 ### Web-UI defaults and browser storage
 
