@@ -86,5 +86,7 @@ export interface CliOptions {
   noAgent?: boolean;
   /** Local page to annotate instead of a Git diff. */
   web?: string;
+  /** Dedicated browser state shared across worktrees, or kept in the review output directory. */
+  browserProfile?: "shared" | "project";
   diffArgs: string[];
 }

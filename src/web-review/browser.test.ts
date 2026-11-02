@@ -93,6 +93,7 @@ browserTest(
       url: "http://127.0.0.1:" + app.port,
       repoRoot: dir,
       outDir: ".review",
+      browserProfile: "project",
       session,
       hub,
       reviewUrl: () => reviewUrl,

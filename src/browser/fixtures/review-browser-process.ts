@@ -39,6 +39,7 @@ const server = Bun.serve({
       if (message.method === "Browser.close") {
         writeFileSync(path.join(profile, "browser-close"), "");
         socket.send(JSON.stringify({ id: message.id, result: {} }));
+        setTimeout(() => process.exit(0), 20);
       }
     },
   },

@@ -49,6 +49,11 @@ Click an element or drag an area to comment. Click the **lcr** circle to switch 
 
 Visual and code notes share the same Markdown review. Captures include screenshots and element metadata; **Capture after** records the result after a fix. Requires an installed Chrome, Chromium, or Edge. [Web annotation guide →](docs/web-ui.md)
 
+The dedicated browser keeps logins across worktrees in `~/.config/lcr/browser/` (or
+`$XDG_CONFIG_HOME/lcr/browser/`). Use `--browser-profile project` for separate state in
+`<output-directory>/.browser/`, or set `"browserProfile": "project"` in your user config.
+One run can use a profile at a time; shared state also shares cookies between projects.
+
 ## Hand feedback to an agent
 
 Any agent can read the review directly:

@@ -131,6 +131,7 @@ async function main() {
     web = options.web
       ? createWebReview({
           url: options.web,
+          browserProfile: options.browserProfile,
           repoRoot,
           outDir: options.outDir,
           session,

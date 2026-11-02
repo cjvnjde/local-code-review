@@ -118,6 +118,7 @@ test("startup settings load typed defaults without evaluating strings or writing
     open: false,
     id: " auth`  review\n",
     web: "http://localhost:3000",
+    browserProfile: "project" as const,
     diffArgs: ["origin/main", "--", "$(touch owned)", "*.ts"],
     ui: { auto: false, expand: 50, editor: "code" },
   };
@@ -132,6 +133,7 @@ test("startup settings load typed defaults without evaluating strings or writing
     open: false,
     id: "auth review",
     web: "http://localhost:3000/",
+    browserProfile: "project",
     diffArgs: value.diffArgs,
   });
   expect(await readFile(f.settings, "utf8")).toBe(source);
@@ -162,6 +164,7 @@ test("every settings field rejects invalid types and boundaries with actionable 
     ["open", ["false", 0, null]],
     ["id", [0, null, false]],
     ["web", ["", "https://example.com", "http://u:p@localhost", null, 3]],
+    ["browserProfile", ["", "global", "/profile", null, false, 3]],
     ["diffArgs", ["main", [1], [null], ["a\0b"], null]],
     ["ui", [null, [], { unknown: true }, { auto: "false" }]],
   ];
@@ -193,5 +196,13 @@ test("zero and upper port boundaries, empty lists and optional blank ids remain 
     };
     await f.write(value);
     expect(await loadUserSettings({}, f.settings)).toEqual(value);
+  }
+});
+
+test("both browser profile scopes can be configured", async () => {
+  const f = await fixture();
+  for (const browserProfile of ["shared", "project"]) {
+    await f.write({ browserProfile });
+    expect(await loadUserSettings({}, f.settings)).toEqual({ browserProfile });
   }
 });

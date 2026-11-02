@@ -27,6 +27,7 @@ export function parseArgs(
   let version = false;
   let help = false;
   let web = defaults.web ?? "";
+  let browserProfile = defaults.browserProfile;
   let acp = defaults.acp ?? "";
   let noAgent = false;
   let worktree = false;
@@ -44,7 +45,12 @@ export function parseArgs(
     else if (arg === "--id") id = normalizeId(argv[++i] ?? "");
     else if (arg === "--web") web = localWebUrl(argv[++i] ?? "");
     else if (arg === "--no-web") web = "";
-    else if (arg === "--worktree") worktree = true;
+    else if (arg === "--browser-profile") {
+      const value = argv[++i];
+      if (value !== "shared" && value !== "project")
+        throw new Error('--browser-profile requires "shared" or "project".');
+      browserProfile = value;
+    } else if (arg === "--worktree") worktree = true;
     else if (arg === "--no-open") open = false;
     else if (arg === "--open") open = true;
     else if (arg === "--help" || arg === "-h") help = true;
@@ -72,6 +78,7 @@ export function parseArgs(
     ...(noAgent ? { noAgent: true } : {}),
     ...(acp ? { acp } : {}),
     ...(web ? { web } : {}),
+    ...(browserProfile ? { browserProfile } : {}),
     port,
     outDir,
     context,
@@ -101,6 +108,7 @@ Options:
   --context <lines>          Surrounding diff lines (default: 5)
   --web <url>                Also annotate a localhost UI in a dedicated Chrome window
   --no-web                   Ignore a configured live page
+  --browser-profile <scope>  Browser state: shared (default) or project
   --worktree                 Ignore configured diffArgs; review all working-tree changes
   --id <name>                Name a review to continue it across diff changes
   --no-open                  Do not open the browser

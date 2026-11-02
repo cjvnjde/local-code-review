@@ -209,11 +209,52 @@ lcr discovers an installed Chrome, Chromium, or Edge and connects directly throu
 DevTools Protocol. No browser automation package, extension, or browser download is shipped.
 `LCR_BROWSER_PATH` can specify the executable explicitly.
 
-The profile lives at `<output-directory>/.browser/`, separately from your everyday browser profile.
-Its cookies and logins persist across restarts, but your normal browser's extensions and sessions
-are not inherited. One run should own this profile at a time; concurrent UI reviews in the same
-repository can use separate output directories. The default `.review/` directory remains ignored,
-and custom relative output directories remain locally excluded.
+By default, the dedicated profile lives at `$XDG_CONFIG_HOME/lcr/browser/` when
+`XDG_CONFIG_HOME` is absolute, otherwise `~/.config/lcr/browser/`, beside `config.json`.
+Cookies, logins, and browser storage persist across restarts, projects, and worktrees.
+Your everyday browser's extensions and sessions are not inherited. Review files and captures
+still belong to each project's output directory.
+
+To keep browser state in the current project's output directory instead:
+
+```sh
+lcr --web http://localhost:3000 --browser-profile project
+```
+
+This uses `<output-directory>/.browser/`, the location used by older lcr builds. Each worktree
+and output directory has its own state. Set `"browserProfile": "project"` in your user
+`config.json` to make this the default, or use `--browser-profile shared` to override it for
+one run. The default `.review/` directory remains ignored, and custom relative output
+directories remain locally excluded.
+
+Existing project profiles are left untouched; the shared profile starts fresh. To keep using
+your previous logins, choose `project`. To migrate one profile to shared storage, stop lcr and
+its browser, then copy that entire `.browser` directory to the shared `browser` location only
+if that destination does not already exist. Do not merge profiles or copy a running browser's data.
+
+Only one run can own a profile at a time. For simultaneous UI reviews, use `project` in separate
+worktrees or output directories. A second run reports the conflict without attaching to or closing
+the first browser. After an unclean shutdown, a `.lcr-owner.lock` may remain inside the profile;
+remove only that lock after verifying that its lcr process and browser have stopped.
+
+### Existing profiles and safety
+
+lcr currently launches and owns its dedicated browser; it does not attach to an existing personal
+browser. Chrome 136+ ignores remote-debugging launch flags against its default data directory.
+Chrome 144+ offers a separate connection flow with explicit user consent, but lcr does not yet
+implement it. See Chrome's [launch restrictions](https://developer.chrome.com/blog/remote-debugging-port)
+and [existing-session connection flow](https://developer.chrome.com/blog/chrome-devtools-mcp-debug-your-browser-session).
+
+The profile directory is restricted to its owner on POSIX systems (`0700`; the owner lock is
+`0600`); Windows uses the containing directory's account permissions. Moving it outside a checkout
+also keeps browser credentials out of repository files. This is ordinary sensitive browser data,
+not an encrypted lcr vault: programs running as your user can access it, and the local debugging
+connection can control the browser. Use a dedicated development account for logins.
+
+A shared profile shares site state across all projects. In particular, cookies are not isolated by
+port: apps on different localhost ports may receive the same cookies. Local storage and IndexedDB
+are scoped by origin, including port. Choose `project` for separate accounts or untrusted projects.
+The location alone does not provide isolation from other programs running as your user.
 
 `--no-open` starts only the review server without opening either tab. Open its printed URL manually
 and use **Open page** to launch the app and review together later. Closing the reviewed tab
@@ -228,7 +269,8 @@ The ordinary suite runs without a browser. With Chrome installed, exercise the r
 screenshot, framework-hint, conversation, comparison, reload, and shared-review workflow with:
 
 ```sh
-LCR_TEST_BROWSER=1 bun test src/web-review/browser.test.ts
+LCR_TEST_BROWSER=1 bun test src/web-review/browser.test.ts src/browser/profile.test.ts
 ```
 
-The test uses a temporary local application and its own temporary browser profile.
+The tests use temporary profiles and a temporary local application, including a login cookie
+that must persist across worktrees in shared mode and remain isolated in project mode.

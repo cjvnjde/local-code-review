@@ -13,6 +13,7 @@ export interface StartupSettings {
   open?: boolean;
   id?: string;
   web?: string;
+  browserProfile?: CliOptions["browserProfile"];
   diffArgs?: string[];
   ui?: Partial<UiSettings>;
 }
@@ -135,6 +136,11 @@ export async function loadUserSettings(
         )
           invalid(key, "an array of strings without NUL characters");
         settings.diffArgs = entry;
+        break;
+      case "browserProfile":
+        if (entry !== "shared" && entry !== "project")
+          invalid(key, '"shared" or "project"');
+        settings.browserProfile = entry;
         break;
       case "ui":
         try {

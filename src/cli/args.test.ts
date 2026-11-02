@@ -58,6 +58,30 @@ describe("parseArgs", () => {
     expect(options.diffArgs).toEqual(["main...HEAD"]);
   });
 
+  test("browser profile flags override defaults, keep Git arguments, and stop at the separator", () => {
+    const defaults = { browserProfile: "project" as const };
+    expect(parseArgs([], defaults).browserProfile).toBe("project");
+    expect(
+      parseArgs(["--browser-profile", "shared", "HEAD~1"], defaults),
+    ).toMatchObject({ browserProfile: "shared", diffArgs: ["HEAD~1"] });
+    expect(
+      parseArgs(["--browser-profile", "shared", "--browser-profile", "project"])
+        .browserProfile,
+    ).toBe("project");
+    expect(
+      parseArgs(["--", "--browser-profile", "shared"], defaults),
+    ).toMatchObject({
+      browserProfile: "project",
+      diffArgs: ["--", "--browser-profile", "shared"],
+    });
+    for (const args of [
+      ["--browser-profile"],
+      ["--browser-profile", "personal"],
+      ["--browser-profile", "--staged"],
+    ])
+      expect(() => parseArgs(args)).toThrow("--browser-profile requires");
+  });
+
   test("--id with nothing after it leaves the review unnamed", () => {
     expect(parseArgs(["--id"]).id).toBe("");
     expect(parseArgs(["--id", "   "]).id).toBe("");

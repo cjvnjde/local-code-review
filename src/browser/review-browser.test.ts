@@ -6,6 +6,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   watch,
   writeFileSync,
 } from "node:fs";
@@ -68,6 +69,10 @@ test.skipIf(process.platform === "win32")(
       "--disable-gpu",
     ]);
     try {
+      expect(statSync(profile).mode & 0o777).toBe(0o700);
+      expect(statSync(path.join(profile, ".lcr-owner.lock")).mode & 0o777).toBe(
+        0o600,
+      );
       expect(browser.cdp.connected).toBe(true);
       expect(await browser.cdp.send("Browser.getVersion")).toEqual({
         product: "LifecycleFixture/1",
@@ -94,6 +99,9 @@ test.skipIf(process.platform === "win32")(
       await browser.child.exited;
     }
     expect(existsSync(path.join(profile, "browser-close"))).toBe(true);
+    expect(browser.child.exitCode).toBe(0);
+    expect(existsSync(path.join(profile, "terminated"))).toBe(false);
+    expect(existsSync(path.join(profile, ".lcr-owner.lock"))).toBe(false);
     expect(browser.cdp.connected).toBe(false);
     await expect(browser.cdp.send("Browser.getVersion")).rejects.toThrow(
       "not connected",
@@ -113,6 +121,7 @@ test.skipIf(process.platform === "win32")(
       launchReviewBrowser(profile, ["--fixture-mode=exit"]),
     ).rejects.toThrow("browser exited");
     expect(existsSync(path.join(profile, "DevToolsActivePort"))).toBe(false);
+    expect(existsSync(path.join(profile, ".lcr-owner.lock"))).toBe(false);
   },
 );
 
@@ -129,5 +138,53 @@ test.skipIf(process.platform === "win32")(
       launchReviewBrowser(profile, ["--fixture-mode=refused"]),
     ).rejects.toThrow("Could not connect");
     await terminated.promise;
+    expect(existsSync(path.join(profile, ".lcr-owner.lock"))).toBe(false);
+  },
+);
+
+test.skipIf(process.platform === "win32")(
+  "a concurrent launch cannot disturb the owning browser, and shutdown releases the profile for reuse",
+  async () => {
+    const profile = fixture();
+    const first = await launchReviewBrowser(profile);
+    try {
+      const endpoint = readFileSync(
+        path.join(profile, "DevToolsActivePort"),
+        "utf8",
+      );
+      await expect(launchReviewBrowser(profile)).rejects.toThrow(
+        "already in use",
+      );
+      expect(
+        readFileSync(path.join(profile, "DevToolsActivePort"), "utf8"),
+      ).toBe(endpoint);
+      expect(await first.cdp.send("Browser.getVersion")).toEqual({
+        product: "LifecycleFixture/1",
+      });
+    } finally {
+      await first.close();
+    }
+    const second = await launchReviewBrowser(profile);
+    await second.close();
+  },
+);
+
+test.skipIf(process.platform === "win32")(
+  "a leftover owner lock requires explicit recovery without touching browser state",
+  async () => {
+    const profile = fixture();
+    const lock = path.join(profile, ".lcr-owner.lock");
+    writeFileSync(lock, '{"pid":123}');
+    writeFileSync(
+      path.join(profile, "DevToolsActivePort"),
+      "untouched endpoint",
+    );
+    await expect(launchReviewBrowser(profile)).rejects.toThrow(
+      "only remove it after verifying",
+    );
+    expect(readFileSync(lock, "utf8")).toBe('{"pid":123}');
+    expect(readFileSync(path.join(profile, "DevToolsActivePort"), "utf8")).toBe(
+      "untouched endpoint",
+    );
   },
 );

@@ -1,4 +1,4 @@
-import { mkdir, readFile, rm } from "node:fs/promises";
+import { chmod, mkdir, open, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { Cdp } from "./cdp.ts";
 
@@ -40,30 +40,47 @@ export async function launchReviewBrowser(
     throw new Error(
       "Chrome/Chromium was not found. Install it or set LCR_BROWSER_PATH to its executable.",
     );
-  await mkdir(profile, { recursive: true });
+  await mkdir(profile, { recursive: true, mode: 0o700 });
+  if (process.platform !== "win32") await chmod(profile, 0o700);
+  const lockFile = path.join(profile, ".lcr-owner.lock");
+  const lock = await open(lockFile, "wx", 0o600).catch((error) => {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    throw new Error(
+      `Browser profile is already in use, or a previous lcr run crashed. Check ${lockFile}; only remove it after verifying that lcr and its browser have stopped. Use --browser-profile project for an isolated run.`,
+    );
+  });
+  let releasing: Promise<void> | undefined;
+  const release = () =>
+    (releasing ??= lock.close().finally(() => rm(lockFile, { force: true })));
   const active = path.join(profile, "DevToolsActivePort");
-  // Never attach to an unrelated process or a stale endpoint from a previous run.
-  await rm(active, { force: true });
-  const child = Bun.spawn(
-    [
-      executable,
-      "--remote-debugging-port=0",
-      "--remote-debugging-address=127.0.0.1",
-      "--user-data-dir=" + profile,
-      "--no-first-run",
-      "--no-default-browser-check",
-      "--new-window",
-      ...extraArgs,
-      "about:blank",
-    ],
-    { stdin: "ignore", stdout: "ignore", stderr: "ignore" },
-  );
+  let child: ReturnType<typeof Bun.spawn> | undefined;
   try {
+    await lock.writeFile(
+      JSON.stringify({ pid: process.pid, started: new Date().toISOString() }),
+    );
+    // Only the owner may discard a stale endpoint; another run must leave it alone.
+    await rm(active, { force: true });
+    const launched = Bun.spawn(
+      [
+        executable,
+        "--remote-debugging-port=0",
+        "--remote-debugging-address=127.0.0.1",
+        "--user-data-dir=" + profile,
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--new-window",
+        ...extraArgs,
+        "about:blank",
+      ],
+      { stdin: "ignore", stdout: "ignore", stderr: "ignore" },
+    );
+    child = launched;
+    void launched.exited.then(release).catch(() => {});
     let endpoint = "";
     for (let i = 0; i < 150; i++) {
-      if (child.exitCode !== null)
+      if (launched.exitCode !== null)
         throw new Error(
-          "The review browser exited. Close any other lcr browser using this review directory and retry.",
+          `The review browser exited. Close any other browser using ${profile} and retry, or use --browser-profile project.`,
         );
       const lines = (await readFile(active, "utf8").catch(() => ""))
         .trim()
@@ -84,15 +101,27 @@ export async function launchReviewBrowser(
     const cdp = await Cdp.connect(endpoint);
     return {
       cdp,
-      child,
+      child: launched,
       async close() {
-        await cdp.send("Browser.close").catch(() => {});
-        cdp.close();
-        child.kill();
+        // Chrome flushes cookies and storage while exiting. Killing after the CDP reply can
+        // discard that state; allow a graceful exit before falling back to termination.
+        const timeout = setTimeout(() => launched.kill(), 3000);
+        try {
+          await cdp.send("Browser.close").catch(() => {});
+          await launched.exited;
+        } finally {
+          clearTimeout(timeout);
+          cdp.close();
+          await release();
+        }
       },
     };
   } catch (error) {
-    child.kill();
+    if (child) {
+      child.kill();
+      await child.exited;
+    }
+    await release();
     throw error;
   }
 }

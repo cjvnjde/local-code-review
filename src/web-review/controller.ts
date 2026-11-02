@@ -1,7 +1,8 @@
-import path from "node:path";
 import { attachRef, readAttachment, saveAttachment } from "../review/attach.ts";
 import type { Hub } from "../server/events.ts";
 import { launchReviewBrowser } from "../browser/review-browser.ts";
+import { reviewBrowserProfile } from "../browser/profile.ts";
+import type { CliOptions } from "../shared/review-types.ts";
 import type { ReviewSession } from "../review/session.ts";
 import { installPageReview } from "../web/client/web-review/page-overlay.ts";
 import {
@@ -26,6 +27,7 @@ export interface WebReviewOptions {
   url: string;
   repoRoot: string;
   outDir: string;
+  browserProfile?: CliOptions["browserProfile"];
   session: ReviewSession;
   hub: Hub;
   reviewUrl: () => string;
@@ -489,7 +491,11 @@ export function createWebReview(options: WebReviewOptions) {
       try {
         if (!browser) {
           browser = await launchReviewBrowser(
-            path.resolve(options.repoRoot, options.outDir, ".browser"),
+            reviewBrowserProfile(
+              options.repoRoot,
+              options.outDir,
+              options.browserProfile,
+            ),
             options.browserArgs,
           );
           const launched = browser;
