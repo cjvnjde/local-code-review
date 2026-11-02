@@ -27,15 +27,18 @@ the standalone executable, and neither review starts an agent.
 2. Click **Review** in the bottom switch. The example stays visible, including its
    open menu, popup, drawing and draft, but only the second reviewer receives input.
    Its **lcr** circle starts at the lower right.
-3. Drag an area around the example control you want to discuss, then save the note.
-   The reviewer's screenshot includes the example interface, not its own controls.
-   Its **Freeze** tool also works for area/point feedback on a still image.
+3. Hover the example's circle, menu controls or floating note card to see the
+   selection outline, then click to comment. Drag an area when you want a narrower
+   crop. The reviewer's screenshot includes the example interface, not its own
+   controls. Its **Freeze** tool also works for area/point feedback on a still image.
 4. Switch back to **Example** to continue using its tools. Switching modes does
    not discard either side's draft or reload its editor.
 
-Use area selection for the tools: their shadow DOM and embedded drawing editor
-are captured visually, not inspected as individual DOM elements. The mode switch
-belongs to the playground and is not an annotation target.
+The popup's embedded editor and drawing canvas are selected as one floating card.
+To review an individual control inside that iframe, drag a rectangle around it.
+The example's shadow-root buttons are selected individually, and their captures
+keep selectors that can find those controls again after they move. The mode
+switch belongs to the playground and is not an annotation target.
 
 Real feedback is saved under `.review/playground/feedback/`; disposable example
 notes are separate under `.review/playground/example/`. Both use ordinary

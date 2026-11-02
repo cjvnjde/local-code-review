@@ -280,7 +280,7 @@ export async function startWebPlayground(
     }, 25_000);
     console.log(`\nAnnotation playground: ${url}`);
     console.log(
-      "Example → open a capture, popup, or drawing. Review → drag around it to comment.",
+      "Example → open a capture, popup, or drawing. Review → click a control or drag an area.",
     );
     console.log(`Feedback: ${feedback.url} → ${feedback.outDir}/`);
     console.log(`Example notes (separate): ${example.outDir}/`);

@@ -134,6 +134,7 @@ export function installPageReview(config: {
   const reviewOrigin = new URL(config.reviewUrl).origin;
   const host = document.createElement("div");
   host.id = config.key;
+  if (config.ownerKey) host.dataset.lcrOwner = config.ownerKey;
   host.style.cssText =
     "position:fixed;inset:0;z-index:2147483647;pointer-events:none";
   const root = host.attachShadow({ mode: "open" });
@@ -531,6 +532,15 @@ export function installPageReview(config: {
     $(".label").textContent = label;
   }
   function selector(el: Element) {
+    const tree = config.ownerKey ? el.getRootNode() : document;
+    const scope =
+      tree instanceof ShadowRoot && tree.host.hasAttribute("data-lcr-owner")
+        ? tree
+        : document;
+    const prefix =
+      scope instanceof ShadowRoot
+        ? `[data-lcr-owner="${CSS.escape(scope.host.getAttribute("data-lcr-owner")!)}"] >>> `
+        : "";
     const parts: string[] = [];
     for (
       let e: Element | null = el;
@@ -542,6 +552,8 @@ export function installPageReview(config: {
       else if (e.hasAttribute("data-testid"))
         part +=
           '[data-testid="' + CSS.escape(e.getAttribute("data-testid")!) + '"]';
+      else if (scope instanceof ShadowRoot && e.classList.length)
+        part += [...e.classList].map((name) => "." + CSS.escape(name)).join("");
       else {
         const siblings = e.parentElement
           ? [...e.parentElement.children].filter(
@@ -554,12 +566,41 @@ export function installPageReview(config: {
       parts.unshift(part);
       const result = parts.join(" > ");
       if (
-        document.querySelectorAll(result).length === 1 &&
-        document.querySelector(result) === el
+        scope.querySelectorAll(result).length === 1 &&
+        scope.querySelector(result) === el
       )
-        return result;
+        return prefix + result;
     }
     return "";
+  }
+  function queryCapture(value: string): NodeListOf<Element> | Element[] {
+    const boundary = config.ownerKey ? value.indexOf(" >>> ") : -1;
+    if (boundary < 0) return document.querySelectorAll(value);
+    const container = document.querySelector(value.slice(0, boundary));
+    if (container === host || !container?.hasAttribute("data-lcr-owner"))
+      return [];
+    return (
+      container.shadowRoot?.querySelectorAll(value.slice(boundary + 5)) ?? []
+    );
+  }
+  function playgroundTarget(x: number, y: number): Element | null {
+    for (const container of document.querySelectorAll<HTMLElement>(
+      "[data-lcr-owner][inert]",
+    )) {
+      if (container === host || !container.shadowRoot) continue;
+      const scope = container.shadowRoot;
+      // Inert suppresses hit testing too. Keep input suspended while querying its
+      // real shadow tree, then restore inert before the browser dispatches input.
+      container.inert = false;
+      try {
+        const found = scope.elementFromPoint(x, y);
+        if (found?.getRootNode() === scope)
+          return found.closest("button,a,.dock") ?? found;
+      } finally {
+        container.inert = true;
+      }
+    }
+    return null;
   }
   function components(el: any) {
     const found: any[] = [];
@@ -835,6 +876,8 @@ export function installPageReview(config: {
     let el = document
       .elementsFromPoint(event.clientX, event.clientY)
       .find((n) => n !== host);
+    if (config.ownerKey)
+      el = playgroundTarget(event.clientX, event.clientY) ?? el;
     if (!el) return null;
     if (mode === "block")
       for (let i = 0; el.parentElement && i < 12; i++) {
@@ -1185,7 +1228,7 @@ export function installPageReview(config: {
     if (c.element && !c.selector) return null;
     if (c.selector) {
       try {
-        const matches = document.querySelectorAll(c.selector);
+        const matches = queryCapture(c.selector);
         if (matches.length !== 1) return null;
         const el = matches[0] as HTMLElement;
         if (el.localName !== c.element?.tag) return null;

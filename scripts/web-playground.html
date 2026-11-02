@@ -114,10 +114,11 @@
         the floating lcr circle to open its tools.
       </p>
       <p>
-        Switch to <strong>Review</strong> to comment on that interface. Drag an
-        area around the circle, menu, popup, or drawing controls. The example
-        stays visible and keeps its draft; only the reviewer receives input. Use
-        the reviewer’s Freeze tool for a still image.
+        Switch to <strong>Review</strong> to comment on that interface. Hover
+        and click the floating circle, its menu buttons, or the note popup to
+        select them. Drag an area to isolate drawing controls inside the popup.
+        The example keeps its draft; only the reviewer receives input. Use the
+        reviewer’s Freeze tool for a still image.
       </p>
       <div class="cards">
         <article id="workspace-card">
@@ -212,7 +213,7 @@
         status.textContent =
           mode === "example"
             ? "Use the example tools"
-            : "Drag an area to leave feedback";
+            : "Click a control or drag an area";
         controls.dataset.ready = "true";
         controls.dataset.mode = mode;
       }
