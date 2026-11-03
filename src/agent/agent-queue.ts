@@ -12,6 +12,7 @@ import {
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import type { ReviewNote } from "../review/thread.ts";
+import { compactWebReview } from "../shared/web-review.ts";
 
 export type WorkState =
   | "queued"
@@ -29,6 +30,7 @@ export interface AgentTask {
   noteId: string;
   revision: string;
   submitted: ReviewNote;
+  contextSaving?: boolean;
   target: string;
   sessionKey: string;
   session: string;
@@ -62,7 +64,7 @@ export const reviewerRevision = (note: ReviewNote) =>
         note.cb,
         note.snippet,
         note.image,
-        note.web,
+        note.web ? compactWebReview(note.web) : undefined,
         note.messages.filter((message) => message.role === "reviewer"),
       ]),
     )
@@ -108,6 +110,8 @@ function validQueue(value: any): value is QueueData {
         typeof task.session === "string" &&
         task.submitted?.id === task.noteId &&
         typeof task.submitted.body === "string" &&
+        (task.contextSaving === undefined ||
+          typeof task.contextSaving === "boolean") &&
         Array.isArray(task.submitted.messages) &&
         WORK_STATES.includes(task.state),
     )
@@ -187,7 +191,12 @@ export class AgentQueue {
       throw error;
     }
   }
-  accept(review: string, notes: ReviewNote[], target: string): number {
+  accept(
+    review: string,
+    notes: ReviewNote[],
+    target: string,
+    contextSaving = false,
+  ): number {
     let count = 0;
     for (const note of notes) {
       const revision = reviewerRevision(note);
@@ -201,6 +210,7 @@ export class AgentQueue {
       if (pending) {
         pending.revision = revision;
         pending.submitted = structuredClone(note);
+        pending.contextSaving = contextSaving;
         count++;
         continue;
       }
@@ -217,6 +227,7 @@ export class AgentQueue {
         noteId: note.id,
         revision,
         submitted: structuredClone(note),
+        contextSaving,
         target,
         sessionKey: JSON.stringify([target, review]),
         session: this.data.sessions[JSON.stringify([target, review])] ?? "",

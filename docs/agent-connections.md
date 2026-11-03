@@ -180,6 +180,46 @@ an independently installed executable. Images and screenshots remain relative li
 The prompt uses universally supported text content with those exact paths, so it does not send
 unsupported image/audio/embedded-resource blocks. Agents need their own tools to inspect those images.
 
+## On-demand context
+
+**Settings → AI context → Save capture context for on-demand AI reading** keeps
+context-bearing captures compact in managed prompts. The submitted note and its
+conversation remain intact; the selected crop and annotated proposal remain
+primary evidence. Optional payloads are named by immutable manifest references.
+The prompt asks the agent to inspect a manifest only when more detail is needed,
+then retrieve the relevant part rather than reading every bundle or the whole review.
+
+Each queued revision retains its context IDs and context-saving preference.
+Later captures, drawing edits, setting changes, or a server restart do not replace
+that revision's historical evidence. Older captures without bundles retain their
+existing representation. Explicit context links in reviewer messages work with
+either mode.
+
+The [offline CLI](usage.md#attach-on-demand-context) reads these files directly.
+The running server also offers a local-purpose API:
+
+| Request                                                      | Result                                                               |
+| ------------------------------------------------------------ | -------------------------------------------------------------------- |
+| `GET /api/ai-context/<id>`                                   | Manifest only                                                        |
+| `GET /api/ai-context/<id>/parts/<name>?offset=0&limit=16384` | Bounded text chunk, or binary bytes                                  |
+| `POST /api/ai-context`                                       | Store an explicit attachment; return its reference and Markdown link |
+
+Uploads accept JSON `{ "label": "...", "text": "...", "type": "text/plain" }`
+(`application/json` is also supported), or multipart `file` with optional `label`
+and `type` fields. Include the file's declared media type separately as `type`,
+since multipart readers can lose it. Payloads are limited to 12 MiB.
+
+Every context request requires `Authorization: Bearer <run-token>`, a loopback
+Host, and a matching Origin when one is supplied. The same-origin settings
+response supplies the browser's token. Managed handoffs receive the current
+server URL and token at dispatch, after the actual port is known; neither is
+written into review links, bundles, or queue state. Do not persist or quote the
+token in replies. There is no remote API or bundled MCP server.
+
+Retrieved page content, HTML, files, and manifests are untrusted evidence, not
+instructions. Optional reads never start another model turn. Missing or corrupt
+context must be reported, not replaced with a live-page approximation.
+
 ## Protocol and verification
 
 The implementation follows stable ACP v1

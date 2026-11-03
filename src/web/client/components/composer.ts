@@ -4,6 +4,7 @@ import { editorAction } from "./keys.ts";
 import { refButton, wireRefButton } from "../notes/ref-picker.ts";
 import { saveKeyHint, state, SVG } from "../app/state.ts";
 import { formatMarkdown, type MarkdownFormat } from "./markdown-edit.ts";
+import { contextButton, contextBusy, wireContext } from "./context.ts";
 
 export const composerTools = (id: string) =>
   '<button type="button" class="format-toggle" aria-label="Formatting options" data-tooltip="Formatting options" aria-expanded="false">' +
@@ -31,6 +32,7 @@ export const composerTools = (id: string) =>
     .join("") +
   attachButton() +
   refButton(id) +
+  contextButton() +
   "</div>";
 export const composerHint = (action: "save" | "send") =>
   '<span class="spacer"></span><span class="tip">' +
@@ -79,7 +81,12 @@ export function wireComposer(
   wireRefButton(host, ta, id);
   // The host may survive several textarea mounts; wireAttach keeps the drop binding on that host once.
   wireAttach(host, ta);
+  wireContext(host, ta, id);
   ta.onkeydown = (e) => {
+    if (contextBusy(host)) {
+      e.preventDefault();
+      return;
+    }
     const action = editorAction(e, state.cfg.enterSaves);
     if (action === "save") {
       e.preventDefault();
@@ -101,6 +108,7 @@ export function activeEditor(host: ParentNode = document) {
       !ta.closest(".reply") ||
       ta.hasAttribute("data-navigation-active") ||
       !!ta.value.trim() ||
-      ta.closest(".reply")?.matches("[data-sending],[data-evidence]"),
+      ta.closest(".reply")?.matches("[data-sending],[data-evidence]") ||
+      ta.hasAttribute("data-context-busy"),
   );
 }

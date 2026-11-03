@@ -219,6 +219,11 @@ stroke widths. The coordinate guide identifies the padded canvas origin and orig
 so drawing intent is not confused with captured UI. Legacy-tool-only proposals retain their compact
 readable summaries. Reference previews and history show the same evidence without annotation controls.
 
+With AI context saving enabled, the editable vectors and detailed metadata live
+in the bundle's `capture` part instead. The review keeps both primary image links
+and a compact context reference. Editing a drawing creates a new bundle; the old
+one remains available to earlier messages and queued work.
+
 ## Evidence and comparison
 
 Each note records:
@@ -249,6 +254,43 @@ Closed shadow roots and iframe internals are not inspected; an area selection ca
 their appearance. Annotation is installed only on the initial page's origin, across its routes and
 full reloads. It is not installed in new tabs or external login pages; return to the original
 reviewed tab after an external flow.
+
+## AI context saving
+
+Enable **Settings → AI context → Save capture context for on-demand AI reading**
+before taking a capture. It is off by default. New captures keep a short summary,
+the selected-area image, and any annotated proposal in the review Markdown.
+The complete capture, selectors/component hints, computed styles, and viewport
+image are available through an **Inspect context** card and a relative manifest
+link. Agents can retrieve just the evidence they need rather than receiving it
+all in every prompt. Existing captures are not retroactively converted.
+
+Two additional capture-time options are off by default:
+
+- **Include selected HTML** records sanitized visible DOM with selectors and
+  spatial rectangles. Form controls, editable content, hidden subtrees, scripts,
+  embedded documents, arbitrary attributes, and component props/state are omitted.
+  This is a bounded HTML snapshot, not a DOM replay or a complete accessibility tree.
+- **Include a full-page screenshot** captures the document extent, beyond the
+  ordinary viewport screenshot. Large documents are scaled to fit 8192 pixels per
+  side and 16 megapixels; the manifest records the extent and scale. Images over
+  12 MiB and capture failures are reported as unavailable rather than replaced by
+  a viewport image.
+
+These options apply at selection time, or at **Freeze** time for a frozen view.
+Changing settings or the live page afterward does not change frozen evidence.
+A frozen HTML snapshot covers the captured viewport and carries spatial identities
+for relating it to a later crop; it is not recollected from the current DOM.
+Manifests distinguish available, excluded, unavailable, and truncated evidence.
+Missing evidence is never silently filled from a newer live page.
+
+Sanitization does not make a page public: visible text, URLs, identifying attributes,
+and screenshots can contain private data. Full-document images can expose content
+outside the selection. Inspect saved context before sharing it. Capture settings
+do not redact files or text explicitly attached through **Add context**.
+
+See [context storage and offline retrieval](usage.md#attach-on-demand-context)
+for portable bundles and CLI commands.
 
 ## Browser lifecycle
 

@@ -26,6 +26,8 @@ import {
   type WebAnnotation,
 } from "../shared/web-annotation.ts";
 import { readAttachment } from "./attach.ts";
+import { hydrateContextDoc, preserveWebContexts } from "./web-context.ts";
+import { compactWebReview } from "../shared/web-review.ts";
 
 export interface SaveResult {
   /** Path of the session file, relative to the repository unless the output directory is absolute. */
@@ -124,7 +126,7 @@ function reviewerFields(note: ReviewNote): string {
     note.cb,
     note.snippet ?? "",
     note.image ?? null,
-    note.web ?? null,
+    note.web ? compactWebReview(note.web) : null,
   ]);
 }
 
@@ -168,14 +170,16 @@ export function createSession(
   async function read(): Promise<ReviewDoc> {
     if (!name) return fresh();
     const text = await readFile(path.join(dir(), name), "utf8").catch(() => "");
-    return text ? parseReview(text) : fresh();
+    return text
+      ? hydrateContextDoc(repoRoot, outDir, parseReview(text))
+      : fresh();
   }
 
   /** Agent tasks name their original file, even after the page has opened another conversation. */
   async function readNamed(file: string): Promise<ReviewDoc | null> {
     if (!(await listReviews(repoRoot, outDir)).includes(file)) return null;
     const text = await readFile(path.join(dir(), file), "utf8").catch(() => "");
-    return text ? parseReview(text) : null;
+    return text ? hydrateContextDoc(repoRoot, outDir, parseReview(text)) : null;
   }
 
   /**
@@ -198,6 +202,9 @@ export function createSession(
   }
 
   async function write(doc: ReviewDoc): Promise<string> {
+    for (const note of doc.notes)
+      if (note.web)
+        note.web = await preserveWebContexts(repoRoot, outDir, note.web);
     if (!name) name = await mint();
     await mkdir(dir(), { recursive: true });
     // The doc's own context wins: a conversation adopted from another range or branch keeps saying

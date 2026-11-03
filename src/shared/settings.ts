@@ -1,4 +1,6 @@
-export interface UiSettings {
+import { DEFAULT_CONTEXT_SETTINGS, type ContextSettings } from "./context.ts";
+
+export interface UiSettings extends ContextSettings {
   auto: boolean;
   back: boolean;
   limit: number;
@@ -19,6 +21,7 @@ export interface UiSettings {
 }
 
 export const DEFAULT_UI_SETTINGS: Readonly<UiSettings> = {
+  ...DEFAULT_CONTEXT_SETTINGS,
   auto: true,
   back: true,
   limit: 900,

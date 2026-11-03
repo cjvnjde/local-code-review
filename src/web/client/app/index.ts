@@ -26,6 +26,7 @@ import { startResolution } from "../notes/resolution.ts";
 import { watchActions } from "../components/actions.ts";
 import { watchNoteHeaders } from "../notes/sticky-notes.ts";
 import { startSearch } from "../search/search.ts";
+import { watchContext } from "../components/context.ts";
 
 startAppearance();
 prepareWebNote();
@@ -60,6 +61,7 @@ async function start() {
     region.inert = false;
   });
   startWebReviewUI();
+  watchContext();
   watchActions();
   watchNoteHeaders();
   watchAudio();

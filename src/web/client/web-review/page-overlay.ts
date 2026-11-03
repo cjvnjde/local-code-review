@@ -424,13 +424,6 @@ export function installPageReview(config: {
     }
     const previousMode = mode,
       previousSelectionMode = selectionMode;
-    // Record DOM hints before the screenshot shield changes the page's hovered state.
-    const capture = areaCapture({
-      x: 0,
-      y: 0,
-      width: innerWidth,
-      height: innerHeight,
-    });
     freezing = true;
     start = null;
     outline.style.display = "none";
@@ -439,6 +432,19 @@ export function installPageReview(config: {
     tellFrame("capturing", { busy: true });
     let id = "";
     try {
+      const settings = await rpc("context-settings", {});
+      // Snapshot DOM hints and optional HTML before inserting the frozen image.
+      const capture = captureContext(
+        areaCapture({
+          x: 0,
+          y: 0,
+          width: innerWidth,
+          height: innerHeight,
+        }),
+        [],
+        settings,
+        "frozen viewport",
+      );
       const result = await rpc("freeze", { capture });
       id = result.id;
       const image = document.createElement("img");
@@ -755,6 +761,179 @@ export function installPageReview(config: {
       height: Math.max(...rects.map((r) => r.y + r.height)) - y,
     };
   }
+  type CaptureRect = { x: number; y: number; width: number; height: number };
+  type CaptureSettings = {
+    aiContext: boolean;
+    contextHtml: boolean;
+    contextFullPage: boolean;
+  };
+  function captureContext<T extends { rect: CaptureRect; mode: string }>(
+    capture: T,
+    elements: Element[],
+    settings: CaptureSettings,
+    scope = "selection",
+  ) {
+    const result = {
+      ...capture,
+      contextSettings: {
+        aiContext: settings.aiContext === true,
+        contextHtml: settings.contextHtml === true,
+        contextFullPage: settings.contextFullPage === true,
+      },
+      contextHtml: undefined as
+        { data: string; truncated: boolean } | undefined,
+    };
+    if (
+      !result.contextSettings.aiContext ||
+      !result.contextSettings.contextHtml
+    )
+      return result;
+    try {
+      const nodes: { selector: string; rect: CaptureRect; html: string }[] = [];
+      const encoder = new TextEncoder();
+      let visited = 0,
+        bytes = 0,
+        htmlBytes = 0,
+        truncated = false,
+        excluded = 0;
+      const escape = (text: string) =>
+        text
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      const allowed = [
+        "id",
+        "class",
+        "role",
+        "aria-label",
+        "title",
+        "data-testid",
+        "alt",
+      ];
+      function visible(el: Element) {
+        return (
+          el !== host &&
+          !host.contains(el) &&
+          !el.closest(
+            "script,style,noscript,template,iframe,object,embed,input,textarea,select,option,[hidden],[inert],[aria-hidden=true],[contenteditable]:not([contenteditable=false])",
+          ) &&
+          el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })
+        );
+      }
+      function fragment(text: string) {
+        const size = encoder.encode(text).length;
+        if (htmlBytes + size > 120 * 1024) {
+          truncated = true;
+          return "";
+        }
+        htmlBytes += size;
+        return text;
+      }
+      function serialize(el: Element, deep: boolean, depth = 0): string {
+        if (++visited > 2500 || depth > 40) {
+          truncated = true;
+          return "";
+        }
+        if (!visible(el)) {
+          excluded++;
+          return "";
+        }
+        const attributes = allowed
+          .flatMap((name) => {
+            const value = el.getAttribute(name);
+            if (value && value.length > 500) truncated = true;
+            return value ? [` ${name}="${escape(value.slice(0, 500))}"`] : [];
+          })
+          .join("");
+        let html = fragment(`<${el.localName}${attributes}>`);
+        for (const child of el.childNodes) {
+          if (++visited > 2500 || htmlBytes >= 120 * 1024) {
+            truncated = true;
+            break;
+          }
+          if (child.nodeType === Node.TEXT_NODE) {
+            const text = child.textContent || "";
+            if (text.length > 2000) truncated = true;
+            html += fragment(escape(text.slice(0, 2000)));
+          } else if (deep && child instanceof Element)
+            html += serialize(child, true, depth + 1);
+          if (visited > 2500) break;
+        }
+        return html + fragment(`</${el.localName}>`);
+      }
+      function add(el: Element, deep: boolean) {
+        if (!visible(el)) {
+          excluded++;
+          return;
+        }
+        const bounds = el.getBoundingClientRect(),
+          r = capture.rect;
+        if (
+          bounds.right <= r.x ||
+          bounds.bottom <= r.y ||
+          bounds.x >= r.x + r.width ||
+          bounds.y >= r.y + r.height
+        )
+          return;
+        const html = serialize(el, deep);
+        const record = { selector: selector(el), rect: rect(el), html };
+        const size = encoder.encode(JSON.stringify(record)).length;
+        if (bytes + size > 128 * 1024) {
+          truncated = true;
+          return;
+        }
+        bytes += size;
+        nodes.push(record);
+      }
+      if (elements.length) {
+        for (const el of elements) {
+          if (nodes.length >= 200 || visited > 2500) {
+            truncated = true;
+            break;
+          }
+          add(el, true);
+        }
+      } else {
+        let node: Node | null,
+          scanned = 0;
+        const walker = document.createTreeWalker(
+          document.body || document.documentElement,
+          NodeFilter.SHOW_ELEMENT,
+          {
+            acceptNode: (node) => {
+              if (++scanned > 5000) return NodeFilter.FILTER_ACCEPT;
+              if (visible(node as Element)) return NodeFilter.FILTER_ACCEPT;
+              excluded++;
+              return NodeFilter.FILTER_REJECT;
+            },
+          },
+        );
+        while ((node = walker.nextNode())) {
+          if (scanned > 5000 || nodes.length >= 200 || visited > 2500) {
+            truncated = true;
+            break;
+          }
+          add(node as Element, false);
+        }
+      }
+      result.contextHtml = {
+        data: JSON.stringify({
+          scope,
+          coordinateSpace: "capture viewport CSS pixels",
+          rect: capture.rect,
+          exclusions:
+            "Form controls, editable content, hidden subtrees, scripts, embedded documents, non-whitelisted attributes, props and state are omitted.",
+          excludedNodes: excluded,
+          nodes,
+        }),
+        truncated,
+      };
+    } catch {
+      // The controller records an explicit unavailable part; never re-query a frozen page.
+    }
+    return result;
+  }
   function selectionCapture(elements: Element[], kind: string) {
     const captures = elements.map((el) => {
       const r = el.getBoundingClientRect();
@@ -1027,6 +1206,7 @@ export function installPageReview(config: {
     busy = true;
     tellFrame("capturing", { busy: true });
     try {
+      const settings = await rpc("context-settings", {});
       const capture = frozen
         ? frozenCapture(r, kind)
         : elements.length
@@ -1035,7 +1215,13 @@ export function installPageReview(config: {
             ? areaCapture(r)
             : metadata(el, r, kind);
       const result = await rpc("capture", {
-        capture,
+        capture: frozen
+          ? capture
+          : captureContext(
+              capture,
+              elements.length ? elements : el ? [el] : [],
+              settings,
+            ),
         ...(frozen ? { freezeId: frozen.id } : {}),
         ...(appending
           ? frameKind === "draft"
@@ -1855,10 +2041,20 @@ export function installPageReview(config: {
           behavior: "instant",
         });
       await new Promise((resolve) => requestAnimationFrame(resolve));
-      if (grouped) return selectionCapture(elements, c.mode);
+      const settings = await rpc("context-settings", {});
+      if (grouped)
+        return captureContext(
+          selectionCapture(elements, c.mode),
+          elements,
+          settings,
+        );
       const p = places[0],
         r = clamp(p.el ? rect(p.el) : p.rect);
-      return c.mode === "area" ? areaCapture(r) : metadata(p.el, r, c.mode);
+      return captureContext(
+        c.mode === "area" ? areaCapture(r) : metadata(p.el, r, c.mode),
+        p.el ? [p.el] : [],
+        settings,
+      );
     },
   };
   setMode(mode);

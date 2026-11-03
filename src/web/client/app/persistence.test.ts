@@ -210,6 +210,17 @@ beforeEach(() => {
     cfgSingle: { checked: state.cfg.single, disabled: false, value: "" },
     cfgGhosts: { checked: state.cfg.ghosts, disabled: false, value: "" },
     cfgEditor: { checked: false, disabled: false, value: state.cfg.editor },
+    cfgAiContext: { checked: state.cfg.aiContext, disabled: false, value: "" },
+    cfgContextHtml: {
+      checked: state.cfg.contextHtml,
+      disabled: true,
+      value: "",
+    },
+    cfgContextFullPage: {
+      checked: state.cfg.contextFullPage,
+      disabled: true,
+      value: "",
+    },
   };
   Object.defineProperty(globalThis, "document", {
     configurable: true,
@@ -231,6 +242,35 @@ afterEach(() => {
 });
 
 describe("settings persistence", () => {
+  test("capture context opt-ins persist while disabled and sync to embedded editors", async () => {
+    await loadCfg();
+    expect(controls.cfgContextHtml.disabled).toBe(true);
+    controls.cfgAiContext.checked = true;
+    controls.cfgContextHtml.checked = true;
+    controls.cfgContextFullPage.checked = true;
+    expect(saveCfg()).toBe(false);
+    expect(controls.cfgContextHtml.disabled).toBe(false);
+    controls.cfgAiContext.checked = false;
+    saveCfg();
+    expect(controls.cfgContextHtml.checked).toBe(true);
+    expect(controls.cfgContextHtml.disabled).toBe(true);
+    expect(controls.cfgContextFullPage.checked).toBe(true);
+    expect(JSON.parse(local.getItem("gitreview:settings")!)).toMatchObject({
+      aiContext: false,
+      contextHtml: true,
+      contextFullPage: true,
+    });
+    await syncCfg();
+    state.uiEmbed = true;
+    settingsSnapshot.aiContext = true;
+    await syncCfg();
+    expect(state.cfg).toMatchObject({
+      aiContext: true,
+      contextHtml: true,
+      contextFullPage: true,
+    });
+    expect(controls.cfgContextFullPage.disabled).toBe(false);
+  });
   test("loadCfg hydrates state and every settings control", async () => {
     local.setItem(
       "gitreview:settings",

@@ -3,6 +3,8 @@ import { codeHtml, langOf } from "./highlight.ts";
 import { noteSummary } from "../notes/note-list.ts";
 import { REF_SCHEME, noteByRef, refIn, refLabel } from "../notes/note-ref.ts";
 import { SVG, clip, esc, noteKey, state } from "../app/state.ts";
+import { contextId } from "../../../shared/context.ts";
+import { contextCard } from "./context.ts";
 
 /* ---------- markdown ---------- */
 /**
@@ -410,7 +412,15 @@ export function inline(src: string): string {
         // is about what is in it. Any other image is shown as the link it is: this page never
         // reaches out to the network for a note.
         const shot = link && link[1] ? attachSrc(link[3]) : "";
-        if (shot) {
+        const context =
+          link && !link[1] ? contextId(link[3].replace(/^<|>$/g, "")) : "";
+        if (context) {
+          html = contextCard({
+            id: context,
+            label: link![2].replace(/\\(.)/g, "$1") || "Additional context",
+          });
+          to = from + link![0].length;
+        } else if (shot) {
           html = shotHtml(shot, link[2]);
           to = from + link[0].length;
         } else if (link && url) {

@@ -89,6 +89,49 @@ describe("saveAttachment", () => {
     expect(await kept(root)).toEqual([first]);
   });
 
+  test("immutable image names reject different existing bytes without overwriting", async () => {
+    const root = await dir();
+    const image = bytes("original");
+    const name = await saveAttachment(root, ".review", image, "image/png");
+    await writeFile(path.join(root, ".review/images", name), "tampered");
+    await expect(
+      saveAttachment(root, ".review", image, "image/png"),
+    ).rejects.toThrow("immutable");
+    expect(
+      await readFile(path.join(root, ".review/images", name), "utf8"),
+    ).toBe("tampered");
+    expect(await kept(root)).toEqual([name]);
+  });
+
+  test("image writes reject directory and destination symlinks", async () => {
+    const root = await dir();
+    const outside = await dir();
+    await mkdir(path.join(root, ".review"));
+    await symlink(outside, path.join(root, ".review/images"));
+    await expect(
+      saveAttachment(root, ".review", bytes("image"), "image/png"),
+    ).rejects.toThrow("symlink");
+    expect(await readdir(outside)).toEqual([]);
+    await rm(path.join(root, ".review/images"));
+    await mkdir(path.join(root, ".review/images"));
+    const image = bytes("image");
+    const digest = new Bun.CryptoHasher("sha256")
+      .update(image)
+      .digest("hex")
+      .slice(0, 16);
+    await writeFile(path.join(outside, "target.png"), "untouched");
+    await symlink(
+      path.join(outside, "target.png"),
+      path.join(root, ".review/images", `${digest}.png`),
+    );
+    await expect(
+      saveAttachment(root, ".review", image, "image/png"),
+    ).rejects.toThrow();
+    expect(await readFile(path.join(outside, "target.png"), "utf8")).toBe(
+      "untouched",
+    );
+  });
+
   test("the same bytes under another type are another picture", async () => {
     const root = await dir();
     const png = await saveAttachment(

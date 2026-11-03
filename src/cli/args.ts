@@ -114,6 +114,11 @@ Explicit CLI options override those defaults; explicit Git arguments replace dif
 Other arguments are passed to git diff and checked before the server starts.
 Use -- to separate file paths from options and revisions.
 
+Offline context:
+  lcr context inspect <id> --review <review.md>
+  lcr context read <id> --review <review.md> --part <name> [--offset N --limit N]
+  lcr context --help         Read saved AI context without Git, settings, or an agent
+
 Options:
   -h, --help                 Show this help and exit
   -v, --version              Print the build stamp and exit

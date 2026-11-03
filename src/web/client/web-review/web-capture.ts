@@ -5,6 +5,7 @@ import {
 } from "../../../shared/web-review.ts";
 import { attachSrc } from "../components/attach.ts";
 import { esc, SVG } from "../app/state.ts";
+import { contextCard } from "../components/context.ts";
 export function webCaptureHtml(value: unknown, removable = false) {
   const web = webReview(value);
   if (!web) return "";
@@ -23,7 +24,7 @@ export function webCaptureHtml(value: unknown, removable = false) {
     index: number,
     kind: "selection" | "after",
   ) =>
-    removable
+    removable && (!c.proposal || c.annotation)
       ? '<button type="button" class="web-picture" data-web-annotate="' +
         index +
         '" data-web-kind="' +
@@ -53,15 +54,18 @@ export function webCaptureHtml(value: unknown, removable = false) {
     (web.additional?.length || web.after.length
       ? '<div class="web-image-label">' + esc(label) + "</div>"
       : "") +
-    (c.annotation
+    (c.annotation || c.proposal
       ? '<div class="web-image-label">Annotated proposal · margin is drawing space, not captured UI</div>' +
-        editablePicture(
-          c,
-          c.annotation.image,
-          label + " annotated proposal",
-          index,
-          kind,
-        ) +
+        (c.annotation
+          ? editablePicture(
+              c,
+              c.annotation.image,
+              label + " annotated proposal",
+              index,
+              kind,
+            )
+          : picture(c.proposal!, label + " annotated proposal") +
+            '<p class="context-status">Drawing marks are not loaded. Inspect saved context to retrieve the original annotation data.</p>') +
         "<details><summary>Original selected area</summary>" +
         editablePicture(
           c,
@@ -105,9 +109,13 @@ export function webCaptureHtml(value: unknown, removable = false) {
           .join("") +
         "</ol></details>"
       : "") +
-    "<details><summary>Selection metadata</summary><pre>" +
-    esc(JSON.stringify({ ...c, page: undefined, area: undefined }, null, 2)) +
-    "</pre></details>" +
+    (c.context
+      ? contextCard(c.context)
+      : "<details><summary>Selection metadata</summary><pre>" +
+        esc(
+          JSON.stringify({ ...c, page: undefined, area: undefined }, null, 2),
+        ) +
+        "</pre></details>") +
     (removable && kind === "selection"
       ? '<div class="web-capture-actions"><button type="button" class="danger" data-web-remove="' +
         index +

@@ -7,6 +7,7 @@ import { readAttachment, saveAttachment } from "./review/attach.ts";
 import { readBlob } from "./git/blob.ts";
 import { openInBrowser } from "./browser/open.ts";
 import { HELP, parseArgs } from "./cli/args.ts";
+import { runContextCli } from "./cli/context.ts";
 import {
   loadUserSettings,
   resolveAcpPath,
@@ -34,6 +35,7 @@ import {
 import { createSession } from "./review/session.ts";
 import { startServer } from "./server/http.ts";
 import { collectStatuses } from "./review/status.ts";
+import { hydrateContextDoc } from "./review/web-context.ts";
 import { parseReview } from "./review/thread.ts";
 import { VERSION } from "./version.ts";
 import { createWebReview } from "./web-review/controller.ts";
@@ -41,6 +43,10 @@ import { isNoise, watchDir, watchTree } from "./server/watch.ts";
 
 async function main() {
   const argv = process.argv.slice(2);
+  if (argv[0] === "context") {
+    console.log(await runContextCli(argv.slice(1)));
+    return;
+  }
   const explicit = parseArgs(argv);
   if (explicit.help) {
     console.log(HELP);
@@ -126,7 +132,9 @@ async function main() {
       path.resolve(repoRoot, options.outDir, name),
       "utf8",
     ).catch(() => "");
-    return text ? parseReview(text) : null;
+    return text
+      ? hydrateContextDoc(repoRoot, options.outDir, parseReview(text))
+      : null;
   }
 
   let web: ReturnType<typeof createWebReview> | undefined;

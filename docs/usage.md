@@ -92,25 +92,28 @@ See [existing browser setup](web-ui.md#attach-to-your-existing-browser) and [pro
 
 The `ui` object configures the server-shared page preferences:
 
-| Key            | Built-in value | Meaning                                                         |
-| -------------- | -------------- | --------------------------------------------------------------- |
-| `auto`         | `true`         | Mark files viewed after scrolling past                          |
-| `back`         | `true`         | Unmark when scrolling back                                      |
-| `limit`        | `900`          | Automatic-viewing scroll-speed threshold; `0` permits any speed |
-| `toast`        | `true`         | Notify when automatically marking viewed                        |
-| `hide`         | `""`           | File-hide patterns, as entered in settings                      |
-| `hideEnabled`  | `true`         | Enable hide patterns                                            |
-| `disabledHide` | `[]`           | Individually disabled hide patterns                             |
-| `hideDeleted`  | `false`        | Hide deleted files                                              |
-| `foldDel`      | `false`        | Fold removed-line runs                                          |
-| `enterSaves`   | `false`        | Enter saves; Shift+Enter inserts a newline when enabled         |
-| `expand`       | `20`           | Context lines revealed per click                                |
-| `navHidden`    | `false`        | Hide the file-tree pane                                         |
-| `ntFold`       | `false`        | Fold the sidebar's note list                                    |
-| `bmFold`       | `false`        | Fold the sidebar's bookmark list                                |
-| `single`       | `false`        | Keep only the newest review file on save                        |
-| `ghosts`       | `true`         | Show other reviews' anchored notes                              |
-| `editor`       | `""`           | Editor executable; empty uses the system default                |
+| Key               | Built-in value | Meaning                                                         |
+| ----------------- | -------------- | --------------------------------------------------------------- |
+| `auto`            | `true`         | Mark files viewed after scrolling past                          |
+| `back`            | `true`         | Unmark when scrolling back                                      |
+| `limit`           | `900`          | Automatic-viewing scroll-speed threshold; `0` permits any speed |
+| `toast`           | `true`         | Notify when automatically marking viewed                        |
+| `hide`            | `""`           | File-hide patterns, as entered in settings                      |
+| `hideEnabled`     | `true`         | Enable hide patterns                                            |
+| `disabledHide`    | `[]`           | Individually disabled hide patterns                             |
+| `hideDeleted`     | `false`        | Hide deleted files                                              |
+| `foldDel`         | `false`        | Fold removed-line runs                                          |
+| `enterSaves`      | `false`        | Enter saves; Shift+Enter inserts a newline when enabled         |
+| `aiContext`       | `false`        | Save new capture metadata for on-demand agent reading           |
+| `contextHtml`     | `false`        | Include sanitized capture-time HTML when `aiContext` is enabled |
+| `contextFullPage` | `false`        | Include a full-document screenshot when `aiContext` is enabled  |
+| `expand`          | `20`           | Context lines revealed per click                                |
+| `navHidden`       | `false`        | Hide the file-tree pane                                         |
+| `ntFold`          | `false`        | Fold the sidebar's note list                                    |
+| `bmFold`          | `false`        | Fold the sidebar's bookmark list                                |
+| `single`          | `false`        | Keep only the newest review file on save                        |
+| `ghosts`          | `true`         | Show other reviews' anchored notes                              |
+| `editor`          | `""`           | Editor executable; empty uses the system default                |
 
 `limit` accepts `0`, `500`, `900`, or `1800`; `expand` accepts `10`, `20`, `50`,
 or `100`, matching the page's controls. All other flags above are booleans;
@@ -220,6 +223,44 @@ Agents can also link pictures in `assets/`, `images/`, or directly beside the re
 ```
 
 Create and inspect each picture first, use a unique safe filename, and never overwrite or delete an existing attachment. Paths are relative to the Markdown file, including with a custom output directory. Named agent images revalidate against their content.
+
+### Attach on-demand context
+
+In a note or reply, open **Formatting options → Add context** to attach a file or
+paste plain text or JSON. Files and text are limited to 12 MiB. Upload completes
+before a relative Markdown link is inserted at the caret; failed uploads leave
+the draft available for correction. This works independently of the capture
+preferences under **Settings → AI context**.
+
+The link names `context/<id>/manifest.json` beside the review file. **Inspect
+context** opens its manifest without fetching its payloads; choose one part to
+read or preview it. HTML is displayed as text, never executed. Binary files can
+be downloaded. Missing context is reported without making the note unreadable.
+
+An agent can use the same immutable evidence without a running server:
+
+```text
+lcr context inspect <id> --review <review.md>
+lcr context read <id> --review <review.md> --part <part>
+lcr context read <id> --review <review.md> --part <part> --offset <byte-offset> --limit 16384
+```
+
+Use the ID from the link and a part name from the manifest: for example, `content`
+for an uploaded file, or `elements`, `styles`, `selected-html`, and `full-page`
+for a capture. Text reads return JSON with content and `nextOffset`; offsets are
+UTF-8 byte offsets. The default chunk is 16 KiB, with a 64 KiB maximum. Binary
+reads return a local path, not base64. These commands work outside Git and do not
+load user settings or contact the original page.
+
+For direct filesystem readers, a manifest part's `file` is relative to its bundle
+directory; its `attachment` is relative to the review file. Neither may escape the
+review output directory.
+
+Bundles are local, immutable snapshots under the review output directory. Moving
+a review requires keeping its `context/` and referenced `images/` attachments
+beside it. Removing a note, starting a new review, and pruning old review files
+do not delete bundles. Retention is deliberate: another draft, thread, or queued
+task may still reference one. No automatic garbage collection is performed.
 
 ## Read and navigate changes
 

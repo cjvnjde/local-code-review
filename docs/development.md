@@ -140,9 +140,15 @@ With Chrome installed, run the opt-in real-browser workflow:
 ```sh
 LCR_TEST_BROWSER=1 bun test src/web-review/browser.test.ts
 LCR_TEST_BROWSER=1 bun test src/web/client/web-review/annotation-editor.browser.test.ts
+LCR_TEST_BROWSER=1 bun test src/web/client/components/context.browser.test.ts
 ```
 
 It uses a temporary Git repository, local application, and isolated browser profile. See [web annotation](web-ui.md) for browser lifecycle and limits.
+
+With Bun 1.4.4, development HMR can fail in the theme registry with
+`ReferenceError: import_default is not defined`. Run these browser checks with
+`NODE_ENV=production` to exercise production bundling instead. The same prefix
+can be used when running the source server; standalone compilation is unaffected.
 
 After changing the distributable skill, verify the project-local copy matches:
 
@@ -169,6 +175,9 @@ The focused drawing workflow exercises pre-save resizing, new shapes, endpoint a
 point insertion/deletion, path closure, cancel/undo/redo, reopening vectors, and PNG guide exclusion.
 Its browser uses an isolated profile and a local screenshot/upload fixture; pure geometry and
 metadata boundary/roundtrip tests run in the ordinary suite.
+The context workflows cover frozen HTML/full-document evidence, capture-time
+privacy settings, immutable drawing revisions, upload failures, editor protection,
+selective authenticated reads, bounded text previews, and object-URL cleanup.
 
 Bun's coverage report describes modules loaded into the test process, not every source file or code
 executed in a browser or child process. Use it to find gaps, not as proof of whole-project coverage.
@@ -235,6 +244,14 @@ owns the page-preference defaults and partial-config validation for both runtime
 The server's settings relay is run-local: configured keys reapply on each new run,
 while page changes remain in browser storage. Keep configuration reads out of
 help/version and never add a web-UI writer for the user's settings file.
+
+`src/shared/context.ts` defines the portable manifest and reference format.
+`src/review/context.ts` owns immutable bundle persistence and verified part reads;
+`src/review/web-context.ts` stores and hydrates capture metadata without substituting
+live data. `src/server/context.ts` and `src/cli/context.ts` expose HTTP and offline
+retrieval. The browser's `components/context.ts` owns attachment and inspection UI.
+Keep capture references in the review revision, and transient HTTP credentials out
+of persisted review and queue data.
 
 ### Browser features
 

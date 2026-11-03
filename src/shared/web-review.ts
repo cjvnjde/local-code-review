@@ -1,4 +1,5 @@
 import { webAnnotation, type WebAnnotation } from "./web-annotation.ts";
+import { contextLink, contextRef, type ContextRef } from "./context.ts";
 
 /** Evidence is immutable; another capture adds an observation rather than replacing the before. */
 export interface WebCapture {
@@ -12,6 +13,10 @@ export interface WebCapture {
   page: string;
   area: string;
   annotation?: WebAnnotation;
+  /** Immutable optional evidence; persisted captures keep only their compact subject. */
+  context?: ContextRef;
+  /** Annotated PNG retained when editable drawing geometry lives in the context bundle. */
+  proposal?: string;
   selector?: string;
   element?: {
     tag: string;
@@ -154,6 +159,13 @@ export function webCapture(value: unknown): WebCapture | null {
       ? undefined
       : webAnnotation(value.annotation);
   if (annotation === null) return null;
+  const context =
+    value.context === undefined ? undefined : contextRef(value.context);
+  if (
+    context === null ||
+    (value.proposal !== undefined && (!context || !ref(value.proposal)))
+  )
+    return null;
   const cleanMetadata = (
     target: Pick<WebCapture, "selector" | "element" | "components">,
   ) => ({
@@ -208,6 +220,8 @@ export function webCapture(value: unknown): WebCapture | null {
       ...cleanMetadata(value),
       ...(value.selections !== undefined ? { selections } : {}),
       ...(annotation ? { annotation } : {}),
+      ...(context ? { context } : {}),
+      ...(value.proposal ? { proposal: value.proposal } : {}),
     }),
   );
 }
@@ -226,6 +240,35 @@ export function webReview(value: unknown): WebReview | null {
   return additional.every((capture): capture is WebCapture => capture !== null)
     ? { before, after, additional }
     : null;
+}
+
+/** The durable subject is small; the immutable bundle owns selectors, DOM hints and drawing marks. */
+export function compactWebCapture(capture: WebCapture): WebCapture {
+  if (!capture.context) return capture;
+  const proposal = capture.annotation?.image ?? capture.proposal;
+  return {
+    url: capture.url,
+    title: capture.title,
+    at: capture.at,
+    mode: capture.mode,
+    rect: capture.rect,
+    viewport: capture.viewport,
+    scroll: capture.scroll,
+    page: capture.page,
+    area: capture.area,
+    components: [],
+    context: capture.context,
+    ...(proposal ? { proposal } : {}),
+  };
+}
+export function compactWebReview(web: WebReview): WebReview {
+  return {
+    before: compactWebCapture(web.before),
+    after: web.after.map(compactWebCapture),
+    ...(web.additional
+      ? { additional: web.additional.map(compactWebCapture) }
+      : {}),
+  };
 }
 /** Stable identity for an entire selected capture, not its automatic DOM metadata rows. */
 export function webSelectionKey(capture: WebCapture): string {
@@ -292,8 +335,13 @@ export function setWebAnnotation(
     throw new WebSelectionConflict(
       "That capture or annotation changed. Reload the note and try again.",
     );
+  if (capture.proposal && !capture.annotation)
+    throw new WebSelectionConflict(
+      "The drawing context is unavailable. Restore its context bundle before editing it.",
+    );
   if (clean) capture.annotation = clean;
   else delete capture.annotation;
+  delete capture.proposal;
   return next;
 }
 /** Remove only the selection the editor saw; comparisons belong to the original first capture. */
@@ -336,7 +384,7 @@ export function dropWebSelection(
 /** Human-readable evidence and a sealed machine-readable copy both travel in ordinary Markdown. */
 export function webReviewLines(web: WebReview): string[] {
   web = webReview(web)!;
-  const json = JSON.stringify(web).replace(
+  const json = JSON.stringify(compactWebReview(web)).replace(
     /[<>&]/g,
     (c) => "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0"),
   );
@@ -357,6 +405,33 @@ export function webReviewLines(web: WebReview): string[] {
     ...web.after.map((capture, i) => ({ capture, label: "After " + (i + 1) })),
   ];
   captures.forEach(({ capture: c, label }) => {
+    if (c.context) {
+      const imageLabel = label.startsWith("After ") ? "After" : label;
+      lines.push(
+        label + " capture:",
+        "",
+        "UI selection: " +
+          c.mode +
+          " at " +
+          JSON.stringify(c.url) +
+          ", captured " +
+          JSON.stringify(c.at) +
+          ".",
+        "",
+        "![" + imageLabel + " — selected area](" + c.area + ")",
+        "",
+      );
+      const proposal = c.annotation?.image ?? c.proposal;
+      if (proposal)
+        lines.push(
+          "Annotated proposal — reviewer intent, not captured page content. Its margin is drawing space.",
+          "",
+          "![" + imageLabel + " — annotated proposal](" + proposal + ")",
+          "",
+        );
+      lines.push(contextLink(c.context), "");
+      return;
+    }
     const annotation = c.annotation;
     // Old sealed blocks are matched byte-for-byte by the review parser.
     const vectorGeometry = annotation?.marks.some((mark) =>

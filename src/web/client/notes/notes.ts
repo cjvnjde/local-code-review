@@ -31,6 +31,7 @@ import {
   wireComposer,
 } from "../components/composer.ts";
 import { copyText } from "../components/clipboard.ts";
+import { contextBusy } from "../components/context.ts";
 import { noteByRef, refOf, refToken } from "./note-ref.ts";
 import {
   globalHost,
@@ -189,6 +190,7 @@ function dropEmptyReply() {
  * floor and is brought back into view instead.
  */
 export function busyEditor() {
+  if (contextBusy()) return true;
   const drawing = document.querySelector<HTMLDialogElement>(
     "[data-annotation-editor]",
   );
@@ -1101,6 +1103,7 @@ function editUI(box, ctx) {
     void sendNote(note, false, ask);
   };
   const drop = () => {
+    if (contextBusy(box)) return;
     // Emptying a saved note is deleting it, and deleting is what takes it out of the review file
     // too; only a draft that never existed comes down with no more ceremony than cancel.
     const kept = state.notes.get(id);
@@ -1121,6 +1124,7 @@ function editUI(box, ctx) {
   const del = box.querySelector(".del");
   if (del) del.onclick = drop;
   const cancel = () => {
+    if (contextBusy(box)) return;
     const kept = state.notes.get(id);
     clearSel();
     if (kept) viewUI(box, kept, ctx);
@@ -1170,6 +1174,7 @@ function editUI(box, ctx) {
       webRemoving.has(id) ||
       webAnnotating.has(id) ||
       state.noteSending.has(id) ||
+      contextBusy(box) ||
       (!!ctx.image && !ctx.image.capture),
   );
 }

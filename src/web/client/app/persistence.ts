@@ -19,6 +19,7 @@ import {
   parseUiSettings,
   type UiSettings,
 } from "../../../shared/settings.ts";
+import { setContextToken } from "../components/context.ts";
 
 // All saves and deletes share a queue, so a late review-wide save cannot resurrect a deleted note.
 let noteWrites: Promise<unknown> = Promise.resolve();
@@ -127,6 +128,7 @@ async function readCfg(): Promise<{
   const data = await response.json();
   if (typeof data.runId !== "string" || !data.runId)
     throw new Error("Invalid review settings. Retry to load this review.");
+  setContextToken(data.contextToken);
   return {
     runId: data.runId,
     defaults: parseUiSettings(data.defaults),
@@ -186,6 +188,11 @@ function paintCfg() {
   el("cfgGhosts").checked = state.cfg.ghosts !== false;
   el("cfgEditor").value = state.cfg.editor || "";
   el("cfgBack").disabled = !state.cfg.auto;
+  el("cfgAiContext").checked = state.cfg.aiContext;
+  el("cfgContextHtml").checked = state.cfg.contextHtml;
+  el("cfgContextFullPage").checked = state.cfg.contextFullPage;
+  el("cfgContextHtml").disabled = !state.cfg.aiContext;
+  el("cfgContextFullPage").disabled = !state.cfg.aiContext;
   state.hideRx = compileHide(state.cfg.hide, state.cfg.disabledHide);
   // Do not render an editor to update its shortcut hint: its text, selection and handlers stay put.
   document
@@ -234,6 +241,9 @@ export function saveCfg() {
   state.cfg.enterSaves = el("cfgEnter").checked;
   state.cfg.single = el("cfgSingle").checked;
   state.cfg.editor = el("cfgEditor").value.trim();
+  state.cfg.aiContext = el("cfgAiContext").checked;
+  state.cfg.contextHtml = el("cfgContextHtml").checked;
+  state.cfg.contextFullPage = el("cfgContextFullPage").checked;
   const hide = el("cfgHide").value,
     deleted = el("cfgDeleted").checked;
   const expand = Number(el("cfgExpand").value);

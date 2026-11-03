@@ -25,8 +25,13 @@ const ACTIONS: [string, keyof typeof SVG, string][] = [
     "trash",
     "Delete",
   ],
-  ["button.cancel,#rdrClose,#historyClose,#searchClose", "x", "Close"],
+  [
+    "button.cancel,#rdrClose,#historyClose,#searchClose,[data-context-close],[data-context-cancel]",
+    "x",
+    "Close",
+  ],
   ["#historyExport", "download", "Export history"],
+  ["button[data-context-download]", "download", "Download context part"],
   ["#historyCopy,#copySkillCommand", "copy", "Copy"],
 ];
 export function decorateAction(button: HTMLButtonElement) {

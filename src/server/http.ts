@@ -32,6 +32,7 @@ import {
   parseUiSettings,
   type UiSettings,
 } from "../shared/settings.ts";
+import { contextRequestAllowed, contextRoute } from "./context.ts";
 
 export interface ServerOptions {
   web?: import("../web-review/controller.ts").WebReviewController;
@@ -168,6 +169,9 @@ function serve(options: ServerOptions, port: number) {
   const runId = crypto.randomUUID();
   const defaults = parseUiSettings(options.uiDefaults ?? {});
   let settings: UiSettings = { ...DEFAULT_UI_SETTINGS, ...defaults };
+  const contextToken = crypto.randomUUID();
+  options.web?.configureContext(settings);
+  options.agent?.contextMode?.(settings.aiContext);
   const server = Bun.serve({
     port,
     hostname: "127.0.0.1",
@@ -189,12 +193,25 @@ function serve(options: ServerOptions, port: number) {
     async fetch(request) {
       try {
         const url = new URL(request.url);
+        if (
+          url.pathname === "/api/ai-context" ||
+          url.pathname.startsWith("/api/ai-context/")
+        )
+          return contextRoute(request, options, contextToken, server.port!);
         if (url.pathname === "/api/events")
           return events(options, request, server);
         if (url.pathname === "/api/settings") {
+          if (!contextRequestAllowed(request, server.port!))
+            return Response.json(
+              { error: "Access settings from the review origin." },
+              { status: 403 },
+            );
           const headers = { "cache-control": "no-store" };
           if (request.method === "GET")
-            return Response.json({ runId, defaults, settings }, { headers });
+            return Response.json(
+              { runId, defaults, settings, contextToken },
+              { headers },
+            );
           if (request.method !== "PUT")
             return new Response("method not allowed", {
               status: 405,
@@ -204,18 +221,6 @@ function serve(options: ServerOptions, port: number) {
             return Response.json(
               { error: "JSON body required." },
               { status: 415 },
-            );
-          const origin = request.headers.get("origin");
-          if (
-            origin &&
-            ![
-              `http://localhost:${server.port}`,
-              `http://127.0.0.1:${server.port}`,
-            ].includes(origin)
-          )
-            return Response.json(
-              { error: "Change settings from the review page." },
-              { status: 403 },
             );
           const payload = await readJson(request);
           try {
@@ -228,6 +233,8 @@ function serve(options: ServerOptions, port: number) {
               { status: 400 },
             );
           }
+          options.web?.configureContext(settings);
+          options.agent?.contextMode?.(settings.aiContext);
           options.hub.emit({ type: "settings" });
           return Response.json({ ok: true }, { headers });
         }
@@ -989,6 +996,10 @@ function serve(options: ServerOptions, port: number) {
         );
       }
     },
+  });
+  options.agent?.contextAccess?.({
+    url: `http://127.0.0.1:${server.port}/api/ai-context`,
+    token: contextToken,
   });
 
   return server;

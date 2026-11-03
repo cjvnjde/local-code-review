@@ -1,4 +1,11 @@
 import { attachRef, readAttachment, saveAttachment } from "../review/attach.ts";
+import { preserveWebContexts, saveWebContext } from "../review/web-context.ts";
+import type { ContextPartInput } from "../review/context.ts";
+import {
+  CONTEXT_MAX_BYTES,
+  DEFAULT_CONTEXT_SETTINGS,
+  type ContextSettings,
+} from "../shared/context.ts";
 import type { Hub } from "../server/events.ts";
 import {
   launchReviewBrowser,
@@ -66,7 +73,16 @@ export function createWebReview(options: WebReviewOptions) {
   const drafts = new Map<string, WebReview | null>();
   const replyDrafts = new Map<string, string>();
   const draftOwners = new Map<string, string>();
-  let frozen: { id: string; capture: WebCapture } | null = null;
+  let contextSettings: ContextSettings = { ...DEFAULT_CONTEXT_SETTINGS };
+  type ContextSnapshot = {
+    settings: ContextSettings;
+    extras: ContextPartInput[];
+  };
+  let frozen: {
+    id: string;
+    capture: WebCapture;
+    snapshot: ContextSnapshot;
+  } | null = null;
   function discardDraft(id: string) {
     const owner = draftOwners.get(id);
     if (owner) replyDrafts.delete(owner);
@@ -265,10 +281,125 @@ export function createWebReview(options: WebReviewOptions) {
     }
     return {};
   }
+  function settingsSnapshot(value: unknown): ContextSettings {
+    const settings = value && typeof value === "object" ? value : {};
+    return {
+      aiContext: "aiContext" in settings && settings.aiContext === true,
+      contextHtml: "contextHtml" in settings && settings.contextHtml === true,
+      contextFullPage:
+        "contextFullPage" in settings && settings.contextFullPage === true,
+    };
+  }
+  async function fullPagePart(capture: WebCapture): Promise<ContextPartInput> {
+    const part = {
+      name: "full-page",
+      label: "Full document screenshot",
+      type: "image/png",
+    };
+    try {
+      const metrics = await send("Page.getLayoutMetrics");
+      const bounds = metrics.cssContentSize;
+      if (
+        !bounds ||
+        !Number.isFinite(bounds.width) ||
+        !Number.isFinite(bounds.height) ||
+        bounds.width <= 0 ||
+        bounds.height <= 0
+      )
+        throw new Error("The browser did not report document bounds.");
+      const dpr = capture.viewport.dpr;
+      const scale = Math.min(
+        1,
+        8192 / (Math.max(bounds.width, bounds.height) * dpr),
+        Math.sqrt(16_000_000 / (bounds.width * bounds.height * dpr * dpr)),
+      );
+      if (scale < 0.05)
+        throw new Error(
+          "Document extent exceeds the bounded full-page screenshot limit.",
+        );
+      const image = await send("Page.captureScreenshot", {
+        format: "png",
+        fromSurface: true,
+        captureBeyondViewport: true,
+        clip: {
+          x: bounds.x,
+          y: bounds.y,
+          width: bounds.width,
+          height: bounds.height,
+          scale,
+        },
+      });
+      if (
+        typeof image.data !== "string" ||
+        image.data.length > Math.ceil(CONTEXT_MAX_BYTES / 3) * 4
+      )
+        throw new Error("Full-page PNG exceeds the 12 MiB limit.");
+      const bytes = Buffer.from(image.data, "base64");
+      if (bytes.length > CONTEXT_MAX_BYTES)
+        throw new Error("Full-page PNG exceeds the 12 MiB limit.");
+      const name = await saveAttachment(
+        options.repoRoot,
+        options.outDir,
+        bytes,
+        "image/png",
+      );
+      if (!name) throw new Error("The full-page PNG could not be saved.");
+      return {
+        ...part,
+        attachment: attachRef(name),
+        detail: `Complete document extent ${bounds.width} × ${bounds.height} CSS pixels; screenshot scale ${scale}.`,
+      };
+    } catch (error) {
+      return {
+        ...part,
+        status: "unavailable",
+        detail: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+  function htmlPart(
+    input: { contextHtml?: unknown },
+    settings: ContextSettings,
+  ): ContextPartInput {
+    const part = {
+      name: "selected-html",
+      label: "Sanitized selected HTML and spatial identities",
+      type: "application/json",
+    };
+    if (!settings.contextHtml)
+      return {
+        ...part,
+        status: "excluded",
+        detail: "Selected HTML was disabled at capture time.",
+      };
+    const html = input.contextHtml;
+    if (
+      !html ||
+      typeof html !== "object" ||
+      !("data" in html) ||
+      typeof html.data !== "string" ||
+      Buffer.byteLength(html.data) > 256 * 1024
+    )
+      return {
+        ...part,
+        status: "unavailable",
+        detail: "Bounded selected HTML was not available at capture time.",
+      };
+    return {
+      ...part,
+      data: html.data,
+      truncated: "truncated" in html && html.truncated === true,
+      detail:
+        "Capture-time sanitized visible DOM only. Form controls, hidden content, scripts, arbitrary attributes, state and props are excluded.",
+    };
+  }
   async function screenshot(input: any, freezeId?: unknown) {
+    const settings = { ...contextSettings };
     const clean = webCapture({
       ...input,
       annotation: undefined,
+      context: undefined,
+      proposal: undefined,
       page: "images/page.png",
       area: "images/area.png",
     });
@@ -299,7 +430,16 @@ export function createWebReview(options: WebReviewOptions) {
         "image/png",
       );
       if (!area) throw new Error("Could not save the frozen selection.");
-      return { capture: { ...clean, page, area: attachRef(area) } };
+      const snapshot = frozen.snapshot;
+      let capture: WebCapture = { ...clean, page, area: attachRef(area) };
+      if (snapshot.settings.aiContext)
+        capture = await saveWebContext(
+          options.repoRoot,
+          options.outDir,
+          capture,
+          snapshot.extras,
+        );
+      return { capture, snapshot };
     }
     const actual = await evaluate(
       "({url:location.href,width:innerWidth,height:innerHeight,x:scrollX,y:scrollY})",
@@ -333,6 +473,20 @@ export function createWebReview(options: WebReviewOptions) {
           scale: 1,
         },
       });
+      const extras: ContextPartInput[] = settings.aiContext
+        ? [
+            htmlPart(input, settings),
+            settings.contextFullPage
+              ? await fullPagePart(clean)
+              : {
+                  name: "full-page",
+                  label: "Full document screenshot",
+                  type: "image/png",
+                  status: "excluded",
+                  detail: "Full-page screenshot was disabled at capture time.",
+                },
+          ]
+        : [];
       const after = await evaluate(
         "({url:location.href,width:innerWidth,height:innerHeight,x:scrollX,y:scrollY})",
       );
@@ -356,20 +510,27 @@ export function createWebReview(options: WebReviewOptions) {
       ]);
       if (!pageName || !areaName)
         throw new Error("Could not save screenshots.");
-      return {
-        capture: {
-          ...clean,
-          page: attachRef(pageName),
-          area: attachRef(areaName),
-        },
+      let capture: WebCapture = {
+        ...clean,
+        page: attachRef(pageName),
+        area: attachRef(areaName),
       };
+      if (settings.aiContext)
+        capture = await saveWebContext(
+          options.repoRoot,
+          options.outDir,
+          capture,
+          extras,
+        );
+      return { capture, snapshot: { settings, extras } };
     } finally {
       await api("visible", true).catch(() => {});
     }
   }
   async function action(name: string, payload: any) {
+    if (name === "context-settings") return { ...contextSettings };
     if (name === "freeze") {
-      const { capture } = await screenshot(payload.capture);
+      const { capture, snapshot } = await screenshot(payload.capture);
       const image = await readAttachment(
         options.repoRoot,
         options.outDir,
@@ -377,7 +538,7 @@ export function createWebReview(options: WebReviewOptions) {
       );
       if (!image) throw new Error("Could not load the frozen view.");
       const id = crypto.randomUUID();
-      frozen = { id, capture };
+      frozen = { id, capture, snapshot };
       return {
         id,
         data:
@@ -436,8 +597,13 @@ export function createWebReview(options: WebReviewOptions) {
               "The PNG attachments are missing, invalid, or their dimensions do not match the annotation. Upload the drawing again.",
             );
         }
-        drafts.set(payload.draftId, web);
-        return { web: structuredClone(web) };
+        const preserved = await preserveWebContexts(
+          options.repoRoot,
+          options.outDir,
+          web,
+        );
+        drafts.set(payload.draftId, preserved);
+        return { web: structuredClone(preserved) };
       }
       if (typeof payload.id !== "string" || !payload.id)
         throw new WebAnnotationInvalid("A note id is required.");
@@ -507,7 +673,8 @@ export function createWebReview(options: WebReviewOptions) {
       const draft = hasDraft ? drafts.get(payload.draftId)! : null;
       if (draft && (draft.additional?.length ?? 0) >= 100)
         throw new Error("This note already has 100 additional selections.");
-      const result = await screenshot(payload.capture, payload.freezeId);
+      const { capture } = await screenshot(payload.capture, payload.freezeId);
+      const result = { capture };
       if (hasDraft) {
         const web: WebReview = draft ?? { before: result.capture, after: [] };
         if (draft) (web.additional ??= []).push(result.capture);
@@ -561,7 +728,8 @@ export function createWebReview(options: WebReviewOptions) {
       if (!note?.web) throw new Error("That UI note no longer exists.");
       await open(); // A background page can suspend the animation frame that locates its capture.
       const metadata = await api("prepare", note.web.before);
-      const result = await screenshot(metadata);
+      const { capture } = await screenshot(metadata);
+      const result = { capture };
       return { ...result, ...appendReplyCapture(note.id, result.capture) };
     }
     if (name === "review") return review(payload.id);
@@ -696,7 +864,10 @@ export function createWebReview(options: WebReviewOptions) {
                 context,
               ).catch(() => {});
             };
-            queue = queue.then(work, work);
+            // prepare() runs inside the action queue and asks for current settings.
+            // This read-only RPC must not wait behind the action awaiting it.
+            if (message.action === "context-settings") void work();
+            else queue = queue.then(work, work);
           }),
         );
         await send("Page.enable");
@@ -774,6 +945,9 @@ export function createWebReview(options: WebReviewOptions) {
   }
   return {
     status,
+    configureContext(settings: Partial<ContextSettings>) {
+      contextSettings = settingsSnapshot(settings);
+    },
     open,
     review(id?: string) {
       const work = () => review(id);

@@ -19,6 +19,7 @@ import { webReviewLines, type WebReview } from "../../../shared/web-review.ts";
 import { webCaptureHtml } from "../web-review/web-capture.ts";
 import { adoptAgent } from "../app/agent.ts";
 import { noteByRef, refOf } from "./note-ref.ts";
+import { contextBusy } from "../components/context.ts";
 
 registerEditor((route) => {
   const match = /^(reply|message):([a-z0-9]+)(?::(.+))?$/.exec(route);
@@ -137,13 +138,14 @@ function editMessage(box: any, note: any, m: any, done: () => void) {
     cancel: () => shut(),
   });
   const shut = (replace = false) => {
+    if (contextBusy(form)) return;
     form.replaceWith(body);
     finishEditor(ta, replace);
   };
   form.__shut = () => shut(true);
   let sending = false;
   const commit = async () => {
-    if (sending) return;
+    if (sending || contextBusy(form)) return;
     const text = ta.value.trim();
     // Emptying a message is withdrawing it, exactly as emptying a note deletes the note.
     if (!text) {
@@ -186,7 +188,7 @@ function editMessage(box: any, note: any, m: any, done: () => void) {
     `message:${refOf(note.id)}:${m.at}`,
     ta,
     () => shut(),
-    () => sending,
+    () => sending || contextBusy(form),
   );
 }
 
@@ -195,6 +197,7 @@ function editMessage(box: any, note: any, m: any, done: () => void) {
  * may already have been answered, so it asks first, exactly as deleting a handed-over note does.
  */
 async function dropMessage(note: any, m: any, done: () => void) {
+  if (contextBusy()) return;
   if (
     !confirm(
       "Delete this reply?\n\nIt goes out of " +
@@ -297,6 +300,7 @@ function startReply(wrap: any, id: string, done: () => void) {
     focus: false,
   });
   const shut = () => {
+    if (contextBusy(box)) return;
     ta.value = "";
     ta.dispatchEvent(new Event("input", { bubbles: true }));
     ta.removeAttribute("data-navigation-active");
@@ -311,7 +315,7 @@ function startReply(wrap: any, id: string, done: () => void) {
       "reply:" + refOf(id),
       ta,
       shut,
-      () => sending || !!box.closest("[data-web-busy]"),
+      () => sending || contextBusy(box) || !!box.closest("[data-web-busy]"),
     );
   };
   ta.addEventListener("focus", activate);
@@ -319,7 +323,12 @@ function startReply(wrap: any, id: string, done: () => void) {
   // or a quick double enter would append the same message to the review file twice.
   let sending = false;
   const send = async (ask = false) => {
-    if (sending || box.closest(".nbox")?.hasAttribute("data-web-busy")) return;
+    if (
+      sending ||
+      contextBusy(box) ||
+      box.closest(".nbox")?.hasAttribute("data-web-busy")
+    )
+      return;
     const body = [
       ta.value.trim(),
       box.__web ? webReviewLines(box.__web).slice(2).join("\n") : "",

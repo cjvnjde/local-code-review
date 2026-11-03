@@ -1,4 +1,13 @@
-import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import {
+  link,
+  lstat,
+  mkdir,
+  open,
+  readFile,
+  realpath,
+  unlink,
+} from "node:fs/promises";
 import path from "node:path";
 import { imageType } from "../git/blob.ts";
 
@@ -63,9 +72,6 @@ export function attachExtension(type: string): string {
  */
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
-const dirOf = (repoRoot: string, outDir: string) =>
-  path.resolve(repoRoot, outDir, ATTACH_DIR);
-
 /**
  * Keeps one picture and answers the name it is kept under, or empty for a type or a size that is not
  * kept. Content-addressed, so writing the same bytes again is writing the same file: a reviewer who
@@ -81,14 +87,93 @@ export async function saveAttachment(
   const extension = attachExtension(type);
   if (!extension || !bytes.byteLength || bytes.byteLength > ATTACH_MAX_BYTES)
     return "";
+  bytes = new Uint8Array(bytes);
   const digest = new Bun.CryptoHasher("sha256")
     .update(bytes)
     .digest("hex")
     .slice(0, 16);
   const name = `${digest}.${extension}`;
-  const directory = dirOf(repoRoot, outDir);
+  const output = path.resolve(repoRoot, outDir);
+  const created = await mkdir(output, { recursive: true });
+  if (created && process.platform !== "win32") {
+    const stop = path.dirname(path.resolve(created));
+    for (let parent = path.dirname(output); ; parent = path.dirname(parent)) {
+      const handle = await open(parent, constants.O_RDONLY);
+      try {
+        await handle.sync();
+      } finally {
+        await handle.close();
+      }
+      if (parent === stop) break;
+    }
+  }
+  const root = await realpath(output);
+  const directory = path.join(root, ATTACH_DIR);
   await mkdir(directory, { recursive: true });
-  await writeFile(path.join(directory, name), bytes);
+  if (
+    (await lstat(directory)).isSymbolicLink() ||
+    (await realpath(directory)) !== directory
+  )
+    throw new Error("Image directory must not cross symlinks.");
+  const target = path.join(directory, name);
+  const temporary = path.join(directory, `.pending-${crypto.randomUUID()}`);
+  const file = await open(temporary, "wx", 0o600);
+  try {
+    try {
+      await file.writeFile(bytes);
+      await file.sync();
+    } finally {
+      await file.close();
+    }
+    if (
+      (await lstat(directory)).isSymbolicLink() ||
+      (await realpath(directory)) !== directory
+    )
+      throw new Error("Image directory must not cross symlinks.");
+    try {
+      await link(temporary, target);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      const existing = await open(
+        target,
+        constants.O_RDONLY | constants.O_NOFOLLOW,
+      );
+      try {
+        const info = await existing.stat();
+        if (!info.isFile() || info.size !== bytes.byteLength)
+          throw new Error(
+            "Existing image content does not match its immutable name.",
+          );
+        const saved = await existing.readFile();
+        if (
+          !saved.equals(
+            Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength),
+          )
+        )
+          throw new Error(
+            "Existing image content does not match its immutable name.",
+          );
+      } finally {
+        await existing.close();
+      }
+    }
+    if (process.platform !== "win32") {
+      const dir = await open(directory, constants.O_RDONLY);
+      try {
+        await dir.sync();
+      } finally {
+        await dir.close();
+      }
+      const rootDir = await open(root, constants.O_RDONLY);
+      try {
+        await rootDir.sync();
+      } finally {
+        await rootDir.close();
+      }
+    }
+  } finally {
+    await unlink(temporary);
+  }
   return name;
 }
 

@@ -61,6 +61,8 @@ Click an element or drag an area to comment. Click the **lcr** circle to switch 
 
 Visual and code notes share the same Markdown review. Captures include screenshots and element metadata; **Capture after** records the result after a fix. Requires an installed Chrome, Chromium, or Edge. [Web annotation guide →](docs/web-ui.md)
 
+For smaller agent prompts, enable **Settings → AI context → Save capture context for on-demand AI reading**. The selected screenshot stays in the review; selectors, styles, and other evidence live in immutable local bundles that agents can read selectively. Selected HTML and full-document screenshots are separate opt-ins. **Formatting options → Add context** also attaches files or text/JSON to any note or reply. [Context storage and retrieval →](docs/usage.md#attach-on-demand-context)
+
 ### Choose a browser profile
 
 | `--browser-profile` | Browser and saved state                                                                                                                                                                      |

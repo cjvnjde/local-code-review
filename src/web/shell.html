@@ -328,6 +328,34 @@
           </p>
         </div>
         <div class="settings-section">
+          <h4>AI context</h4>
+          <label
+            ><input type="checkbox" id="cfgAiContext" /> Save capture context
+            for on-demand AI reading</label
+          >
+          <label
+            ><input type="checkbox" id="cfgContextHtml" /> Include selected
+            HTML</label
+          >
+          <label
+            ><input type="checkbox" id="cfgContextFullPage" /> Include a
+            full-page screenshot</label
+          >
+          <p class="note">
+            Off by default. These choices apply when a new capture is taken, not
+            to existing captures. HTML and full-page images can contain private
+            page content, including content outside your selection. Inspect the
+            saved context before sharing it with an agent.
+          </p>
+          <p class="note">
+            Use <b>Add context</b> in any note or reply to attach a file or
+            text/JSON explicitly, regardless of these capture preferences.
+            Context stays in <code>context/</code> beside the review as an
+            ordinary Markdown link. Agents retrieve only the parts they need.
+            Saved bundles are not automatically deleted.
+          </p>
+        </div>
+        <div class="settings-section">
           <h4>Note editor</h4>
           <label
             ><input type="checkbox" id="cfgEnter" /> Enter saves the note,

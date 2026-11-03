@@ -11,6 +11,7 @@ import { getDiff, getFileContext } from "../git/diff.ts";
 import { readAttachment, saveAttachment } from "../review/attach.ts";
 import { collectStatuses } from "../review/status.ts";
 import { webSelectionKey } from "../shared/web-review.ts";
+import { readContext, readContextPart } from "../review/context.ts";
 
 // Opt-in because the ordinary suite and released executable require no installed browser.
 const browserTest = process.env.LCR_TEST_BROWSER === "1" ? test : test.skip;
@@ -507,13 +508,26 @@ browserTest(
           'getComputedStyle(document.querySelector("#hover-tooltip")).display',
         ),
       ).toBe("block");
+      web.configureContext({
+        aiContext: true,
+        contextHtml: true,
+        contextFullPage: true,
+      });
+      await js(`(() => {
+        const secrets = document.createElement("div");
+        secrets.hidden = true;
+        secrets.textContent = "hidden-context-secret";
+        document.body.append(secrets);
+        document.querySelector("#freeze-input").value = "input-context-secret";
+        document.querySelector("#hover-tooltip").setAttribute("data-secret", "attribute-context-secret");
+      })()`);
       await freezeKey();
       await until(
         () => js('!!testRoot.querySelector(".frozen-page")'),
         "hover view frozen",
       );
       expect(await js('document.querySelector("#freeze-input").value')).toBe(
-        "ƒ",
+        "input-context-secret",
       );
       expect(await js('testRoot.querySelector(".freeze-status").hidden')).toBe(
         false,
@@ -529,6 +543,12 @@ browserTest(
       const freezeSource = await js(
         'testRoot.querySelector(".frozen-page").src',
       );
+      // Settings and live DOM changes must not rewrite a frozen context snapshot.
+      web.configureContext({
+        aiContext: false,
+        contextHtml: false,
+        contextFullPage: false,
+      });
       await mouse("mouseMoved", 300, 200);
       expect(
         await js(
@@ -544,6 +564,47 @@ browserTest(
         'new URL(testRoot.querySelector("iframe").src).searchParams.get("ui-draft")',
       );
       const frozenEvidence = web.draft(frozenDraftId)!.before;
+      expect(frozenEvidence.context).toBeDefined();
+      const frozenManifest = await readContext(
+        dir,
+        ".review",
+        frozenEvidence.context!.id,
+      );
+      const htmlPart = await readContextPart(
+        dir,
+        ".review",
+        frozenEvidence.context!.id,
+        "selected-html",
+      );
+      const html = new TextDecoder().decode(htmlPart!.bytes);
+      expect(html).toContain("frozen viewport");
+      expect(html).toContain("Hover-only menu");
+      expect(html).not.toContain("hidden-context-secret");
+      expect(html).not.toContain("input-context-secret");
+      expect(html).not.toContain("attribute-context-secret");
+      const htmlSnapshot = JSON.parse(html);
+      expect(
+        htmlSnapshot.nodes.some(
+          (node: { selector: string; rect: { width: number } }) =>
+            node.selector.includes("hover-tooltip") && node.rect.width > 0,
+        ),
+      ).toBe(true);
+      const documentPart = frozenManifest!.parts.find(
+        (part) => part.name === "full-page",
+      )!;
+      expect(documentPart.status).toBe("available");
+      const documentImage = await readAttachment(
+        dir,
+        ".review",
+        documentPart.attachment!,
+      );
+      const documentPng = Buffer.from(documentImage!.bytes);
+      expect(documentPng.readUInt32BE(20)).toBeGreaterThan(
+        frozenEvidence.viewport.height * frozenEvidence.viewport.dpr,
+      );
+      expect(documentImage!.bytes.byteLength).toBeLessThanOrEqual(
+        12 * 1024 * 1024,
+      );
       expect(frozenEvidence.mode).toBe("area");
       expect(frozenEvidence.rect).toEqual({
         x: 22,
@@ -576,6 +637,55 @@ browserTest(
           `(async()=>{const image=new Image();image.src=${JSON.stringify("data:image/png;base64," + frozenArea.toString("base64"))};await image.decode();const canvas=document.createElement('canvas');canvas.width=image.naturalWidth;canvas.height=image.naturalHeight;const ctx=canvas.getContext('2d');ctx.drawImage(image,0,0);return [...ctx.getImageData(canvas.width-2,canvas.height-2,1,1).data]})()`,
         ),
       ).toEqual([255, 0, 0, 255]);
+      const updatedFrozen = await web.annotate({
+        draftId: frozenDraftId,
+        target: {
+          kind: "selection",
+          index: 0,
+          key: webSelectionKey(frozenEvidence),
+          expected: "",
+        },
+        annotation: {
+          image: frozenEvidence.area,
+          width: frozenArea.readUInt32BE(16),
+          height: frozenArea.readUInt32BE(20),
+          padding: 0,
+          marks: [
+            {
+              tool: "pen",
+              color: "#ff0000",
+              width: 1,
+              points: [
+                { x: 1, y: 1 },
+                { x: 2, y: 2 },
+              ],
+            },
+          ],
+        },
+      });
+      expect(updatedFrozen.web.before.context!.id).not.toBe(
+        frozenEvidence.context!.id,
+      );
+      const updatedHtml = await readContextPart(
+        dir,
+        ".review",
+        updatedFrozen.web.before.context!.id,
+        "selected-html",
+      );
+      expect(new TextDecoder().decode(updatedHtml!.bytes)).toBe(html);
+      const savedCapture = await readContextPart(
+        dir,
+        ".review",
+        updatedFrozen.web.before.context!.id,
+        "capture",
+      );
+      expect(
+        JSON.parse(new TextDecoder().decode(savedCapture!.bytes)).annotation
+          .marks,
+      ).toHaveLength(1);
+      expect(web.draft(frozenDraftId)!.before.context).toEqual(
+        updatedFrozen.web.before.context,
+      );
       // Resuming never closes or recreates an editor, including its half-written text and caret.
       await writeComment("Keep this frozen hover evidence.");
       await frameJs(
@@ -626,6 +736,62 @@ browserTest(
         async () => !web.draft(frozenDraftId),
         "frozen draft discarded",
       );
+      web.configureContext({
+        aiContext: true,
+        contextHtml: false,
+        contextFullPage: false,
+      });
+      await mouse("mouseMoved", box.x, box.y);
+      await mouse("mousePressed", box.x, box.y);
+      await mouse("mouseReleased", box.x, box.y);
+      await frame();
+      const optionalDraftId = await js(
+        'new URL(testRoot.querySelector("iframe").src).searchParams.get("ui-draft")',
+      );
+      const optionalCapture = web.draft(optionalDraftId)!.before;
+      expect(optionalCapture.context).toBeDefined();
+      const optionalManifest = await readContext(
+        dir,
+        ".review",
+        optionalCapture.context!.id,
+      );
+      expect(
+        optionalManifest!.parts.find((part) => part.name === "selected-html")!
+          .status,
+      ).toBe("excluded");
+      expect(
+        optionalManifest!.parts.find((part) => part.name === "full-page")!
+          .status,
+      ).toBe("excluded");
+      web.configureContext({
+        aiContext: true,
+        contextHtml: true,
+        contextFullPage: false,
+      });
+      const prepared = await js(
+        `globalThis[testRoot.host.id].prepare(${JSON.stringify(optionalCapture)})`,
+      );
+      const selectedHtml = JSON.parse(prepared.contextHtml.data);
+      expect(
+        selectedHtml.nodes.some(
+          (node: { html: string; selector: string }) =>
+            node.selector.includes("save") &&
+            node.html.includes("Save changes"),
+        ),
+      ).toBe(true);
+      await js(
+        `(()=>{scrollTo({left:${optionalCapture.scroll.x},top:${optionalCapture.scroll.y},behavior:"instant"});const {promise,resolve}=Promise.withResolvers();requestAnimationFrame(()=>requestAnimationFrame(resolve));return promise})()`,
+      );
+      await click("[data-close]");
+      await until(
+        async () => !web.draft(optionalDraftId),
+        "optional context draft discarded",
+      );
+      web.configureContext({
+        aiContext: false,
+        contextHtml: false,
+        contextFullPage: false,
+      });
       await js("window.clicks=0");
       // Alt uses the app normally; an unmodified click annotates without expanding the launcher.
       await mouse("mousePressed", box.x, box.y, 1);

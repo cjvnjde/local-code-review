@@ -22,6 +22,9 @@ export interface AgentAdapter {
   close?: () => void | Promise<void>;
   status?: () => AgentConnection;
   check?: () => Promise<void>;
+  /** Run-local delivery preferences and access; never part of the adapter's durable identity. */
+  contextMode?: (enabled: boolean) => void;
+  contextAccess?: (access: { url: string; token: string }) => void;
   publish(
     review: string,
     notes: ReviewNote[],

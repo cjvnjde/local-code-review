@@ -89,6 +89,7 @@ function webController(
   overrides: Partial<NonNullable<ServerOptions["web"]>> = {},
 ): NonNullable<ServerOptions["web"]> {
   return {
+    configureContext: () => {},
     status: () => ({
       url: webCapture.url,
       state: "closed",
@@ -186,6 +187,82 @@ afterAll(() => {
 });
 
 describe("review settings handoff", () => {
+  test("context settings reach collectors and agents, and retrieval uses the run token", async () => {
+    const configured: boolean[] = [];
+    const modes: boolean[] = [];
+    const access: { url: string; token: string }[] = [];
+    const started = await startTestServer({
+      uiDefaults: { aiContext: true },
+      web: webController({
+        configureContext: (settings) => {
+          configured.push(settings.aiContext);
+        },
+      }),
+      agent: {
+        agent: "test",
+        contextMode: (enabled) => {
+          modes.push(enabled);
+        },
+        contextAccess: (value) => {
+          access.push(value);
+        },
+        publish: () => ({ state: "unchanged", count: 0 }),
+      },
+    });
+    const settings = await (await request(started, "/api/settings")).json();
+    expect(configured).toEqual([true]);
+    expect(modes).toEqual([true]);
+    expect(access).toEqual([
+      { url: `${started.base}/api/ai-context`, token: settings.contextToken },
+    ]);
+    expect(
+      (
+        await request(started, "/api/settings", {
+          headers: { origin: "http://evil.example" },
+        })
+      ).status,
+    ).toBe(403);
+    const body = JSON.stringify({ label: "HTTP evidence", text: "persisted" });
+    expect(
+      (
+        await request(started, "/api/ai-context", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body,
+        })
+      ).status,
+    ).toBe(403);
+    const uploaded = await request(started, "/api/ai-context", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${settings.contextToken}`,
+      },
+      body,
+    });
+    expect(uploaded.status).toBe(200);
+    const saved = await uploaded.json();
+    const manifest = await request(
+      started,
+      `/api/ai-context/${saved.context.id}`,
+      {
+        headers: { authorization: `Bearer ${settings.contextToken}` },
+      },
+    );
+    expect((await manifest.json()).label).toBe("HTTP evidence");
+    expect(
+      (
+        await request(started, "/api/settings", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ aiContext: false }),
+        })
+      ).status,
+    ).toBe(200);
+    expect(configured).toEqual([true, false]);
+    expect(modes).toEqual([true, false]);
+  });
+
   test("retains a run-local snapshot for new editors and announces changes to open editors", async () => {
     const configured = { enterSaves: true, disabledHide: ["*.snap"] };
     const started = await startTestServer({ uiDefaults: configured });
@@ -195,6 +272,7 @@ describe("review settings handoff", () => {
     const first = await initial.json();
     expect(first).toEqual({
       runId: expect.any(String),
+      contextToken: expect.any(String),
       defaults: { enterSaves: true, disabledHide: ["*.snap"] },
       settings: {
         ...DEFAULT_UI_SETTINGS,
@@ -219,6 +297,7 @@ describe("review settings handoff", () => {
     expect(events).toEqual(['data: {"type":"settings"}\n\n']);
     expect(await (await request(started, "/api/settings")).json()).toEqual({
       runId: first.runId,
+      contextToken: first.contextToken,
       defaults: first.defaults,
       settings: { ...DEFAULT_UI_SETTINGS, ...settings },
     });
@@ -231,10 +310,12 @@ describe("review settings handoff", () => {
     const restarted = await (await request(other, "/api/settings")).json();
     expect(restarted).toEqual({
       runId: expect.any(String),
+      contextToken: expect.any(String),
       defaults: first.defaults,
       settings: first.settings,
     });
     expect(restarted.runId).not.toBe(first.runId);
+    expect(restarted.contextToken).not.toBe(first.contextToken);
   });
 
   test("rejects foreign origins, malformed snapshots and unsupported methods without an event", async () => {
@@ -288,6 +369,7 @@ describe("review settings handoff", () => {
     ).toBe(415);
     expect(await (await request(started, "/api/settings")).json()).toEqual({
       runId: expect.any(String),
+      contextToken: expect.any(String),
       defaults: {},
       settings: DEFAULT_UI_SETTINGS,
     });
@@ -2070,6 +2152,7 @@ describe("live UI browser API", () => {
       },
       focus: async () => {},
       close: async () => {},
+      configureContext: () => {},
     };
     const started = await startTestServer({ web: web as any });
     expect((await (await request(started, "/api/diff")).json()).web.url).toBe(
@@ -2510,7 +2593,7 @@ describe("HTTP state preservation and stream lifetimes", () => {
       method: "PUT",
       headers: {
         "content-type": "Application/JSON; charset=utf-8",
-        origin: `http://localhost:${started.server.port}`,
+        origin: started.base,
       },
       body: JSON.stringify({ single: true }),
     });

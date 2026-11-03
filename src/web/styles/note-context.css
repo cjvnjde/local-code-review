@@ -135,3 +135,113 @@
   font-size: var(--fs-sm);
   line-height: 1.5;
 }
+
+/* On-demand context uses the same compact affordance in notes, replies and history. */
+.context-card {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  max-width: 100%;
+  margin: var(--space-1) 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--s1);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--ink);
+  font: var(--fs-sm)/1.5 var(--sans);
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.context-card small,
+.context-status,
+.context-source,
+.context-manifest li > span {
+  color: var(--ink-dim);
+}
+.context-card svg,
+.context-add svg {
+  width: 1em;
+  height: 1em;
+  flex: none;
+}
+.context-dialog {
+  width: min(760px, calc(100vw - 2 * var(--space-3)));
+  max-height: calc(100dvh - 2 * var(--space-3));
+  box-sizing: border-box;
+  padding: var(--space-4);
+  border: 1px solid var(--s1);
+  border-radius: var(--radius-md);
+  background: var(--base);
+  color: var(--ink);
+  font: var(--fs-ui)/1.5 var(--sans);
+  overflow: auto;
+}
+.context-dialog::backdrop {
+  background: color-mix(in srgb, var(--crust) 75%, transparent);
+}
+.context-dialog h3,
+.context-dialog h4 {
+  margin: 0;
+}
+.context-dialog label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: var(--space-2) 0;
+}
+.context-dialog :is(input, textarea, select) {
+  box-sizing: border-box;
+  width: 100%;
+  padding: var(--space-2);
+  border: 1px solid var(--s1);
+  border-radius: var(--radius-sm);
+  background: var(--crust);
+  color: var(--ink);
+  font: inherit;
+}
+.context-dialog textarea {
+  resize: vertical;
+  font-family: var(--mono);
+}
+.context-dialog :is(button, a):focus-visible,
+.context-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.context-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.context-manifest ul {
+  padding: 0;
+  list-style: none;
+}
+.context-manifest li {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  margin: var(--space-3) 0;
+}
+.context-source,
+.context-manifest li > span {
+  overflow-wrap: anywhere;
+}
+.context-preview pre {
+  max-height: 45vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: var(--space-2);
+  background: var(--crust);
+  font: var(--fs-code)/1.5 var(--mono);
+}
+.context-preview img {
+  display: block;
+  max-width: 100%;
+  max-height: 60vh;
+  object-fit: contain;
+}
