@@ -137,6 +137,26 @@
 }
 
 /* On-demand context uses the same compact affordance in notes, replies and history. */
+.context-ref,
+.context-identity {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  max-width: 100%;
+}
+.context-id {
+  min-width: var(--tap);
+  min-height: var(--tap);
+  max-width: 100%;
+  padding: var(--space-1) var(--space-2);
+  font: var(--fs-sm)/1.5 var(--mono);
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.context-identity {
+  margin-top: var(--space-3);
+}
 .context-card {
   display: inline-flex;
   align-items: center;
@@ -205,7 +225,7 @@
   font-family: var(--mono);
 }
 .context-dialog :is(button, a):focus-visible,
-.context-card:focus-visible {
+.context-ref button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }

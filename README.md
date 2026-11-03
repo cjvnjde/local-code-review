@@ -63,6 +63,8 @@ Visual and code notes share the same Markdown review. Captures include screensho
 
 For smaller agent prompts, enable **Settings → AI context → Save capture context for on-demand AI reading**. The selected screenshot stays in the review; selectors, styles, and other evidence live in immutable local bundles that agents can read selectively. Selected HTML and full-document screenshots are separate opt-ins. **Formatting options → Add context** also attaches files or text/JSON to any note or reply. [Context storage and retrieval →](docs/usage.md#attach-on-demand-context)
 
+Context also works **without lcr installed or running**. Click a context's ID to copy it; the updated `apply-lcr` skill can find its manifest and read the saved files directly, even without a review Markdown file. `lcr context` remains an optional convenience. The agent needs access to the bundle files, not just the ID.
+
 ### Choose a browser profile
 
 | `--browser-profile` | Browser and saved state                                                                                                                                                                      |

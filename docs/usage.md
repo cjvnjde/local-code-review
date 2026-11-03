@@ -237,7 +237,39 @@ context** opens its manifest without fetching its payloads; choose one part to
 read or preview it. HTML is displayed as text, never executed. Binary files can
 be downloaded. Missing context is reported without making the note unreadable.
 
-An agent can use the same immutable evidence without a running server:
+Each card shows an abbreviated context ID. Click that ID to copy the full
+64-character value, without fetching context. The inspector shows the full
+copyable ID and its manifest path, including when the manifest cannot be loaded.
+
+#### Read without lcr
+
+Neither an lcr installation, running server, nor review Markdown file is required.
+Give the agent the copied ID and access to the repository or output directory.
+The `apply-lcr` skill supports this context-only request without adopting the
+newest review or writing review statuses.
+
+1. With the default output directory, read
+   `.review/context/<id>/manifest.json`. With a custom output directory, read
+   `<out>/context/<id>/manifest.json`. If the directory is unknown, search the
+   current repository for that exact manifest path, including hidden and ignored
+   directories; do not search by an abbreviated ID.
+2. Confirm the manifest's version and full ID. Choose only the available parts
+   needed for the task. Missing, excluded, unavailable, or truncated evidence is
+   not permission to substitute a newer live page.
+3. Read a part's `file` beside the manifest, or its `attachment` from the output
+   directory. Text and JSON are ordinary files; images are ordinary image files.
+   Keep paths inside the output directory, including after resolving symlinks,
+   and check the part's byte count and SHA-256 before relying on it.
+
+The ID identifies a snapshot, not a globally reachable service. If the files
+are not accessible, share the bundle or supply its location. A transferred
+`context/` directory and its referenced attachments are sufficient; the review
+Markdown is optional for this workflow.
+
+#### Optional CLI
+
+If lcr is installed and a review path is available, the existing commands perform
+the lookup and integrity checks for you, still without a running server:
 
 ```text
 lcr context inspect <id> --review <review.md>
@@ -251,10 +283,6 @@ for a capture. Text reads return JSON with content and `nextOffset`; offsets are
 UTF-8 byte offsets. The default chunk is 16 KiB, with a 64 KiB maximum. Binary
 reads return a local path, not base64. These commands work outside Git and do not
 load user settings or contact the original page.
-
-For direct filesystem readers, a manifest part's `file` is relative to its bundle
-directory; its `attachment` is relative to the review file. Neither may escape the
-review output directory.
 
 Bundles are local, immutable snapshots under the review output directory. Moving
 a review requires keeping its `context/` and referenced `images/` attachments

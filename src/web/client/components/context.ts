@@ -13,6 +13,7 @@ import {
 } from "../../../shared/context.ts";
 import { insertShot } from "./attach.ts";
 import { decorateAction } from "./actions.ts";
+import { copyText } from "./clipboard.ts";
 import { esc, state, SVG } from "../app/state.ts";
 
 let token = "";
@@ -128,10 +129,22 @@ export async function fetchContextText(
   ).json();
 }
 
+function contextIdentity(id: string, compact = false): string {
+  return (
+    '<button type="button" class="context-id" data-context-copy="' +
+    esc(id) +
+    '" aria-label="Copy context ID ' +
+    esc(id) +
+    '" data-tooltip="Copy full context ID">' +
+    esc(compact ? "ID " + id.slice(0, 12) + "…" : id) +
+    "</button>"
+  );
+}
+
 /** Inline-safe cards work in paragraphs, list items, history, and reference previews alike. */
 export function contextCard(ref: ContextRef): string {
   return (
-    '<button type="button" class="context-card" data-context-id="' +
+    '<span class="context-ref"><button type="button" class="context-card" data-context-id="' +
     esc(ref.id) +
     '" aria-label="Inspect context: ' +
     esc(ref.label) +
@@ -139,7 +152,9 @@ export function contextCard(ref: ContextRef): string {
     SVG.ref +
     "<span>" +
     esc(ref.label) +
-    "</span><small>Inspect context</small></button>"
+    "</span><small>Inspect context</small></button>" +
+    contextIdentity(ref.id, true) +
+    "</span>"
   );
 }
 export const contextButton = () =>
@@ -273,7 +288,12 @@ export function wireContext(
 export async function inspectContext(id: string) {
   const box = dialog("Inspect context");
   box.innerHTML =
-    '<div class="context-actions"><h3>Context</h3><button type="button" data-context-close aria-label="Close context inspector">Close</button></div><p class="context-status" role="status" aria-live="polite">Loading manifest…</p><div class="context-manifest"></div><section class="context-preview" aria-label="Selected context part"></section>';
+    '<div class="context-actions"><h3>Context</h3><button type="button" data-context-close aria-label="Close context inspector">Close</button></div>' +
+    '<div class="context-identity"><span>Context ID</span>' +
+    contextIdentity(id) +
+    '</div><p class="context-source">Without lcr, read <code>' +
+    esc(contextPath(id)) +
+    '</code> in the review output directory.</p><p class="context-status" role="status" aria-live="polite">Loading manifest…</p><div class="context-manifest"></div><section class="context-preview" aria-label="Selected context part"></section>';
   const status = box.querySelector<HTMLElement>(".context-status")!;
   decorateAction(box.querySelector<HTMLButtonElement>("[data-context-close]")!);
   const manifestHost = box.querySelector<HTMLElement>(".context-manifest")!;
@@ -308,11 +328,10 @@ export async function inspectContext(id: string) {
       manifest.source?.title,
       manifest.source?.url,
       manifest.source?.captureAt ? "Captured " + manifest.source.captureAt : "",
-      contextPath(id),
     ]
       .filter(Boolean)
       .join(" · ");
-    manifestHost.append(source);
+    if (source.textContent) manifestHost.append(source);
     const list = document.createElement("ul");
     manifestHost.append(list);
     for (const part of manifest.parts) {
@@ -440,12 +459,17 @@ export function watchContext() {
   document.addEventListener("click", (event) => {
     const target =
       event.target instanceof Element
-        ? event.target.closest<HTMLElement>("[data-context-id]")
+        ? event.target.closest<HTMLElement>(
+            "[data-context-copy],[data-context-id]",
+          )
         : null;
-    const id = contextId(target?.dataset.contextId);
+    const id = contextId(
+      target?.dataset.contextCopy || target?.dataset.contextId,
+    );
     if (!id) return;
     event.preventDefault();
     event.stopPropagation();
-    void inspectContext(id);
+    if (target?.hasAttribute("data-context-copy")) void copyText(target, id);
+    else void inspectContext(id);
   });
 }
