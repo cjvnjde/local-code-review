@@ -1539,6 +1539,10 @@ function editAnnotation(
     try {
       if (!context)
         throw new Error("This browser does not support a 2D drawing canvas.");
+      if (!capture.area)
+        throw new Error(
+          "Point selections contain metadata only, with no screenshot to draw on.",
+        );
       const src = attachSrc(capture.area);
       if (!src)
         throw new Error("The original screenshot attachment is unavailable.");

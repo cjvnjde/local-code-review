@@ -180,6 +180,24 @@ With an [ACP agent configured](agent-connections.md), the separate **Save & ask 
 
 The footer's **Save review**, renamed **Update review** once a file exists, writes all current notes to that same conversation, preserving agent replies and verdicts. With ACP it queues notes whose saved reviewer content changed; unchanged notes are not rerun. It does not reload the diff, start a new conversation, or replace individual note actions.
 
+### Message colors
+
+Hex (`#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`), RGB/RGBA, and HSL/HSLA color literals display
+clickable swatches in note and reply prose, inline code, and code blocks. The original Markdown,
+syntax highlighting, and copyable code remain unchanged. Note references and links retain their
+ordinary behavior rather than becoming color controls.
+
+In an editor, click a swatch under the textarea to replace that occurrence, or use **Color** to
+insert one at the caret. The picker accepts CSS literals, a native color chooser, and opacity.
+**Apply color** changes only the draft; **Cancel** leaves it untouched. Save the note or reply
+with its ordinary action. **Save color** retains the chosen color in a reusable browser-local
+palette across editors and reloads in that storage context. Different ports and privacy-partitioned
+embedded pages can have separate palettes; restricted storage keeps colors usable for the current page.
+
+Clicking a swatch in a rendered message opens an inspection picker with copy and palette actions.
+When a reply editor is available, **Use in reply** inserts the chosen color there explicitly.
+It never edits the original message or an agent's reply. History remains a read-only observation.
+
 ## Continue the conversation
 
 Give the Markdown file to any coding agent, or use the optional [`apply-lcr` skill](../skills/apply-lcr/SKILL.md):

@@ -88,7 +88,8 @@ const FOOTER = [
     "about one place in it, so it carries no path and no `diff` block. Answer it exactly like the " +
     "rest: it has its own `Status:` line and its own thread.",
   "",
-  "A UI note carries a `lcr:web` metadata block and immutable capture evidence. Inspect its " +
+  "A UI note carries a `lcr:web` metadata block and immutable capture evidence. Point selections " +
+    "contain metadata only, with no screenshots. For other selections, inspect the " +
     "selected-area image and any separately linked annotated proposal. A proposal shows requested " +
     "changes, not the current UI; its blank margin is drawing space, not captured page content. " +
     "Compare it with the untouched original. Component names and source locations are historical " +

@@ -5,6 +5,7 @@ import { REF_SCHEME, noteByRef, refIn, refLabel } from "../notes/note-ref.ts";
 import { SVG, clip, esc, noteKey, state } from "../app/state.ts";
 import { contextId } from "../../../shared/context.ts";
 import { contextCard } from "./context.ts";
+import { parseColor } from "./color-literals.ts";
 
 /* ---------- markdown ---------- */
 /**
@@ -433,7 +434,8 @@ export function inline(src: string): string {
       const ref = tok.slice(1);
       if (
         !/[\w/#]/.test(src[from - 1] || "") &&
-        (noteByRef(ref, state.notes.values()) || ref.length >= 8)
+        (noteByRef(ref, state.notes.values()) ||
+          (ref.length >= 8 && !parseColor(tok)))
       ) {
         html = refHtml(ref, tok);
         to = from + tok.length;

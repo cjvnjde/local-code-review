@@ -6,7 +6,15 @@ import {
 import { attachSrc } from "../components/attach.ts";
 import { esc, SVG } from "../app/state.ts";
 import { contextCard } from "../components/context.ts";
-export function webCaptureHtml(value: unknown, removable = false) {
+import {
+  captureComparisons,
+  type ComparisonMessage,
+} from "./capture-comparison.ts";
+export function webCaptureHtml(
+  value: unknown,
+  removable = false,
+  messages: ComparisonMessage[] = [],
+) {
   const web = webReview(value);
   if (!web) return "";
   const picture = (ref: string, alt: string) =>
@@ -54,31 +62,33 @@ export function webCaptureHtml(value: unknown, removable = false) {
     (web.additional?.length || web.after.length
       ? '<div class="web-image-label">' + esc(label) + "</div>"
       : "") +
-    (c.annotation || c.proposal
-      ? '<div class="web-image-label">Annotated proposal · margin is drawing space, not captured UI</div>' +
-        (c.annotation
-          ? editablePicture(
+    (!c.area || !c.page
+      ? '<p class="web-metadata-only">Point selection · metadata only — no screenshot was captured.</p>'
+      : (c.annotation || c.proposal
+          ? '<div class="web-image-label web-proposal-label">Annotated proposal · reviewer intent, not captured UI. Margin is drawing space.</div>' +
+            (c.annotation
+              ? editablePicture(
+                  c,
+                  c.annotation.image,
+                  label + " annotated proposal",
+                  index,
+                  kind,
+                )
+              : picture(c.proposal!, label + " annotated proposal") +
+                '<p class="context-status">Drawing marks are not loaded. Inspect saved context to retrieve the original annotation data.</p>') +
+            "<details><summary>Original selected area</summary>" +
+            editablePicture(
               c,
-              c.annotation.image,
-              label + " annotated proposal",
+              c.area,
+              label + " original selected area",
               index,
               kind,
-            )
-          : picture(c.proposal!, label + " annotated proposal") +
-            '<p class="context-status">Drawing marks are not loaded. Inspect saved context to retrieve the original annotation data.</p>') +
-        "<details><summary>Original selected area</summary>" +
-        editablePicture(
-          c,
-          c.area,
-          label + " original selected area",
-          index,
-          kind,
-        ) +
-        "</details>"
-      : editablePicture(c, c.area, label + " selected area", index, kind)) +
-    "<details><summary>Page screenshot</summary>" +
-    picture(c.page, label + " page screenshot") +
-    "</details>" +
+            ) +
+            "</details>"
+          : editablePicture(c, c.area, label + " selected area", index, kind)) +
+        "<details><summary>Page screenshot</summary>" +
+        picture(c.page, label + " page screenshot") +
+        "</details>") +
     (c.selections
       ? '<details class="web-targets"><summary>' +
         c.selections.length +
@@ -130,7 +140,9 @@ export function webCaptureHtml(value: unknown, removable = false) {
       : "") +
     "</section>";
   return (
-    '<div class="web-capture"><div class="web-comparison">' +
+    '<div class="web-capture" data-web-comparisons="' +
+    esc(JSON.stringify(captureComparisons(web, messages))) +
+    '"><div class="web-comparison">' +
     capture(web.before, "Before", 0, "selection") +
     (web.additional ?? [])
       .map((c, i) => capture(c, "Selection " + (i + 2), i + 1, "selection"))

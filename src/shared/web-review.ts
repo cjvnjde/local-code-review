@@ -10,8 +10,9 @@ export interface WebCapture {
   rect: { x: number; y: number; width: number; height: number };
   viewport: { width: number; height: number; dpr: number };
   scroll: { x: number; y: number };
-  page: string;
-  area: string;
+  /** Point selections carry metadata only; other modes retain both screenshots. */
+  page?: string;
+  area?: string;
   annotation?: WebAnnotation;
   /** Immutable optional evidence; persisted captures keep only their compact subject. */
   context?: ContextRef;
@@ -95,9 +96,15 @@ export function webCapture(value: unknown): WebCapture | null {
     !finite(s.y) ||
     v.width <= 0 ||
     v.height <= 0 ||
-    v.dpr <= 0 ||
-    !ref(value.page) ||
-    !ref(value.area)
+    v.dpr <= 0
+  )
+    return null;
+  const hasImages = ref(value.page) && ref(value.area);
+  if (
+    !hasImages &&
+    (value.mode !== "point" ||
+      value.page !== undefined ||
+      value.area !== undefined)
   )
     return null;
   const width = v.width,
@@ -158,12 +165,13 @@ export function webCapture(value: unknown): WebCapture | null {
     value.annotation === undefined
       ? undefined
       : webAnnotation(value.annotation);
-  if (annotation === null) return null;
+  if (annotation === null || (annotation && !hasImages)) return null;
   const context =
     value.context === undefined ? undefined : contextRef(value.context);
   if (
     context === null ||
-    (value.proposal !== undefined && (!context || !ref(value.proposal)))
+    (value.proposal !== undefined &&
+      (!hasImages || !context || !ref(value.proposal)))
   )
     return null;
   const cleanMetadata = (
@@ -272,7 +280,18 @@ export function compactWebReview(web: WebReview): WebReview {
 }
 /** Stable identity for an entire selected capture, not its automatic DOM metadata rows. */
 export function webSelectionKey(capture: WebCapture): string {
-  return JSON.stringify([capture.url, capture.at, capture.page, capture.area]);
+  return JSON.stringify(
+    capture.page && capture.area
+      ? [capture.url, capture.at, capture.page, capture.area]
+      : [
+          capture.url,
+          capture.at,
+          capture.mode,
+          capture.rect,
+          capture.viewport,
+          capture.scroll,
+        ],
+  );
 }
 export class WebSelectionConflict extends Error {}
 export interface WebAnnotationTarget {
@@ -335,6 +354,10 @@ export function setWebAnnotation(
     throw new WebSelectionConflict(
       "That capture or annotation changed. Reload the note and try again.",
     );
+  if (!capture.area || !capture.page)
+    throw new WebAnnotationInvalid(
+      "Metadata-only Point selections have no screenshot to annotate.",
+    );
   if (capture.proposal && !capture.annotation)
     throw new WebSelectionConflict(
       "The drawing context is unavailable. Restore its context bundle before editing it.",
@@ -393,7 +416,9 @@ export function webReviewLines(web: WebReview): string[] {
     "",
     "UI capture: " +
       web.before.mode +
-      " selection. Metadata and screenshots record the page at capture time.",
+      (web.before.page && web.before.area
+        ? " selection. Metadata and screenshots record the page at capture time."
+        : " selection. Metadata records the page at capture time; no screenshot was captured."),
     "",
   ];
   const captures = [
@@ -417,9 +442,9 @@ export function webReviewLines(web: WebReview): string[] {
           ", captured " +
           JSON.stringify(c.at) +
           ".",
-        "",
-        "![" + imageLabel + " — selected area](" + c.area + ")",
-        "",
+        ...(c.area
+          ? ["", "![" + imageLabel + " — selected area](" + c.area + ")", ""]
+          : ["", "Metadata only — no screenshot was captured.", ""]),
       );
       const proposal = c.annotation?.image ?? c.proposal;
       if (proposal)
@@ -494,10 +519,14 @@ export function webReviewLines(web: WebReview): string[] {
       data,
       fence,
       "",
-      "![" + imageLabel + " — page](" + c.page + ")",
-      "",
-      "![" + imageLabel + " — selected area](" + c.area + ")",
-      "",
+      ...(c.page && c.area
+        ? [
+            "![" + imageLabel + " — page](" + c.page + ")",
+            "",
+            "![" + imageLabel + " — selected area](" + c.area + ")",
+            "",
+          ]
+        : ["Metadata only — no screenshot was captured.", ""]),
     );
     if (c.annotation)
       lines.push(

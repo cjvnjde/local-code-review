@@ -1,6 +1,7 @@
 import { el, state } from "../app/state.ts";
 import { updateWebNoteEvidence } from "../notes/notes.ts";
 import { webReview } from "../../../shared/web-review.ts";
+import { hydrateCaptureComparisons } from "./capture-comparison-ui.ts";
 
 export function configureWebReview(value: unknown) {
   const web =
@@ -51,11 +52,15 @@ export function startWebReviewUI() {
         .catch(() => {});
     });
   };
-  new MutationObserver(restoreReplyEvidence).observe(document.body, {
+  const refreshEvidence = () => {
+    restoreReplyEvidence();
+    hydrateCaptureComparisons();
+  };
+  new MutationObserver(refreshEvidence).observe(document.body, {
     childList: true,
     subtree: true,
   });
-  restoreReplyEvidence();
+  refreshEvidence();
   document.addEventListener("click", async (event) => {
     const button = (event.target as Element)?.closest?.(
       "[data-web-open]",

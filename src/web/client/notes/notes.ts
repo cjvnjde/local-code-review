@@ -609,7 +609,8 @@ export function updateWebNoteEvidence(
     const ctx = noteContexts.get(box);
     if (ctx) ctx.web = web;
     const preview = box.querySelector<HTMLElement>("[data-web-evidence]");
-    if (preview) preview.innerHTML = webCaptureHtml(web, true);
+    if (preview)
+      preview.innerHTML = webCaptureHtml(web, true, note ? msgsOf(note) : []);
     const heading = document.createElement("div");
     heading.innerHTML = headHtml(
       ctx?.f || { path: "" },
@@ -663,7 +664,8 @@ async function annotateWebCapture(box: HTMLElement, button: HTMLButtonElement) {
       : index === 0
         ? web.before
         : web.additional?.[index - 1];
-  if (!capture || button.dataset.webKey !== webSelectionKey(capture)) return;
+  if (!capture?.area || button.dataset.webKey !== webSelectionKey(capture))
+    return;
   const target: WebAnnotationTarget = {
     kind,
     index,
@@ -917,7 +919,11 @@ function editUI(box, ctx) {
       ? '<div class="image-preview">' + imageCaptureHtml(ctx.image) + "</div>"
       : "") +
     "<div data-web-evidence>" +
-    webCaptureHtml(ctx.web, true) +
+    webCaptureHtml(
+      ctx.web,
+      true,
+      state.notes.has(id) ? msgsOf(state.notes.get(id)) : [],
+    ) +
     "</div>" +
     (state.uiEmbed ? "</div>" : "") +
     '<div class="nedit"><textarea placeholder="' +
@@ -1389,7 +1395,7 @@ export function viewUI(box, note, ctx) {
     ) +
     capturedHtml(note, how) +
     "<div data-web-evidence>" +
-    webCaptureHtml(note.web, true) +
+    webCaptureHtml(note.web, true, msgsOf(note)) +
     "</div>" +
     imageCaptureHtml(
       note.image,

@@ -114,6 +114,27 @@ export function installPageReview(config: {
   let selected: Element[] = [],
     selectionUrl = location.href,
     multiple = false;
+  let inspected: Element | null = null,
+    inspectBase: Element | null = null,
+    inspectDepth = 0,
+    inspectUrl = location.href;
+  type FrozenTarget = {
+    selector: string;
+    element?: {
+      tag: string;
+      text: string;
+      attributes: Record<string, string>;
+      styles: Record<string, string>;
+    };
+    components?: {
+      framework: string;
+      name: string;
+      file?: string;
+      line?: number;
+    }[];
+    rect: CaptureRect;
+    above: string[];
+  };
   let freezing = false;
   let frozen: {
     id: string;
@@ -121,6 +142,7 @@ export function installPageReview(config: {
     image: HTMLImageElement;
     mode: string;
     selectionMode: string;
+    targets: FrozenTarget[];
   } | null = null;
   let launcherPress: {
     id: number;
@@ -166,12 +188,15 @@ export function installPageReview(config: {
     .error{color:#f38ba8;white-space:pre-wrap}
     .frozen-page{position:fixed;inset:0;pointer-events:auto;max-width:none!important;max-height:none!important;user-select:none;touch-action:none}
     .freeze-status{pointer-events:auto;position:fixed;top:var(--space-4);left:50%;transform:translateX(-50%);display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2);padding:var(--space-2);border:1px solid var(--accent);border-radius:var(--radius-md);background:var(--panel2);max-width:calc(100vw - var(--space-3)*2);box-shadow:0 4px 24px #0005}.freeze-status[hidden]{display:none}
+    .inspector{pointer-events:auto;position:fixed;right:var(--space-4);top:var(--space-4);width:320px;max-width:calc(100vw - var(--space-3)*2);max-height:calc(100dvh - var(--space-3)*2);overflow:auto;background:var(--panel2);border:1px solid var(--edge);border-radius:var(--radius-md);box-shadow:0 8px 32px #0006;padding:var(--space-3)}
+    .inspector[hidden]{display:none}.inspect-head{display:flex;align-items:center;gap:var(--space-2)}.inspect-head strong{flex:1;min-width:0;overflow-wrap:anywhere}.inspector p{font-size:var(--fs-small);color:var(--ink-dim);margin:var(--space-2) 0}.inspector dl{display:grid;grid-template-columns:100px minmax(0,1fr);gap:var(--space-1) var(--space-2);margin:var(--space-3) 0 0}.inspector dt{color:var(--ink-dim)}.inspector dd{margin:0;overflow-wrap:anywhere;user-select:text}.inspector .inspect-parent{margin-top:var(--space-2)}
   </style><div class="outline"><span class="label"></span></div><div class="selections"></div><div class="pins"></div>
   <div class="freeze-status" hidden role="status"><span data-freeze-status></span><button data-resume>Resume · Ctrl+Shift+F</button></div>
+  <section class="inspector" hidden aria-label="Element inspector"><div class="inspect-head"><strong data-inspect-name></strong><button type="button" data-inspect-close aria-label="Close inspector and browse" title="Close inspector and browse · Escape">×</button></div><p>Read-only · rendered bounds in CSS px.<br>Click another element to inspect. Alt + wheel picks parents.</p><dl data-inspect-properties></dl><button type="button" class="inspect-parent" data-inspect-parent title="Inspect the containing element">Select parent</button></section>
   <div class="selection-tools" hidden><span data-selection-count></span><button data-write>Write note</button><button data-clear>Clear</button></div>
   <div class="dock" hidden><div class="head"><b tabindex="0" title="Drag to move; arrow keys move the note window"></b><a class="review-link" data-panel-review target="lcr-review" rel="noopener">Review ↗</a><button type="button" data-minimize aria-label="Minimize note panel" aria-expanded="true">−</button><button type="button" data-close aria-label="Close note panel">×</button></div><div class="content"></div><button type="button" class="resize" data-resize aria-label="Resize note panel" title="Drag to resize; arrow keys resize; Shift moves farther"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 13 13 3M8 13l5-5M12 13l1-1"/></svg></button></div>
   <button class="launcher" data-launcher aria-label="Selection mode" aria-pressed="true" aria-expanded="false"><span>lcr</span><span class="mode-state" aria-hidden="true">ON</span></button>
-  <div class="bar" hidden><span class="brand">lcr · UI</span><button data-mode="browse">Browse</button><button data-mode="element" aria-pressed="true" title="Click the exact HTML element; Shift-click to select multiple; drag to select an area">Element</button><button data-mode="block" title="Click a containing layout block; Shift-click to select multiple; drag to select an area">Block</button><button data-multiple aria-pressed="false" title="Collect elements for one note, then choose Write note">Multiple</button><button data-mode="area">Area</button><button data-mode="point">Point</button><button data-freeze title="Hover over the page, then press Ctrl+Shift+F to freeze it for area selection">Freeze · Ctrl+Shift+F</button><button data-notes>Notes · 0</button><a class="review-link" data-review target="lcr-review" rel="noopener">Review ↗</a></div>`;
+  <div class="bar" hidden><span class="brand">lcr · UI</span><button data-mode="browse">Browse</button><button data-mode="inspect" title="Inspect rendered dimensions and computed properties without creating a note; Alt + wheel picks parents">Inspect</button><button data-mode="element" aria-pressed="true" title="Click the exact HTML element; Shift-click to select multiple; drag to select an area">Element</button><button data-mode="block" title="Click a containing layout block; Shift-click to select multiple; drag to select an area">Block</button><button data-multiple aria-pressed="false" title="Collect elements for one note, then choose Write note">Multiple</button><button data-mode="area">Area</button><button data-mode="point">Point</button><button data-freeze title="Hover over the page, then press Ctrl+Shift+F to freeze it for area selection">Freeze · Ctrl+Shift+F</button><button data-notes>Notes · 0</button><a class="review-link" data-review target="lcr-review" rel="noopener">Review ↗</a></div>`;
   (document.body || document.documentElement).append(host);
   const $ = (s: string) => root.querySelector(s) as HTMLElement;
   const dock = $(".dock"),
@@ -362,6 +387,7 @@ export function installPageReview(config: {
       if (!busy) resume(value);
       return;
     }
+    clearInspection();
     mode = value;
     if (mode !== "browse") selectionMode = mode;
     multiple = false;
@@ -400,7 +426,7 @@ export function installPageReview(config: {
       : "Freeze · Ctrl+Shift+F";
     root
       .querySelectorAll<HTMLButtonElement>(
-        '[data-mode="element"],[data-mode="block"],[data-multiple]',
+        '[data-mode="element"],[data-mode="block"],[data-mode="inspect"],[data-multiple]',
       )
       .forEach((button) => {
         button.disabled = !!frozen || freezing;
@@ -445,6 +471,7 @@ export function installPageReview(config: {
         settings,
         "frozen viewport",
       );
+      const targets = snapshotPointTargets(capture.selections || []);
       const result = await rpc("freeze", { capture });
       id = result.id;
       const image = document.createElement("img");
@@ -469,6 +496,7 @@ export function installPageReview(config: {
         image,
         mode: previousMode,
         selectionMode: previousSelectionMode,
+        targets,
       };
       root.insertBefore(image, $(".outline"));
       freezing = false;
@@ -482,7 +510,39 @@ export function installPageReview(config: {
       tellFrame("capturing", { busy: false });
     }
   }
-  function frozenCapture(r: any, kind: string) {
+  function frozenCapture(
+    r: CaptureRect,
+    kind: string,
+    point?: { x: number; y: number },
+  ) {
+    if (kind === "point") {
+      const x = point?.x ?? r.x + r.width / 2,
+        y = point?.y ?? r.y + r.height / 2;
+      const candidates = frozen!.targets.filter(
+        (entry) =>
+          x >= entry.rect.x &&
+          x < entry.rect.x + entry.rect.width &&
+          y >= entry.rect.y &&
+          y < entry.rect.y + entry.rect.height,
+      );
+      candidates.sort((a, b) => {
+        const ai = a.above.indexOf(b.selector),
+          bi = b.above.indexOf(a.selector);
+        if (ai >= 0 && ai < a.above.indexOf(a.selector)) return 1;
+        if (bi >= 0 && bi < b.above.indexOf(b.selector)) return -1;
+        return a.rect.width * a.rect.height - b.rect.width * b.rect.height;
+      });
+      const hit = candidates[0];
+      return {
+        ...frozen!.capture,
+        mode: kind,
+        rect: r,
+        selector: hit?.element ? hit.selector : undefined,
+        element: hit?.element,
+        components: hit?.components || [],
+        selections: undefined,
+      };
+    }
     const selections =
       kind === "area"
         ? (frozen!.capture.selections || []).filter(
@@ -510,6 +570,57 @@ export function installPageReview(config: {
       selections: selections.length ? selections : undefined,
     };
   }
+  function snapshotPointTargets(evidence: Omit<FrozenTarget, "above">[]) {
+    const bySelector = new Map(
+        evidence.map((entry) => [entry.selector, entry]),
+      ),
+      targets: FrozenTarget[] = [];
+    const walker = document.createTreeWalker(
+      document.body,
+      NodeFilter.SHOW_ELEMENT,
+      {
+        acceptNode: (node) =>
+          node === host ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
+      },
+    );
+    let node: Node | null,
+      visited = 0;
+    while ((node = walker.nextNode())) {
+      // A truncated hit index cannot reliably identify the target: omit rather than invent evidence.
+      if (++visited > 2500) return [];
+      const el = node as Element,
+        b = el.getBoundingClientRect();
+      if (
+        b.bottom <= 0 ||
+        b.right <= 0 ||
+        b.top >= innerHeight ||
+        b.left >= innerWidth ||
+        !b.width ||
+        !b.height ||
+        getComputedStyle(el).pointerEvents === "none" ||
+        !el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })
+      )
+        continue;
+      const bounds = rect(el),
+        key = selector(el);
+      // Metadata remains bounded to the existing area snapshot (100 entries). Geometry-only
+      // targets stop a missing/truncated leaf from being mistaken for an ancestor.
+      targets.push({
+        ...bySelector.get(key),
+        selector: key,
+        rect: bounds,
+        above: document
+          .elementsFromPoint(
+            bounds.x + bounds.width / 2,
+            bounds.y + bounds.height / 2,
+          )
+          .filter((other) => other !== host)
+          .slice(0, 100)
+          .map(selector),
+      });
+    }
+    return targets;
+  }
   function rect(el: Element) {
     const r = el.getBoundingClientRect();
     return clamp({ x: r.x, y: r.y, width: r.width, height: r.height });
@@ -536,6 +647,8 @@ export function installPageReview(config: {
       r.height +
       "px";
     $(".label").textContent = label;
+    $(".label").style.top = "";
+    $(".label").style.bottom = "";
   }
   function selector(el: Element) {
     const tree = config.ownerKey ? el.getRootNode() : document;
@@ -720,6 +833,13 @@ export function installPageReview(config: {
         "border-radius",
         "align-items",
         "justify-content",
+        "row-gap",
+        "column-gap",
+        "align-self",
+        "border-top",
+        "border-right",
+        "border-bottom",
+        "border-left",
       ])
         styles[name] = css.getPropertyValue(name).slice(0, 1000);
     }
@@ -750,6 +870,102 @@ export function installPageReview(config: {
         : {}),
       components: el ? components(el) : [],
     };
+  }
+  function clearInspection() {
+    inspected = null;
+    inspectBase = null;
+    inspectDepth = 0;
+    $(".inspector").hidden = true;
+  }
+  function inspectTarget(el: Element | null) {
+    if (el !== inspectBase) {
+      inspectBase = el;
+      inspectDepth = 0;
+    }
+    for (let i = 0; el && i < inspectDepth; i++)
+      el = el.parentElement || (el.getRootNode() as ShadowRoot).host || el;
+    return el;
+  }
+  function inspectLabel(el: Element) {
+    const b = el.getBoundingClientRect();
+    const size = (value: number) => String(Math.round(value * 100) / 100);
+    return `${el.localName} · ${size(b.width)} × ${size(b.height)} CSS px · rendered`;
+  }
+  function paintInspection(el: Element) {
+    paint(rect(el), inspectLabel(el));
+    // Keep the dimension label visible for elements touching the top edge.
+    $(".label").style.bottom =
+      el.getBoundingClientRect().top < 24 ? "auto" : "";
+    $(".label").style.top = el.getBoundingClientRect().top < 24 ? "100%" : "";
+  }
+  function showInspection(el: Element) {
+    inspected = el;
+    inspectUrl = location.href;
+    const b = el.getBoundingClientRect(),
+      styles = metadata(el, rect(el), "inspect").element!.styles,
+      list = $("[data-inspect-properties]");
+    list.textContent = "";
+    $("[data-inspect-name]").textContent = selector(el);
+    const add = (label: string, value: string) => {
+      if (!value) return;
+      const dt = document.createElement("dt"),
+        dd = document.createElement("dd");
+      dt.textContent = label;
+      dd.textContent = value;
+      list.append(dt, dd);
+    };
+    const size = (value: number) => Math.round(value * 100) / 100;
+    add("Rendered size", `${size(b.width)} × ${size(b.height)} CSS px`);
+    add("CSS width", styles.width || "");
+    add("CSS height", styles.height || "");
+    for (const [label, property] of [
+      ["Display", "display"],
+      ["Padding", "padding"],
+      ["Margin", "margin"],
+      ["Border", "border"],
+      ["Border top", "border-top"],
+      ["Border right", "border-right"],
+      ["Border bottom", "border-bottom"],
+      ["Border left", "border-left"],
+      ["Radius", "border-radius"],
+      ["Font family", "font-family"],
+      ["Font size", "font-size"],
+      ["Font weight", "font-weight"],
+      ["Line height", "line-height"],
+      ["Gap", "gap"],
+      ["Row gap", "row-gap"],
+      ["Column gap", "column-gap"],
+      ["Align items", "align-items"],
+      ["Align self", "align-self"],
+      ["Justify content", "justify-content"],
+      ["Text color", "color"],
+      ["Background", "background-color"],
+    ])
+      add(label!, styles[property!] || "");
+    ($("[data-inspect-parent]") as HTMLButtonElement).disabled =
+      !el.parentElement && !(el.getRootNode() instanceof ShadowRoot);
+    $(".inspector").hidden = false;
+    // Preserve an existing editor iframe and drafts while keeping inspection controls reachable.
+    const right = dock.hidden
+      ? innerWidth - 336
+      : Math.min(innerWidth - 332, dock.offsetLeft - 332);
+    $(".inspector").style.left = Math.max(12, right) + "px";
+    $(".inspector").style.right = "auto";
+    paintInspection(el);
+  }
+  function refreshInspection() {
+    if (mode !== "inspect") return;
+    if (inspectUrl !== location.href || (inspected && !inspected.isConnected)) {
+      clearInspection();
+      outline.style.display = "none";
+      return;
+    }
+    if (inspected) showInspection(inspected);
+    else {
+      hovering = null;
+      inspectBase = null;
+      outline.style.display = "none";
+    }
   }
   function union(rects: any[]) {
     const x = Math.min(...rects.map((r) => r.x)),
@@ -1057,6 +1273,15 @@ export function installPageReview(config: {
       .find((n) => n !== host);
     if (config.ownerKey)
       el = playgroundTarget(event.clientX, event.clientY) ?? el;
+    if (mode === "inspect")
+      while (el?.shadowRoot) {
+        const child = el.shadowRoot.elementFromPoint(
+          event.clientX,
+          event.clientY,
+        );
+        if (!child || child === el) break;
+        el = child;
+      }
     if (!el) return null;
     if (mode === "block")
       for (let i = 0; el.parentElement && i < 12; i++) {
@@ -1187,6 +1412,7 @@ export function installPageReview(config: {
     r: any,
     kind = mode,
     elements: Element[] = [],
+    point?: { x: number; y: number },
   ) {
     if (busy || freezing || frameSaving) return;
     const appending = !!frame && !!activeToken;
@@ -1208,7 +1434,7 @@ export function installPageReview(config: {
     try {
       const settings = await rpc("context-settings", {});
       const capture = frozen
-        ? frozenCapture(r, kind)
+        ? frozenCapture(r, kind, point)
         : elements.length
           ? selectionCapture(elements, kind)
           : kind === "area"
@@ -1251,7 +1477,7 @@ export function installPageReview(config: {
       retry.onclick = () => {
         retry.remove();
         $(".error")?.remove();
-        void choose(el, r, kind, elements);
+        void choose(el, r, kind, elements, point);
       };
       content.append(retry);
     } finally {
@@ -1411,6 +1637,19 @@ export function installPageReview(config: {
   function locate(c: any) {
     if (c.url !== location.href) return null;
     if (c.mode === "area") return locateArea(c);
+    // Point evidence describes an element, but its pin belongs to the pointed neighborhood.
+    if (c.mode === "point") {
+      if (innerWidth !== c.viewport.width || innerHeight !== c.viewport.height)
+        return null;
+      return {
+        el: null,
+        rect: {
+          ...c.rect,
+          x: c.rect.x + c.scroll.x - scrollX,
+          y: c.rect.y + c.scroll.y - scrollY,
+        },
+      };
+    }
     if (c.element && !c.selector) return null;
     if (c.selector) {
       try {
@@ -1527,6 +1766,22 @@ export function installPageReview(config: {
   };
   $("[data-resume]").onclick = () => {
     if (!busy && !freezing) resume();
+  };
+  $("[data-inspect-close]").onclick = () => {
+    setMode("browse");
+    launcher.focus();
+  };
+  $("[data-inspect-parent]").onclick = () => {
+    if (!inspected) return;
+    const parent =
+      inspected.parentElement ||
+      (inspected.getRootNode() instanceof ShadowRoot
+        ? (inspected.getRootNode() as ShadowRoot).host
+        : null);
+    if (!parent) return;
+    inspectBase = parent;
+    inspectDepth = 0;
+    showInspection(parent);
   };
   root
     .querySelectorAll<HTMLAnchorElement>("[data-review],[data-panel-review]")
@@ -1727,11 +1982,21 @@ export function installPageReview(config: {
     document,
     "pointermove",
     (e) => {
-      if (e.altKey && !frozen) {
+      if (e.altKey && !frozen && mode !== "inspect") {
         outline.style.display = "none";
         return;
       }
-      if (mode === "browse" || busy || freezing || ours(e)) return;
+      if (mode === "browse" || busy || freezing) return;
+      if (ours(e)) {
+        if (mode === "inspect" && inspected) paintInspection(inspected);
+        return;
+      }
+      if (mode === "inspect") {
+        hovering = inspectTarget(target(e));
+        if (hovering) paintInspection(hovering);
+        else outline.style.display = "none";
+        return;
+      }
       if (start) {
         if (
           mode !== "point" &&
@@ -1794,15 +2059,23 @@ export function installPageReview(config: {
       )
         return;
       stop(e);
+      if (mode === "inspect") {
+        const el = inspectTarget(target(e));
+        if (el) showInspection(el);
+        return;
+      }
       if (mode === "point") {
         void choose(
-          null,
+          frozen ? null : target(e) || a.el,
           clamp({
             x: e.clientX - 48,
             y: e.clientY - 48,
             width: 96,
             height: 96,
           }),
+          "point",
+          [],
+          { x: e.clientX, y: e.clientY },
         );
         return;
       }
@@ -1878,11 +2151,15 @@ export function installPageReview(config: {
       }
       if (e.key === "Alt") {
         start = null;
-        outline.style.display = "none";
+        if (mode !== "inspect") outline.style.display = "none";
       }
       if (e.key === "Escape") {
         stop(e);
         if (freezing) return;
+        if (mode === "inspect") {
+          setMode("browse");
+          return;
+        }
         if (expanded) {
           hideTools();
           return;
@@ -1920,6 +2197,7 @@ export function installPageReview(config: {
       scheduled = false;
       pins();
       paintSelections();
+      refreshInspection();
     });
   }
   listen(window, "scroll", schedulePins, true);
@@ -1928,6 +2206,20 @@ export function installPageReview(config: {
       window,
       type,
       (e) => {
+        if (type === "wheel" && mode === "inspect" && e.altKey && !ours(e)) {
+          stop(e);
+          const base = inspectBase || target(e);
+          if (!base) return;
+          inspectBase = base;
+          inspectDepth = Math.max(0, inspectDepth + (e.deltaY > 0 ? 1 : -1));
+          const el = inspectTarget(base);
+          if (el) {
+            hovering = el;
+            if (inspected) showInspection(el);
+            else paintInspection(el);
+          }
+          return;
+        }
         if (frozen && !ours(e)) stop(e);
       },
       { capture: true, passive: false },

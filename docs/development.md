@@ -82,7 +82,7 @@ To add a theme:
    import oceanColors from "../../styles/themes/ocean.css" with { type: "text" };
 
    export const THEMES = [
-     { id: "default", label: "Default", colors: defaultColors },
+     { id: "default", label: "Default", colors: "" },
      { id: "catppuccin", label: "Catppuccin", colors: catppuccinColors },
      { id: "gruvbox", label: "Gruvbox", colors: gruvboxColors },
      { id: "ocean", label: "Ocean", colors: oceanColors },
@@ -92,6 +92,10 @@ To add a theme:
 3. Build normally. The selector is generated from this registry, and Bun embeds
    the palette in the browser bundle inside the standalone executable. No change
    to UI components, switching logic, server endpoints, or the stylesheet import list is needed.
+
+The default palette is already imported through `styles/index.css`; selecting Default clears the
+override instead of importing the same CSS again as text. This also avoids Bun's development HTML
+bundler treating one CSS file as both a stylesheet and a text module.
 
 Palette tokens:
 
@@ -141,6 +145,7 @@ With Chrome installed, run the opt-in real-browser workflow:
 LCR_TEST_BROWSER=1 bun test src/web-review/browser.test.ts
 LCR_TEST_BROWSER=1 bun test src/web/client/web-review/annotation-editor.browser.test.ts
 LCR_TEST_BROWSER=1 bun test src/web/client/components/context.browser.test.ts
+LCR_TEST_BROWSER=1 bun test src/web/client/components/colors.browser.test.ts src/web/client/web-review/capture-comparison.browser.test.ts src/web/client/web-review/page-overlay.browser.test.ts
 ```
 
 It uses a temporary Git repository, local application, and isolated browser profile. See [web annotation](web-ui.md) for browser lifecycle and limits.

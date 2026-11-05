@@ -5,11 +5,12 @@ import { refButton, wireRefButton } from "../notes/ref-picker.ts";
 import { saveKeyHint, state, SVG } from "../app/state.ts";
 import { formatMarkdown, type MarkdownFormat } from "./markdown-edit.ts";
 import { contextButton, contextBusy, wireContext } from "./context.ts";
+import { wireColorComposer } from "./colors.ts";
 
 export const composerTools = (id: string) =>
   '<button type="button" class="format-toggle" aria-label="Formatting options" data-tooltip="Formatting options" aria-expanded="false">' +
   SVG.text +
-  '</button><div class="composer-toolbar" role="toolbar" aria-label="Markdown formatting" hidden>' +
+  '</button><button type="button" class="color-insert" aria-label="Insert or edit color" data-tooltip="Insert or edit color">Color</button><div class="composer-toolbar" role="toolbar" aria-label="Markdown formatting" hidden>' +
   [
     ["bold", "Bold", "<b>B</b>"],
     ["italic", "Italic", "<i>I</i>"],
@@ -82,6 +83,7 @@ export function wireComposer(
   // The host may survive several textarea mounts; wireAttach keeps the drop binding on that host once.
   wireAttach(host, ta);
   wireContext(host, ta, id);
+  wireColorComposer(host, ta);
   ta.onkeydown = (e) => {
     if (contextBusy(host)) {
       e.preventDefault();

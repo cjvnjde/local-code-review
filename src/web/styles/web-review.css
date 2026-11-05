@@ -238,3 +238,126 @@ body.ui-note #historyPanel {
 .note-message .nbody {
   padding: var(--space-2) var(--space-3) var(--space-3);
 }
+.web-metadata-only {
+  margin: 0 0 var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-sm);
+  color: var(--ink-dim);
+}
+.web-proposal-label {
+  margin-top: var(--space-3);
+}
+.web-compare {
+  margin-top: var(--space-3);
+  padding: var(--space-2);
+  background: var(--panel2);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-md);
+  min-width: 0;
+}
+.web-compare > summary {
+  cursor: pointer;
+  min-height: var(--tap-lg);
+  line-height: var(--tap-lg);
+  font-weight: 600;
+}
+.web-compare-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.web-compare-controls > label {
+  display: flex;
+  flex: 1 1 200px;
+  flex-direction: column;
+  min-width: 0;
+  gap: var(--space-1);
+  color: var(--ink-dim);
+}
+.web-compare select {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--tap-lg);
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-sm);
+  font: inherit;
+}
+.web-compare-modes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--space-2);
+}
+.web-compare-modes button[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.web-compare-status,
+.web-compare-labels,
+.web-compare figcaption {
+  margin: var(--space-2) 0;
+  color: var(--ink-dim);
+  overflow-wrap: anywhere;
+  font: var(--fs-xs)/1.5 var(--sans);
+}
+.web-compare-stage {
+  min-width: 0;
+  overflow: hidden;
+}
+.web-compare-side {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-2);
+  align-items: start;
+}
+.web-compare figure {
+  min-width: 0;
+  margin: 0;
+}
+.web-compare img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+.web-compare-wipe {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  isolation: isolate;
+}
+.web-compare-wipe > img {
+  width: 100%;
+}
+.web-compare-wipe > .web-compare-reveal {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.web-compare-divider {
+  position: absolute;
+  inset-block: 0;
+  border-left: 2px solid var(--accent);
+  filter: drop-shadow(0 0 1px var(--panel));
+  pointer-events: none;
+}
+.web-compare-range {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+}
+.web-compare-range input {
+  width: 100%;
+  min-height: var(--tap-lg);
+  margin: 0;
+  accent-color: var(--accent);
+}
+.web-compare :is(summary, select, input, button):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

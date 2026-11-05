@@ -26,13 +26,13 @@ const ACTIONS: [string, keyof typeof SVG, string][] = [
     "Delete",
   ],
   [
-    "button.cancel,#rdrClose,#historyClose,#searchClose,[data-context-close],[data-context-cancel]",
+    "button.cancel,#rdrClose,#historyClose,#searchClose,[data-context-close],[data-context-cancel],[data-color-action=close],[data-color-action=cancel]",
     "x",
     "Close",
   ],
   ["#historyExport", "download", "Export history"],
   ["button[data-context-download]", "download", "Download context part"],
-  ["#historyCopy,#copySkillCommand", "copy", "Copy"],
+  ["#historyCopy,#copySkillCommand,[data-color-action=copy]", "copy", "Copy"],
 ];
 export function decorateAction(button: HTMLButtonElement) {
   const action = ACTIONS.find(([selector]) => button.matches(selector));

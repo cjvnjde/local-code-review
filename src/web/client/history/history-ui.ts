@@ -13,6 +13,8 @@ import { el, esc } from "../app/state.ts";
 import { registerView, setView } from "../navigation/ui-navigation.ts";
 import { webCaptureHtml } from "../web-review/web-capture.ts";
 import { imageCaptureHtml } from "../diff/image-capture.ts";
+import { decorateColors } from "../components/colors.ts";
+import { splitWebMessage } from "../web-review/capture-comparison.ts";
 
 export type HistoryView = {
   note: string;
@@ -212,14 +214,20 @@ function paintList() {
 }
 function safeMarkdown(body: string, path: string) {
   // A historical reference retains the wording it had then, not a chip naming today's target.
-  return mdHtml(body.replace(/\[([^\]]*)\]\(lcr:[^)]+\)/g, "$1"), path);
+  return splitWebMessage(body)
+    .map((part) =>
+      "web" in part
+        ? webCaptureHtml(part.web)
+        : mdHtml(part.text.replace(/\[([^\]]*)\]\(lcr:[^)]+\)/g, "$1"), path),
+    )
+    .join("");
 }
 export function historyNoteHtml(n: HistoryNote | undefined) {
   if (!n) return '<p class="history-empty">Not present</p>';
   return (
     '<div class="history-note">' +
     imageCaptureHtml(n.image) +
-    webCaptureHtml(n.web) +
+    webCaptureHtml(n.web, false, n.messages) +
     (n.code
       ? '<details class="history-capture"><summary>Captured code</summary><pre>' +
         esc(n.code) +
@@ -314,6 +322,7 @@ function paintDetail() {
           )
           .join("") ||
         '<p class="history-empty">The review file changed; the notes stayed the same.</p>');
+  decorateColors(host);
   host.scrollTop = 0;
 }
 function exportHistory() {

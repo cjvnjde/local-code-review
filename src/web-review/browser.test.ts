@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { Cdp } from "../browser/cdp.ts";
@@ -947,18 +947,33 @@ browserTest(
       await frameJs(
         'window.movingDraft=document.querySelector("#uiNote textarea");movingDraft.setSelectionRange(5,9)',
       );
+      await until(
+        () =>
+          js(
+            '!testRoot.querySelector(".dock").classList.contains("annotating")',
+          ),
+        "note panel restored after drawing",
+      );
       const dockBefore = await js(
-        '(()=>{const r=testRoot.querySelector(".dock").getBoundingClientRect();return {x:r.x,y:r.y}})()',
+        '(()=>{const r=testRoot.querySelector(".dock").getBoundingClientRect();return {x:r.x,y:r.y,targetX:innerWidth-r.width-24,targetY:24}})()',
       );
       await mouse("mousePressed", dockBefore.x + 100, dockBefore.y + 20);
-      await mouse("mouseMoved", dockBefore.x - 20, dockBefore.y + 40);
-      await mouse("mouseReleased", dockBefore.x - 20, dockBefore.y + 40);
+      await mouse(
+        "mouseMoved",
+        dockBefore.targetX + 100,
+        dockBefore.targetY + 20,
+      );
+      await mouse(
+        "mouseReleased",
+        dockBefore.targetX + 100,
+        dockBefore.targetY + 20,
+      );
       expect(
         await js('testRoot.querySelector(".dock").getBoundingClientRect().x'),
-      ).toBeCloseTo(dockBefore.x - 120);
+      ).toBeCloseTo(dockBefore.targetX);
       expect(
         await js('testRoot.querySelector(".dock").getBoundingClientRect().y'),
-      ).toBeCloseTo(dockBefore.y + 20);
+      ).toBeCloseTo(dockBefore.targetY);
       const editorViewport = await frameJs("[innerWidth,innerHeight]");
       await click("[data-minimize]");
       expect(
@@ -1552,6 +1567,7 @@ browserTest(
           'testRoot.querySelector("[data-launcher]").getBoundingClientRect().x',
         ),
       ).toBeCloseTo(moved);
+      const imagesBeforePoint = await readdir(path.join(dir, ".review/images"));
       await pressLauncher(true);
       await click('[data-mode="point"]');
       await mouse("mousePressed", 240, 170);
@@ -1560,11 +1576,26 @@ browserTest(
       expect(await frameJs('document.querySelector("#cfgEnter").checked')).toBe(
         true,
       );
+      expect(
+        await frameJs(
+          'document.querySelectorAll("#uiNote [data-web-evidence] img").length',
+        ),
+      ).toBe(0);
       await saveFrame("Add space at this location.", "plain");
       expect(
         (await session.read()).notes.filter((n) => n.web).at(-1)!.web!.before
           .rect,
       ).toEqual({ x: 192, y: 122, width: 96, height: 96 });
+      const pointCapture = (await session.read()).notes
+        .filter((n) => n.web)
+        .at(-1)!.web!.before;
+      expect(pointCapture.mode).toBe("point");
+      expect(pointCapture.page).toBeUndefined();
+      expect(pointCapture.area).toBeUndefined();
+      expect(pointCapture.element?.tag).toBe("h1");
+      expect(await readdir(path.join(dir, ".review/images"))).toEqual(
+        imagesBeforePoint,
+      );
       await pressLauncher(true);
       await click('[data-mode="block"]');
       await mouse("mouseMoved", box.x + 40, box.y);

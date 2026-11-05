@@ -393,6 +393,29 @@ export function createWebReview(options: WebReviewOptions) {
         "Capture-time sanitized visible DOM only. Form controls, hidden content, scripts, arbitrary attributes, state and props are excluded.",
     };
   }
+  async function pointCapture(
+    clean: WebCapture,
+    settings: ContextSettings,
+    html: ContextPartInput,
+  ) {
+    const { page: _page, area: _area, ...metadata } = clean;
+    const extras: ContextPartInput[] = settings.aiContext
+      ? [
+          html,
+          {
+            name: "full-page",
+            label: "Full document screenshot",
+            type: "image/png",
+            status: "excluded",
+            detail: "Point selections contain metadata only.",
+          },
+        ]
+      : [];
+    const capture = settings.aiContext
+      ? await saveWebContext(options.repoRoot, options.outDir, metadata, extras)
+      : metadata;
+    return { capture, snapshot: { settings, extras } };
+  }
   async function screenshot(input: any, freezeId?: unknown) {
     const settings = { ...contextSettings };
     const clean = webCapture({
@@ -421,6 +444,15 @@ export function createWebReview(options: WebReviewOptions) {
         throw new Error(
           "That frozen view expired. Resume and freeze the page again.",
         );
+      if (clean.mode === "point") {
+        const { settings, extras } = frozen.snapshot;
+        return pointCapture(
+          clean,
+          settings,
+          extras.find((part) => part.name === "selected-html") ??
+            htmlPart({}, settings),
+        );
+      }
       const page = frozen.capture.page;
       const data = await api("cropFrozen", { id: freezeId, rect: clean.rect });
       const area = await saveAttachment(
@@ -454,6 +486,8 @@ export function createWebReview(options: WebReviewOptions) {
       throw new Error(
         "The page moved during selection. Select the area again.",
       );
+    if (clean.mode === "point")
+      return pointCapture(clean, settings, htmlPart(input, settings));
     await api("visible", false);
     try {
       const page = await send("Page.captureScreenshot", {
@@ -531,6 +565,8 @@ export function createWebReview(options: WebReviewOptions) {
     if (name === "context-settings") return { ...contextSettings };
     if (name === "freeze") {
       const { capture, snapshot } = await screenshot(payload.capture);
+      if (!capture.page)
+        throw new Error("Freeze requires a viewport screenshot.");
       const image = await readAttachment(
         options.repoRoot,
         options.outDir,
@@ -589,6 +625,7 @@ export function createWebReview(options: WebReviewOptions) {
                 ? web.before
                 : web.additional![target.index - 1]!;
           if (
+            !capture.area ||
             !(await webAnnotationImagesMatch(annotation, capture.area, (name) =>
               readAttachment(options.repoRoot, options.outDir, name),
             ))

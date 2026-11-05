@@ -142,12 +142,24 @@ export async function saveWebContext(
       label: "Captured viewport",
       type: "image/png",
       attachment: clean.page,
+      ...(!clean.page
+        ? {
+            status: "excluded" as const,
+            detail: "Point selections contain metadata only.",
+          }
+        : {}),
     },
     {
       name: "selected-area",
       label: "Original selected area",
       type: "image/png",
       attachment: clean.area,
+      ...(!clean.area
+        ? {
+            status: "excluded" as const,
+            detail: "Point selections contain metadata only.",
+          }
+        : {}),
     },
     ...(clean.annotation
       ? [

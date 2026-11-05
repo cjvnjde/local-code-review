@@ -513,6 +513,7 @@ export function createSession(
                 ? web.before
                 : web.additional![where.index - 1]!;
           if (
+            !capture.area ||
             !(await webAnnotationImagesMatch(clean, capture.area, (name) =>
               readAttachment(repoRoot, outDir, name),
             ))

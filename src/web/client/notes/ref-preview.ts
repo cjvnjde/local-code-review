@@ -33,7 +33,7 @@ export function previewIn(host: any, note: any, render: Body) {
     '<div class="refcapture c"></div><div class="refbody"></div><div class="refreplies"></div>';
   const capture = host.querySelector(".refcapture");
   if (note.web) {
-    capture.innerHTML = webCaptureHtml(note.web);
+    capture.innerHTML = webCaptureHtml(note.web, false, msgsOf(note));
   } else if (note.image) {
     capture.innerHTML = imageCaptureHtml(note.image);
   } else if (note.code) {

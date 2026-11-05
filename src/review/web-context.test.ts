@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { saveAttachment } from "./attach.ts";
-import { readContextPart } from "./context.ts";
+import { readContext, readContextPart } from "./context.ts";
 import { createSession } from "./session.ts";
 import { noteFromComment, parseReview } from "./thread.ts";
 import { renderMarkdown } from "./render.ts";
@@ -112,6 +112,49 @@ test("compact review roundtrips and a restarted session restores the historical 
   expect(new TextDecoder().decode(html!.bytes)).toBe(
     "<button>Historical Save</button>",
   );
+});
+
+test("metadata-only Point evidence survives compact Markdown, restart and annotation rejection", async () => {
+  const f = await fixture();
+  const { page: _page, area: _area, ...metadata } = f.raw;
+  const point: WebCapture = { ...metadata, mode: "point" };
+  const capture = await saveWebContext(f.root, ".review", point);
+  const comment = { ...f.comment, web: { before: capture, after: [] } };
+  const session = createSession(f.root, ".review", "HEAD");
+  const saved = await session.save({ comments: [comment] });
+  const markdown = await readFile(path.join(f.root, saved.file), "utf8");
+  const parsed = parseReview(markdown);
+  expect(parsed.notes[0]!.body).toBe(comment.body);
+  expect(parsed.notes[0]!.web).toEqual(compactWebReview(comment.web));
+  expect(renderMarkdown(parsed)).toBe(markdown);
+  const manifest = await readContext(f.root, ".review", capture.context!.id);
+  for (const name of ["viewport", "selected-area"]) {
+    expect(manifest!.parts.find((part) => part.name === name)?.status).toBe(
+      "excluded",
+    );
+    expect(
+      await readContextPart(f.root, ".review", capture.context!.id, name),
+    ).toBeNull();
+  }
+  const restart = createSession(f.root, ".review", "HEAD");
+  await restart.adoptMatching();
+  const restored = (await restart.read()).notes[0]!.web!.before;
+  expect(restored).toEqual(capture);
+  expect(restored.page).toBeUndefined();
+  expect(restored.area).toBeUndefined();
+  expect(restored.element?.styles.padding).toBe("13px");
+  expect(() =>
+    setWebAnnotation(
+      { before: restored, after: [] },
+      {
+        kind: "selection",
+        index: 0,
+        key: webSelectionKey(restored),
+        expected: "",
+      },
+      null,
+    ),
+  ).toThrow("no screenshot");
 });
 
 test("a reply retains its exact context after later captures and original note deletion", async () => {

@@ -331,7 +331,7 @@ function startReply(wrap: any, id: string, done: () => void) {
       return;
     const body = [
       ta.value.trim(),
-      box.__web ? webReviewLines(box.__web).slice(2).join("\n") : "",
+      box.__web ? webReviewLines(box.__web).join("\n") : "",
     ]
       .filter(Boolean)
       .join("\n\n");

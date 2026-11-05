@@ -48,7 +48,10 @@ asks before discarding half-written text; saved conversations are never removed 
 - **Area**: explicitly drag a rectangle, including over a canvas or embedded frame. The capture also
   records up to 100 visible intersecting DOM elements with selectors, element bounds, and available
   React/Vue component hints. Hidden and occluded elements are skipped on a best-effort basis.
-- **Point**: click to capture a 96 × 96 CSS-pixel neighborhood, clipped to the viewport.
+- **Point**: click to record a 96 × 96 CSS-pixel neighborhood, clipped to the viewport, with
+  metadata for the element under the dot when available. No viewport, selected-area, or full-page
+  screenshot is taken, even when full-page context is enabled. Older Point notes with images remain readable.
+- **Inspect**: view rendered dimensions and computed styles without creating a note or capture.
 - **Browse**: interact with the app normally. Saved note circles stay hidden while selection is
   **OFF** and return immediately when it is turned **ON**; the notes themselves are unchanged.
 
@@ -57,6 +60,19 @@ selection; a larger drag becomes an area. Clicking in selection mode annotates i
 application controls. An element partly outside the viewport captures only its visible portion.
 Escape inside the shared editor cancels its draft or edit as in the main review. From the surrounding
 page, Escape closes the note panel, asking before discarding half-written text, then returns to browsing.
+
+**Inspect an element**
+
+Hold or right-click the **lcr** circle and choose **Inspect**. Hover to see the element's rendered
+width × height in CSS pixels; click to keep a read-only property panel open. It shows computed CSS
+width and height separately from rendered bounds, plus padding, margin, borders, radius, typography,
+gaps, alignment, and foreground/background colors. Transforms can make rendered bounds differ from
+CSS dimensions; neither is a measurement in screenshot pixels.
+
+Click another element to inspect it, use **Select parent**, or hold **Alt** and turn the wheel to
+move through its ancestors. Scroll and resize update the pinned measurements. **Escape**, the close
+icon, or **Browse** leaves inspection. An existing note editor and its draft stay intact. Inspection
+never edits application styles, saves a note, or takes a screenshot.
 
 To comment on a tooltip, hover menu, or another temporary state, reveal it and press **Ctrl+Shift+F**
 while the pointer is still over the page. The current viewport freezes as a screenshot and switches
@@ -122,6 +138,10 @@ and a clock for history. Replies have an always-open input and right-aligned sav
 links, images, and note references; it starts collapsed. Image paste and drop work while it is hidden.
 Hover or focus an icon to read its immediate tooltip; every icon also has a descriptive accessible
 name. Compound commands such as **Save & ask AI** retain text, as do note references.
+
+The always-visible **Color** control and clickable draft swatches open the shared message picker.
+It supports color and opacity edits, reusable saved colors, and read-only inspection of colors
+in rendered messages. See [message colors](usage.md#message-colors) for insertion and save behavior.
 
 Saving a visual comment persists it immediately and closes the panel, leaving the page ready for
 another selection. Saved visual comments appear under **Overall** above the unchanged Git diff.
@@ -232,7 +252,8 @@ Each note records:
 - A selection rectangle in **CSS viewport pixels**, its mode, and a unique selector when available.
 - The selected tag, text, a bounded set of identifying attributes, and relevant computed styles.
 - Best-effort React/Vue component ancestors, with source files or lines when exposed by the runtime.
-- A clean screenshot of the **visible page viewport**, and a separate crop of the selection.
+- Except for metadata-only Point selections, a clean screenshot of the **visible page viewport**,
+  and a separate crop of the selection.
 
 The toolbar, panel, and pins are hidden during screenshots. Image pixel dimensions depend on the
 browser's display scale; selection coordinates remain CSS pixels. Ordinary relative image links
@@ -244,6 +265,20 @@ to the next reply and never replace the original evidence. Restore the route, di
 relevant data, and viewport when you want a meaningful comparison. Automatic replay and
 pixel-difference scoring are not included. Existing before/after captures remain readable together,
 with expandable page screenshots and metadata.
+
+When an original and a later capture have different image assets at the same URL,
+**Compare captures** offers an optional comparison. Choose the original selection and saved or
+pending reply evidence, then **Side by side** or **Before / after wipe**. Additional selections are
+choices, not automatically later states. Drawings remain labeled proposals; comparison uses
+untouched screenshots.
+
+Side-by-side images keep their aspect ratios. Wipe requires matching selection mode, rectangle,
+viewport, device pixel ratio, scroll position, and loaded image dimensions; otherwise it is
+disabled with an explanation and side-by-side remains available. Its range control supports
+arrows, Home, and End. No comparison opens automatically, and ordinary evidence stays readable.
+Point selections, missing images, different URLs, and older reply images without capture metadata
+do not gain a comparison. Matching geometry is not proof of identical application state: restore
+the relevant data and temporary UI yourself.
 
 A screenshot can contain anything visible on the page. Element metadata excludes form values,
 component props, component state, and browser cookies. Component discovery does not need framework
@@ -264,6 +299,10 @@ The complete capture, selectors/component hints, computed styles, and viewport
 image are available through an **Inspect context** card and a relative manifest
 link. Agents can retrieve just the evidence they need rather than receiving it
 all in every prompt. Existing captures are not retroactively converted.
+
+Point selections keep their metadata and optional selected HTML, but their viewport, selected-area,
+and full-page image parts are explicitly excluded. A frozen Point reads available metadata from the
+freeze, not the page running behind it; missing or truncated target metadata stays absent.
 
 Two additional capture-time options are off by default:
 
@@ -399,6 +438,7 @@ screenshot, framework-hint, conversation, comparison, reload, and shared-review 
 
 ```sh
 LCR_TEST_BROWSER=1 bun test src/web-review/browser.test.ts src/web-review/existing-browser.test.ts src/browser/profile.test.ts
+LCR_TEST_BROWSER=1 bun test src/web/client/components/colors.browser.test.ts src/web/client/web-review/capture-comparison.browser.test.ts src/web/client/web-review/page-overlay.browser.test.ts
 ```
 
 The tests use temporary profiles and a temporary local application, including a login cookie

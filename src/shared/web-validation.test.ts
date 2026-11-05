@@ -68,6 +68,29 @@ describe("capture validation boundaries", () => {
       expect(localWebUrl(url)).toBe(new URL(url).href);
   });
 
+  test("only Point accepts metadata without images, never partial or annotated evidence", () => {
+    const { page, area, ...metadata } = capture();
+    const point = { ...metadata, mode: "point" };
+    expect(webCapture(point)?.mode).toBe("point");
+    expect(webCapture(point)?.area).toBeUndefined();
+    expect(webCapture({ ...point, page, area })?.area).toBe(area);
+    for (const mode of ["element", "block", "area"])
+      expect(webCapture({ ...metadata, mode })).toBeNull();
+    for (const patch of [
+      { page },
+      { area },
+      { page: null, area: null },
+      { page: "", area: "" },
+      { page: "https://example.invalid/page.png", area },
+      { annotation: annotation() },
+      {
+        context: { id: "a".repeat(64), label: "Point" },
+        proposal: "images/proposal.png",
+      },
+    ])
+      expect(webCapture({ ...point, ...patch })).toBeNull();
+  });
+
   test("each geometric field rejects nonnumeric and nonfinite values independently", () => {
     for (const group of ["rect", "viewport", "scroll"] as const) {
       for (const field of Object.keys(capture()[group])) {
