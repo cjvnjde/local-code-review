@@ -724,7 +724,7 @@ browserTest(
           'document.querySelector("#uiNote textarea")===frozenEditor&&frozenEditor.value==="Keep this frozen hover evidence."',
         ),
       ).toBe(true);
-      await click("[data-freeze]");
+      await freezeKey();
       await until(
         () => js('!!testRoot.querySelector(".frozen-page")'),
         "freeze before resize",

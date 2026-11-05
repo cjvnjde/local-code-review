@@ -31,7 +31,7 @@ executable, and no review starts an agent.
 3. Hover the example's circle, menu controls or floating note card to see the
    selection outline, then click to comment. Drag an area when you want a narrower
    crop. The reviewer's screenshot includes the example interface, not its own
-   controls. Its **Freeze** tool also works for area/point feedback on a still image.
+   controls. **Ctrl+Shift+F** freezes the view for area/point feedback on a still image.
 4. Switch back to **Example** to continue using its tools. Switching modes does
    not discard either side's draft or reload its editor.
 5. Open the **git review** tab to inspect the real diff UI against deterministic

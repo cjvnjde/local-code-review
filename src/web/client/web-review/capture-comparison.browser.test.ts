@@ -26,13 +26,26 @@ browserTest(
       url: "http://localhost:3000/",
       title: "Checkout",
       at: "2026-11-05T10:00:00Z",
-      mode: "area",
+      mode: "element",
       rect: { x: 0, y: 0, width: 100, height: 40 },
       viewport: { width: 800, height: 600, dpr: 2 },
       scroll: { x: 0, y: 0 },
       page: "images/page.png",
       area: "images/before.png",
       components: [],
+      selector: "#checkout",
+      element: {
+        tag: "button",
+        text: '<img src=x onerror="window.inspectionXss=true">',
+        attributes: { id: "checkout" },
+        styles: {
+          width: "80px",
+          height: "20px",
+          padding: "8px",
+          "font-weight": "600",
+          color: "rgb(20, 40, 60)",
+        },
+      },
     };
     const after = {
       ...before,
@@ -44,7 +57,7 @@ browserTest(
     const saved = webCaptureHtml(original, true, [
       { role: "reviewer", body: webReviewLines(reply).join("\n").trimEnd() },
     ]);
-    const html = `<!doctype html><style>${css}</style>
+    const html = `<!doctype html><meta charset="utf-8"><style>${css}</style>
     <main style="width:360px">
       <div id="primary">${saved}</div><div id="duplicate">${saved}</div>
       <div id="geometry">${webCaptureHtml({ before, after: [{ ...after, rect: { ...after.rect, x: 1 } }] })}</div>
@@ -116,6 +129,47 @@ browserTest(
       await loaded.promise;
       off();
       expect(await js("window.ready")).toBe(true);
+      expect(
+        await js("document.querySelector('#primary .web-inspection').open"),
+      ).toBe(false);
+      await js(
+        "document.querySelector('#primary .web-inspection > summary').focus()",
+      );
+      for (const type of ["keyDown", "keyUp"])
+        await send("Input.dispatchKeyEvent", {
+          type,
+          key: "Enter",
+          code: "Enter",
+          windowsVirtualKeyCode: 13,
+          text: type === "keyDown" ? "\r" : undefined,
+        });
+      expect(
+        await js("document.querySelector('#primary .web-inspection').open"),
+      ).toBe(true);
+      expect(
+        await js(
+          `Object.fromEntries([...document.querySelectorAll('#primary .web-inspection dt')].map(dt=>[dt.textContent,dt.nextElementSibling.textContent]))`,
+        ),
+      ).toMatchObject({
+        "Selected size": "100 × 40 CSS px",
+        "CSS width": "80px",
+        "CSS height": "20px",
+        Padding: "8px",
+        "Font weight": "600",
+        "Text color": "rgb(20, 40, 60)",
+      });
+      expect(
+        await js(
+          "document.querySelector('#primary .web-inspection p:nth-of-type(2)').textContent",
+        ),
+      ).toBe(before.element!.text);
+      expect(
+        await js("document.querySelector('#primary .web-inspection img')"),
+      ).toBeNull();
+      expect(await js("window.inspectionXss === true")).toBe(false);
+      expect(
+        await js("document.querySelector('#duplicate .web-inspection').open"),
+      ).toBe(false);
       expect(
         await js("document.querySelectorAll('.web-compare input').length"),
       ).toBe(0);

@@ -35,8 +35,9 @@ focus, switching windows, or pressing Escape hides it without changing the chose
 Changing targeting mode or minimizing a note leaves its draft intact. Opening a different saved note
 asks before discarding half-written text; saved conversations are never removed by closing a window.
 
-- **Element** (default): click the exact HTML element under the pointer. Start dragging instead and
-  that gesture automatically selects an **Area**. Alt + wheel selects a parent.
+- **Element** (default): hover for an outline and rendered width × height in CSS pixels, then click
+  the exact HTML element to inspect it and write a note. Start dragging instead and that gesture
+  automatically selects an **Area**. Alt + wheel selects a parent.
 - **Block**: click a containing block, flex/grid container, table, or list item rather than the exact
   element. For example, Element selects an inline button while Block selects its enclosing section.
   If the element is already a layout block, these may select the same thing. Dragging also selects an area.
@@ -51,7 +52,6 @@ asks before discarding half-written text; saved conversations are never removed 
 - **Point**: click to record a 96 × 96 CSS-pixel neighborhood, clipped to the viewport, with
   metadata for the element under the dot when available. No viewport, selected-area, or full-page
   screenshot is taken, even when full-page context is enabled. Older Point notes with images remain readable.
-- **Inspect**: view rendered dimensions and computed styles without creating a note or capture.
 - **Browse**: interact with the app normally. Saved note circles stay hidden while selection is
   **OFF** and return immediately when it is turned **ON**; the notes themselves are unchanged.
 
@@ -61,18 +61,18 @@ application controls. An element partly outside the viewport captures only its v
 Escape inside the shared editor cancels its draft or edit as in the main review. From the surrounding
 page, Escape closes the note panel, asking before discarding half-written text, then returns to browsing.
 
-**Inspect an element**
+**Element details**
 
-Hold or right-click the **lcr** circle and choose **Inspect**. Hover to see the element's rendered
-width × height in CSS pixels; click to keep a read-only property panel open. It shows computed CSS
-width and height separately from rendered bounds, plus padding, margin, borders, radius, typography,
-gaps, alignment, and foreground/background colors. Transforms can make rendered bounds differ from
-CSS dimensions; neither is a measurement in screenshot pixels.
+Inspection is part of **Element** selection, not a separate tool. Hovering shows the live rendered
+dimensions without capturing anything. Hold **Alt** and turn the wheel to move through the hovered
+element's ancestors, then release Alt and click to select that target.
 
-Click another element to inspect it, use **Select parent**, or hold **Alt** and turn the wheel to
-move through its ancestors. Scroll and resize update the pinned measurements. **Escape**, the close
-icon, or **Browse** leaves inspection. An existing note editor and its draft stay intact. Inspection
-never edits application styles, saves a note, or takes a screenshot.
+The note's collapsed **Element details** dropdown shows capture-time CSS width and height, padding,
+margin, borders, radius, typography, gaps, alignment, and foreground/background colors. Selected
+bounds are shown separately: they may be clipped to the viewport, and transforms can make rendered
+dimensions differ from CSS dimensions. These measurements are CSS pixels, not screenshot pixels.
+Grouped selections and areas expose the same details under each captured target. The dropdown
+stays with the note after saving; it never changes the application's styles.
 
 To comment on a tooltip, hover menu, or another temporary state, reveal it and press **Ctrl+Shift+F**
 while the pointer is still over the page. The current viewport freezes as a screenshot and switches
@@ -86,7 +86,7 @@ press **Escape** on the surrounding page. Resuming restores your previous select
 keeps any open note draft. Switching to Browse or resizing the viewport also resumes the page.
 Element, Block, and Multiple selection are unavailable while frozen. On macOS, use
 **Control+Shift+F (⌃⇧F)**, not Option. The shortcut works with a text field or the note editor
-focused without inserting text. The same **Freeze** action is available in the targeting tools.
+focused without inserting text. Freezing starts only from this shortcut; there is no Freeze button in the targeting tools.
 
 The on-page panel embeds the main app's actual editor and note components, not a reduced copy:
 the configured Enter/Shift+Enter behavior, Markdown, image paste/drop/picker, image previews,
@@ -145,6 +145,11 @@ in rendered messages. See [message colors](usage.md#message-colors) for insertio
 
 Saving a visual comment persists it immediately and closes the panel, leaving the page ready for
 another selection. Saved visual comments appear under **Overall** above the unchanged Git diff.
+
+A dashed **+** circle appears as soon as an element or area is selected, before capture or note saving
+finishes. Collected targets and additional selections get circles too. Click a draft's circle to restore
+its minimized editor without losing its text. Removing a selection or closing the draft removes its
+temporary circles; matching saved targets then use the numbered pins described below.
 
 Numbered pins reopen notes on their exact captured URL, including its query and fragment. Each selected
 element gets a pin bearing the same note number; additional captures share that number too.

@@ -103,12 +103,34 @@ body.ui-note #historyPanel {
   padding: var(--space-3);
   font: var(--fs-sm)/1.5 var(--sans);
 }
-.web-targets ol {
+.web-inspection ol {
   max-height: calc(var(--row) * 8);
   overflow: auto;
   overflow-wrap: anywhere;
   margin: var(--space-2) 0;
   padding-left: var(--space-4);
+}
+.web-inspection > p,
+.web-inspection details > p {
+  color: var(--ink-dim);
+  margin: var(--space-2) 0;
+}
+.web-inspection code {
+  overflow-wrap: anywhere;
+}
+.web-inspection dl {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: var(--space-1) var(--space-2);
+  margin: var(--space-2) 0;
+}
+.web-inspection dt {
+  color: var(--ink-dim);
+}
+.web-inspection dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  user-select: text;
 }
 .nhead .web-component-path {
   min-width: 0;

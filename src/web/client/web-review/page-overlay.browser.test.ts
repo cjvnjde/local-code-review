@@ -11,7 +11,7 @@ const browserTest = process.env.LCR_TEST_BROWSER === "1" ? test : test.skip;
 type Point = { x: number; y: number };
 
 browserTest(
-  "page inspection stays read-only, preserves drafts, and Point keeps live and frozen element evidence",
+  "element selection includes inspection, drafts keep immediate markers, and Point retains frozen evidence",
   async () => {
     const bundle = await Bun.build({
       entrypoints: [path.join(import.meta.dir, "page-overlay.ts")],
@@ -45,12 +45,20 @@ browserTest(
           let value={};
           if(message.action==='notes')value={notes:[]};
           if(message.action==='context-settings')value={aiContext:false,contextHtml:false,contextFullPage:false};
-          if(message.action==='capture')value={draftId:'draft'};
+          if(message.action==='capture'){
+            const capture=message.payload.capture;
+            window.draftWeb=message.payload.draftId
+              ? {...window.draftWeb,additional:[...(window.draftWeb.additional||[]),capture]}
+              : {before:capture,after:[]};
+            value={draftId:'draft',capture,web:window.draftWeb};
+          }
           if(message.action==='freeze'){
             const canvas=document.createElement('canvas');canvas.width=innerWidth;canvas.height=innerHeight;
             value={id:'frozen',data:canvas.toDataURL()};
           }
-          queueMicrotask(()=>window.overlay.resolve(message.seq,{ok:true,value}));
+          const reply=()=>window.overlay.resolve(message.seq,{ok:true,value});
+          if(message.action==='capture' && window.holdCapture)window.releaseCapture=reply;
+          else queueMicrotask(reply);
         };
         // Exercise the same self-contained function boundary used by CDP injection.
         const injected=(0,eval)('('+installPageReview.toString()+')');
@@ -128,6 +136,15 @@ browserTest(
         js(
           "requests.filter(r=>r.action==='capture').map(r=>r.payload.capture)",
         );
+      const freezeKey = async () => {
+        for (const type of ["keyDown", "keyUp"])
+          await send("Input.dispatchKeyEvent", {
+            type,
+            key: "F",
+            code: "KeyF",
+            modifiers: 10,
+          });
+      };
       const at = await center("#target");
 
       await mode("point");
@@ -148,7 +165,7 @@ browserTest(
         `window.savedFrame=${root}.querySelector('iframe');savedFrame.contentDocument.querySelector('#draft').value='Keep this draft'`,
       );
 
-      await mode("inspect");
+      await mode("element");
       await mouse("mouseMoved", at);
       const bounds = await js(
         "(()=>{const b=document.querySelector('#target').getBoundingClientRect();return {width:b.width,height:b.height}})()",
@@ -157,23 +174,34 @@ browserTest(
         `${bounds.width} × ${bounds.height} CSS px`,
       );
       await click(at);
-      const properties = await js(
-        `${root}.querySelector('[data-inspect-properties]').textContent`,
-      );
-      expect(properties).toContain("Rendered size");
-      expect(properties).toContain("CSS width120px");
-      expect(properties).toContain("Padding12px");
-      expect(properties).toContain("Radius9px");
-      expect(properties).toContain("Font weight600");
-      expect(properties).toContain("Line height24px");
-      expect(properties).toContain("rgb(20, 40, 60)");
+      await until("requests.filter(r=>r.action==='capture').length===2");
+      const element = (await captures()).at(-1);
+      expect(element.mode).toBe("element");
+      expect(element.element.styles).toMatchObject({
+        width: "120px",
+        padding: "12px",
+        "border-radius": "9px",
+        "font-weight": "600",
+        "line-height": "24px",
+        color: "rgb(20, 40, 60)",
+      });
       expect(await js("clicks")).toBe(0);
-      expect((await captures()).length).toBe(1);
       expect(
         await js(
           `${root}.querySelector('iframe')===savedFrame && savedFrame.contentDocument.querySelector('#draft').value==='Keep this draft'`,
         ),
       ).toBe(true);
+      await until(`${root}.querySelectorAll('.draft-pin').length===2`);
+      await control("[data-minimize]");
+      await control(".draft-pin");
+      expect(
+        await js(
+          `${root}.querySelector('.dock').classList.contains('minimized')`,
+        ),
+      ).toBe(false);
+      expect(await js(`${root}.querySelector('iframe')===savedFrame`)).toBe(
+        true,
+      );
 
       await send("Input.dispatchMouseEvent", {
         type: "mouseWheel",
@@ -182,61 +210,71 @@ browserTest(
         deltaY: 100,
         modifiers: 1,
       });
-      expect(
-        await js(
-          `document.querySelector(${root}.querySelector('[data-inspect-name]').textContent) === document.querySelector('#parent')`,
-        ),
-      ).toBe(true);
-      expect(
-        await js(
-          `${root}.querySelector('[data-inspect-properties]').textContent`,
-        ),
-      ).toContain("Gap17px");
-      await click(await center("#other"));
-      expect(
-        await js(
-          `document.querySelector(${root}.querySelector('[data-inspect-name]').textContent) === document.querySelector('#other')`,
-        ),
-      ).toBe(true);
-      await js("window.scrollTo(0,40)");
-      await until(
-        `${root}.querySelector('.outline').style.top===document.querySelector('#other').getBoundingClientRect().y+'px'`,
-      );
-      await control("[data-inspect-close]");
-      expect(await js(`${root}.querySelector('.inspector').hidden`)).toBe(true);
-      expect(await js(`${root}.querySelector('iframe')===savedFrame`)).toBe(
-        true,
-      );
-      await click(await center("#target"));
-      expect(await js("clicks")).toBe(1);
-      await control("[data-close]");
-      await js("window.scrollTo(0,0)");
-
-      await mode("inspect");
       await click(at);
-      await send("Input.dispatchKeyEvent", {
-        type: "keyDown",
-        key: "Escape",
-        code: "Escape",
-      });
-      await send("Input.dispatchKeyEvent", {
-        type: "keyUp",
-        key: "Escape",
-        code: "Escape",
-      });
-      expect(await js(`${root}.querySelector('.inspector').hidden`)).toBe(true);
-      expect((await captures()).length).toBe(1);
+      await until("requests.filter(r=>r.action==='capture').length===3");
+      const parent = (await captures()).at(-1);
+      expect(
+        await js(
+          `document.querySelector(${JSON.stringify(parent.selector)})===document.querySelector('#parent')`,
+        ),
+      ).toBe(true);
+      expect(parent.element.styles.gap).toBe("17px");
+      await click(await center("#other"));
+      await until("requests.filter(r=>r.action==='capture').length===4");
+      const other = (await captures()).at(-1);
+      expect(
+        await js(
+          `document.querySelector(${JSON.stringify(other.selector)})===document.querySelector('#other')`,
+        ),
+      ).toBe(true);
+      await control("[data-close]");
+      expect(await js(`${root}.querySelector('.draft-pin')`)).toBeNull();
+      await mode("browse");
+      await click(at);
+      expect(await js("clicks")).toBe(1);
 
       await mode("element");
-      await control("[data-freeze]");
+      await js("window.holdCapture=true");
+      const area = { x: 20, y: 300, width: 180, height: 90 };
+      await mouse("mouseMoved", { x: area.x, y: area.y });
+      await mouse("mousePressed", { x: area.x, y: area.y });
+      await mouse(
+        "mouseMoved",
+        { x: area.x + area.width, y: area.y + area.height },
+        { buttons: 1 },
+      );
+      await mouse("mouseReleased", {
+        x: area.x + area.width,
+        y: area.y + area.height,
+      });
+      await until("typeof window.releaseCapture==='function'");
+      expect(
+        await js(
+          `(()=>{const p=${root}.querySelector('.draft-pin');return {x:parseFloat(p.style.left),y:parseFloat(p.style.top)}})()`,
+        ),
+      ).toEqual({ x: area.x, y: area.y });
+      await js("window.holdCapture=false;window.releaseCapture()");
+      await until(
+        `${root}.querySelector('iframe')?.contentDocument?.querySelector('#draft')`,
+      );
+      expect((await captures()).at(-1).rect).toEqual(area);
+      expect(await js(`${root}.querySelectorAll('.draft-pin').length`)).toBe(1);
+      await js("window.scrollTo(0,40)");
+      await until(`${root}.querySelector('.draft-pin').style.top==='260px'`);
+      await control("[data-close]");
+      expect(await js(`${root}.querySelector('.draft-pin')`)).toBeNull();
+      await js("window.scrollTo(0,0)");
+
+      await mode("element");
+      await freezeKey();
       await until(`!!${root}.querySelector('.frozen-page')`);
       await js(
         "document.querySelector('#target').textContent='Changed after freeze';document.querySelector('#target').style.color='red'",
       );
       await mode("point");
       await click(at);
-      await until("requests.filter(r=>r.action==='capture').length===2");
-      const frozen = (await captures())[1];
+      await until("requests.filter(r=>r.action==='capture').length===6");
+      const frozen = (await captures()).at(-1);
       expect(frozen.mode).toBe("point");
       expect(frozen.element.text).toBe("Target");
       expect(frozen.element.styles.color).toBe("rgb(20, 40, 60)");
@@ -247,12 +285,12 @@ browserTest(
       await js(
         "for(let i=0;i<110;i++){const el=document.createElement('div');el.style.cssText='position:absolute;left:'+(500+i%20*12)+'px;top:'+(400+Math.floor(i/20)*12)+'px;width:10px;height:10px';document.body.prepend(el)}",
       );
-      await control("[data-freeze]");
+      await freezeKey();
       await until(`!!${root}.querySelector('.frozen-page')`);
       await mode("point");
       await click(at);
-      await until("requests.filter(r=>r.action==='capture').length===3");
-      const truncated = (await captures())[2];
+      await until("requests.filter(r=>r.action==='capture').length===7");
+      const truncated = (await captures()).at(-1);
       expect(truncated.element).toBeUndefined();
       expect(truncated.selector).toBeUndefined();
     } finally {
