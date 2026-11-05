@@ -10,6 +10,8 @@ Arguments lcr does not recognize go to `git diff`. Use `--` before paths that co
 
 The default address is `http://localhost:7777`. If the port is occupied, lcr tries the next ports and prints the address it actually uses. `--port 0` asks the operating system for a free port. `--no-open` leaves the server running without opening a browser.
 
+The browser tab shows `Review — <branch>` using the checked-out branch, updated whenever the diff reloads. Detached HEAD falls back to `Review`. The bundled favicon and touch icon also work in the standalone executable without external requests.
+
 ## Configuration
 
 lcr reads user-owned settings from `$XDG_CONFIG_HOME/lcr/config.json` when

@@ -8,6 +8,7 @@ import {
 } from "../review/attach.ts";
 import { mediaType } from "../git/blob.ts";
 import { fingerprint } from "../git/diff.ts";
+import { currentBranch } from "../git/commands.ts";
 import type { Hub } from "./events.ts";
 import type { GhostGroup, ReviewInfo } from "../review/history.ts";
 import type { ReviewSession } from "../review/session.ts";
@@ -291,13 +292,15 @@ function serve(options: ServerOptions, port: number) {
           return Response.json(agentState(options));
         }
         if (url.pathname === "/api/diff") {
-          const [files, statuses] = await Promise.all([
+          const [files, statuses, branch] = await Promise.all([
             options.getDiff(),
             options.getStatuses(),
+            currentBranch(options.repoRoot),
           ]);
           return Response.json({
             repo: repoId(options.repoRoot),
             range: options.range,
+            branch,
             id: options.reviewId,
             context: options.context,
             ...(options.web ? { web: options.web.status() } : {}),

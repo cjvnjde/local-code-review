@@ -1188,6 +1188,7 @@ describe("general API routes", () => {
     expect(await response.json()).toEqual({
       repo: repoId(started.options.repoRoot),
       range: "main...HEAD",
+      branch: "",
       id: "security-pass",
       context: 8,
       files: [diffFile()],

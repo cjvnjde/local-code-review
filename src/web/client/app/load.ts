@@ -54,6 +54,7 @@ async function loadNow(keep: boolean) {
       "<br><br>Restart the server with different arguments.</div>";
     return;
   }
+  document.title = d.branch ? `Review — ${d.branch}` : "Review";
   // Everything downstream reads "diff order" off this list, so the one order there is is the tree's.
   state.files = inTreeOrder(d.files);
   state.repo = d.repo || "";
