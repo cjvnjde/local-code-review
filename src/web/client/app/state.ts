@@ -59,6 +59,12 @@ export const SVG = {
     '<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="m8 2 6 11H2z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>',
   line: '<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="m3 13 10-10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
   path: '<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 12C3 2 13 14 13 4M3 12 3 3M13 4v9" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M1.5 10.5h3v3h-3zm10-8h3v3h-3z" fill="currentColor"/></svg>',
+  highlighter:
+    '<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="m9 2 5 5-6 6H3V8zM5 6l5 5M2 14h7" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>',
+  callout:
+    '<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><circle cx="6" cy="6" r="4.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M5 4.5 6 4v4M4.8 8h2.4M9.5 9.5 14 14M11 14h3v-3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>',
+  magnifier:
+    '<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><circle cx="6.5" cy="6.5" r="4.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="m10 10 4 4M4 6.5h5M6.5 4v5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
 };
 
 export const state: any = {

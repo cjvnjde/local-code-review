@@ -19,6 +19,7 @@ export type AnnotationHandle =
       y: number;
     }
   | { kind: "endpoint"; end: "from" | "to"; x: number; y: number }
+  | { kind: "target"; x: number; y: number }
   | { kind: "node"; index: number; x: number; y: number }
   | {
       kind: "control";
@@ -28,7 +29,7 @@ export type AnnotationHandle =
       y: number;
     };
 
-type CanvasSize = { width: number; height: number };
+type CanvasSize = { width: number; height: number; padding?: number };
 type MeasureText = (text: string, size: number) => number;
 type PathMark = Extract<AnnotationMark, { tool: "path" }>;
 type ResizeHandle = Extract<AnnotationHandle, { kind: "resize" }>;
@@ -61,25 +62,108 @@ function pointBounds(points: Iterable<AnnotationPoint>): AnnotationBounds {
     : { x, y, width: right - x, height: bottom - y };
 }
 
+type TextMark = Extract<AnnotationMark, { tool: "text" }>;
+const textPadding = (mark: TextMark) =>
+  mark.background ? Math.max(4, mark.size * 0.2) : 0;
+const textWidth = (text: string, size: number, measure?: MeasureText) =>
+  measure?.(text, size) ?? Array.from(text).length * size;
+
+/** Wrap using the same measured font as painting; retain explicit empty lines. */
+export function textLines(
+  mark: Pick<TextMark, "text" | "size" | "wrap">,
+  measure?: MeasureText,
+): string[] {
+  if (!mark.wrap) return mark.text.split("\n");
+  const lines: string[] = [];
+  for (const paragraph of mark.text.split("\n")) {
+    let line = "";
+    for (const token of paragraph.match(/\s+|\S+/gu) ?? []) {
+      if (textWidth(line + token, mark.size, measure) <= mark.wrap) {
+        line += token;
+        continue;
+      }
+      if (line) {
+        lines.push(line.trimEnd());
+        line = "";
+      }
+      if (/^\s+$/u.test(token)) continue;
+      for (const char of token) {
+        if (line && textWidth(line + char, mark.size, measure) > mark.wrap) {
+          lines.push(line);
+          line = "";
+        }
+        line += char;
+      }
+    }
+    lines.push(line);
+  }
+  return lines;
+}
+
+function calloutLabel(
+  mark: Extract<AnnotationMark, { tool: "callout" }>,
+  measure?: MeasureText,
+) {
+  const size = mark.size * 0.5,
+    padding = mark.size / 6;
+  const lines = textLines(
+    { text: mark.label, size, wrap: mark.size * 10 },
+    measure,
+  );
+  return {
+    size,
+    padding,
+    lines,
+    x: mark.from.x + mark.size / 2 + padding,
+    y: mark.from.y - size * 0.625 - padding,
+    width:
+      Math.max(1, ...lines.map((line) => textWidth(line, size, measure))) +
+      padding * 2,
+    height: lines.length * size * 1.25 + padding * 2,
+  };
+}
+
 /** Editable coordinate bounds, excluding stroke thickness. Controls stay selectable. */
 export function markBounds(
   mark: AnnotationMark,
   measure?: MeasureText,
 ): AnnotationBounds {
   if (mark.tool === "text") {
-    const lines = mark.text.split("\n");
-    let width = 1;
-    for (const line of lines)
-      width = Math.max(
-        width,
-        measure?.(line, mark.size) ?? line.length * mark.size,
-      );
+    const lines = textLines(mark, measure),
+      padding = textPadding(mark);
     return {
       x: mark.at.x,
       y: mark.at.y,
-      width,
-      height: lines.length * mark.size * 1.25,
+      width:
+        Math.max(
+          1,
+          ...lines.map((line) => textWidth(line, mark.size, measure)),
+        ) +
+        padding * 2,
+      height: lines.length * mark.size * 1.25 + padding * 2,
     };
+  }
+  if (mark.tool === "magnifier")
+    return {
+      x: mark.at.x,
+      y: mark.at.y,
+      width: Math.abs(mark.to.x - mark.from.x) * mark.scale,
+      height: Math.abs(mark.to.y - mark.from.y) * mark.scale,
+    };
+  if (mark.tool === "callout") {
+    const radius = mark.size / 2,
+      label = calloutLabel(mark, measure);
+    return pointBounds([
+      { x: mark.from.x - radius, y: mark.from.y - radius },
+      { x: mark.from.x + radius, y: mark.from.y + radius },
+      mark.to,
+      ...(mark.label
+        ? [
+            { x: label.x, y: label.y },
+            { x: label.x + label.width, y: label.y + label.height },
+          ]
+        : []),
+    ]);
   }
   if (mark.tool === "path") {
     const nodes = mark.nodes;
@@ -92,14 +176,18 @@ export function markBounds(
     }
     return pointBounds(points());
   }
-  return pointBounds(mark.tool === "pen" ? mark.points : [mark.from, mark.to]);
+  return pointBounds(
+    mark.tool === "pen" || mark.tool === "highlighter"
+      ? mark.points
+      : [mark.from, mark.to],
+  );
 }
 
 export function markHandles(
   mark: AnnotationMark,
   measure?: MeasureText,
 ): AnnotationHandle[] {
-  if (mark.tool === "line" || mark.tool === "arrow")
+  if (mark.tool === "line" || mark.tool === "arrow" || mark.tool === "callout")
     return [
       { kind: "endpoint", end: "from", ...mark.from },
       { kind: "endpoint", end: "to", ...mark.to },
@@ -120,7 +208,7 @@ export function markHandles(
     return handles;
   }
   const { x, y, width, height } = markBounds(mark, measure);
-  return [
+  const handles: AnnotationHandle[] = [
     { kind: "resize", edge: "nw", x, y },
     { kind: "resize", edge: "n", x: x + width / 2, y },
     { kind: "resize", edge: "ne", x: x + width, y },
@@ -130,6 +218,14 @@ export function markHandles(
     { kind: "resize", edge: "sw", x, y: y + height },
     { kind: "resize", edge: "w", x, y: y + height / 2 },
   ];
+  if (mark.tool === "text" && mark.target)
+    handles.unshift({ kind: "target", ...mark.target });
+  if (mark.tool === "magnifier")
+    handles.unshift(
+      { kind: "endpoint", end: "from", ...mark.from },
+      { kind: "endpoint", end: "to", ...mark.to },
+    );
+  return handles;
 }
 
 function mapNode(
@@ -163,8 +259,9 @@ export function moveMark(
     x: point.x + dx,
     y: point.y + dy,
   });
-  if (mark.tool === "text") return { ...mark, at: translate(mark.at) };
-  if (mark.tool === "pen")
+  if (mark.tool === "text" || mark.tool === "magnifier")
+    return { ...mark, at: translate(mark.at) };
+  if (mark.tool === "pen" || mark.tool === "highlighter")
     return { ...mark, points: mark.points.map(translate) };
   if (mark.tool === "path")
     return {
@@ -221,7 +318,13 @@ function resizeText(
   const availableWidth = left ? anchorX : canvas.width - anchorX,
     availableHeight = above ? anchorY : canvas.height - anchorY;
   let size = clamp(mark.size * ratio, 1, ANNOTATION_LIMITS.maxTextSize);
-  let resized = { ...mark, size };
+  let resized = {
+    ...mark,
+    size,
+    ...(mark.wrap === undefined
+      ? {}
+      : { wrap: Math.min(canvas.width, (mark.wrap * size) / mark.size) }),
+  };
   let next = markBounds(resized, measure);
   size = clamp(
     size *
@@ -229,7 +332,13 @@ function resizeText(
     1,
     ANNOTATION_LIMITS.maxTextSize,
   );
-  resized = { ...mark, size };
+  resized = {
+    ...mark,
+    size,
+    ...(mark.wrap === undefined
+      ? {}
+      : { wrap: Math.min(canvas.width, (mark.wrap * size) / mark.size) }),
+  };
   next = markBounds(resized, measure);
   return {
     ...resized,
@@ -256,8 +365,48 @@ export function editHandle(
   measure?: MeasureText,
 ): AnnotationMark {
   at = boundedPoint(at, canvas);
+  if (handle.kind === "target")
+    return mark.tool === "text" ? { ...mark, target: at } : mark;
   if (handle.kind === "endpoint") {
-    if (mark.tool !== "line" && mark.tool !== "arrow") return mark;
+    if (mark.tool === "magnifier") {
+      const padding = canvas.padding ?? 0,
+        other = mark[handle.end === "from" ? "to" : "from"];
+      const maxWidth = Math.min(
+          canvas.width - padding * 2,
+          (canvas.width - mark.at.x) / mark.scale,
+        ),
+        maxHeight = Math.min(
+          canvas.height - padding * 2,
+          (canvas.height - mark.at.y) / mark.scale,
+        );
+      // Keep source corners distinct while allowing reversed source rectangles.
+      const sourceAxis = (
+        value: number,
+        anchor: number,
+        max: number,
+        limit: number,
+      ) => {
+        const low = Math.max(padding, anchor - max),
+          high = Math.min(limit - padding, anchor + max);
+        const next = clamp(value, low, high),
+          minimum = Math.min(1, max);
+        if (Math.abs(next - anchor) >= minimum) return next;
+        return anchor + minimum <= high ? anchor + minimum : anchor - minimum;
+      };
+      return {
+        ...mark,
+        [handle.end]: {
+          x: sourceAxis(at.x, other.x, maxWidth, canvas.width),
+          y: sourceAxis(at.y, other.y, maxHeight, canvas.height),
+        },
+      };
+    }
+    if (
+      mark.tool !== "line" &&
+      mark.tool !== "arrow" &&
+      mark.tool !== "callout"
+    )
+      return mark;
     return { ...mark, [handle.end]: at };
   }
   if (handle.kind === "node" || handle.kind === "control") {
@@ -299,10 +448,50 @@ export function editHandle(
       ),
     };
   }
+  if (mark.tool === "magnifier") {
+    const bounds = markBounds(mark),
+      west = handle.edge.includes("w"),
+      north = handle.edge.includes("n"),
+      horizontal = west || handle.edge.includes("e"),
+      vertical = north || handle.edge.includes("s"),
+      anchorX = west ? bounds.x + bounds.width : bounds.x,
+      anchorY = north ? bounds.y + bounds.height : bounds.y,
+      sourceWidth = Math.abs(mark.to.x - mark.from.x),
+      sourceHeight = Math.abs(mark.to.y - mark.from.y);
+    const scale = clamp(
+      Math.min(
+        horizontal ? Math.abs(at.x - anchorX) / sourceWidth : Infinity,
+        vertical ? Math.abs(at.y - anchorY) / sourceHeight : Infinity,
+        (horizontal && at.x < anchorX ? anchorX : canvas.width - anchorX) /
+          sourceWidth,
+        (vertical && at.y < anchorY ? anchorY : canvas.height - anchorY) /
+          sourceHeight,
+      ),
+      1,
+      ANNOTATION_LIMITS.maxMagnifierScale,
+    );
+    return {
+      ...mark,
+      scale,
+      at: {
+        x: clamp(
+          west ? anchorX - sourceWidth * scale : anchorX,
+          0,
+          canvas.width - sourceWidth * scale,
+        ),
+        y: clamp(
+          north ? anchorY - sourceHeight * scale : anchorY,
+          0,
+          canvas.height - sourceHeight * scale,
+        ),
+      },
+    };
+  }
   if (mark.tool === "text")
     return resizeText(mark, handle, at, canvas, measure);
   if (
     mark.tool !== "pen" &&
+    mark.tool !== "highlighter" &&
     mark.tool !== "rectangle" &&
     mark.tool !== "ellipse" &&
     mark.tool !== "triangle"
@@ -325,7 +514,7 @@ export function editHandle(
       ? top + ((point.y - bounds.y) / bounds.height) * (bottom - top)
       : top,
   });
-  if (mark.tool === "pen")
+  if (mark.tool === "pen" || mark.tool === "highlighter")
     return { ...mark, points: mark.points.map(transform) };
   // Give collapsed boxes distinct endpoints so they can expand again.
   const from = transform(mark.from),
@@ -581,7 +770,7 @@ export function nearestPathSegment(
 }
 
 function arrowHead(
-  mark: Extract<AnnotationMark, { tool: "arrow" }>,
+  mark: { from: AnnotationPoint; to: AnnotationPoint; width: number },
   sourceScale = 1,
 ) {
   const angle = Math.atan2(mark.to.y - mark.from.y, mark.to.x - mark.from.x),
@@ -601,6 +790,55 @@ function arrowHead(
   ] as const;
 }
 
+function insidePolygon(
+  at: AnnotationPoint,
+  points: AnnotationPoint[],
+): boolean {
+  let winding = 0;
+  for (let i = 0; i < points.length; i++) {
+    const a = points[i]!,
+      b = points[(i + 1) % points.length]!;
+    const cross = (b.x - a.x) * (at.y - a.y) - (at.x - a.x) * (b.y - a.y);
+    if (a.y <= at.y && b.y > at.y && cross > 0) winding++;
+    else if (a.y > at.y && b.y <= at.y && cross < 0) winding--;
+  }
+  return winding !== 0;
+}
+
+function pathPolygon(mark: PathMark, accuracy: number): AnnotationPoint[] {
+  const points: AnnotationPoint[] = [];
+  function flatten(
+    a: AnnotationPoint,
+    b: AnnotationPoint,
+    c: AnnotationPoint,
+    d: AnnotationPoint,
+    depth = 0,
+  ) {
+    if (
+      depth === 16 ||
+      Math.max(segmentDistance(b, a, d), segmentDistance(c, a, d)) <= accuracy
+    ) {
+      points.push(d);
+      return;
+    }
+    const ab = mix(a, b, 0.5),
+      bc = mix(b, c, 0.5),
+      cd = mix(c, d, 0.5),
+      abc = mix(ab, bc, 0.5),
+      bcd = mix(bc, cd, 0.5),
+      middle = mix(abc, bcd, 0.5);
+    flatten(a, ab, abc, middle, depth + 1);
+    flatten(middle, bcd, cd, d, depth + 1);
+  }
+  if (mark.nodes[0]) points.push(mark.nodes[0]);
+  for (let i = 0; i < mark.nodes.length - (mark.closed ? 0 : 1); i++) {
+    const a = mark.nodes[i]!,
+      d = mark.nodes[(i + 1) % mark.nodes.length]!;
+    flatten(a, a.out ?? a, d.in ?? d, d);
+  }
+  return points;
+}
+
 export function hitMark(
   mark: AnnotationMark,
   at: AnnotationPoint,
@@ -612,17 +850,78 @@ export function hitMark(
   if (mark.tool === "text") {
     const bounds = markBounds(mark, measure);
     return (
-      at.x >= bounds.x - tolerance &&
-      at.x <= bounds.x + bounds.width + tolerance &&
-      at.y >= bounds.y - tolerance &&
-      at.y <= bounds.y + bounds.height + tolerance
+      (mark.target !== undefined &&
+        segmentDistance(at, mark.target, {
+          x: bounds.x + bounds.width / 2,
+          y: bounds.y + bounds.height / 2,
+        }) <=
+          tolerance + Math.max(1, sourceScale)) ||
+      (at.x >= bounds.x - tolerance &&
+        at.x <= bounds.x + bounds.width + tolerance &&
+        at.y >= bounds.y - tolerance &&
+        at.y <= bounds.y + bounds.height + tolerance)
     );
   }
   const radius = tolerance + mark.width / 2,
     accuracy = Math.max(0.01, Math.min(0.25, radius / 4));
   const hit = (a: AnnotationPoint, b: AnnotationPoint) =>
     segmentDistance(at, a, b) <= radius;
-  if (mark.tool === "pen") {
+  if (mark.tool === "callout") {
+    const [left, right] = arrowHead(mark, sourceScale);
+    if (hit(left, mark.to) || hit(mark.to, right)) return true;
+    if (
+      distance(at, mark.from) <= mark.size / 2 + tolerance ||
+      hit(mark.from, mark.to)
+    )
+      return true;
+    if (!mark.label) return false;
+    const label = calloutLabel(mark, measure);
+    return (
+      at.x >= label.x - tolerance &&
+      at.x <= label.x + label.width + tolerance &&
+      at.y >= label.y - tolerance &&
+      at.y <= label.y + label.height + tolerance
+    );
+  }
+  if (mark.tool === "magnifier") {
+    const bounds = markBounds(mark),
+      source = pointBounds([mark.from, mark.to]),
+      center = {
+        x: source.x + source.width / 2,
+        y: source.y + source.height / 2,
+      },
+      destination = {
+        x: bounds.x + bounds.width / 2,
+        y: bounds.y + bounds.height / 2,
+      };
+    if (
+      at.x >= bounds.x - tolerance &&
+      at.x <= bounds.x + bounds.width + tolerance &&
+      at.y >= bounds.y - tolerance &&
+      at.y <= bounds.y + bounds.height + tolerance
+    )
+      return true;
+    if (hit(center, destination)) return true;
+    return (
+      hit(
+        { x: source.x, y: source.y },
+        { x: source.x + source.width, y: source.y },
+      ) ||
+      hit(
+        { x: source.x + source.width, y: source.y },
+        { x: source.x + source.width, y: source.y + source.height },
+      ) ||
+      hit(
+        { x: source.x, y: source.y + source.height },
+        { x: source.x + source.width, y: source.y + source.height },
+      ) ||
+      hit(
+        { x: source.x, y: source.y },
+        { x: source.x, y: source.y + source.height },
+      )
+    );
+  }
+  if (mark.tool === "pen" || mark.tool === "highlighter") {
     if (mark.points.length === 1)
       return distance(at, mark.points[0]!) <= radius;
     for (let i = 1; i < mark.points.length; i++)
@@ -631,6 +930,12 @@ export function hitMark(
   }
   if (mark.tool === "path") {
     const count = mark.nodes.length;
+    if (
+      mark.fill &&
+      (mark.opacity ?? 1) > 0 &&
+      insidePolygon(at, pathPolygon(mark, accuracy))
+    )
+      return true;
     if (count === 1) return distance(at, mark.nodes[0]!) <= radius;
     for (let i = 0; i < count - (mark.closed ? 0 : 1); i++) {
       const from = mark.nodes[i]!,
@@ -665,6 +970,12 @@ export function hitMark(
     const top = { x: x + width / 2, y },
       left = { x, y: bottom },
       end = { x: right, y: bottom };
+    if (
+      mark.fill &&
+      (mark.opacity ?? 1) > 0 &&
+      insidePolygon(at, [top, left, end])
+    )
+      return true;
     return hit(top, left) || hit(left, end) || hit(end, top);
   }
   if (mark.tool === "ellipse") {
@@ -673,6 +984,12 @@ export function hitMark(
       ry = height / 2,
       cx = x + rx,
       cy = y + ry;
+    if (
+      mark.fill &&
+      (mark.opacity ?? 1) > 0 &&
+      ((at.x - cx) / rx) ** 2 + ((at.y - cy) / ry) ** 2 <= 1
+    )
+      return true;
     // Sagitta-bounded sampling keeps eccentric and large ellipses selectable.
     const steps = Math.max(
       16,
@@ -691,6 +1008,18 @@ export function hitMark(
   }
   const corner = Math.min(mark.radius, width / 2, height / 2);
   if (
+    mark.fill &&
+    (mark.opacity ?? 1) > 0 &&
+    at.x >= x &&
+    at.x <= right &&
+    at.y >= y &&
+    at.y <= bottom
+  ) {
+    const cx = clamp(at.x, x + corner, right - corner),
+      cy = clamp(at.y, y + corner, bottom - corner);
+    if (Math.hypot(at.x - cx, at.y - cy) <= corner) return true;
+  }
+  if (
     hit({ x: x + corner, y }, { x: right - corner, y }) ||
     hit({ x: right, y: y + corner }, { x: right, y: bottom - corner }) ||
     hit({ x: right - corner, y: bottom }, { x: x + corner, y: bottom }) ||
@@ -706,11 +1035,34 @@ export function hitMark(
   return onArc && Math.abs(Math.hypot(at.x - cx, at.y - cy) - corner) <= radius;
 }
 
+function contrastInk(color: string): string {
+  const channels = [1, 3, 5].map((start) => {
+    const value = Number.parseInt(color.slice(start, start + 2), 16) / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  });
+  const luminance =
+    channels[0]! * 0.2126 + channels[1]! * 0.7152 + channels[2]! * 0.0722;
+  return luminance > 0.179 ? "#000000" : "#ffffff";
+}
+
+function paintFill(
+  ctx: CanvasRenderingContext2D,
+  mark: { fill?: string; opacity?: number },
+) {
+  if (!mark.fill) return;
+  ctx.save();
+  ctx.fillStyle = mark.fill;
+  ctx.globalAlpha *= mark.opacity ?? 1;
+  ctx.fill();
+  ctx.restore();
+}
+
 /** Draw only saved geometry: selection handles and control guides are editor-only. */
 export function drawMark(
   ctx: CanvasRenderingContext2D,
   mark: AnnotationMark,
   sourceScale = 1,
+  source?: { image: CanvasImageSource; padding: number },
 ): void {
   ctx.save();
   ctx.strokeStyle = mark.color;
@@ -718,17 +1070,112 @@ export function drawMark(
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
   if (mark.tool === "text") {
+    const measure: MeasureText = (line) => ctx.measureText(line).width;
     ctx.font = mark.size + "px sans-serif";
     ctx.textBaseline = "top";
-    mark.text
-      .split("\n")
-      .forEach((line, index) =>
-        ctx.fillText(line, mark.at.x, mark.at.y + index * mark.size * 1.25),
+    const bounds = markBounds(mark, measure),
+      padding = textPadding(mark);
+    if (mark.target) {
+      ctx.lineWidth = Math.max(1, sourceScale);
+      ctx.beginPath();
+      ctx.moveTo(mark.target.x, mark.target.y);
+      ctx.lineTo(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+      ctx.stroke();
+    }
+    if (mark.background) {
+      ctx.fillStyle = mark.background;
+      ctx.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
+    }
+    ctx.fillStyle = mark.color;
+    textLines(mark, measure).forEach((line, index) => {
+      const x = mark.at.x + padding,
+        y = mark.at.y + padding + index * mark.size * 1.25;
+      if (mark.outline) {
+        ctx.strokeStyle = contrastInk(mark.color);
+        ctx.lineWidth = Math.max(2 * sourceScale, mark.size * 0.12);
+        ctx.strokeText(line, x, y);
+      }
+      ctx.fillText(line, x, y);
+    });
+  } else if (mark.tool === "callout") {
+    ctx.lineWidth = mark.width;
+    ctx.beginPath();
+    ctx.moveTo(mark.from.x, mark.from.y);
+    ctx.lineTo(mark.to.x, mark.to.y);
+    const [left, right] = arrowHead(mark, sourceScale);
+    ctx.moveTo(left.x, left.y);
+    ctx.lineTo(mark.to.x, mark.to.y);
+    ctx.lineTo(right.x, right.y);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(mark.from.x, mark.from.y, mark.size / 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = contrastInk(mark.color);
+    ctx.font = "bold " + mark.size * 0.5 + "px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(
+      String(mark.number),
+      mark.from.x,
+      mark.from.y,
+      mark.size * 0.85,
+    );
+    if (mark.label) {
+      ctx.font = mark.size * 0.5 + "px sans-serif";
+      const label = calloutLabel(mark, (line) => ctx.measureText(line).width);
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(label.x, label.y, label.width, label.height);
+      ctx.strokeRect(label.x, label.y, label.width, label.height);
+      ctx.fillStyle = "#111111";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+      label.lines.forEach((line, index) =>
+        ctx.fillText(
+          line,
+          label.x + label.padding,
+          label.y + label.padding + index * label.size * 1.25,
+        ),
       );
+    }
+  } else if (mark.tool === "magnifier") {
+    const crop = pointBounds([mark.from, mark.to]),
+      destination = markBounds(mark);
+    ctx.lineWidth = mark.width;
+    ctx.beginPath();
+    ctx.moveTo(crop.x + crop.width / 2, crop.y + crop.height / 2);
+    ctx.lineTo(
+      destination.x + destination.width / 2,
+      destination.y + destination.height / 2,
+    );
+    ctx.stroke();
+    ctx.save();
+    ctx.setLineDash([5 * sourceScale, 3 * sourceScale]);
+    ctx.strokeRect(crop.x, crop.y, crop.width, crop.height);
+    ctx.restore();
+    ctx.imageSmoothingEnabled = false;
+    if (source)
+      ctx.drawImage(
+        source.image,
+        crop.x - source.padding,
+        crop.y - source.padding,
+        crop.width,
+        crop.height,
+        destination.x,
+        destination.y,
+        destination.width,
+        destination.height,
+      );
+    ctx.strokeRect(
+      destination.x,
+      destination.y,
+      destination.width,
+      destination.height,
+    );
   } else {
     ctx.lineWidth = mark.width;
     ctx.beginPath();
-    if (mark.tool === "pen") {
+    if (mark.tool === "pen" || mark.tool === "highlighter") {
+      if (mark.tool === "highlighter") ctx.globalAlpha *= mark.opacity;
       const first = mark.points[0];
       if (first && mark.points.length === 1) {
         ctx.arc(first.x, first.y, mark.width / 2, 0, Math.PI * 2);
@@ -764,6 +1211,7 @@ export function drawMark(
           else ctx.lineTo(to.x, to.y);
         }
         if (mark.closed) ctx.closePath();
+        paintFill(ctx, mark);
         ctx.stroke();
       }
     } else if (mark.tool === "line" || mark.tool === "arrow") {
@@ -806,6 +1254,7 @@ export function drawMark(
         ctx.lineTo(x, y + height);
         ctx.closePath();
       }
+      paintFill(ctx, mark);
       ctx.stroke();
     }
   }

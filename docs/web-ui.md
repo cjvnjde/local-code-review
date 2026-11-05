@@ -168,9 +168,9 @@ without opening another tab. A colored drawing affordance appears on hover or ke
 and remains visible on touch devices. Page title, URL, and capture time are under **Selection metadata**
 rather than repeated in screenshot headers. Drawing works for the first selection, additional
 selections, and existing comparison captures, from either the live page or the full review.
-The editor uses the full viewport with one
-compact icon toolbar, no title header or footer, and floating zoom controls. On the live page the
-note window expands edge to edge, then returns to its chosen size and position. Text and caret stay put.
+The editor uses the full viewport with an icon toolbar, a contextual property row, no title header
+or footer, and floating zoom controls. On the live page the note window expands edge to edge,
+then returns to its chosen size and position. Text and caret stay put.
 
 The editor adds white, drawable padding around the screenshot: 64 CSS pixels per side at the
 capture's image scale. This is blank space for arrows and labels, not extra page context. The
@@ -182,26 +182,39 @@ the editor; it is not exported.
   storage and affects new strokes only; it does not reshape existing drawings. Smoothing reduces
   hand jitter at the cost of a little cursor lag while drawing, then preserves the release endpoint.
   Filtered points are saved with the drawing, so reopening and PNG export retain the same result.
+- **Highlighter** draws a wide, translucent freehand stroke. Set its color, stroke width, and
+  opacity; the same smoothing control applies to new highlight strokes.
 - **Arrow / Line** draw from the press to the release; each endpoint stays independently editable.
 - **Rectangle** draws a border with an adjustable corner radius. Hold Shift for a square.
 - **Circle / ellipse** draws an ellipse inside the dragged box. Hold Shift for a circle.
-- **Triangle** draws an upright triangle inside the dragged box.
+- **Triangle** draws an upright triangle inside the dragged box. Rectangles, ellipses, triangles,
+  and closed paths also support a separate fill color and fill opacity, without fading the border.
 - **Path** connects clicked points. Drag while placing a point to give it smooth Bézier handles.
   Enter or double-click finishes an open path; clicking its first point closes a path with at least
   three points. Apply also finishes an open path. Escape discards an unfinished path, and Undo
   removes its last point. Choose another tool to finish a path with at least two points.
-- **Text** places a label where clicked; type before placing it, or click first and then type.
+- **Numbered callout** places the next numbered badge when clicked. Drag from the badge toward
+  its target to add an arrow; edit its short label in the property row. Badges retain their numbers
+  and stable IDs across edits and reopening, so a note can refer to “①” without relying on color alone.
+- **Text** opens an editor directly at the clicked position. Double-click an existing text mark or
+  select it and choose the pencil to reword it in place. Adjust wrapping width, font size, background
+  color, and contrasting outline. Enable **Leader** to connect a label to a target; moving the label
+  leaves that target in place, and its separate handle moves the target.
+- **Magnify** creates an enlarged inset from a rectangle dragged inside the original screenshot.
+  The inset has a connector and source outline; move it independently, resize it, edit its source
+  corners, or set its magnification from 1× to 8×. Magnification uses pixel-sharp original pixels,
+  never a crop containing other annotations, and cannot capture the blank margin.
 - The color swatch opens one popover containing saved colors and a custom picker. Custom choices
   are saved in browser storage for later use; Escape closes the color popover before the editor.
-- Properties appear only for the active tool or selected drawing: stroke width for strokes, corner
-  radius for rectangles, text size and a floating text box for text. Values use screenshot image
+- Properties appear only for the active tool or selected drawing. Values use screenshot image
   pixels, not CSS viewport coordinates.
 - **Select / edit** works immediately, before Apply or saving the note. New shapes automatically
-  switch to selection. Drag a border to move a drawing, or its corner/edge handles to resize it;
-  the opposite handle stays fixed, and dragging past it flips the box. Pen strokes resize with
-  their captured points; text handles scale the font. Arrow and line endpoints move independently.
-  The drawing selector also reaches overlapping marks. Recolor, reword, change properties, or delete
-  the selected drawing. Clear-all removes marks, not the screenshot.
+  switch to selection; pen, highlighter, and callout tools stay ready to place another mark.
+  Drag a border to move a drawing, or its corner/edge handles to resize it; the opposite handle
+  stays fixed, and dragging past it flips the box. Pen strokes resize with their captured points;
+  text handles scale the font. Arrow, line, and callout endpoints move independently.
+  The drawing selector also reaches overlapping or hidden marks. Recolor, reword, change properties,
+  or delete the selected drawing. Clear-all removes marks, not the screenshot.
 - Selected paths show their anchors and curve handles. Drag an anchor to move it with its controls;
   drag a control to reshape the curve. Select an anchor, then choose **Smooth point** to create aligned
   tangent handles or **Corner point** to remove its controls. Smooth handles retain their tangent axis
@@ -215,6 +228,10 @@ the editor; it is not exported.
   The wheel and trackpad pinch zoom around the pointer. `+`/`−` zoom, `0` fits, and `1` restores 100%.
   Choose the **Hand** icon and drag to move around a zoomed image. Space-drag and middle-button
   drag remain shortcuts. Navigation never changes the PNG.
+- **Show original** temporarily hides every mark; hold `O` for a momentary comparison, or use
+  the eye toggle to keep the original visible. The selected drawing's eye toggles just that mark,
+  which remains reachable in the drawing selector. These are preview controls: Apply always exports
+  all marks, including hidden ones, and visibility resets when the editor reopens.
 
 The checkmark, **Apply drawing**, uploads a separate PNG containing the original pixels, padding, and marks.
 Editable draft captures keep their marks, so reopening those drawings does not flatten the proposal.
@@ -224,20 +241,31 @@ input; it never changes the answered image. Reply-draft captures keep their draw
 is saved. An explicit edit of an unanswered original persists its drawing in place. Applying with no
 marks removes an editable draft's annotation. Existing image assets are never deleted.
 
-Escape cancels a live drag first, or discards an unfinished path. Otherwise, the close icon and Escape
-discard unapplied changes after confirmation when needed.
+Escape leaves an in-place text editor, cancels a live drag, or discards an unfinished path first.
+Otherwise, the close icon and Escape discard unapplied changes after confirmation when needed.
 Image or save failures leave the editor available for correction or retry. A stale edit from
 another tab is rejected rather than overwriting a newer proposal or attaching it to another capture.
+
+Completed changes, unfinished paths, and pending text positions are stored locally as editable
+metadata, not screenshot pixels or uploaded proposals. Reopening the same capture after a reload
+or closed tab offers **Restore draft** and **Discard draft** before drawing continues. Recovery
+does not apply anything automatically. Applying successfully or explicitly discarding the changes
+clears that draft. Records are isolated by repository, read, capture, and the applied drawing they
+started from; a different applied drawing is never replaced by stale recovery data. A concurrent
+editor's newer draft is not knowingly overwritten. Storage failures stay visible while drawing.
+Recovery requires the original capture to remain available, the same browser origin/port, and
+working browser storage; it does not recreate a deleted note or a missing screenshot.
 
 The page shows the annotated proposal with the original crop expandable below it. The Markdown
 links the untouched original and the annotated PNG separately and labels the proposal as requested
 changes rather than observed UI. Both are ordinary relative image links usable by image-capable
-agents; no SVG support is required. Full editable vectors live in the sealed metadata. Proposals
-containing the new vector tools also expose exact ordered marks in the readable JSON: shape bounds,
-line endpoints, path anchors, absolute Bézier controls, smooth/corner kinds, closure, colors, and
-stroke widths. The coordinate guide identifies the padded canvas origin and original-image offset,
-so drawing intent is not confused with captured UI. Legacy-tool-only proposals retain their compact
-readable summaries. Reference previews and history show the same evidence without annotation controls.
+agents; no SVG support is required. Full editable vectors live in the sealed metadata. Enhanced
+proposals also expose exact ordered marks in the readable JSON: shape bounds and fills, opacity,
+line endpoints, path anchors and Bézier controls, text styling and targets, stable callout IDs,
+numbers and labels, and magnifier source rectangles, positions, and scale. The coordinate guide
+identifies the padded canvas origin and original-image offset, so drawing intent is not confused
+with captured UI. Legacy-tool-only proposals retain their compact readable summaries. Reference
+previews and history show the same evidence without annotation controls.
 
 With AI context saving enabled, the editable vectors and detailed metadata live
 in the bundle's `capture` part instead. The review keeps both primary image links

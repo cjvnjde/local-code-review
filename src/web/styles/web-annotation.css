@@ -68,7 +68,8 @@
   min-height: var(--bar-height);
   padding: var(--space-2);
   background: var(--panel2);
-  overflow-x: auto;
+  flex-wrap: wrap;
+  overflow: visible;
   overscroll-behavior-x: contain;
   scrollbar-width: thin;
 }
@@ -78,6 +79,19 @@
   align-items: center;
   gap: var(--space-1);
   flex: none;
+}
+.annotation-properties {
+  order: 1;
+  flex-basis: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.annotation-group[aria-label="Tools"] {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
 }
 .annotation-tools > .annotation-group:first-child {
   background: var(--panel);
@@ -112,6 +126,20 @@
   width: calc(var(--space-4) * 5);
   padding: 0;
   accent-color: var(--accent);
+}
+.annotation-properties input[type="checkbox"] {
+  width: var(--tap);
+  height: var(--tap);
+  min-width: var(--tap);
+  margin: 0;
+  accent-color: var(--accent);
+}
+.annotation-properties input[type="color"] {
+  width: var(--tap);
+  padding: var(--space-1);
+}
+.annotation-properties input[data-field="label"] {
+  width: calc(var(--space-4) * 12);
 }
 .annotation-smoothing {
   min-width: calc(var(--space-3) * 3);
@@ -206,24 +234,24 @@
   cursor: pointer;
 }
 .annotation-text-label {
-  position: fixed;
-  top: calc(var(--bar-height) + var(--space-2));
-  left: var(--space-3);
+  position: absolute;
   z-index: 2;
-  width: min(calc(var(--space-4) * 20), calc(100vw - var(--space-3) * 2));
-  max-height: calc(100dvh - var(--bar-height) - var(--space-4) * 2);
-  overflow: auto;
-  padding: var(--space-2);
-  border: 1px solid var(--edge);
-  border-radius: var(--radius-md);
-  background: var(--panel2);
-  box-shadow: 0 2px 8px var(--shadow);
+  max-width: none;
+  line-height: normal;
 }
 .annotation-text-label textarea {
   display: block;
+  box-sizing: border-box;
   width: 100%;
-  resize: vertical;
-  max-height: calc(100dvh - var(--bar-height) - var(--space-4) * 3);
+  min-height: var(--tap);
+  max-height: none;
+  resize: none;
+  overflow: hidden;
+  padding: 0;
+  border: 1px dashed var(--accent);
+  border-radius: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .annotation-help {
   position: absolute;
@@ -304,6 +332,22 @@
 .annotation-error {
   color: var(--del);
   background: var(--del-bg);
+}
+.annotation-recovery {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--panel2);
+  border-top: 1px solid var(--edge);
+}
+[data-annotation-editor] .annotation-recovery button {
+  width: auto;
+  padding-inline: var(--space-3);
+  background: var(--sel);
+  color: var(--accent);
 }
 [data-annotation-editor] [data-command="retry"] {
   width: auto;

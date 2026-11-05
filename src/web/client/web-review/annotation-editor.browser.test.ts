@@ -28,6 +28,7 @@ async function withEditor(
     key(key: string): Promise<void>;
     save(): Promise<WebAnnotation>;
     reopen(): Promise<void>;
+    reload(): Promise<void>;
   }) => Promise<void>,
 ) {
   const bundle = await Bun.build({
@@ -69,7 +70,7 @@ async function withEditor(
       return new Response(
         `<!doctype html><link rel="stylesheet" href="/styles/index.css"><textarea id="note">Keep my note</textarea><script type="module">
       import {openAnnotation} from '/editor.js';
-      const c=document.createElement('canvas');c.width=640;c.height=400;const ctx=c.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,640,400);ctx.fillStyle='#111';ctx.fillText('Original screenshot',30,30);
+      const c=document.createElement('canvas');c.width=640;c.height=400;const ctx=c.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,640,400);ctx.fillStyle='#111';ctx.fillText('Original screenshot',30,30);ctx.fillStyle='#16803c';ctx.fillRect(240,80,40,40);
       const encoded=Promise.withResolvers();c.toBlob(encoded.resolve);
       await fetch('/source',{method:'POST',body:await encoded.promise});
       window.capture={mode:'area',url:location.origin,title:'Test',viewport:{width:640,height:400,dpr:1},scroll:{x:0,y:0},rect:{x:0,y:0,width:640,height:400},page:'images/source.png',area:'images/source.png'};
@@ -183,7 +184,19 @@ async function withEditor(
         '!!document.querySelector("[data-command=apply]")&&!document.querySelector("[data-command=apply]").disabled',
       );
     };
-    await run({ js, click, drag, point, key, save, reopen });
+    const reload = async () => {
+      const loaded = Promise.withResolvers<void>();
+      const off = chrome!.cdp.on("Page.loadEventFired", (_, session) => {
+        if (session === sessionId) loaded.resolve();
+      });
+      await send("Page.reload");
+      await loaded.promise;
+      off();
+      await until(
+        '!!document.querySelector("[data-command=restore-draft]")&&!document.querySelector("[data-command=restore-draft]").disabled',
+      );
+    };
+    await run({ js, click, drag, point, key, save, reopen, reload });
   } finally {
     await chrome?.close();
     server.stop(true);
@@ -393,6 +406,184 @@ browserTest(
       );
       expect(await js("capture.area")).toBe("images/source.png");
     });
+  },
+  30000,
+);
+
+browserTest(
+  "numbered callouts keep identity and labels; translucent marks and visibility export all drawings",
+  async () => {
+    await withEditor(async ({ click, point, drag, js, save, reopen }) => {
+      const change = (field: string, value: unknown) =>
+        js(`(()=>{
+        const el=document.querySelector('[data-field="${field}"]');
+        if(el.type==='checkbox')el.checked=${JSON.stringify(value)};
+        else el.value=${JSON.stringify(value)};
+        el.dispatchEvent(new Event('change',{bubbles:true}));
+      })()`);
+      await click("[data-tool=callout]");
+      await drag({ x: 120, y: 120 }, { x: 220, y: 200 });
+      await change("label", "Align with ②");
+      await point({ x: 450, y: 110 });
+      await click("[data-tool=rectangle]");
+      await change("fill", true);
+      await change("opacity", "25");
+      await drag({ x: 400, y: 300 }, { x: 550, y: 380 });
+      await click("[data-tool=highlighter]");
+      await drag({ x: 120, y: 340 }, { x: 280, y: 340 });
+      const pixel = () =>
+        js(`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>{
+        resolve([...document.querySelector('canvas').getContext('2d').getImageData(200,340,1,1).data]);
+      })))`);
+      const highlighted = await pixel();
+      expect(highlighted).not.toEqual([255, 255, 255, 255]);
+      await click("[data-command=visibility]");
+      expect(await pixel()).toEqual([255, 255, 255, 255]);
+      await click("[data-command=visibility]");
+      expect(await pixel()).toEqual(highlighted);
+      await click("[data-command=original]");
+      expect(await pixel()).toEqual([255, 255, 255, 255]);
+      await click("[data-command=visibility]");
+      const first = await save(); // Original/hidden are preview-only, never export options.
+      expect(first.marks[0]).toMatchObject({
+        tool: "callout",
+        number: 1,
+        label: "Align with ②",
+      });
+      expect(first.marks[1]).toMatchObject({
+        tool: "callout",
+        number: 2,
+        label: "",
+      });
+      expect(first.marks[2]).toMatchObject({
+        tool: "rectangle",
+        fill: "#eab308",
+        opacity: 0.25,
+      });
+      expect(first.marks[3]).toMatchObject({
+        tool: "highlighter",
+        opacity: 0.25,
+      });
+      expect(
+        await js(`(async()=>{
+        const image=await createImageBitmap(await(await fetch('/api/attachment?name=proposal.png')).blob());
+        const c=document.createElement('canvas');c.width=image.width;c.height=image.height;
+        c.getContext('2d').drawImage(image,0,0);image.close();
+        return [...c.getContext('2d').getImageData(200,340,1,1).data];
+      })()`),
+      ).toEqual(highlighted);
+      await reopen();
+      const second = await save();
+      expect(second.marks).toEqual(first.marks);
+    });
+  },
+  30000,
+);
+
+browserTest(
+  "text edits in place with wrapping, background, outline and an independent leader; insets magnify original pixels",
+  async () => {
+    await withEditor(async ({ click, point, drag, js, save, reopen }) => {
+      await click("[data-tool=text]");
+      await point({ x: 120, y: 280 });
+      await js(`(()=>{
+        const el=document.querySelector('[data-field=text]');
+        el.value='This label wraps over the screenshot';el.dispatchEvent(new Event('input',{bubbles:true}));
+        for(const [name,value] of [['wrap','120'],['text-outline',true],['text-leader',true]]){
+          const field=document.querySelector('[data-field="'+name+'"]');
+          if(field.type==='checkbox')field.checked=value;else field.value=value;
+          field.dispatchEvent(new Event('change',{bubbles:true}));
+        }
+      })()`);
+      const location = await js(`(()=>{
+        const t=document.querySelector('[data-field=text]').getBoundingClientRect();
+        const c=document.querySelector('canvas').getBoundingClientRect();return {x:t.x-c.x,y:t.y-c.y,zoom:c.width/document.querySelector('canvas').width};
+      })()`);
+      expect(location.x / location.zoom).toBeCloseTo(120);
+      expect(location.y / location.zoom).toBeCloseTo(280);
+      await click("[data-tool=select]");
+      await click("[data-command=edit-text]");
+      await js(`(()=>{
+        const el=document.querySelector('[data-field=text]');el.value='Reworded label';
+        el.dispatchEvent(new Event('input',{bubbles:true}));
+      })()`);
+      await click("[data-tool=magnifier]");
+      await drag({ x: 300, y: 140 }, { x: 360, y: 200 });
+      const first = await save();
+      expect(first.marks[0]).toMatchObject({
+        tool: "text",
+        text: "Reworded label",
+        wrap: 120,
+        background: "#ffffff",
+        outline: true,
+        target: { x: 180, y: 360 },
+      });
+      expect(first.marks[1]).toMatchObject({
+        tool: "magnifier",
+        from: { x: 300, y: 140 },
+        to: { x: 360, y: 200 },
+        scale: 3,
+      });
+      const inset = first.marks[1]!;
+      if (inset.tool !== "magnifier") throw new Error("Expected inset");
+      expect(
+        await js(`(async()=>{
+        const image=await createImageBitmap(await(await fetch('/api/attachment?name=proposal.png')).blob());
+        const c=document.createElement('canvas');c.width=image.width;c.height=image.height;
+        c.getContext('2d').drawImage(image,0,0);image.close();
+        return [...c.getContext('2d').getImageData(${inset.at.x + 72},${inset.at.y + 72},1,1).data];
+      })()`),
+      ).toEqual([22, 128, 60, 255]);
+      await reopen();
+      const second = await save();
+      expect(second.marks).toEqual(first.marks);
+      expect(await js("capture.area")).toBe("images/source.png");
+    });
+  },
+  30000,
+);
+
+browserTest(
+  "reload offers local recovery of marks and unfinished paths; restore, apply and explicit discard clear recovery",
+  async () => {
+    await withEditor(
+      async ({ click, drag, point, js, reload, save, reopen }) => {
+        await click("[data-tool=callout]");
+        await point({ x: 140, y: 140 });
+        await click("[data-tool=path]");
+        await point({ x: 250, y: 250 });
+        await reload();
+        expect(await js("applied.length")).toBe(0);
+        expect(
+          await js("document.querySelector('[data-command=apply]').disabled"),
+        ).toBe(true);
+        await click("[data-command=restore-draft]");
+        await point({ x: 350, y: 300 });
+        const result = await save();
+        expect(result.marks[0]).toMatchObject({ tool: "callout", number: 1 });
+        expect(result.marks[1]).toMatchObject({
+          tool: "path",
+          nodes: [
+            { x: 250, y: 250, kind: "corner" },
+            { x: 350, y: 300, kind: "corner" },
+          ],
+        });
+        expect(
+          await js(
+            "Object.keys(localStorage).filter(k=>k.startsWith('lcr:annotation-draft:'))",
+          ),
+        ).toEqual([]);
+        await reopen();
+        await click("[data-tool=rectangle]");
+        await drag({ x: 400, y: 300 }, { x: 500, y: 380 });
+        await click("[data-command=cancel]");
+        expect(
+          await js(
+            "Object.keys(localStorage).filter(k=>k.startsWith('lcr:annotation-draft:'))",
+          ),
+        ).toEqual([]);
+      },
+    );
   },
   30000,
 );

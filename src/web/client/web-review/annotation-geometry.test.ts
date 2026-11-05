@@ -6,6 +6,7 @@ import {
   type AnnotationPoint,
 } from "../../../shared/web-annotation.ts";
 import {
+  drawMark,
   editHandle,
   hitMark,
   insertPathNode,
@@ -14,6 +15,7 @@ import {
   moveMark,
   nearestPathSegment,
   smoothNode,
+  textLines,
   type AnnotationHandle,
 } from "./annotation-geometry.ts";
 
@@ -1079,5 +1081,421 @@ describe("nearest insertion segment", () => {
     expect(hitMark({ ...mark, tool: "line" }, wing, 0, undefined, 2)).toBe(
       false,
     );
+  });
+});
+
+const callout: Extract<AnnotationMark, { tool: "callout" }> = {
+  tool: "callout",
+  id: "45a655ed-8e1e-4f42-a59c-8a9e69ba81f3",
+  number: 7,
+  label: "",
+  color: "#ffff00",
+  width: 2,
+  size: 24,
+  from: { x: 40, y: 40 },
+  to: { x: 100, y: 100 },
+};
+const magnifier: Extract<AnnotationMark, { tool: "magnifier" }> = {
+  tool: "magnifier",
+  color,
+  width: 2,
+  from: { x: 20, y: 20 },
+  to: { x: 40, y: 35 },
+  at: { x: 70, y: 80 },
+  scale: 3,
+};
+
+describe("enhanced drawing geometry", () => {
+  test("word wrapping preserves newlines, empty paragraphs and Unicode long runs using measured widths", () => {
+    const measure = (line: string) => Array.from(line).length * 5;
+    const mark = {
+      ...text,
+      text: "one two\n\nabcdef",
+      wrap: 20,
+      background: "#ffffff",
+      target: { x: 180, y: 140 },
+    };
+    expect(textLines(mark, measure)).toEqual(["one", "two", "", "abcd", "ef"]);
+    expect(markBounds(mark, measure)).toEqual({
+      x: 20,
+      y: 30,
+      width: 28,
+      height: 70.5,
+    });
+    expect(textLines({ ...mark, text: "😀😀😀", wrap: 10 }, measure)).toEqual([
+      "😀😀",
+      "😀",
+    ]);
+    expect(textLines({ ...mark, text: "a\n\n", wrap: 10 }, measure)).toEqual([
+      "a",
+      "",
+      "",
+    ]);
+    const moved = moveMark(frozen(mark), 1000, 1000, canvas, measure);
+    expect(markBounds(moved, measure)).toEqual({
+      x: 172,
+      y: 79.5,
+      width: 28,
+      height: 70.5,
+    });
+    expect(moved).toMatchObject({ target: { x: 180, y: 140 } });
+    const target = markHandles(mark, measure)[0]!;
+    expect(target).toEqual({ kind: "target", x: 180, y: 140 });
+    expect(
+      editHandle(mark, target, { x: 500, y: -100 }, canvas, measure),
+    ).toMatchObject({ target: { x: 200, y: 0 }, at: mark.at });
+    expect(hitMark(mark, { x: 150, y: 123 }, 4, measure)).toBe(true);
+  });
+
+  test("text scaling retains wrapping and anchored leaders without modifying the original", () => {
+    const mark = frozen({
+      ...text,
+      text: "abcd efgh",
+      wrap: 40,
+      target: { x: 180, y: 140 },
+    });
+    const resized = editHandle(mark, resize("se"), { x: 100, y: 80 }, canvas);
+    expect(resized.tool).toBe("text");
+    if (resized.tool !== "text") throw new Error("Expected text");
+    expect(resized.wrap! / resized.size).toBeCloseTo(mark.wrap / mark.size);
+    expect(resized.target).toEqual(mark.target);
+    expectInside(resized);
+    expect(mark.size).toBe(10);
+  });
+
+  test("filled interiors are selectable while transparent fills and hollow empty spaces are not", () => {
+    for (const tool of ["rectangle", "ellipse", "triangle"] as const) {
+      const mark = { ...rectangle, tool };
+      expect(hitMark(mark, { x: 50, y: 50 }, 0)).toBe(false);
+      expect(
+        hitMark(
+          { ...mark, fill: "#ffff00", opacity: 0.3 },
+          { x: 50, y: 50 },
+          0,
+        ),
+      ).toBe(true);
+      expect(
+        hitMark({ ...mark, fill: "#ffff00", opacity: 0 }, { x: 50, y: 50 }, 0),
+      ).toBe(false);
+      expect(hitMark({ ...mark, fill: "#ffff00" }, { x: 0, y: 0 }, 0)).toBe(
+        false,
+      );
+    }
+    expect(
+      hitMark({ ...rectangle, fill: "#ffff00" }, { x: 20, y: 30 }, 0),
+    ).toBe(false);
+    const curved = {
+      ...path([
+        { ...node(20, 80), out: { x: 20, y: 0 } },
+        { ...node(100, 80), in: { x: 100, y: 0 } },
+      ]),
+      fill: "#ffff00",
+      opacity: 0.5,
+    };
+    expect(hitMark(curved, { x: 60, y: 40 }, 0)).toBe(true);
+    expect(hitMark({ ...curved, fill: undefined }, { x: 60, y: 40 }, 0)).toBe(
+      false,
+    );
+    expect(hitMark(curved, { x: 60, y: 0 }, 0)).toBe(false);
+  });
+
+  test("highlighters retain sampled geometry and opacity under movement and resizing", () => {
+    const mark = frozen({
+      tool: "highlighter",
+      color,
+      width: 20,
+      opacity: 0.25,
+      points: [
+        { x: 20, y: 30 },
+        { x: 80, y: 50 },
+      ],
+    } as const);
+    const mutable = { ...mark, points: [...mark.points] };
+    expect(hitMark(mutable, { x: 50, y: 48 }, 0)).toBe(true);
+    expect(hitMark(mutable, { x: 50, y: 70 }, 0)).toBe(false);
+    expect(moveMark(mutable, 5, 10, canvas)).toMatchObject({
+      opacity: 0.25,
+      points: [
+        { x: 25, y: 40 },
+        { x: 85, y: 60 },
+      ],
+    });
+    expect(
+      editHandle(mutable, resize("se"), { x: 140, y: 70 }, canvas),
+    ).toMatchObject({
+      opacity: 0.25,
+      points: [
+        { x: 20, y: 30 },
+        { x: 140, y: 70 },
+      ],
+    });
+  });
+
+  test("callout badge and leader select independently of empty bounding-box space and IDs survive edits", () => {
+    expect(markHandles(callout)).toEqual([
+      { kind: "endpoint", end: "from", x: 40, y: 40 },
+      { kind: "endpoint", end: "to", x: 100, y: 100 },
+    ]);
+    expect(hitMark(callout, { x: 30, y: 40 }, 0)).toBe(true);
+    expect(hitMark(callout, { x: 80, y: 80 }, 0)).toBe(true);
+    const horizontal = {
+      ...callout,
+      from: { x: 20, y: 40 },
+      to: { x: 120, y: 40 },
+    };
+    expect(hitMark(horizontal, { x: 111.34, y: 35 }, 0)).toBe(true);
+    expect(hitMark(horizontal, { x: 110, y: 28 }, 0)).toBe(false);
+    expect(hitMark(callout, { x: 30, y: 90 }, 0)).toBe(false);
+    expect(hitMark({ ...callout, label: "Label" }, { x: 65, y: 40 }, 0)).toBe(
+      true,
+    );
+    const moved = moveMark(frozen(callout), -1000, -1000, canvas);
+    expectInside(moved);
+    expect(moved).toMatchObject({ id: callout.id, number: 7 });
+    expect(
+      editHandle(callout, markHandles(callout)[1]!, { x: 200, y: 150 }, canvas),
+    ).toMatchObject({
+      id: callout.id,
+      number: 7,
+      from: callout.from,
+      to: { x: 200, y: 150 },
+    });
+  });
+
+  test("magnifier bounds describe the inset, movement preserves source, and source handles enforce padding and destination fit", () => {
+    expect(markBounds(magnifier)).toEqual({
+      x: 70,
+      y: 80,
+      width: 60,
+      height: 45,
+    });
+    expect(markHandles(magnifier)).toHaveLength(10);
+    const moved = moveMark(frozen(magnifier), 1000, -1000, canvas);
+    expect(moved).toMatchObject({
+      at: { x: 140, y: 0 },
+      from: magnifier.from,
+      to: magnifier.to,
+      scale: 3,
+    });
+    expect(hitMark(magnifier, { x: 100, y: 100 }, 0)).toBe(true);
+    expect(hitMark(magnifier, { x: 20, y: 25 }, 0)).toBe(true);
+    expect(hitMark(magnifier, { x: 25, y: 25 }, 0)).toBe(false);
+    const edited = editHandle(
+      magnifier,
+      markHandles(magnifier)[1]!,
+      { x: 1000, y: 1000 },
+      { ...canvas, padding: 20 },
+    );
+    if (edited.tool !== "magnifier") throw new Error("Expected magnifier");
+    expect(edited.to.x).toBeCloseTo(20 + 130 / 3);
+    expect(edited.to.y).toBeCloseTo(20 + 70 / 3);
+    expectInside(edited);
+    const origin = editHandle(
+      magnifier,
+      markHandles(magnifier)[0]!,
+      { x: 0, y: 0 },
+      { ...canvas, padding: 20 },
+    );
+    expect(origin).toMatchObject({ from: { x: 20, y: 20 } });
+    const collapsed = editHandle(
+      magnifier,
+      markHandles(magnifier)[1]!,
+      magnifier.from,
+      { ...canvas, padding: 20 },
+    );
+    expect(collapsed).toMatchObject({ to: { x: 21, y: 21 } });
+  });
+
+  test("magnifier resize clamps enlargement and never changes or distorts the source rectangle", () => {
+    for (const edge of ["nw", "n", "ne", "e", "se", "s", "sw", "w"] as const) {
+      const changed = editHandle(
+        frozen(magnifier),
+        resize(edge),
+        { x: 1000, y: 1000 },
+        canvas,
+      );
+      if (changed.tool !== "magnifier") throw new Error("Expected magnifier");
+      expect(changed.from).toEqual(magnifier.from);
+      expect(changed.to).toEqual(magnifier.to);
+      expect(changed.scale).toBeGreaterThanOrEqual(1);
+      expect(changed.scale).toBeLessThanOrEqual(8);
+      expectInside(changed);
+      expect(
+        markBounds(changed).width / markBounds(changed).height,
+      ).toBeCloseTo(20 / 15);
+    }
+  });
+});
+
+type PaintOperation = {
+  name: string;
+  args: unknown[];
+  alpha: number;
+  fill: unknown;
+  stroke: unknown;
+  lineWidth: unknown;
+};
+function recordingContext() {
+  const operations: PaintOperation[] = [],
+    stack: Record<string, unknown>[] = [];
+  const state: Record<string, unknown> = {
+    globalAlpha: 1,
+    fillStyle: "#000000",
+    strokeStyle: "#000000",
+    lineWidth: 1,
+    font: "10px sans-serif",
+  };
+  const ctx = new Proxy(state, {
+    get(target, name: string) {
+      if (name in target) return target[name];
+      if (name === "measureText")
+        return (line: string) => ({
+          width:
+            (Array.from(line).length *
+              Number(String(target.font).match(/[\d.]+/)?.[0] ?? 10)) /
+            2,
+        });
+      return (...args: unknown[]) => {
+        operations.push({
+          name,
+          args,
+          alpha: Number(target.globalAlpha),
+          fill: target.fillStyle,
+          stroke: target.strokeStyle,
+          lineWidth: target.lineWidth,
+        });
+        if (name === "save") stack.push({ ...target });
+        if (name === "restore") Object.assign(target, stack.pop());
+      };
+    },
+    set(target, name: string, value: unknown) {
+      target[name] = value;
+      return true;
+    },
+  }) as unknown as CanvasRenderingContext2D;
+  return { ctx, operations, state };
+}
+
+describe("enhanced drawing painting", () => {
+  test("shape transparency affects fill only and highlighter opacity affects the complete stroke", () => {
+    const { ctx, operations, state } = recordingContext();
+    drawMark(ctx, { ...rectangle, fill: "#ffff00", opacity: 0.25 });
+    expect(operations.find((op) => op.name === "fill")).toMatchObject({
+      alpha: 0.25,
+      fill: "#ffff00",
+    });
+    expect(operations.find((op) => op.name === "stroke")).toMatchObject({
+      alpha: 1,
+      stroke: color,
+    });
+    drawMark(ctx, {
+      tool: "highlighter",
+      color: "#ffff00",
+      width: 20,
+      opacity: 0.4,
+      points: [
+        { x: 0, y: 0 },
+        { x: 30, y: 30 },
+      ],
+    });
+    expect(
+      operations.filter((op) => op.name === "stroke").at(-1),
+    ).toMatchObject({ alpha: 0.4 });
+    expect(state.globalAlpha).toBe(1);
+    drawMark(ctx, {
+      tool: "highlighter",
+      color: "#ffff00",
+      width: 20,
+      opacity: 0.2,
+      points: [{ x: 10, y: 10 }],
+    });
+    expect(operations.filter((op) => op.name === "fill").at(-1)).toMatchObject({
+      alpha: 0.2,
+    });
+  });
+
+  test("text painting and bounds use identical wrapping and include background, contrast outline and leader", () => {
+    const { ctx, operations } = recordingContext();
+    const mark = {
+      ...text,
+      text: "one two\n\nabcdef",
+      wrap: 20,
+      background: "#ffffff",
+      outline: true,
+      target: { x: 180, y: 140 },
+    };
+    drawMark(ctx, mark, 2);
+    const painted = operations.filter((op) => op.name === "fillText");
+    expect(painted.map((op) => op.args[0])).toEqual([
+      "one",
+      "two",
+      "",
+      "abcd",
+      "ef",
+    ]);
+    expect(painted[0]!.args.slice(1)).toEqual([24, 34]);
+    expect(painted.at(-1)!.args.slice(1)).toEqual([24, 84]);
+    expect(operations.find((op) => op.name === "fillRect")!.args).toEqual([
+      20, 30, 28, 70.5,
+    ]);
+    expect(operations.find((op) => op.name === "moveTo")!.args).toEqual([
+      180, 140,
+    ]);
+    expect(operations.filter((op) => op.name === "strokeText")).toHaveLength(5);
+    expect(operations.find((op) => op.name === "strokeText")).toMatchObject({
+      lineWidth: 4,
+      stroke: "#000000",
+    });
+  });
+
+  test("callout numbers contrast with their badge and labels render as readable text", () => {
+    for (const [color, ink] of [
+      ["#ffff00", "#000000"],
+      ["#000088", "#ffffff"],
+    ] as const) {
+      const { ctx, operations } = recordingContext();
+      drawMark(ctx, { ...callout, color, label: "Readable label" });
+      expect(operations.find((op) => op.name === "fillText")).toMatchObject({
+        fill: ink,
+        args: ["7", 40, 40, 20.4],
+      });
+      expect(
+        operations
+          .filter((op) => op.name === "fillText")
+          .slice(1)
+          .map((op) => op.args[0]),
+      ).toEqual(["Readable label"]);
+      expect(operations.some((op) => op.name === "fillRect")).toBe(true);
+    }
+  });
+
+  test("magnifiers draw one original-only crop using padding-correct coordinates, border and source guide", () => {
+    const { ctx, operations } = recordingContext(),
+      image = {} as CanvasImageSource;
+    drawMark(ctx, { ...magnifier, from: magnifier.to, to: magnifier.from }, 2, {
+      image,
+      padding: 20,
+    });
+    expect(operations.filter((op) => op.name === "drawImage")).toHaveLength(1);
+    expect(operations.find((op) => op.name === "drawImage")!.args).toEqual([
+      image,
+      0,
+      0,
+      20,
+      15,
+      70,
+      80,
+      60,
+      45,
+    ]);
+    expect(
+      operations.filter((op) => op.name === "strokeRect").map((op) => op.args),
+    ).toEqual([
+      [20, 20, 20, 15],
+      [70, 80, 60, 45],
+    ]);
+    expect(operations.find((op) => op.name === "setLineDash")!.args).toEqual([
+      [10, 6],
+    ]);
   });
 });

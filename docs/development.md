@@ -178,8 +178,10 @@ cross-origin isolation, and history Back/Forward navigation over an unsaved edit
 ordinary suite so contributors still need only Bun and Git.
 The focused drawing workflow exercises pre-save resizing, new shapes, endpoint and curve edits,
 point insertion/deletion, path closure, cancel/undo/redo, reopening vectors, and PNG guide exclusion.
-Its browser uses an isolated profile and a local screenshot/upload fixture; pure geometry and
-metadata boundary/roundtrip tests run in the ordinary suite.
+It also covers stable numbered callouts, translucent highlights and fills, in-place styled text,
+original-only magnified insets, preview-only visibility, and reload recovery with apply/discard.
+Its browser uses an isolated profile and a local screenshot/upload fixture; pure geometry,
+metadata boundary/roundtrip, and isolated draft-storage concurrency tests run in the ordinary suite.
 The context workflows cover frozen HTML/full-document evidence, capture-time
 privacy settings, immutable drawing revisions, upload failures, editor protection,
 selective authenticated reads, bounded text previews, and object-URL cleanup.

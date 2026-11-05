@@ -374,6 +374,10 @@ They never enter the URL or browser-history state and do not survive a reload. S
 cancelling an editor finishes that draft. Drawing changes require confirmation before being discarded;
 an in-flight save blocks traversal until it finishes. Browser navigation never undoes a saved note,
 reply, or drawing.
+Screenshot drawings have separate browser-local recovery: reopening the same capture can offer
+its unfinished editable marks after a reload or closed tab. This does not restore unsent note or
+reply text, apply drawings automatically, or replace an already changed applied drawing.
+See [drawing recovery and controls](web-ui.md#draw-on-a-capture).
 
 ### Review revision history
 

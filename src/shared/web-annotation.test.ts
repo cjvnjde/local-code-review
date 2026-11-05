@@ -506,3 +506,249 @@ describe("vector annotation review metadata", () => {
     expect(webReviewLines(web).join("\n")).toBe(expected);
   });
 });
+
+const enhancedMarks = (): AnnotationMark[] => [
+  {
+    tool: "callout",
+    id: "e5a9d110-8677-4adb-8728-0fcb81393006",
+    number: 1,
+    label: "Move this control",
+    color: "#ffff00",
+    width: 2,
+    size: 24,
+    from: { x: 30, y: 30 },
+    to: { x: 80, y: 60 },
+  },
+  {
+    tool: "highlighter",
+    color: "#ffee00",
+    width: 20,
+    opacity: 0.25,
+    points: [
+      { x: 20, y: 40 },
+      { x: 80, y: 40 },
+    ],
+  },
+  {
+    tool: "rectangle",
+    color: "#123456",
+    width: 2,
+    from: { x: 10, y: 10 },
+    to: { x: 90, y: 70 },
+    radius: 4,
+    fill: "#abcdef",
+    opacity: 0,
+  },
+  {
+    tool: "ellipse",
+    color: "#123456",
+    width: 2,
+    from: { x: 10, y: 10 },
+    to: { x: 90, y: 70 },
+    fill: "#abcdef",
+    opacity: 1,
+  },
+  {
+    tool: "triangle",
+    color: "#123456",
+    width: 2,
+    from: { x: 10, y: 10 },
+    to: { x: 90, y: 70 },
+    fill: "#abcdef",
+    opacity: 0.4,
+  },
+  { ...pathMark(), fill: "#abcdef", opacity: 0.5 },
+  {
+    tool: "text",
+    color: "#123456",
+    at: { x: 5, y: 5 },
+    text: "Readable\nconnected label",
+    size: 12,
+    wrap: 100,
+    background: "#ffffff",
+    outline: true,
+    target: { x: 60, y: 60 },
+  },
+  {
+    tool: "magnifier",
+    color: "#123456",
+    width: 2,
+    from: { x: 20, y: 20 },
+    to: { x: 40, y: 35 },
+    at: { x: 60, y: 70 },
+    scale: 3,
+  },
+];
+
+describe("enhanced drawing metadata", () => {
+  test("roundtrips every field with stable callout identity and detached coordinates", () => {
+    const input = annotation(enhancedMarks());
+    const clean = webAnnotation(input)!;
+    expect(clean).toEqual(input);
+    expect(webAnnotation(clean)).toEqual(input);
+    expect(webAnnotation(JSON.parse(JSON.stringify(input)))).toEqual(input);
+    for (let i = 0; i < input.marks.length; i++) {
+      const original = input.marks[i]!,
+        detached = clean.marks[i]!;
+      for (const key of ["from", "to", "at", "target", "points"] as const) {
+        if (key in original) {
+          expect(
+            (detached as unknown as Record<string, unknown>)[key],
+          ).not.toBe((original as unknown as Record<string, unknown>)[key]);
+        }
+      }
+    }
+    for (let i = 0; i < input.marks.length; i++)
+      expect(clean.marks[i]).not.toBe(input.marks[i]);
+    const callout = clean.marks[0];
+    if (callout?.tool !== "callout") throw new Error("Expected callout");
+    expect(callout.id).toBe("e5a9d110-8677-4adb-8728-0fcb81393006");
+    callout.from.x = 99;
+    expect(input.marks[0]).toMatchObject({ from: { x: 30 } });
+    const withUnknown = enhancedMarks().map((mark) => {
+      const hostile: Record<string, unknown> = { ...mark, unknown: "drop" };
+      for (const key of ["from", "to", "at", "target"] as const) {
+        const at = hostile[key];
+        if (at) hostile[key] = { ...(at as object), unknown: "drop" };
+      }
+      if ("points" in mark)
+        hostile.points = mark.points.map((at) => ({ ...at, unknown: "drop" }));
+      return hostile;
+    });
+    expect(
+      JSON.stringify(webAnnotation({ ...annotation(), marks: withUnknown })),
+    ).not.toContain("drop");
+  });
+
+  test("rejects invalid or duplicate callout identities and numbers", () => {
+    const callout = enhancedMarks()[0]!;
+    for (const id of ["", "not-a-uuid", 1, null])
+      rejectsMark({ ...callout, id });
+    for (const number of [0, -1, 1.5, Infinity, NaN, "1"])
+      rejectsMark({ ...callout, number });
+    rejectsMark({
+      ...callout,
+      label: "a".repeat(ANNOTATION_LIMITS.maxCalloutLabel + 1),
+    });
+    expect(webAnnotation(annotation([callout, { ...callout }]))).toBeNull();
+    expect(
+      webAnnotation(
+        annotation([
+          callout,
+          { ...callout, id: "e5a9d110-8677-4adb-8728-0fcb81393007" },
+        ]),
+      ),
+    ).toBeNull();
+    expect(
+      webAnnotation(annotation([callout, { ...callout, number: 2 }])),
+    ).toBeNull();
+    expect(
+      webAnnotation(
+        annotation([
+          callout,
+          { ...callout, id: "e5a9d110-8677-4adb-8728-0fcb81393007", number: 2 },
+        ]),
+      ),
+    ).not.toBeNull();
+  });
+
+  test("bounds fill/highlighter opacity and whitelists optional text presentation", () => {
+    for (const mark of enhancedMarks().filter((mark) => "opacity" in mark)) {
+      for (const opacity of [-0.01, 1.01, NaN, Infinity, "0.5", null])
+        rejectsMark({ ...mark, opacity });
+      for (const opacity of [0, 1])
+        expect(
+          webAnnotation(annotation([{ ...mark, opacity }])),
+        ).not.toBeNull();
+    }
+    const text = enhancedMarks()[6]!;
+    for (const wrap of [
+      0,
+      -1,
+      ANNOTATION_LIMITS.maxDimension + 1,
+      Infinity,
+      NaN,
+      "20",
+    ])
+      rejectsMark({ ...text, wrap });
+    for (const background of ["red", "#fff", "#00000000", null])
+      rejectsMark({ ...text, background });
+    for (const outline of [null, 0, "true"]) rejectsMark({ ...text, outline });
+    rejectsMark({ ...text, target: { x: 141, y: 0 } });
+    for (const mark of enhancedMarks().filter((mark) => "fill" in mark))
+      rejectsMark({ ...mark, fill: "rgba(0,0,0,.5)" });
+  });
+
+  test("magnifiers crop only original pixels and keep the scaled destination inside padding-aware canvas", () => {
+    const magnifier = enhancedMarks()[7]!;
+    for (const from of [
+      { x: 19.99, y: 20 },
+      { x: 20, y: 19.99 },
+    ])
+      rejectsMark({ ...magnifier, from });
+    for (const to of [
+      { x: 120.01, y: 35 },
+      { x: 40, y: 100.01 },
+      { x: 20, y: 35 },
+      { x: 40, y: 20 },
+    ])
+      rejectsMark({ ...magnifier, to });
+    for (const scale of [0, 0.99, 8.01, Infinity, NaN, "2"])
+      rejectsMark({ ...magnifier, scale });
+    rejectsMark({ ...magnifier, at: { x: 81, y: 70 } });
+    rejectsMark({ ...magnifier, at: { x: 60, y: 76 } });
+    expect(
+      webAnnotation(annotation([{ ...magnifier, at: { x: 80, y: 75 } }])),
+    ).not.toBeNull();
+    expect(
+      webAnnotation(
+        annotation([
+          { ...magnifier, from: { x: 40, y: 35 }, to: { x: 20, y: 20 } },
+        ]),
+      ),
+    ).not.toBeNull();
+    expect(
+      webAnnotation(
+        annotation([
+          {
+            ...magnifier,
+            from: { x: 20, y: 20 },
+            to: { x: 30, y: 30 },
+            at: { x: 0, y: 0 },
+            scale: 8,
+          },
+        ]),
+      ),
+    ).not.toBeNull();
+  });
+
+  test("review geometry exposes callout labels and original-only magnifier semantics without losing sealed metadata", () => {
+    const web: WebReview = {
+      before: { ...capture(), annotation: annotation(enhancedMarks()) },
+      after: [],
+    };
+    const lines = webReviewLines(web).join("\n"),
+      block = lines.match(/(`{3,})json\n([\s\S]*?)\n\1/)!;
+    const summary = JSON.parse(block[2]!).annotation;
+    expect(summary.marks).toEqual(web.before.annotation!.marks);
+    expect(summary.toolCounts).toMatchObject({
+      callout: 1,
+      highlighter: 1,
+      magnifier: 1,
+    });
+    expect(summary.marks[0].label).toBe("Move this control");
+    expect(lines).toContain("Insets sample only original pixels");
+    const note = noteFromComment({
+      id: "|@|@|#enhanced",
+      file: "",
+      scope: "global",
+      start: 0,
+      end: 0,
+      body: "Intent",
+      web,
+    });
+    const markdown = renderMarkdown({ range: "web", notes: [note] });
+    expect(parseReview(markdown).notes[0]!.web).toEqual(web);
+    expect(renderMarkdown(parseReview(markdown))).toBe(markdown);
+  });
+});

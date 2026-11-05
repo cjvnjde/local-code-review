@@ -19,8 +19,12 @@ import {
   type AnnotationHandle,
 } from "./annotation-geometry.ts";
 import { attachSrc, upload } from "../components/attach.ts";
-import { SVG } from "../app/state.ts";
+import { SVG, state } from "../app/state.ts";
 import { registerView, setView } from "../navigation/ui-navigation.ts";
+import {
+  createAnnotationDraftStore,
+  type AnnotationDraft,
+} from "./annotation-draft.ts";
 
 type Tool = AnnotationMark["tool"] | "select" | "pan";
 type PathMark = Extract<AnnotationMark, { tool: "path" }>;
@@ -125,6 +129,19 @@ function editAnnotation(
     stroke = 3,
     radius = 8,
     size = 20;
+  let opacity = 0.3,
+    fill = false,
+    fillColor = "#eab308",
+    wrap = 240,
+    background = true,
+    backgroundColor = "#ffffff",
+    textOutline = false,
+    textLeader = false,
+    insetScale = 3,
+    textEditing = false,
+    original = false,
+    heldOriginal = false;
+  const hidden = new Set<AnnotationMark>();
   let smoothing = 0;
   try {
     const value = Number(localStorage.getItem(SMOOTHING_KEY));
@@ -176,6 +193,7 @@ function editAnnotation(
           <button type="button" data-tool="select" aria-pressed="false" aria-label="Select and edit drawings" data-tooltip="Select / resize / edit points">${SVG.cursor}</button>
           <button type="button" data-tool="pan" aria-pressed="false" aria-label="Pan image" data-tooltip="Hand / pan image">${SVG.hand}</button>
           <button type="button" data-tool="pen" aria-pressed="true" aria-label="Draw with pen" data-tooltip="Pen">${SVG.edit}</button>
+          <button type="button" data-tool="highlighter" aria-pressed="false" aria-label="Highlight screenshot" data-tooltip="Highlighter">${SVG.highlighter}</button>
           <button type="button" data-tool="arrow" aria-pressed="false" aria-label="Draw an arrow" data-tooltip="Arrow">${SVG.open}</button>
           <button type="button" data-tool="rectangle" aria-pressed="false" aria-label="Draw a rectangle" data-tooltip="Rectangle">${SVG.box}</button>
           <button type="button" data-tool="ellipse" aria-pressed="false" aria-label="Draw a circle or ellipse" data-tooltip="Circle / ellipse (Shift for circle)">${SVG.circle}</button>
@@ -183,6 +201,8 @@ function editAnnotation(
           <button type="button" data-tool="line" aria-pressed="false" aria-label="Draw a line" data-tooltip="Line">${SVG.line}</button>
           <button type="button" data-tool="path" aria-pressed="false" aria-label="Draw a vector path" data-tooltip="Path: click points; drag for curves">${SVG.path}</button>
           <button type="button" data-tool="text" aria-pressed="false" aria-label="Add text" data-tooltip="Text">${SVG.text}</button>
+          <button type="button" data-tool="callout" aria-pressed="false" aria-label="Add numbered callout" data-tooltip="Numbered callout: click for badge; drag to point">${SVG.callout}</button>
+          <button type="button" data-tool="magnifier" aria-pressed="false" aria-label="Magnify screenshot detail" data-tooltip="Magnify: drag over original detail">${SVG.magnifier}</button>
         </div>
         <button type="button" class="annotation-color" data-command="colors" aria-label="Drawing color" aria-haspopup="dialog" aria-expanded="false" aria-controls="annotation-colors" data-tooltip="Drawing color"></button>
         <div class="annotation-properties">
@@ -190,8 +210,18 @@ function editAnnotation(
           <label data-property="smoothing" data-tooltip="Pen smoothing — new strokes only"><span aria-hidden="true">${SVG.sliders}</span><input type="range" data-field="smoothing" min="0" max="100" step="10" value="0" aria-label="Pen smoothing"><output class="annotation-smoothing">0%</output></label>
           <label data-property="radius" data-tooltip="Corner radius" hidden><span aria-hidden="true">${SVG.box}</span><input type="number" data-field="radius" min="0" step="1" value="8" aria-label="Rectangle corner radius in image pixels"></label>
           <label data-property="size" data-tooltip="Text size" hidden><span aria-hidden="true">${SVG.text}</span><input type="number" data-field="size" min="1" max="${LIMITS.maxTextSize}" step="1" value="20" aria-label="Text size in image pixels"></label>
+          <label data-property="opacity" hidden data-tooltip="Highlight / fill opacity"><span>Opacity</span><input type="range" data-field="opacity" min="0" max="100" step="5" value="30" aria-label="Highlight or fill opacity"></label>
+          <label data-property="fill" hidden><input type="checkbox" data-field="fill" aria-label="Fill shape">Fill<input type="color" data-field="fill-color" value="#eab308" aria-label="Shape fill color"></label>
+          <label data-property="wrap" hidden data-tooltip="Text wrapping width in image pixels"><span>Wrap</span><input type="number" data-field="wrap" min="1" max="${LIMITS.maxDimension}" value="240" aria-label="Text wrapping width"></label>
+          <label data-property="background" hidden><input type="checkbox" data-field="background" checked aria-label="Text background">Background<input type="color" data-field="background-color" value="#ffffff" aria-label="Text background color"></label>
+          <label data-property="text-outline" hidden><input type="checkbox" data-field="text-outline" aria-label="Outline text">Outline</label>
+          <label data-property="text-leader" hidden><input type="checkbox" data-field="text-leader" aria-label="Connect text to target">Leader</label>
+          <label data-property="label" hidden><input type="text" data-field="label" maxlength="200" placeholder="Callout label" aria-label="Callout label"></label>
+          <label data-property="scale" hidden><span>Magnify</span><input type="number" data-field="scale" min="1" max="8" step="0.5" value="3" aria-label="Detail magnification"></label>
+          <button type="button" data-command="edit-text" aria-label="Edit text in place" data-tooltip="Edit text in place" hidden>${SVG.edit}</button>
           <label data-property="mark" hidden><select data-field="mark" aria-label="Select an editable drawing"><option value="-1">No drawing selected</option></select></label>
           <button type="button" data-command="delete" aria-label="Delete selected drawing" data-tooltip="Delete selected drawing" hidden>${SVG.trash}</button>
+          <button type="button" data-command="visibility" aria-label="Hide selected drawing" data-tooltip="Hide selected drawing (preview only)" hidden>${SVG.eye}</button>
         </div>
         <div class="annotation-group" data-path-tools role="group" aria-label="Path editing" hidden>
           <button type="button" data-command="finish-path" aria-label="Finish open path" data-tooltip="Finish path (Enter)">${SVG.check}</button>
@@ -205,6 +235,7 @@ function editAnnotation(
           <button type="button" data-command="redo" aria-label="Redo drawing" data-tooltip="Redo (⌘/Ctrl Shift Z)">${SVG.ref}</button>
           <button type="button" data-command="clear" aria-label="Clear all drawings" data-tooltip="Clear all drawings">${SVG.trash}</button>
         </div>
+        <button type="button" data-command="original" aria-label="Show original screenshot" aria-pressed="false" data-tooltip="Show original (hold O); preview only">${SVG.eyeOff}</button>
         <div class="annotation-group annotation-zoom-tools" role="group" aria-label="Zoom">
           <button type="button" data-command="out" aria-label="Zoom out" data-tooltip="Zoom out (−)">${SVG.minus}</button>
           <button type="button" data-command="actual" class="annotation-zoom" aria-label="Actual image size" data-tooltip="100% (1)">100%</button>
@@ -220,9 +251,9 @@ function editAnnotation(
         <div class="annotation-palette" role="group" aria-label="Saved drawing colors"></div>
         <label>Custom color <input type="color" data-field="color" value="${color}" aria-label="Custom drawing color"></label>
       </div>
-      <label class="annotation-text-label" hidden><textarea data-field="text" rows="2" maxlength="${LIMITS.maxText}" aria-label="Text to draw" placeholder="Type text, then click to place it"></textarea></label>
+      <div class="annotation-recovery" role="status" hidden><span>Unfinished drawing found.</span><button type="button" data-command="restore-draft">Restore draft</button><button type="button" data-command="discard-draft">Discard draft</button></div>
       <p id="annotation-help" class="annotation-help">Select a drawing to resize it using handles. Drag line endpoints or path points and curve handles. Double-click a path segment to add a point. Path tool: click points, drag for curves, Enter or double-click to finish; click the first point to close. Shift draws squares and circles. Escape cancels an active gesture or unfinished path. White margins are drawing space, not page context. Wheel to zoom; Space and drag to pan.</p>
-      <div class="annotation-viewport"><div class="annotation-surface"><canvas tabindex="0" aria-label="Screenshot drawing canvas. Select to resize or edit points. Path: click points, drag for curves, Enter to finish."></canvas><div class="annotation-source-outline" aria-hidden="true"></div></div></div>
+      <div class="annotation-viewport"><div class="annotation-surface"><canvas tabindex="0" aria-label="Screenshot drawing canvas. Select to resize or edit points. Path: click points, drag for curves, Enter to finish."></canvas><div class="annotation-source-outline" aria-hidden="true"></div><label class="annotation-text-label" hidden><textarea data-field="text" rows="2" maxlength="${LIMITS.maxText}" aria-label="Text to draw" placeholder="Type your label"></textarea></label></div></div>
       <div class="annotation-feedback"><div class="annotation-message" role="status" aria-live="polite">Loading original screenshot…</div>
         <div class="annotation-error" role="alert" hidden></div><button type="button" data-command="retry" hidden>Retry image load</button></div>`;
   const find = <T extends Element>(selector: string) =>
@@ -241,6 +272,25 @@ function editAnnotation(
     find<HTMLButtonElement>('[data-command="' + name + '"]');
   const colorPopup = find<HTMLElement>(".annotation-colors");
   const context = canvas.getContext("2d");
+  let draftStore: ReturnType<typeof createAnnotationDraftStore> | null = null;
+  let recoverable: AnnotationDraft | null = null;
+  function persistDraft() {
+    if (!draftStore || recoverable || closed || saving) return;
+    const result =
+      dirty() || pendingText
+        ? draftStore.save({
+            marks,
+            path: pathDraft,
+            pendingText,
+            text: text.value,
+          })
+        : draftStore.clear();
+    if (!result.ok) fail(result.error.message);
+  }
+  function clearDraft() {
+    const result = draftStore?.clear();
+    if (result && !result.ok) fail(result.error.message);
+  }
   const dirty = () => !!pathDraft || JSON.stringify(marks) !== initial;
   function emit() {
     const state = {
@@ -266,7 +316,7 @@ function editAnnotation(
     error.textContent = "";
   }
   function sync() {
-    const busy = loading || saving;
+    const busy = loading || saving || !!recoverable;
     dialog
       .querySelectorAll<
         | HTMLButtonElement
@@ -279,8 +329,12 @@ function editAnnotation(
           busy &&
           !(
             el instanceof HTMLButtonElement &&
-            el.dataset.command === "cancel" &&
-            !saving
+            ((el.dataset.command === "cancel" && !saving) ||
+              (!loading &&
+                !saving &&
+                ["restore-draft", "discard-draft"].includes(
+                  el.dataset.command ?? "",
+                )))
           );
       });
     button("redo").disabled = busy || !redo.length || !!pathDraft;
@@ -316,6 +370,15 @@ function editAnnotation(
     field("width").value = String(stroke);
     field("radius").value = String(radius);
     field("size").value = String(size);
+    field("opacity").value = String(Math.round(opacity * 100));
+    field("fill").checked = fill;
+    field("fill-color").value = fillColor;
+    field("wrap").value = String(Math.round(wrap));
+    field("background").checked = background;
+    field("background-color").value = backgroundColor;
+    field("text-outline").checked = textOutline;
+    field("text-leader").checked = textLeader;
+    field("scale").value = String(insetScale);
     field("smoothing").value = String(smoothing);
     field("smoothing").setAttribute("aria-valuetext", smoothing + "%");
     find<HTMLOutputElement>(".annotation-smoothing").value = smoothing + "%";
@@ -325,11 +388,51 @@ function editAnnotation(
       activeTool === "text" || activeTool === "select" || activeTool === "pan";
     find<HTMLElement>('[data-property="radius"]').hidden =
       activeTool !== "rectangle";
-    find<HTMLElement>('[data-property="size"]').hidden = activeTool !== "text";
-    find<HTMLElement>('[data-property="mark"]').hidden = tool !== "select";
-    find<HTMLElement>('[data-property="smoothing"]').hidden = tool !== "pen";
+    const filledTool = ["rectangle", "ellipse", "triangle", "path"].includes(
+      activeTool,
+    );
+    for (const property of [
+      "wrap",
+      "background",
+      "text-outline",
+      "text-leader",
+    ])
+      find<HTMLElement>('[data-property="' + property + '"]').hidden =
+        activeTool !== "text";
+    find<HTMLElement>('[data-property="fill"]').hidden = !filledTool;
+    find<HTMLElement>('[data-property="opacity"]').hidden =
+      activeTool !== "highlighter" && !filledTool;
+    find<HTMLElement>('[data-property="label"]').hidden =
+      activeTool !== "callout";
+    find<HTMLElement>('[data-property="scale"]').hidden =
+      activeTool !== "magnifier";
+    field("label").value = current?.tool === "callout" ? current.label : "";
+    find<HTMLElement>('[data-property="size"]').hidden = ![
+      "text",
+      "callout",
+    ].includes(activeTool);
+    find<HTMLElement>('[data-property="mark"]').hidden = !marks.length;
+    find<HTMLElement>('[data-property="smoothing"]').hidden = ![
+      "pen",
+      "highlighter",
+    ].includes(tool);
     button("colors").hidden = tool === "pan";
-    find<HTMLElement>(".annotation-text-label").hidden = activeTool !== "text";
+    button("edit-text").hidden = current?.tool !== "text";
+    button("visibility").hidden = selected < 0;
+    const invisible = !!current && hidden.has(current);
+    button("visibility").innerHTML = invisible ? SVG.eyeOff : SVG.eye;
+    button("visibility").setAttribute(
+      "aria-label",
+      invisible ? "Show selected drawing" : "Hide selected drawing",
+    );
+    button("visibility").dataset.tooltip =
+      (invisible ? "Show" : "Hide") + " selected drawing (preview only)";
+    button("original").setAttribute(
+      "aria-pressed",
+      String(original || heldOriginal),
+    );
+    find<HTMLElement>(".annotation-recovery").hidden = !recoverable;
+    syncTextEditor();
     button("delete").hidden = selected < 0;
     const path = pathDraft ?? (current?.tool === "path" ? current : null);
     find<HTMLElement>("[data-path-tools]").hidden = !path;
@@ -357,12 +460,24 @@ function editAnnotation(
   function refreshMarks() {
     markSelect.replaceChildren(new Option("No drawing selected", "-1"));
     marks.forEach((mark, i) =>
-      markSelect.add(new Option(i + 1 + " · " + mark.tool, String(i))),
+      markSelect.add(
+        new Option(
+          i +
+            1 +
+            " · " +
+            (mark.tool === "callout"
+              ? "Callout " + mark.number + (mark.label ? ": " + mark.label : "")
+              : mark.tool) +
+            (hidden.has(mark) ? " (hidden)" : ""),
+          String(i),
+        ),
+      ),
     );
     markSelect.value = String(selected);
   }
   function select(index: number) {
     if (index !== selected) selectedNode = -1;
+    if (index !== selected) textEditing = false;
     selected = index >= 0 && index < marks.length ? index : -1;
     const mark = marks[selected];
     if (mark) {
@@ -370,8 +485,24 @@ function editAnnotation(
       if (mark.tool === "text") {
         size = mark.size;
         text.value = mark.text;
+        wrap = mark.wrap ?? 240 * sourceScale;
+        background = !!mark.background;
+        backgroundColor = mark.background ?? "#ffffff";
+        textOutline = !!mark.outline;
+        textLeader = !!mark.target;
       } else stroke = mark.width;
       if (mark.tool === "rectangle") radius = mark.radius;
+      if (mark.tool === "callout") size = mark.size;
+      if (mark.tool === "highlighter") opacity = mark.opacity;
+      if ("fill" in mark) {
+        fill = !!mark.fill;
+        fillColor = mark.fill ?? fillColor;
+        opacity = mark.opacity ?? 0.3;
+      } else if (
+        ["rectangle", "ellipse", "triangle", "path"].includes(mark.tool)
+      )
+        fill = false;
+      if (mark.tool === "magnifier") insetScale = mark.scale;
     }
     markSelect.value = String(selected);
     sync();
@@ -385,6 +516,11 @@ function editAnnotation(
     undo.push(marks);
     if (undo.length > 100) undo.shift();
     redo.length = 0;
+    if (next.length === marks.length)
+      next.forEach((mark, i) => {
+        if (hidden.has(marks[i]!)) hidden.add(mark);
+      });
+    for (const mark of hidden) if (!next.includes(mark)) hidden.delete(mark);
     marks = next;
     selected = nextSelected;
     if (marks[selected]?.tool !== "path") selectedNode = -1;
@@ -395,6 +531,7 @@ function editAnnotation(
     refreshMarks();
     sync();
     paint();
+    persistDraft();
   }
   function history(back: boolean) {
     cancelGesture();
@@ -406,6 +543,7 @@ function editAnnotation(
           : null;
       sync();
       paint();
+      persistDraft();
       return;
     }
     pendingText = null;
@@ -418,10 +556,13 @@ function editAnnotation(
     }
     to.push(marks);
     marks = next;
+    hidden.clear();
+    textEditing = false;
     selected = -1;
     refreshMarks();
     sync();
     paint();
+    persistDraft();
   }
   const measure = (value: string, fontSize: number) => {
     if (!context) return value.length * fontSize;
@@ -430,6 +571,64 @@ function editAnnotation(
   };
   const bounds = (mark: AnnotationMark) => markBounds(mark, measure);
   const handles = (mark: AnnotationMark) => markHandles(mark, measure);
+  function syncTextEditor() {
+    const label = find<HTMLElement>(".annotation-text-label");
+    const mark = marks[selected];
+    const at = pendingText ?? (mark?.tool === "text" ? mark.at : null);
+    label.hidden =
+      !at ||
+      !textEditing ||
+      original ||
+      heldOriginal ||
+      (!!mark && hidden.has(mark));
+    if (label.hidden || !image || !at) return;
+    const textMark = mark?.tool === "text" ? mark : newText(at);
+    const b = bounds(textMark);
+    Object.assign(label.style, {
+      left: at.x * zoom + "px",
+      top: at.y * zoom + "px",
+      width: Math.max(40, (textMark.wrap ?? b.width) * zoom) + "px",
+    });
+    const inset = textMark.background
+      ? Math.max(4, textMark.size * 0.2) * zoom
+      : 0;
+    label.style.width =
+      Math.max(40, (textMark.wrap ?? b.width) * zoom + inset * 2) + "px";
+    text.style.height = "auto";
+    Object.assign(text.style, {
+      font: textMark.size * zoom + "px/1.25 sans-serif",
+      color: textMark.color,
+      background: textMark.background ?? "transparent",
+      padding: inset + "px",
+      textShadow: textMark.outline
+        ? "-1px -1px #fff, 1px 1px #fff, -1px 1px #fff, 1px -1px #fff"
+        : "none",
+      height:
+        Math.max(2 * textMark.size * zoom * 1.25, text.scrollHeight) + "px",
+    });
+  }
+  function newText(
+    at: AnnotationPoint,
+  ): Extract<AnnotationMark, { tool: "text" }> {
+    return {
+      tool: "text",
+      color,
+      at,
+      text: text.value,
+      size,
+      wrap: Math.max(1, Math.min(wrap, width - at.x)),
+      ...(background ? { background: backgroundColor } : {}),
+      ...(textOutline ? { outline: true } : {}),
+      ...(textLeader
+        ? {
+            target: {
+              x: Math.min(width, at.x + wrap / 2),
+              y: Math.min(height, at.y + size * 4),
+            },
+          }
+        : {}),
+    };
+  }
   function handleAt(mark: AnnotationMark, at: AnnotationPoint) {
     return handles(mark).find(
       (handle) => Math.hypot(handle.x - at.x, handle.y - at.y) <= 10 / zoom,
@@ -482,13 +681,21 @@ function editAnnotation(
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, width, height);
     if (image) ctx.drawImage(image, padding, padding);
+    if (guides && (original || heldOriginal)) return;
+    const source = image ? { image, padding } : undefined;
     marks.forEach((mark, i) => {
-      if (!gesture?.move || i !== gesture.index)
-        drawMark(ctx, mark, sourceScale);
+      if (
+        (!gesture?.move || i !== gesture.index) &&
+        (!guides ||
+          (!hidden.has(mark) &&
+            !(textEditing && i === selected && mark.tool === "text")))
+      )
+        drawMark(ctx, mark, sourceScale, source);
     });
-    if (pathDraft && !gesture?.path) drawMark(ctx, pathDraft, sourceScale);
-    if (gesture) drawMark(ctx, gesture.mark, sourceScale);
-    if (guides && selected >= 0) {
+    if (pathDraft && !gesture?.path)
+      drawMark(ctx, pathDraft, sourceScale, source);
+    if (gesture) drawMark(ctx, gesture.mark, sourceScale, source);
+    if (guides && selected >= 0 && !hidden.has(marks[selected]!)) {
       const current = gesture?.move ? gesture.mark : marks[selected]!;
       const b = bounds(current);
       ctx.save();
@@ -616,6 +823,7 @@ function editAnnotation(
       viewport.scrollLeft += after.left + x * zoom - at.x;
       viewport.scrollTop += after.top + y * zoom - at.y;
     }
+    syncTextEditor();
     paint();
   }
   function fit() {
@@ -706,6 +914,9 @@ function editAnnotation(
     viewport.addEventListener(type, endPan);
   function onBlur() {
     space = false;
+    heldOriginal = false;
+    syncTextEditor();
+    paint();
     endPan();
     cancelGesture();
     canvas.style.cursor =
@@ -718,6 +929,11 @@ function editAnnotation(
             : "crosshair";
   }
   function onKeyUp(event: KeyboardEvent) {
+    if (event.code === "KeyO" || event.key.toLowerCase() === "o") {
+      heldOriginal = false;
+      sync();
+      paint();
+    }
     if (event.code === "Space") {
       space = false;
       canvas.style.cursor =
@@ -753,7 +969,7 @@ function editAnnotation(
     paint();
   }
   function markPointCount(mark: AnnotationMark) {
-    return mark.tool === "pen"
+    return mark.tool === "pen" || mark.tool === "highlighter"
       ? mark.points.length
       : mark.tool === "path"
         ? mark.nodes.reduce(
@@ -769,6 +985,9 @@ function editAnnotation(
     if (
       loading ||
       saving ||
+      recoverable ||
+      original ||
+      heldOriginal ||
       !image ||
       gesture ||
       tool === "pan" ||
@@ -805,7 +1024,14 @@ function editAnnotation(
       const node = { ...at, kind: "corner" as const };
       pathDraft = pathDraft
         ? { ...pathDraft, nodes: [...pathDraft.nodes, node] }
-        : { tool: "path", color, width: stroke, nodes: [node], closed: false };
+        : {
+            tool: "path",
+            color,
+            width: stroke,
+            nodes: [node],
+            closed: false,
+            ...(fill ? { fill: fillColor, opacity } : {}),
+          };
       selected = -1;
       gesture = {
         id: event.pointerId,
@@ -824,13 +1050,17 @@ function editAnnotation(
     }
     if (tool === "select") {
       const current = marks[selected];
-      let handle = current && handleAt(current, at);
+      let handle = current && !hidden.has(current) && handleAt(current, at);
       const index = handle
         ? selected
-        : marks.findLastIndex((mark) =>
-            hitMark(mark, at, 8 / zoom, measure, sourceScale),
+        : marks.findLastIndex(
+            (mark) =>
+              !hidden.has(mark) &&
+              hitMark(mark, at, 8 / zoom, measure, sourceScale),
           );
       select(index);
+      textEditing = false;
+      syncTextEditor();
       if (index < 0) return;
       handle ??= handleAt(marks[index]!, at);
       if (handle?.kind === "node" || handle?.kind === "control")
@@ -855,31 +1085,98 @@ function editAnnotation(
         return;
       }
       if (tool === "text") {
-        if (!text.value.trim()) {
-          pendingText = at;
-          select(-1);
-          text.focus();
-          paint();
-          return;
-        }
-        commit(
-          [...marks, { tool: "text", color, at, text: text.value, size }],
-          marks.length,
-        );
+        select(-1);
+        pendingText = at;
+        text.value = "";
+        textEditing = true;
+        sync();
+        text.focus();
+        persistDraft();
+        paint();
         return;
       }
-      if (tool === "pen" && pointCount() >= LIMITS.maxPoints) {
+      if (
+        (tool === "pen" || tool === "highlighter") &&
+        pointCount() >= LIMITS.maxPoints
+      ) {
         fail(
           "This drawing has reached the pen point limit. Delete a pen stroke before drawing more.",
         );
         return;
       }
+      if (
+        tool === "magnifier" &&
+        (at.x < padding ||
+          at.y < padding ||
+          at.x > width - padding ||
+          at.y > height - padding)
+      ) {
+        fail(
+          "Select a detail inside the original screenshot, not its drawing margin.",
+        );
+        return;
+      }
+      const shapeFill = fill ? { fill: fillColor, opacity } : {};
       const mark: AnnotationMark =
-        tool === "pen"
-          ? { tool, color, width: stroke, points: [at] }
-          : tool === "rectangle"
-            ? { tool, color, width: stroke, from: at, to: at, radius: 0 }
-            : { tool, color, width: stroke, from: at, to: at };
+        tool === "pen" || tool === "highlighter"
+          ? ({
+              tool,
+              color,
+              width: stroke,
+              points: [at],
+              ...(tool === "highlighter" ? { opacity } : {}),
+            } as AnnotationMark)
+          : tool === "callout"
+            ? {
+                tool,
+                id: crypto.randomUUID(),
+                number:
+                  Math.max(
+                    0,
+                    ...marks.flatMap((m) =>
+                      m.tool === "callout" ? [m.number] : [],
+                    ),
+                  ) + 1,
+                label: "",
+                color,
+                width: stroke,
+                size: Math.min(
+                  LIMITS.maxTextSize,
+                  Math.max(24 * sourceScale, size),
+                ),
+                from: at,
+                to: at,
+              }
+            : tool === "magnifier"
+              ? {
+                  tool,
+                  color,
+                  width: stroke,
+                  from: at,
+                  to: at,
+                  at,
+                  scale: insetScale,
+                }
+              : tool === "rectangle"
+                ? {
+                    tool,
+                    color,
+                    width: stroke,
+                    from: at,
+                    to: at,
+                    radius: 0,
+                    ...shapeFill,
+                  }
+                : {
+                    tool,
+                    color,
+                    width: stroke,
+                    from: at,
+                    to: at,
+                    ...(["ellipse", "triangle"].includes(tool)
+                      ? shapeFill
+                      : {}),
+                  };
       selected = -1;
       selectedNode = -1;
       refreshMarks();
@@ -931,10 +1228,17 @@ function editAnnotation(
       paint();
       return;
     }
+    textEditing = false;
     if (gesture.move) {
       const original = marks[gesture.index]!;
       gesture.mark = gesture.handle
-        ? editHandle(original, gesture.handle, at, { width, height }, measure)
+        ? editHandle(
+            original,
+            gesture.handle,
+            at,
+            { width, height, padding },
+            measure,
+          )
         : moveMark(
             original,
             at.x - gesture.start.x,
@@ -942,7 +1246,10 @@ function editAnnotation(
             { width, height },
             measure,
           );
-    } else if (gesture.mark.tool === "pen") {
+    } else if (
+      gesture.mark.tool === "pen" ||
+      gesture.mark.tool === "highlighter"
+    ) {
       const points = gesture.mark.points,
         last = points[points.length - 1]!;
       const distance = Math.hypot(at.x - last.x, at.y - last.y);
@@ -981,6 +1288,32 @@ function editAnnotation(
         };
       }
       gesture.mark = { ...gesture.mark, to: end };
+      if (gesture.mark.tool === "magnifier") {
+        const m = gesture.mark;
+        m.to = {
+          x: Math.max(padding, Math.min(width - padding, end.x)),
+          y: Math.max(padding, Math.min(height - padding, end.y)),
+        };
+        const w = Math.abs(m.to.x - m.from.x),
+          h = Math.abs(m.to.y - m.from.y);
+        m.scale = Math.max(
+          1,
+          Math.min(insetScale, width / (w || 1), height / (h || 1)),
+        );
+        m.at = {
+          x: Math.max(
+            0,
+            Math.min(
+              width - w * m.scale,
+              Math.max(m.from.x, m.to.x) + 16 * sourceScale,
+            ),
+          ),
+          y: Math.max(
+            0,
+            Math.min(height - h * m.scale, Math.min(m.from.y, m.to.y)),
+          ),
+        };
+      }
       if (gesture.mark.tool === "rectangle")
         gesture.mark.radius = Math.min(
           radius,
@@ -1026,9 +1359,14 @@ function editAnnotation(
       pathDraft = done.mark;
       sync();
       paint();
+      persistDraft();
       return;
     }
-    if (done.mark.tool === "pen" && !done.move && smoothing) {
+    if (
+      (done.mark.tool === "pen" || done.mark.tool === "highlighter") &&
+      !done.move &&
+      smoothing
+    ) {
       const points = done.mark.points,
         at = point(event),
         last = points[points.length - 1]!;
@@ -1045,7 +1383,17 @@ function editAnnotation(
       return;
     }
     if (
+      done.mark.tool === "magnifier" &&
+      (Math.abs(done.mark.to.x - done.mark.from.x) < 1 ||
+        Math.abs(done.mark.to.y - done.mark.from.y) < 1)
+    ) {
+      paint();
+      return;
+    }
+    if (
       done.mark.tool !== "pen" &&
+      done.mark.tool !== "highlighter" &&
+      done.mark.tool !== "callout" &&
       done.mark.tool !== "path" &&
       done.mark.tool !== "text" &&
       Math.hypot(
@@ -1056,7 +1404,12 @@ function editAnnotation(
       paint();
       return;
     }
-    if (done.mark.tool !== "pen") tool = "select";
+    if (
+      done.mark.tool !== "pen" &&
+      done.mark.tool !== "highlighter" &&
+      done.mark.tool !== "callout"
+    )
+      tool = "select";
     commit([...marks, done.mark], marks.length);
   });
   canvas.addEventListener("pointercancel", cancelGesture);
@@ -1069,6 +1422,14 @@ function editAnnotation(
       return;
     }
     const mark = marks[selected];
+    if (mark?.tool === "text" && tool === "select") {
+      textEditing = true;
+      text.value = mark.text;
+      sync();
+      paint();
+      text.focus();
+      return;
+    }
     if (tool !== "select" || mark?.tool !== "path") return;
     const at = point(event as unknown as PointerEvent);
     if (handleAt(mark, at)) return;
@@ -1110,10 +1471,28 @@ function editAnnotation(
         1,
         Math.min(LIMITS.maxTextSize, Number.isFinite(numeric) ? numeric : size),
       );
-    if (pathDraft && (name === "color" || name === "width")) {
-      pathDraft = { ...pathDraft, color, width: stroke };
+    if (name === "opacity") opacity = Math.max(0, Math.min(1, numeric / 100));
+    if (name === "fill") fill = value === "true";
+    if (name === "fill-color") fillColor = value;
+    if (name === "wrap")
+      wrap = Math.max(1, Math.min(LIMITS.maxDimension, numeric || 1));
+    if (name === "background") background = value === "true";
+    if (name === "background-color") backgroundColor = value;
+    if (name === "text-outline") textOutline = value === "true";
+    if (name === "text-leader") textLeader = value === "true";
+    if (name === "scale") insetScale = Math.max(1, Math.min(8, numeric || 1));
+    if (pathDraft) {
+      pathDraft = {
+        ...pathDraft,
+        color,
+        width: stroke,
+        ...(fill
+          ? { fill: fillColor, opacity }
+          : { fill: undefined, opacity: undefined }),
+      };
       sync();
       paint();
+      persistDraft();
       return;
     }
     const mark = marks[selected];
@@ -1131,13 +1510,57 @@ function editAnnotation(
             Math.abs(mark.to.y - mark.from.y) / 2,
           ),
         };
-      if (name === "size" && mark.tool === "text") next = { ...mark, size };
+      if (name === "size" && (mark.tool === "text" || mark.tool === "callout"))
+        next = { ...mark, size };
+      if (name === "label" && mark.tool === "callout")
+        next = { ...mark, label: value };
+      if (mark.tool === "highlighter" && name === "opacity")
+        next = { ...mark, opacity };
+      if (
+        ["rectangle", "ellipse", "triangle", "path"].includes(mark.tool) &&
+        ["fill", "fill-color", "opacity"].includes(name)
+      )
+        next = {
+          ...mark,
+          ...(fill
+            ? { fill: fillColor, opacity }
+            : { fill: undefined, opacity: undefined }),
+        };
+      if (mark.tool === "text") {
+        if (name === "wrap") next = { ...mark, wrap };
+        if (name === "background" || name === "background-color")
+          next = {
+            ...mark,
+            background: background ? backgroundColor : undefined,
+          };
+        if (name === "text-outline") next = { ...mark, outline: textOutline };
+        if (name === "text-leader")
+          next = {
+            ...mark,
+            target: textLeader
+              ? (mark.target ?? {
+                  x: Math.min(width, mark.at.x + wrap / 2),
+                  y: Math.min(height, mark.at.y + size * 4),
+                })
+              : undefined,
+          };
+      }
+      if (name === "scale" && mark.tool === "magnifier") {
+        const w = Math.abs(mark.to.x - mark.from.x),
+          h = Math.abs(mark.to.y - mark.from.y);
+        insetScale = Math.max(1, Math.min(insetScale, width / w, height / h));
+        next = {
+          ...mark,
+          scale: insetScale,
+          at: {
+            x: Math.min(mark.at.x, width - w * insetScale),
+            y: Math.min(mark.at.y, height - h * insetScale),
+          },
+        };
+      }
       if (name === "text" && mark.tool === "text") {
         if (!value.trim()) {
-          fail(
-            "Text must not be empty. Use Delete selected to remove the drawing.",
-          );
-          text.value = mark.text;
+          persistDraft();
           return;
         }
         next = { ...mark, text: value };
@@ -1150,13 +1573,16 @@ function editAnnotation(
   }
   dialog.addEventListener("change", (event) => {
     const target = event.target as HTMLInputElement;
-    if (!target.dataset.field || loading || saving) return;
+    if (!target.dataset.field || loading || saving || recoverable) return;
     if (target.dataset.field === "mark") {
       pendingText = null;
       tool = "select";
       select(Number(target.value));
     } else {
-      changeProperty(target.dataset.field, target.value);
+      changeProperty(
+        target.dataset.field,
+        target.type === "checkbox" ? String(target.checked) : target.value,
+      );
       if (target.dataset.field === "color") {
         const value = target.value.toLowerCase();
         colors = [
@@ -1186,15 +1612,22 @@ function editAnnotation(
   text.addEventListener("input", () => {
     if (loading || saving) return;
     if (pendingText && text.value.trim()) {
-      commit(
-        [
-          ...marks,
-          { tool: "text", color, at: pendingText, text: text.value, size },
-        ],
-        marks.length,
-      );
+      commit([...marks, newText(pendingText)], marks.length);
     } else if (marks[selected]?.tool === "text")
       changeProperty("text", text.value);
+    syncTextEditor();
+    persistDraft();
+  });
+  text.addEventListener("blur", () => {
+    const mark = marks[selected];
+    if (mark?.tool === "text" && !text.value.trim()) text.value = mark.text;
+    textEditing = false;
+    syncTextEditor();
+    paint();
+  });
+  field("label").addEventListener("input", () => {
+    if (!loading && !saving && !recoverable)
+      changeProperty("label", field("label").value);
   });
   const palette = find<HTMLElement>(".annotation-palette");
   function renderColors() {
@@ -1228,14 +1661,16 @@ function editAnnotation(
   );
   renderColors();
   function canLeave(next: string | null) {
-    return (
-      !saving &&
-      (next === route ||
-        !(dirty() || gesture || pendingText) ||
-        window.confirm(
-          "Discard your drawing changes? The original screenshot will be kept.",
-        ))
-    );
+    if (saving) return false;
+    if (next === route || !(dirty() || gesture || pendingText)) return true;
+    if (
+      !window.confirm(
+        "Discard your drawing changes? The original screenshot will be kept.",
+      )
+    )
+      return false;
+    clearDraft();
+    return true;
   }
   function close(record = false) {
     dialog.close();
@@ -1246,7 +1681,7 @@ function editAnnotation(
     if (canLeave(null)) close(true);
   }
   async function save() {
-    if (loading || saving || !image || !context) return;
+    if (loading || saving || recoverable || !image || !context) return;
     cancelGesture();
     if (pathDraft) {
       finishPath();
@@ -1306,6 +1741,7 @@ function editAnnotation(
         await apply(annotation);
         capture.annotation = annotation;
       }
+      clearDraft();
       close(true);
     } catch (reason) {
       fail(reason);
@@ -1331,9 +1767,20 @@ function editAnnotation(
         else pathDraft = null;
       }
       pendingText = null;
+      const previousTool = tool;
       tool = target.dataset.tool as Tool;
+      textEditing = false;
+      if (tool === "highlighter") {
+        stroke = Math.min(LIMITS.maxWidth, Math.round(24 * sourceScale));
+        color = "#eab308";
+      } else if (previousTool === "highlighter") {
+        stroke = Math.min(
+          LIMITS.maxWidth,
+          Math.max(1, Math.round(3 * sourceScale)),
+        );
+      }
       select(tool === "select" ? selected : -1);
-      if (tool === "text") text.focus();
+      persistDraft();
       return;
     }
     if (target.dataset.color) {
@@ -1342,6 +1789,50 @@ function editAnnotation(
       return;
     }
     switch (target.dataset.command) {
+      case "restore-draft": {
+        if (!recoverable) break;
+        const draft = recoverable;
+        recoverable = null;
+        undo.push(marks);
+        marks = draft.marks;
+        pathDraft = draft.path;
+        pendingText = draft.pendingText;
+        text.value = draft.text;
+        tool = pathDraft ? "path" : pendingText ? "text" : "select";
+        textEditing = !!pendingText;
+        selected = -1;
+        hidden.clear();
+        refreshMarks();
+        sync();
+        paint();
+        break;
+      }
+      case "discard-draft":
+        clearDraft();
+        recoverable = null;
+        sync();
+        break;
+      case "visibility": {
+        const mark = marks[selected];
+        if (!mark) break;
+        if (hidden.has(mark)) hidden.delete(mark);
+        else hidden.add(mark);
+        refreshMarks();
+        sync();
+        paint();
+        break;
+      }
+      case "original":
+        original = !original;
+        sync();
+        paint();
+        break;
+      case "edit-text":
+        textEditing = true;
+        sync();
+        paint();
+        text.focus();
+        break;
       case "finish-path":
         finishPath();
         break;
@@ -1414,11 +1905,17 @@ function editAnnotation(
       event.preventDefault();
       event.stopImmediatePropagation();
       if (colorPopup.matches(":popover-open")) colorPopup.hidePopover();
-      else if (gesture) cancelGesture();
+      else if (textEditing) {
+        textEditing = false;
+        sync();
+        paint();
+        canvas.focus({ preventScroll: true });
+      } else if (gesture) cancelGesture();
       else if (pathDraft) {
         pathDraft = null;
         sync();
         paint();
+        persistDraft();
       } else requestClose();
       return;
     }
@@ -1428,10 +1925,28 @@ function editAnnotation(
       target instanceof HTMLTextAreaElement ||
       target instanceof HTMLSelectElement ||
       target.isContentEditable;
+    if (recoverable) {
+      if (event.key !== "Tab") event.stopImmediatePropagation();
+      return;
+    }
     if (!typing && event.key === "Enter" && pathDraft) {
       event.preventDefault();
       event.stopImmediatePropagation();
       if (!loading && !saving) finishPath();
+      return;
+    }
+    if (
+      !typing &&
+      (event.code === "KeyO" || event.key.toLowerCase() === "o") &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.altKey
+    ) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      heldOriginal = true;
+      sync();
+      paint();
       return;
     }
     if (!typing && event.code === "Space") {
@@ -1501,6 +2016,8 @@ function editAnnotation(
     window.removeEventListener("keydown", onKey, true);
     window.removeEventListener("keyup", onKeyUp, true);
     window.removeEventListener("blur", onBlur);
+    window.removeEventListener("pagehide", persistDraft);
+    document.removeEventListener("visibilitychange", onVisibility);
     image = null;
     canvas.width = 0;
     canvas.height = 0;
@@ -1604,6 +2121,37 @@ function editAnnotation(
         LIMITS.maxTextSize,
         Math.max(1, Math.round(20 * sourceScale)),
       );
+      wrap = Math.min(LIMITS.maxDimension, Math.round(240 * sourceScale));
+      if (!draftStore) {
+        try {
+          draftStore = createAnnotationDraftStore(
+            {
+              repo: state.repo || location.origin,
+              read: state.reviewId ? "#" + state.reviewId : state.range,
+              route,
+              source: JSON.stringify([
+                capture.area,
+                capture.url,
+                capture.at,
+                capture.rect,
+              ]),
+              baseline: initial,
+              width: naturalWidth,
+              height: naturalHeight,
+              padding,
+            },
+            localStorage,
+          );
+          const result = draftStore.load();
+          if (result.ok) recoverable = result.value;
+          else fail(result.error.message);
+        } catch (reason) {
+          fail(
+            "Drawing recovery is unavailable: " +
+              (reason instanceof Error ? reason.message : String(reason)),
+          );
+        }
+      }
       message.textContent = "";
       message.hidden = true;
       fit();
@@ -1627,6 +2175,11 @@ function editAnnotation(
   window.addEventListener("keydown", onKey, true);
   window.addEventListener("keyup", onKeyUp, true);
   window.addEventListener("blur", onBlur);
+  window.addEventListener("pagehide", persistDraft);
+  function onVisibility() {
+    if (document.visibilityState === "hidden") persistDraft();
+  }
+  document.addEventListener("visibilitychange", onVisibility);
   refreshMarks();
   sync();
   try {

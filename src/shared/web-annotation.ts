@@ -4,6 +4,7 @@ export type AnnotationNode = AnnotationPoint & {
   in?: AnnotationPoint;
   out?: AnnotationPoint;
 };
+type AnnotationFill = { fill?: string; opacity?: number };
 export type AnnotationMark =
   | { tool: "pen"; color: string; width: number; points: AnnotationPoint[] }
   | {
@@ -20,41 +21,72 @@ export type AnnotationMark =
       from: AnnotationPoint;
       to: AnnotationPoint;
     }
-  | {
+  | ({
       tool: "ellipse";
       color: string;
       width: number;
       from: AnnotationPoint;
       to: AnnotationPoint;
-    }
-  | {
+    } & AnnotationFill)
+  | ({
       tool: "triangle";
       color: string;
       width: number;
       from: AnnotationPoint;
       to: AnnotationPoint;
-    }
-  | {
+    } & AnnotationFill)
+  | ({
       tool: "path";
       color: string;
       width: number;
       nodes: AnnotationNode[];
       closed: boolean;
-    }
-  | {
+    } & AnnotationFill)
+  | ({
       tool: "rectangle";
       color: string;
       width: number;
       from: AnnotationPoint;
       to: AnnotationPoint;
       radius: number;
-    }
+    } & AnnotationFill)
   | {
       tool: "text";
       color: string;
       at: AnnotationPoint;
       text: string;
       size: number;
+      wrap?: number;
+      background?: string;
+      outline?: boolean;
+      target?: AnnotationPoint;
+    }
+  | {
+      tool: "highlighter";
+      color: string;
+      width: number;
+      points: AnnotationPoint[];
+      opacity: number;
+    }
+  | {
+      tool: "callout";
+      id: string;
+      number: number;
+      label: string;
+      color: string;
+      width: number;
+      size: number;
+      from: AnnotationPoint;
+      to: AnnotationPoint;
+    }
+  | {
+      tool: "magnifier";
+      color: string;
+      width: number;
+      from: AnnotationPoint;
+      to: AnnotationPoint;
+      at: AnnotationPoint;
+      scale: number;
     };
 export interface WebAnnotation {
   image: string;
@@ -74,6 +106,8 @@ export const ANNOTATION_LIMITS = {
   maxText: 4000,
   maxWidth: 128,
   maxTextSize: 512,
+  maxCalloutLabel: 200,
+  maxMagnifierScale: 8,
 } as const;
 const record = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
@@ -115,6 +149,8 @@ export function webAnnotation(value: unknown): WebAnnotation | null {
       ? { x: input.x, y: input.y }
       : null;
   const marks: AnnotationMark[] = [];
+  const ids = new Set<string>(),
+    numbers = new Set<number>();
   let points = 0;
   for (const mark of value.marks) {
     if (
@@ -124,6 +160,20 @@ export function webAnnotation(value: unknown): WebAnnotation | null {
     )
       return null;
     const color = mark.color;
+    const fill: AnnotationFill = {};
+    if (
+      ["rectangle", "ellipse", "triangle", "path"].includes(String(mark.tool))
+    ) {
+      if (mark.fill !== undefined) {
+        if (typeof mark.fill !== "string" || !/^#[0-9a-f]{6}$/i.test(mark.fill))
+          return null;
+        fill.fill = mark.fill;
+      }
+      if (mark.opacity !== undefined) {
+        if (!bounded(mark.opacity, 0, 1)) return null;
+        fill.opacity = mark.opacity;
+      }
+    }
     if (mark.tool === "text") {
       const at = point(mark.at);
       if (
@@ -134,11 +184,107 @@ export function webAnnotation(value: unknown): WebAnnotation | null {
         !bounded(mark.size, 1, limits.maxTextSize)
       )
         return null;
-      marks.push({ tool: "text", color, at, text: mark.text, size: mark.size });
+      const clean: Extract<AnnotationMark, { tool: "text" }> = {
+        tool: "text",
+        color,
+        at,
+        text: mark.text,
+        size: mark.size,
+      };
+      if (mark.wrap !== undefined) {
+        if (!bounded(mark.wrap, Number.MIN_VALUE, limits.maxDimension))
+          return null;
+        clean.wrap = mark.wrap;
+      }
+      if (mark.background !== undefined) {
+        if (
+          typeof mark.background !== "string" ||
+          !/^#[0-9a-f]{6}$/i.test(mark.background)
+        )
+          return null;
+        clean.background = mark.background;
+      }
+      if (mark.outline !== undefined) {
+        if (typeof mark.outline !== "boolean") return null;
+        clean.outline = mark.outline;
+      }
+      if (mark.target !== undefined) {
+        const target = point(mark.target);
+        if (!target) return null;
+        clean.target = target;
+      }
+      marks.push(clean);
       continue;
     }
     if (!bounded(mark.width, 1, limits.maxWidth)) return null;
-    if (mark.tool === "pen") {
+    if (mark.tool === "callout") {
+      const from = point(mark.from),
+        to = point(mark.to);
+      if (
+        !from ||
+        !to ||
+        typeof mark.id !== "string" ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          mark.id,
+        ) ||
+        ids.has(mark.id.toLowerCase()) ||
+        !bounded(mark.number, 1, limits.maxMarks) ||
+        !Number.isInteger(mark.number) ||
+        numbers.has(mark.number) ||
+        typeof mark.label !== "string" ||
+        mark.label.length > limits.maxCalloutLabel ||
+        !bounded(mark.size, 1, limits.maxTextSize)
+      )
+        return null;
+      ids.add(mark.id.toLowerCase());
+      numbers.add(mark.number);
+      marks.push({
+        tool: "callout",
+        id: mark.id,
+        number: mark.number,
+        label: mark.label,
+        color,
+        width: mark.width,
+        size: mark.size,
+        from,
+        to,
+      });
+    } else if (mark.tool === "magnifier") {
+      const from = point(mark.from),
+        to = point(mark.to),
+        at = point(mark.at);
+      if (
+        !from ||
+        !to ||
+        !at ||
+        !bounded(mark.scale, 1, limits.maxMagnifierScale)
+      )
+        return null;
+      const left = Math.min(from.x, to.x),
+        top = Math.min(from.y, to.y),
+        right = Math.max(from.x, to.x),
+        bottom = Math.max(from.y, to.y);
+      if (
+        left < value.padding ||
+        top < value.padding ||
+        right > value.padding + value.width ||
+        bottom > value.padding + value.height ||
+        right <= left ||
+        bottom <= top ||
+        at.x + (right - left) * mark.scale > width ||
+        at.y + (bottom - top) * mark.scale > height
+      )
+        return null;
+      marks.push({
+        tool: "magnifier",
+        color,
+        width: mark.width,
+        from,
+        to,
+        at,
+        scale: mark.scale,
+      });
+    } else if (mark.tool === "pen" || mark.tool === "highlighter") {
       if (
         !Array.isArray(mark.points) ||
         !mark.points.length ||
@@ -151,7 +297,17 @@ export function webAnnotation(value: unknown): WebAnnotation | null {
         if (!p) return null;
         clean.push(p);
       }
-      marks.push({ tool: "pen", color, width: mark.width, points: clean });
+      if (mark.tool === "highlighter") {
+        if (!bounded(mark.opacity, 0, 1)) return null;
+        marks.push({
+          tool: "highlighter",
+          color,
+          width: mark.width,
+          points: clean,
+          opacity: mark.opacity,
+        });
+      } else
+        marks.push({ tool: "pen", color, width: mark.width, points: clean });
     } else if (mark.tool === "path") {
       if (
         typeof mark.closed !== "boolean" ||
@@ -184,6 +340,7 @@ export function webAnnotation(value: unknown): WebAnnotation | null {
         width: mark.width,
         nodes,
         closed: mark.closed,
+        ...fill,
       });
     } else if (
       mark.tool === "arrow" ||
@@ -195,8 +352,17 @@ export function webAnnotation(value: unknown): WebAnnotation | null {
       const from = point(mark.from),
         to = point(mark.to);
       if (!from || !to) return null;
-      if (mark.tool !== "rectangle")
+      if (mark.tool === "arrow" || mark.tool === "line")
         marks.push({ tool: mark.tool, color, width: mark.width, from, to });
+      else if (mark.tool !== "rectangle")
+        marks.push({
+          tool: mark.tool,
+          color,
+          width: mark.width,
+          from,
+          to,
+          ...fill,
+        });
       else {
         if (
           !bounded(
@@ -213,6 +379,7 @@ export function webAnnotation(value: unknown): WebAnnotation | null {
           from,
           to,
           radius: mark.radius,
+          ...fill,
         });
       }
     } else return null;

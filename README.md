@@ -57,7 +57,7 @@ lcr --web http://localhost:3000 main...HEAD  # Visual feedback alongside an expl
 
 ![Live web annotation with a captured selection and review note](docs/web-annotation.png)
 
-Click an element or drag an area to comment. Click the **lcr** circle to switch between annotation and normal browsing; hold **Alt** to interact temporarily. Click a capture to draw arrows, boxes, or text on it.
+Click an element or drag an area to comment. Click the **lcr** circle to switch between annotation and normal browsing; hold **Alt** to interact temporarily. Click a capture to add drawings, numbered callouts, highlights, readable labels, or magnified details. Unfinished drawings offer browser-local recovery.
 
 Visual and code notes share the same Markdown review. Captures include screenshots and element metadata; **Capture after** records the result after a fix. Requires an installed Chrome, Chromium, or Edge. [Web annotation guide →](docs/web-ui.md)
 

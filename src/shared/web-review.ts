@@ -459,8 +459,23 @@ export function webReviewLines(web: WebReview): string[] {
     }
     const annotation = c.annotation;
     // Old sealed blocks are matched byte-for-byte by the review parser.
-    const vectorGeometry = annotation?.marks.some((mark) =>
-      ["line", "ellipse", "triangle", "path"].includes(mark.tool),
+    const enhancedGeometry = annotation?.marks.some(
+      (mark) =>
+        mark.tool === "callout" ||
+        mark.tool === "highlighter" ||
+        mark.tool === "magnifier" ||
+        (mark.tool === "text" &&
+          (mark.wrap !== undefined ||
+            mark.background !== undefined ||
+            mark.outline !== undefined ||
+            mark.target !== undefined)) ||
+        ("fill" in mark && mark.fill !== undefined) ||
+        ("opacity" in mark && mark.opacity !== undefined),
+    );
+    const vectorGeometry = annotation?.marks.some(
+      (mark) =>
+        ["line", "ellipse", "triangle", "path"].includes(mark.tool) ||
+        enhancedGeometry,
     );
     const summary = annotation
       ? {
@@ -476,6 +491,9 @@ export function webReviewLines(web: WebReview): string[] {
               "text",
               ...(vectorGeometry
                 ? ["line", "ellipse", "triangle", "path"]
+                : []),
+              ...(enhancedGeometry
+                ? ["callout", "highlighter", "magnifier"]
                 : []),
             ].map((tool) => [
               tool,
@@ -548,6 +566,13 @@ export function webReviewLines(web: WebReview): string[] {
                 " px. Stroke widths and text sizes are also output-image pixels.",
               "Marks are listed in paint order. Line and arrow use from/to endpoints; rectangle, ellipse and triangle use the normalized from/to bounding box. Rectangle radius rounds its corners; an ellipse is inscribed in its box; a triangle joins the top-center apex to the two bottom corners. Pen points form a polyline; text starts at at.",
               "Path nodes are ordered anchors. Each segment runs from one node to the next using the first node's out and next node's in as absolute cubic Bézier controls (a missing control equals its anchor); no controls means a straight segment. closed joins the last node back to the first. Smooth nodes keep tangent handles aligned during editing; corner handles move independently. The listed coordinates, including controls, are the exact saved geometry.",
+              ...(enhancedGeometry
+                ? [
+                    "Callouts have stable UUID id values and unique number values; from is the numbered badge center, to is its leader target (equal points omit the leader), size is badge diameter, and label is optional explanatory reviewer text. Highlighter points are a translucent polyline with opacity applied to the whole stroke. Shape fill and opacity affect only the interior, never the outline.",
+                    "Text wrap is the maximum measured line width; explicit newlines are preserved and long words split. background adds padded contrast behind the text and outline adds contrasting glyph edges. target is an independent leader endpoint that stays anchored when the text moves.",
+                    "Magnifier from/to is a source rectangle entirely within the original screenshot (subtract padding to obtain original-image coordinates); at is the destination inset top-left and scale enlarges the original crop. Insets sample only original pixels, never other annotations. Moving an inset changes at, not its source rectangle.",
+                  ]
+                : []),
             ]
           : []),
         "",
