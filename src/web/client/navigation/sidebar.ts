@@ -1,9 +1,37 @@
-import { renderDiff } from "../diff/diff-view.ts";
+import { renderDiff, resizeDiff } from "../diff/diff-view.ts";
 import { persistCfg } from "../app/persistence.ts";
 import { SVG, el, state } from "../app/state.ts";
 import { revealActive } from "./tree.ts";
 
 /* ---------- file tree pane ---------- */
+const nav = el("reviewNav"),
+  handle = el("navResize");
+function widthBounds() {
+  const min = parseFloat(getComputedStyle(nav).minWidth);
+  return { min, max: Math.max(min, Math.round(innerWidth * 0.6)) };
+}
+function paintWidth() {
+  if (state.cfg.navWidth)
+    nav.style.setProperty("--nav-width", state.cfg.navWidth + "px");
+  else nav.style.removeProperty("--nav-width");
+  const { min, max } = widthBounds();
+  handle.setAttribute("aria-valuemin", String(min));
+  handle.setAttribute("aria-valuemax", String(max));
+  handle.setAttribute(
+    "aria-valuenow",
+    String(Math.round(nav.getBoundingClientRect().width)),
+  );
+}
+function setWidth(width: number) {
+  const { min, max } = widthBounds(),
+    next = Math.round(Math.max(min, Math.min(max, width)));
+  if (next === Math.round(nav.getBoundingClientRect().width)) return;
+  resizeDiff(() => {
+    state.cfg.navWidth = next;
+    paintWidth();
+  });
+}
+
 /** Paints pane and toggle from the stored preference. Called once the settings are loaded. */
 export function applyNav() {
   const hidden = !!state.cfg.navHidden;
@@ -13,6 +41,7 @@ export function applyNav() {
   btn.innerHTML = hidden ? SVG.panelOff : SVG.panel;
   btn.title = hidden ? "Show the file tree" : "Hide the file tree";
   btn.setAttribute("aria-pressed", String(hidden));
+  paintWidth();
   // A pane that was closed could not scroll itself, so the current file may be out of its view.
   if (!hidden) revealActive();
 }
@@ -24,6 +53,56 @@ el("navToggle").onclick = () => {
   state.h.clear();
   renderDiff();
 };
+
+let press: { id: number; x: number; width: number } | null = null;
+handle.onpointerdown = (e: PointerEvent) => {
+  if (e.button !== 0 || !e.isPrimary || press) return;
+  press = {
+    id: e.pointerId,
+    x: e.clientX,
+    width: nav.getBoundingClientRect().width,
+  };
+  handle.setPointerCapture(e.pointerId);
+  handle.focus({ preventScroll: true });
+  document.body.classList.add("nav-resizing");
+  e.preventDefault();
+};
+handle.onpointermove = (e: PointerEvent) => {
+  if (press?.id === e.pointerId) setWidth(press.width + e.clientX - press.x);
+};
+handle.onpointerup =
+  handle.onpointercancel =
+  handle.onlostpointercapture =
+    (e: PointerEvent) => {
+      if (press?.id !== e.pointerId) return;
+      press = null;
+      document.body.classList.remove("nav-resizing");
+      if (handle.hasPointerCapture(e.pointerId))
+        handle.releasePointerCapture(e.pointerId);
+      persistCfg();
+    };
+handle.onkeydown = (e: KeyboardEvent) => {
+  const { min, max } = widthBounds(),
+    step = e.shiftKey ? 40 : 10;
+  let width: number;
+  if (e.key === "ArrowLeft") width = nav.getBoundingClientRect().width - step;
+  else if (e.key === "ArrowRight")
+    width = nav.getBoundingClientRect().width + step;
+  else if (e.key === "Home") width = min;
+  else if (e.key === "End") width = max;
+  else return;
+  e.preventDefault();
+  setWidth(width);
+  persistCfg();
+};
+handle.ondblclick = () => {
+  resizeDiff(() => {
+    state.cfg.navWidth = 0;
+    paintWidth();
+  });
+  persistCfg();
+};
+window.addEventListener("resize", paintWidth);
 
 /* ---------- the two lists under the tree ---------- */
 /**

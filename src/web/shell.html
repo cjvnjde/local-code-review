@@ -386,7 +386,7 @@
       </div>
     </header>
     <main>
-      <nav>
+      <nav id="reviewNav">
         <div class="navtop">
           <input id="filter" placeholder="Filter files" spellcheck="false" />
           <div class="navbtns">
@@ -523,6 +523,15 @@
           </div>
           <div class="bmlist" id="bmlist"></div>
         </div>
+        <div
+          id="navResize"
+          role="separator"
+          tabindex="0"
+          aria-label="Resize sidebar"
+          aria-orientation="vertical"
+          aria-controls="reviewNav"
+          data-tooltip="Drag or use arrow keys to resize the sidebar. Double-click to reset."
+        ></div>
       </nav>
       <!-- The panel covers the diff rather than replacing it: the diff keeps its scroll position, and its
        rows stay mounted, so closing the panel puts the reader back exactly where they were. -->

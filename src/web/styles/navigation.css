@@ -1,5 +1,8 @@
 nav {
-  width: clamp(240px, 23vw, 300px);
+  position: relative;
+  width: var(--nav-width, clamp(240px, 23vw, 300px));
+  min-width: calc(var(--tap) * 8);
+  max-width: 60vw;
   flex: none;
   display: flex;
   flex-direction: column;
@@ -8,6 +11,34 @@ nav {
 }
 body.notree nav {
   display: none;
+}
+#navResize {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: calc(var(--tap) / -2);
+  width: var(--tap);
+  z-index: 5;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+}
+#navResize::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(50% - 1px);
+  width: 2px;
+}
+#navResize:is(:hover, :focus-visible)::after,
+body.nav-resizing #navResize::after {
+  background: var(--accent);
+}
+body.nav-resizing,
+body.nav-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
 }
 .navtop {
   flex: none;

@@ -94,6 +94,41 @@ export function renderDiff() {
   followDiff(); // the cards moved, so which of them the pane is showing may have changed
 }
 
+/** Reflow existing rows without replacing a draft, reply, or the browser's text selection. */
+export function resizeDiff(change: () => void) {
+  pauseReadingPosition();
+  state.jumpUntil = performance.now() + 500;
+  const sec = el("diff"),
+    fi = idxOf(state.active),
+    keep = topRow(fi);
+  change();
+  state.h.clear();
+  const blocks = sec.querySelectorAll("tbody.blk");
+  blocks.forEach((tb) => {
+    if (tb.dataset.on) return;
+    const f = state.files[Number(tb.dataset.fi)],
+      cell = tb.querySelector(".ph > td");
+    if (!f || !cell) return;
+    const height = blockH(f, Number(tb.dataset.b)) + "px";
+    if (cell.style.height !== height) cell.style.height = height;
+  });
+  blocks.forEach((tb) => {
+    if (!tb.dataset.on || !tb.offsetHeight) return;
+    const f = state.files[Number(tb.dataset.fi)];
+    if (f) state.h.set(f.path + "|" + tb.dataset.b, tb.offsetHeight);
+  });
+  if (keep) {
+    const row = el("r" + fi + "-" + keep.idx) || el("d" + fi + "-" + keep.idx);
+    if (row)
+      sec.scrollTop +=
+        row.getBoundingClientRect().top -
+        sec.getBoundingClientRect().top -
+        keep.dy;
+  }
+  followDiff();
+  queueReadingPaint();
+}
+
 /**
  * Notes about the review as a whole, in the card at the top of the pane. They are about no file, so
  * they are read before the first one rather than filed under it, and the card only exists while

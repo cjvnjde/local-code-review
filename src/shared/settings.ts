@@ -13,6 +13,7 @@ export interface UiSettings extends ContextSettings {
   enterSaves: boolean;
   expand: number;
   navHidden: boolean;
+  navWidth: number;
   ntFold: boolean;
   bmFold: boolean;
   single: boolean;
@@ -34,6 +35,7 @@ export const DEFAULT_UI_SETTINGS: Readonly<UiSettings> = {
   enterSaves: false,
   expand: 20,
   navHidden: false,
+  navWidth: 0,
   ntFold: false,
   bmFold: false,
   single: false,
@@ -69,6 +71,10 @@ export function parseUiSettings(value: unknown): Partial<UiSettings> {
       if (typeof next !== "number" || !EXPAND_CHOICES.includes(next))
         throw new Error("ui.expand must be one of 10, 20, 50, 100");
       settings.expand = next;
+    } else if (key === "navWidth") {
+      if (typeof next !== "number" || !Number.isSafeInteger(next) || next < 0)
+        throw new Error("ui.navWidth must be a non-negative safe integer");
+      settings.navWidth = next;
     } else {
       const name = key as keyof UiSettings;
       if (typeof next !== typeof DEFAULT_UI_SETTINGS[name])

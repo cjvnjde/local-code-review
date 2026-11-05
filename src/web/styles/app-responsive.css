@@ -11,7 +11,7 @@
 }
 @media (max-width: 760px) {
   nav {
-    width: 240px;
+    width: var(--nav-width, 240px);
   }
   .search-location {
     flex-wrap: wrap;

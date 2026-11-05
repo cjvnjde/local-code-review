@@ -109,6 +109,7 @@ The `ui` object configures the server-shared page preferences:
 | `contextFullPage` | `false`        | Include a full-document screenshot when `aiContext` is enabled  |
 | `expand`          | `20`           | Context lines revealed per click                                |
 | `navHidden`       | `false`        | Hide the file-tree pane                                         |
+| `navWidth`        | `0`            | Sidebar width in pixels; `0` keeps the responsive default       |
 | `ntFold`          | `false`        | Fold the sidebar's note list                                    |
 | `bmFold`          | `false`        | Fold the sidebar's bookmark list                                |
 | `single`          | `false`        | Keep only the newest review file on save                        |
@@ -116,8 +117,10 @@ The `ui` object configures the server-shared page preferences:
 | `editor`          | `""`           | Editor executable; empty uses the system default                |
 
 `limit` accepts `0`, `500`, `900`, or `1800`; `expand` accepts `10`, `20`, `50`,
-or `100`, matching the page's controls. All other flags above are booleans;
-`hide` and `editor` are strings, and `disabledHide` is an array of strings.
+or `100`, matching the page's controls. `navWidth` accepts a non-negative safe
+integer; the page constrains the displayed width to keep room for the diff.
+All other flags above are booleans; `hide` and `editor` are strings, and
+`disabledHide` is an array of strings.
 
 On **each server start**, keys present in `ui` take precedence over old browser
 values. You can then change them in the page: those choices remain in browser
@@ -293,6 +296,12 @@ task may still reference one. No automatic garbage collection is performed.
 ## Read and navigate changes
 
 The file tree and diff share one order. The tree tracks the file being read; viewed marks record progress, while hiding is a separate display preference. The tree toggle widens the diff without changing notes.
+
+Drag the sidebar's right edge to resize it; its width is remembered across reloads
+and hiding/showing the tree. The focused separator also accepts Left/Right arrows
+(Shift for larger steps), Home for the minimum, and End for the maximum.
+Double-click the edge to restore the responsive default. Resizing keeps open drafts,
+unsent replies, and the code being read in place.
 
 - **Notes:** the list below the tree and **Read all** show notes in diff order. The all-notes panel has all/new/open/done filters and the same reply, edit, and delete controls as the diff.
 - **Bookmarks:** use a line's flag to keep a navigation stop. Bookmarks last for the tab's sitting: reload keeps them, closing the tab or starting a new review clears them. They are never submitted.
