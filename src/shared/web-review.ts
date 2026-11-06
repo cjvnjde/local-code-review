@@ -8,6 +8,8 @@ export interface WebCapture {
   at: string;
   mode: "element" | "block" | "area" | "point";
   rect: { x: number; y: number; width: number; height: number };
+  /** Exact viewport click, independent of the clipped Point neighborhood. */
+  point?: { x: number; y: number };
   viewport: { width: number; height: number; dpr: number };
   scroll: { x: number; y: number };
   /** Point selections carry metadata only; other modes retain both screenshots. */
@@ -161,6 +163,19 @@ export function webCapture(value: unknown): WebCapture | null {
     );
   };
   if (!rect(r) || !metadata(value)) return null;
+  const point = value.point;
+  if (
+    point !== undefined &&
+    (value.mode !== "point" ||
+      !record(point) ||
+      !finite(point.x) ||
+      !finite(point.y) ||
+      point.x < r.x ||
+      point.y < r.y ||
+      point.x > r.x + r.width ||
+      point.y > r.y + r.height)
+  )
+    return null;
   const annotation =
     value.annotation === undefined
       ? undefined
@@ -221,6 +236,7 @@ export function webCapture(value: unknown): WebCapture | null {
       at: value.at,
       mode: value.mode,
       rect: { x: r.x, y: r.y, width: r.width, height: r.height },
+      ...(point !== undefined ? { point: { x: point.x, y: point.y } } : {}),
       viewport: { width: v.width, height: v.height, dpr: v.dpr },
       scroll: { x: s.x, y: s.y },
       page: value.page,
@@ -260,6 +276,7 @@ export function compactWebCapture(capture: WebCapture): WebCapture {
     at: capture.at,
     mode: capture.mode,
     rect: capture.rect,
+    ...(capture.point ? { point: capture.point } : {}),
     viewport: capture.viewport,
     scroll: capture.scroll,
     page: capture.page,

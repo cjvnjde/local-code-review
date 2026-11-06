@@ -1345,13 +1345,16 @@ export function installPageReview(config: {
     busy = true;
     tellFrame("capturing", { busy: true });
     try {
-      const capture = frozen
-        ? frozenCapture(r, kind, point)
-        : elements.length
-          ? selectionCapture(elements, kind)
-          : kind === "area"
-            ? areaCapture(r)
-            : metadata(el, r, kind);
+      const capture = {
+        ...(frozen
+          ? frozenCapture(r, kind, point)
+          : elements.length
+            ? selectionCapture(elements, kind)
+            : kind === "area"
+              ? areaCapture(r)
+              : metadata(el, r, kind)),
+        ...(kind === "point" && point ? { point } : {}),
+      };
       capturingSelection = capture;
       pins();
       const settings = await rpc("context-settings", {});
@@ -1621,6 +1624,7 @@ export function installPageReview(config: {
       label: string,
       open: () => void,
       draft = false,
+      centered = false,
     ) => {
       if (
         r.y + r.height < 0 ||
@@ -1639,6 +1643,7 @@ export function installPageReview(config: {
       );
       b.style.left = r.x + "px";
       b.style.top = r.y + "px";
+      if (centered) b.style.transform = "translate(-50%, -50%)";
       b.onclick = open;
       container.append(b);
     };
@@ -1660,23 +1665,35 @@ export function installPageReview(config: {
       for (const selection of targets) {
         const c = { ...capture, ...selection };
         const p = frozen && draft ? { rect: c.rect } : locate(c);
-        if (p) add(p.rect, text, label, open, draft);
-        else if (
-          draft &&
+        const r =
+          p?.rect ??
+          (draft &&
           innerWidth === c.viewport.width &&
           innerHeight === c.viewport.height
-        )
-          add(
-            {
-              ...c.rect,
-              x: c.rect.x + c.scroll.x - scrollX,
-              y: c.rect.y + c.scroll.y - scrollY,
-            },
-            text,
-            label,
-            open,
-            true,
-          );
+            ? {
+                ...c.rect,
+                x: c.rect.x + c.scroll.x - scrollX,
+                y: c.rect.y + c.scroll.y - scrollY,
+              }
+            : null);
+        if (!r) continue;
+        const point = c.mode === "point";
+        add(
+          point
+            ? {
+                x: r.x + (c.point?.x ?? c.rect.x + c.rect.width / 2) - c.rect.x,
+                y:
+                  r.y + (c.point?.y ?? c.rect.y + c.rect.height / 2) - c.rect.y,
+                width: 0,
+                height: 0,
+              }
+            : r,
+          text,
+          label,
+          open,
+          draft,
+          point,
+        );
       }
     };
     if (!frozen)
@@ -2288,7 +2305,17 @@ export function installPageReview(config: {
       const p = places[0],
         r = clamp(p.el ? rect(p.el) : p.rect);
       return captureContext(
-        c.mode === "area" ? areaCapture(r) : metadata(p.el, r, c.mode),
+        {
+          ...(c.mode === "area" ? areaCapture(r) : metadata(p.el, r, c.mode)),
+          ...(c.mode === "point" && c.point
+            ? {
+                point: {
+                  x: p.rect.x + c.point.x - c.rect.x,
+                  y: p.rect.y + c.point.y - c.rect.y,
+                },
+              }
+            : {}),
+        },
         p.el ? [p.el] : [],
         settings,
       );

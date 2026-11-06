@@ -43,7 +43,7 @@ browserTest(
         window.bridge=encoded=>{
           const message=JSON.parse(encoded);requests.push(message);
           let value={};
-          if(message.action==='notes')value={notes:[]};
+          if(message.action==='notes')value={notes:window.savedNotes||[]};
           if(message.action==='context-settings')value={aiContext:false,contextHtml:false,contextFullPage:false};
           if(message.action==='capture'){
             const capture=message.payload.capture;
@@ -132,6 +132,10 @@ browserTest(
         await mouse("mousePressed", at);
         await mouse("mouseReleased", at);
       };
+      const pinCenter = (selector = ".draft-pin"): Promise<Point> =>
+        js(
+          `(()=>{const b=${root}.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();return {x:b.x+b.width/2,y:b.y+b.height/2}})()`,
+        );
       const captures = () =>
         js(
           "requests.filter(r=>r.action==='capture').map(r=>r.payload.capture)",
@@ -161,19 +165,22 @@ browserTest(
         width: 96,
         height: 96,
       });
+      expect(live.point).toEqual(at);
+      expect(await pinCenter()).toEqual(at);
       await js(
         `window.savedFrame=${root}.querySelector('iframe');savedFrame.contentDocument.querySelector('#draft').value='Keep this draft'`,
       );
 
+      const elementAt = { x: at.x + 40, y: at.y };
       await mode("element");
-      await mouse("mouseMoved", at);
+      await mouse("mouseMoved", elementAt);
       const bounds = await js(
         "(()=>{const b=document.querySelector('#target').getBoundingClientRect();return {width:b.width,height:b.height}})()",
       );
       expect(await js(`${root}.querySelector('.label').textContent`)).toContain(
         `${bounds.width} × ${bounds.height} CSS px`,
       );
-      await click(at);
+      await click(elementAt);
       await until("requests.filter(r=>r.action==='capture').length===2");
       const element = (await captures()).at(-1);
       expect(element.mode).toBe("element");
@@ -205,12 +212,12 @@ browserTest(
 
       await send("Input.dispatchMouseEvent", {
         type: "mouseWheel",
-        ...at,
+        ...elementAt,
         deltaX: 0,
         deltaY: 100,
         modifiers: 1,
       });
-      await click(at);
+      await click(elementAt);
       await until("requests.filter(r=>r.action==='capture').length===3");
       const parent = (await captures()).at(-1);
       expect(
@@ -279,6 +286,8 @@ browserTest(
       expect(frozen.element.text).toBe("Target");
       expect(frozen.element.styles.color).toBe("rgb(20, 40, 60)");
       expect(frozen.rect).toEqual(live.rect);
+      expect(frozen.point).toEqual(at);
+      expect(await pinCenter()).toEqual(at);
 
       await control("[data-close]");
       await control("[data-resume]");
@@ -293,6 +302,46 @@ browserTest(
       const truncated = (await captures()).at(-1);
       expect(truncated.element).toBeUndefined();
       expect(truncated.selector).toBeUndefined();
+      await control("[data-close]");
+      await control("[data-resume]");
+      await mode("point");
+      const viewport = await js(
+        "({width:document.documentElement.clientWidth,height:innerHeight})",
+      );
+      // Stay clear of native scrollbar controls while clipping the Point neighborhood.
+      for (const edge of [
+        { x: 4, y: 4 },
+        { x: viewport.width - 24, y: 4 },
+        { x: 4, y: viewport.height - 4 },
+        { x: viewport.width - 24, y: viewport.height - 4 },
+      ]) {
+        await click(edge);
+        await until(
+          `${root}.querySelector('iframe')?.contentDocument?.querySelector('#draft')`,
+        );
+        expect((await captures()).at(-1).point).toEqual(edge);
+        expect(await js("scrollY")).toBe(0);
+        expect(await pinCenter()).toEqual(edge);
+        await control("[data-close]");
+      }
+      await js(
+        `window.savedNotes=[{id:'saved-point',body:'Saved point',web:{before:requests.filter(r=>r.action==='capture').at(-1).payload.capture,after:[]}}]`,
+      );
+      await until(
+        `${root}.querySelectorAll('.pin:not(.draft-pin)').length===1`,
+      );
+      expect(await pinCenter(".pin")).toEqual({
+        x: viewport.width - 24,
+        y: viewport.height - 4,
+      });
+      await js("window.scrollTo(0,40)");
+      await until(
+        `${root}.querySelector('.pin').style.top==='${viewport.height - 44}px'`,
+      );
+      expect(await pinCenter(".pin")).toEqual({
+        x: viewport.width - 24,
+        y: viewport.height - 44,
+      });
     } finally {
       await chrome?.close();
       server.stop(true);

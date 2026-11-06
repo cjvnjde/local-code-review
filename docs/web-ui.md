@@ -50,7 +50,9 @@ asks before discarding half-written text; saved conversations are never removed 
   records up to 100 visible intersecting DOM elements with selectors, element bounds, and available
   React/Vue component hints. Hidden and occluded elements are skipped on a best-effort basis.
 - **Point**: click to record a 96 × 96 CSS-pixel neighborhood, clipped to the viewport, with
-  metadata for the element under the dot when available. No viewport, selected-area, or full-page
+  metadata for the element under the dot when available. The note circle is centered on the exact
+  click, including near viewport edges, and follows page scrolling. Older notes without a recorded
+  click use the center of their captured neighborhood. No viewport, selected-area, or full-page
   screenshot is taken, even when full-page context is enabled. Older Point notes with images remain readable.
 - **Browse**: interact with the app normally. Saved note circles stay hidden while selection is
   **OFF** and return immediately when it is turned **ON**; the notes themselves are unchanged.

@@ -117,7 +117,11 @@ test("compact review roundtrips and a restarted session restores the historical 
 test("metadata-only Point evidence survives compact Markdown, restart and annotation rejection", async () => {
   const f = await fixture();
   const { page: _page, area: _area, ...metadata } = f.raw;
-  const point: WebCapture = { ...metadata, mode: "point" };
+  const point: WebCapture = {
+    ...metadata,
+    mode: "point",
+    point: { x: 14, y: 24 },
+  };
   const capture = await saveWebContext(f.root, ".review", point);
   const comment = { ...f.comment, web: { before: capture, after: [] } };
   const session = createSession(f.root, ".review", "HEAD");
@@ -126,6 +130,7 @@ test("metadata-only Point evidence survives compact Markdown, restart and annota
   const parsed = parseReview(markdown);
   expect(parsed.notes[0]!.body).toBe(comment.body);
   expect(parsed.notes[0]!.web).toEqual(compactWebReview(comment.web));
+  expect(parsed.notes[0]!.web!.before.point).toEqual(point.point);
   expect(renderMarkdown(parsed)).toBe(markdown);
   const manifest = await readContext(f.root, ".review", capture.context!.id);
   for (const name of ["viewport", "selected-area"]) {
@@ -140,6 +145,7 @@ test("metadata-only Point evidence survives compact Markdown, restart and annota
   await restart.adoptMatching();
   const restored = (await restart.read()).notes[0]!.web!.before;
   expect(restored).toEqual(capture);
+  expect(restored.point).toEqual(point.point);
   expect(restored.page).toBeUndefined();
   expect(restored.area).toBeUndefined();
   expect(restored.element?.styles.padding).toBe("13px");

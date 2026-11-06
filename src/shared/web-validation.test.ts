@@ -91,6 +91,23 @@ describe("capture validation boundaries", () => {
       expect(webCapture({ ...point, ...patch })).toBeNull();
   });
 
+  test("Point clicks stay inside their captured neighborhood and are detached", () => {
+    const input = { ...capture(), mode: "point", point: { x: 4, y: 7 } };
+    const clean = webCapture(input)!;
+    input.point.x = 9;
+    expect(clean.point).toEqual({ x: 4, y: 7 });
+    for (const point of [
+      null,
+      { x: NaN, y: 7 },
+      { x: 4, y: Infinity },
+      { x: "4", y: 7 },
+      { x: -1, y: 7 },
+      { x: 4, y: 81 },
+    ])
+      expect(webCapture({ ...input, point })).toBeNull();
+    expect(webCapture({ ...input, mode: "element" })).toBeNull();
+  });
+
   test("each geometric field rejects nonnumeric and nonfinite values independently", () => {
     for (const group of ["rect", "viewport", "scroll"] as const) {
       for (const field of Object.keys(capture()[group])) {
