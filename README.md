@@ -6,7 +6,38 @@ Review local Git changes and annotate a running web app. Feedback stays in Markd
 
 ## Install
 
-Download the [latest release](https://github.com/cjvnjde/local-code-review/releases/latest), extract it, and put `lcr` (`lcr.exe` on Windows) on your `PATH`. Git is required; no runtime or package install is needed.
+Each release contains one standalone executable, compiled and minified with Bun, with the browser assets embedded. Git is required to review code; Bun and Node.js are not required to run the downloaded executable.
+
+### Install with mise
+
+With [mise installed and activated in your shell](https://mise.jdx.dev/getting-started.html), install globally:
+
+```sh
+mise use -g github:cjvnjde/local-code-review@latest
+lcr --version
+```
+
+Mise downloads the archive for your platform from GitHub Releases, verifies its checksum, and makes `lcr` available on your `PATH`. Releases cover Linux x64/ARM64, macOS x64/ARM64, and Windows x64. The full `github:cjvnjde/local-code-review` identifier works without a registry entry or a custom plugin. See the [mise GitHub backend](https://mise.jdx.dev/dev-tools/backends/github.html).
+
+Update to the latest release:
+
+```sh
+mise upgrade github:cjvnjde/local-code-review
+```
+
+To pin a release for a project, run this in that project's directory:
+
+```sh
+mise use github:cjvnjde/local-code-review@1.9.0
+```
+
+This writes the version to `mise.toml`; others can run `mise install` to install it. The version is the release tag without its leading `v`. `lcr --version` prints the executable's source build stamp, which is separate from the release version.
+
+If you previously installed `lcr` in `~/.local/bin`, check `which lcr` (or `where.exe lcr` on Windows) after switching. An older executable earlier on `PATH` can still take precedence. `mise exec github:cjvnjde/local-code-review@latest -- lcr --version` explicitly runs the mise-managed version. Restart running lcr instances after updating.
+
+### Download directly
+
+Download the [latest release](https://github.com/cjvnjde/local-code-review/releases/latest), extract it, and put `lcr` (`lcr.exe` on Windows) on your `PATH`. Each archive contains just that executable; a matching `.sha256` file is published alongside it.
 
 On macOS, the binary is unsigned. After verifying the release checksum, remove quarantine if needed:
 

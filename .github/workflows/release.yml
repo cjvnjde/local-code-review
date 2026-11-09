@@ -126,14 +126,54 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: Create GitHub Release and attach packages
+      - name: Upload all packages before publishing the release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
           if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release create "$GITHUB_REF_NAME" \
+              --draft \
               --title "$GITHUB_REF_NAME" \
               --generate-notes
           fi
           gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          gh release edit "$GITHUB_REF_NAME" --draft=false
+
+  mise:
+    name: Install with mise on ${{ matrix.platform }}
+    needs: release
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: Linux x64
+            runner: ubuntu-latest
+          - platform: Linux ARM64
+            runner: ubuntu-24.04-arm
+          - platform: macOS x64
+            runner: macos-15-intel
+          - platform: macOS ARM64
+            runner: macos-15
+          - platform: Windows x64
+            runner: windows-latest
+
+    steps:
+      # No source checkout or Bun: exercise the published standalone executable.
+      - name: Set up mise
+        uses: jdx/mise-action@v5
+        with:
+          install: false
+          cache: false
+
+      - name: Install the published version and run it
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          mise install "github:$GH_REPO@$version"
+          mise exec "github:$GH_REPO@$version" -- lcr --version
+          mise exec "github:$GH_REPO@$version" -- lcr --help
