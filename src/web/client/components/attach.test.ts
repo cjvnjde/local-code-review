@@ -3,6 +3,7 @@ import {
   attachSrc,
   filesFrom,
   insertShot,
+  imageTokens,
   labelFor,
   plainShots,
   shotHtml,
@@ -106,6 +107,32 @@ describe("shotToken", () => {
     expect(shotToken("screenshot", "images/a1b2.png")).toBe(
       "![screenshot](images/a1b2.png)",
     );
+  });
+});
+
+describe("imageTokens", () => {
+  test("finds local images with exact URL offsets, escaped labels and duplicate links", () => {
+    const text =
+      "Before ![a\\](x](<images/one.png>) and ![two](assets/two.jpg)\n![two](assets/two.jpg)";
+    const images = imageTokens(text);
+    expect(images.map((image) => image.ref)).toEqual([
+      "images/one.png",
+      "assets/two.jpg",
+      "assets/two.jpg",
+    ]);
+    for (const image of images) {
+      expect(text.slice(image.from, image.to)).toBe(image.token);
+      expect(
+        image.token.slice(image.refFrom, image.refFrom + image.ref.length),
+      ).toBe(image.ref);
+    }
+  });
+  test("ignores fenced examples, inline code, escaped syntax, indented code and remote images", () => {
+    expect(
+      imageTokens(
+        "```md\n![x](images/a.png)\n```\n`![x](images/b.png)`\n\\![x](images/c.png)\n    ![x](images/d.png)\n![x](https://example.com/x.png)\n![keep](images/e.png)",
+      ).map((image) => image.ref),
+    ).toEqual(["images/e.png"]);
   });
 });
 
@@ -233,6 +260,7 @@ class FakeBox extends Fake {
   }
 }
 class FakeText extends Fake {
+  dataset: Record<string, string> = {};
   value = "";
   selectionStart = 0;
   selectionEnd = 0;
@@ -260,6 +288,37 @@ const png = (name = "image.png") => ({ type: "image/png", name });
 const settle = () => new Promise((done) => setTimeout(done, 0));
 
 describe("wireAttach", () => {
+  test("concurrent uploads stay busy until both finish and preserve the typing caret", async () => {
+    const { wireAttach } = await import("./attach.ts");
+    const original = globalThis.fetch;
+    const first = Promise.withResolvers<Response>(),
+      second = Promise.withResolvers<Response>();
+    let requests = 0;
+    globalThis.fetch = (() =>
+      ++requests === 1 ? first.promise : second.promise) as any;
+    try {
+      const ta = new FakeText(),
+        box = FakeBox.with(ta);
+      wireAttach(box, ta);
+      ta.dispatchEvent(paste([png()]));
+      ta.dispatchEvent(paste([png()]));
+      ta.value += "\n\nKeep typing";
+      ta.setSelectionRange(ta.value.length, ta.value.length);
+      second.resolve(Response.json({ ref: "images/second.png" }));
+      await settle();
+      expect(ta.dataset.attachmentBusy).toBe("");
+      expect(ta.selectionStart).toBe(ta.value.length);
+      first.resolve(Response.json({ ref: "images/first.png" }));
+      await settle();
+      expect(ta.dataset.attachmentBusy).toBeUndefined();
+      expect(ta.value).toBe(
+        "![screenshot](images/first.png)\n\n![screenshot](images/second.png)\n\nKeep typing",
+      );
+      expect(ta.selectionStart).toBe(ta.value.length);
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
   test("a pasted picture is uploaded and written into the note", async () => {
     const { wireAttach } = await import("./attach.ts");
     const asked: any[] = [];

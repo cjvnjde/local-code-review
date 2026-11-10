@@ -175,33 +175,57 @@ export function swapShot(text: string, mark: string, token: string) {
  * found by the text of the placeholder rather than by where it was put, because by then the caret has
  * moved on.
  */
+const pending = new WeakMap<object, number>();
+export const attachmentsBusy = (host: ParentNode = document) =>
+  !!host.querySelector("[data-attachment-busy], [data-image-busy]");
+
 async function take(ta: any, files: any[]) {
-  for (const file of files) {
-    const mark = shotToken("…attaching", WAITING + ++waits);
-    const written = insertShot(
-      ta.value,
-      ta.selectionStart == null ? ta.value.length : ta.selectionStart,
-      ta.selectionEnd == null ? ta.value.length : ta.selectionEnd,
-      mark,
-    );
-    ta.value = written.value;
-    ta.setSelectionRange(written.caret, written.caret);
-    grow(ta);
-    let token = "";
-    try {
-      token = shotToken(labelFor(file.name), await upload(file));
-    } catch (error) {
-      alert(
-        "Could not attach that picture: " +
-          (error instanceof Error ? error.message : String(error)),
+  if (ta.disabled) return;
+  pending.set(ta, (pending.get(ta) ?? 0) + 1);
+  if (ta.dataset) ta.dataset.attachmentBusy = "";
+  try {
+    for (const file of files) {
+      const mark = shotToken("…attaching", WAITING + ++waits);
+      const written = insertShot(
+        ta.value,
+        ta.selectionStart == null ? ta.value.length : ta.selectionStart,
+        ta.selectionEnd == null ? ta.value.length : ta.selectionEnd,
+        mark,
       );
+      ta.value = written.value;
+      ta.setSelectionRange(written.caret, written.caret);
+      grow(ta);
+      let token = "";
+      try {
+        token = shotToken(labelFor(file.name), await upload(file));
+      } catch (error) {
+        alert(
+          "Could not attach that picture: " +
+            (error instanceof Error ? error.message : String(error)),
+        );
+      }
+      if (!ta.isConnected) return; // the note was saved or dropped while the picture was in flight
+      const at = ta.value.indexOf(mark);
+      const start = ta.selectionStart,
+        end = ta.selectionEnd;
+      const direction = ta.selectionDirection;
+      const swapped = swapShot(ta.value, mark, token);
+      if (!swapped) continue;
+      const delta = swapped.value.length - ta.value.length;
+      ta.value = swapped.value;
+      const shifted = (position: number) =>
+        position <= at
+          ? position
+          : position >= at + mark.length
+            ? position + delta
+            : swapped.caret;
+      ta.setSelectionRange(shifted(start), shifted(end), direction);
+      grow(ta);
     }
-    if (!ta.isConnected) return; // the note was saved or dropped while the picture was in flight
-    const swapped = swapShot(ta.value, mark, token);
-    if (!swapped) continue;
-    ta.value = swapped.value;
-    ta.setSelectionRange(swapped.caret, swapped.caret);
-    grow(ta);
+  } finally {
+    const left = (pending.get(ta) ?? 1) - 1;
+    pending.set(ta, left);
+    if (!left && ta.dataset) delete ta.dataset.attachmentBusy;
   }
 }
 
@@ -282,7 +306,67 @@ export function wireAttach(box: any, ta: any) {
 }
 
 /** The same link, as the parser reads it back. */
-const SHOT = /!\[((?:[^[\]\\]|\\.)*)\]\([ \t]*<?([^\s)]*)>?[ \t]*\)/g;
+const SHOT = /!\[((?:[^[\]\\]|\\.)*)\]\([ \t]*<?([^\s)>]*)>?[ \t]*\)/g;
+
+/** Actual image links, excluding examples in fenced or inline code. Offsets address the source text. */
+export function imageTokens(text: string) {
+  const images: {
+    from: number;
+    to: number;
+    token: string;
+    ref: string;
+    refFrom: number;
+    label: string;
+  }[] = [];
+  let offset = 0;
+  let fence: { char: string; length: number } | null = null;
+  for (const line of text.split("\n")) {
+    const marker = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+    if (marker && !fence)
+      fence = { char: marker[1]![0]!, length: marker[1]!.length };
+    else if (fence) {
+      if (
+        marker &&
+        marker[1]![0] === fence.char &&
+        marker[1]!.length >= fence.length &&
+        !marker[2]!.trim()
+      )
+        fence = null;
+    } else {
+      const code = [...line.matchAll(/(`+)[\s\S]*?\1(?!`)/g)];
+      for (const match of line.matchAll(SHOT)) {
+        if (
+          !attachSrc(match[2]!) ||
+          code.some(
+            (span) =>
+              match.index! >= span.index! &&
+              match.index! < span.index! + span[0].length,
+          )
+        )
+          continue;
+        // An escaped ! is prose, as is an indented code block.
+        const before = line.slice(0, match.index);
+        if (
+          (before.match(/\\+$/)?.[0].length ?? 0) % 2 ||
+          /^(?: {4}|\t)/.test(line)
+        )
+          continue;
+        const token = match[0],
+          ref = match[2]!;
+        images.push({
+          from: offset + match.index!,
+          to: offset + match.index! + token.length,
+          token,
+          ref,
+          refFrom: token.lastIndexOf(ref),
+          label: match[1]!.replace(/\\(.)/g, "$1").trim() || "Attached image",
+        });
+      }
+    }
+    offset += line.length + 1;
+  }
+  return images;
+}
 /**
  * A body with its pictures read as the words they carry, for the places that show one line of a note
  * as text: a summary has no room for a picture, and what it was called is what the note was saying
@@ -296,13 +380,15 @@ export const plainShots = (text: string) =>
   );
 
 /** One attached picture, drawn where the note points at it and opened whole in a tab of its own. */
-export function shotHtml(src: string, label: string) {
+export function shotHtml(src: string, label: string, ref?: string) {
   const alt =
     String(label || "")
       .replace(/\\(.)/g, "$1")
       .trim() || "attached image";
   return (
-    '<a class="shot" href="' +
+    '<a class="shot"' +
+    (ref && attachSrc(ref) ? ' data-image-preview="' + esc(ref) + '"' : "") +
+    ' href="' +
     esc(src) +
     '" target="_blank" rel="noreferrer noopener" title="' +
     esc(alt) +

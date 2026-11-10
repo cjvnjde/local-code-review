@@ -74,7 +74,7 @@ async function withEditor(
       const encoded=Promise.withResolvers();c.toBlob(encoded.resolve);
       await fetch('/source',{method:'POST',body:await encoded.promise});
       window.capture={mode:'area',url:location.origin,title:'Test',viewport:{width:640,height:400,dpr:1},scroll:{x:0,y:0},rect:{x:0,y:0,width:640,height:400},page:'images/source.png',area:'images/source.png'};
-      window.applied=[];window.confirm=()=>true;window.openEditor=()=>openAnnotation('test',capture,async a=>applied.push(a));window.openEditor();
+      window.applied=[];window.confirm=()=>true;window.openEditor=()=>openAnnotation('test',{image:capture.area,cssWidth:capture.rect.width,annotation:capture.annotation},async a=>{applied.push(a);capture.annotation=a??undefined;});window.openEditor();
     </script>`,
         { headers: { "content-type": "text/html" } },
       );

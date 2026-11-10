@@ -207,7 +207,7 @@ describe("mdHtml inline", () => {
 
   test("a picture reads in the prose around it rather than instead of it", () => {
     expect(mdHtml("before\n\n![a](images/a.png)\n\nafter")).toBe(
-      '<p>before</p><p><a class="shot" href="/api/attachment?name=a.png" target="_blank"' +
+      '<p>before</p><p><a class="shot" data-image-preview="images/a.png" href="/api/attachment?name=a.png" target="_blank"' +
         ' rel="noreferrer noopener" title="a"><img src="/api/attachment?name=a.png" alt="a"' +
         ' loading="lazy" decoding="async"></a></p><p>after</p>',
     );

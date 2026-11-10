@@ -6,6 +6,7 @@ import {
 import { renderBody } from "../components/body.ts";
 import {
   activeEditor,
+  composerBusy,
   composerHint,
   composerTools,
   wireComposer,
@@ -19,7 +20,6 @@ import { webReviewLines, type WebReview } from "../../../shared/web-review.ts";
 import { webCaptureHtml } from "../web-review/web-capture.ts";
 import { adoptAgent } from "../app/agent.ts";
 import { noteByRef, refOf } from "./note-ref.ts";
-import { contextBusy } from "../components/context.ts";
 
 registerEditor((route) => {
   const match = /^(reply|message):([a-z0-9]+)(?::(.+))?$/.exec(route);
@@ -138,14 +138,14 @@ function editMessage(box: any, note: any, m: any, done: () => void) {
     cancel: () => shut(),
   });
   const shut = (replace = false) => {
-    if (contextBusy(form)) return;
+    if (composerBusy(form)) return;
     form.replaceWith(body);
     finishEditor(ta, replace);
   };
   form.__shut = () => shut(true);
   let sending = false;
   const commit = async () => {
-    if (sending || contextBusy(form)) return;
+    if (sending || composerBusy(form)) return;
     const text = ta.value.trim();
     // Emptying a message is withdrawing it, exactly as emptying a note deletes the note.
     if (!text) {
@@ -188,7 +188,7 @@ function editMessage(box: any, note: any, m: any, done: () => void) {
     `message:${refOf(note.id)}:${m.at}`,
     ta,
     () => shut(),
-    () => sending || contextBusy(form),
+    () => sending || composerBusy(form),
   );
 }
 
@@ -197,7 +197,7 @@ function editMessage(box: any, note: any, m: any, done: () => void) {
  * may already have been answered, so it asks first, exactly as deleting a handed-over note does.
  */
 async function dropMessage(note: any, m: any, done: () => void) {
-  if (contextBusy()) return;
+  if (composerBusy()) return;
   if (
     !confirm(
       "Delete this reply?\n\nIt goes out of " +
@@ -300,7 +300,7 @@ function startReply(wrap: any, id: string, done: () => void) {
     focus: false,
   });
   const shut = () => {
-    if (contextBusy(box)) return;
+    if (composerBusy(box)) return;
     ta.value = "";
     ta.dispatchEvent(new Event("input", { bubbles: true }));
     ta.removeAttribute("data-navigation-active");
@@ -315,7 +315,7 @@ function startReply(wrap: any, id: string, done: () => void) {
       "reply:" + refOf(id),
       ta,
       shut,
-      () => sending || contextBusy(box) || !!box.closest("[data-web-busy]"),
+      () => sending || composerBusy(box) || !!box.closest("[data-web-busy]"),
     );
   };
   ta.addEventListener("focus", activate);
@@ -325,7 +325,7 @@ function startReply(wrap: any, id: string, done: () => void) {
   const send = async (ask = false) => {
     if (
       sending ||
-      contextBusy(box) ||
+      composerBusy(box) ||
       box.closest(".nbox")?.hasAttribute("data-web-busy")
     )
       return;

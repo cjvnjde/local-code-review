@@ -143,7 +143,7 @@ With Chrome installed, run the opt-in real-browser workflow:
 
 ```sh
 LCR_TEST_BROWSER=1 bun test src/web-review/browser.test.ts
-LCR_TEST_BROWSER=1 bun test src/web/client/web-review/annotation-editor.browser.test.ts
+LCR_TEST_BROWSER=1 bun test src/web/client/components/annotation-editor.browser.test.ts src/web/client/components/image-editor.browser.test.ts
 LCR_TEST_BROWSER=1 bun test src/web/client/components/context.browser.test.ts
 LCR_TEST_BROWSER=1 bun test src/web/client/components/colors.browser.test.ts src/web/client/web-review/capture-comparison.browser.test.ts src/web/client/web-review/page-overlay.browser.test.ts
 ```
@@ -266,16 +266,16 @@ Keep plain TypeScript and light-DOM components. The UI relies on selective repai
 and preserving an open editor across live updates; folders express ownership without introducing a new
 component lifecycle.
 
-| Under `src/web/client/` | Owner                                                                                             |
-| ----------------------- | ------------------------------------------------------------------------------------------------- |
-| `app/`                  | Browser entry point, shared state, persistence, loading, live synchronization and settings        |
-| `components/`           | Reused composer, conversation body, Markdown/highlighting, attachments, paths, icons and tooltips |
-| `diff/`                 | Diff rendering, anchors, selection, context expansion, folds, images and audio                    |
-| `notes/`                | Note and reply lifecycle, references, note lists, reader, suggestions and submission controls     |
-| `history/`              | Snapshot model, journal storage, navigation and history UI                                        |
-| `search/`               | Search model and search UI                                                                        |
-| `navigation/`           | File tree, bookmarks, sidebar and reading position                                                |
-| `web-review/`           | Visual evidence, embedded note UI, screenshot annotation and injected page overlay                |
+| Under `src/web/client/` | Owner                                                                                                                  |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `app/`                  | Browser entry point, shared state, persistence, loading, live synchronization and settings                             |
+| `components/`           | Reused composer, conversation body, Markdown/highlighting, image drawing and previews, attachments, paths and tooltips |
+| `diff/`                 | Diff rendering, anchors, selection, context expansion, folds, images and audio                                         |
+| `notes/`                | Note and reply lifecycle, references, note lists, reader, suggestions and submission controls                          |
+| `history/`              | Snapshot model, journal storage, navigation and history UI                                                             |
+| `search/`               | Search model and search UI                                                                                             |
+| `navigation/`           | File tree, bookmarks, sidebar and reading position                                                                     |
+| `web-review/`           | Visual evidence, embedded note UI, capture comparisons and injected page overlay                                       |
 
 Use direct imports to the owning module; do not add barrel exports, forwarding files or a miscellaneous
 `utils/` directory. Pure contracts shared by server and browser belong in `src/shared/`, never a

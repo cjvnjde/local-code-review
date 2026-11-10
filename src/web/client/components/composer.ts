@@ -1,11 +1,15 @@
-import { attachButton, wireAttach } from "./attach.ts";
+import { attachButton, attachmentsBusy, wireAttach } from "./attach.ts";
 import { NOTE_MAX, autogrow } from "./autogrow.ts";
 import { editorAction } from "./keys.ts";
 import { refButton, wireRefButton } from "../notes/ref-picker.ts";
 import { saveKeyHint, state, SVG } from "../app/state.ts";
 import { formatMarkdown, type MarkdownFormat } from "./markdown-edit.ts";
 import { contextButton, contextBusy, wireContext } from "./context.ts";
+import { wireImageEditor } from "./image-editor.ts";
 import { wireColorComposer } from "./colors.ts";
+
+export const composerBusy = (host: ParentNode = document) =>
+  contextBusy(host) || attachmentsBusy(host);
 
 export const composerTools = (id: string) =>
   '<button type="button" class="format-toggle" aria-label="Formatting options" data-tooltip="Formatting options" aria-expanded="false">' +
@@ -82,6 +86,7 @@ export function wireComposer(
   wireRefButton(host, ta, id);
   // The host may survive several textarea mounts; wireAttach keeps the drop binding on that host once.
   wireAttach(host, ta);
+  wireImageEditor(host, ta, id);
   wireContext(host, ta, id);
   wireColorComposer(host, ta);
   ta.onkeydown = (e) => {
@@ -90,6 +95,10 @@ export function wireComposer(
       return;
     }
     const action = editorAction(e, state.cfg.enterSaves);
+    if ((action === "save" || action === "cancel") && attachmentsBusy(host)) {
+      e.preventDefault();
+      return;
+    }
     if (action === "save") {
       e.preventDefault();
       actions.save();

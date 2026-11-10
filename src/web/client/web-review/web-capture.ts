@@ -78,7 +78,9 @@ export function webCaptureHtml(
   const web = webReview(value);
   if (!web) return "";
   const picture = (ref: string, alt: string) =>
-    '<a href="' +
+    '<a data-image-preview="' +
+    esc(ref) +
+    '" href="' +
     esc(attachSrc(ref)) +
     '" target="_blank" rel="noreferrer noopener"><img loading="lazy" src="' +
     esc(attachSrc(ref)) +

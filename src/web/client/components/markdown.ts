@@ -422,7 +422,7 @@ export function inline(src: string): string {
           });
           to = from + link![0].length;
         } else if (shot) {
-          html = shotHtml(shot, link[2]);
+          html = shotHtml(shot, link[2], link[3]);
           to = from + link[0].length;
         } else if (link && url) {
           const label = inline(link[2] || url);

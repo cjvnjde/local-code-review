@@ -10,7 +10,9 @@ export function imageCaptureHtml(value: any, changed = false) {
     '<div class="image-capture"><div class="image-caption">Screenshot region · ' +
     esc(regionLabel(r)) +
     (changed ? " · image has changed" : "") +
-    '</div><a href="' +
+    '</div><a data-image-preview="' +
+    esc(r.capture) +
+    '" href="' +
     esc(attachSrc(r.capture)) +
     '" target="_blank" ' +
     'rel="noreferrer noopener"><img src="' +

@@ -1,4 +1,4 @@
-import type { WebCapture } from "../../../shared/web-review.ts";
+import { encodeImageDrawing } from "../../../shared/image-drawing.ts";
 import {
   ANNOTATION_LIMITS as LIMITS,
   webAnnotation,
@@ -18,13 +18,27 @@ import {
   smoothNode,
   type AnnotationHandle,
 } from "./annotation-geometry.ts";
-import { attachSrc, upload } from "../components/attach.ts";
+import { attachSrc, upload } from "./attach.ts";
 import { SVG, state } from "../app/state.ts";
-import { registerView, setView } from "../navigation/ui-navigation.ts";
+import {
+  registerView,
+  setView,
+  setViews,
+} from "../navigation/ui-navigation.ts";
+import { closeImagePreviewForDrawing } from "./image-preview.ts";
 import {
   createAnnotationDraftStore,
   type AnnotationDraft,
 } from "./annotation-draft.ts";
+
+/** Pixels and optional drawing data, independent of where the image was captured. */
+export interface AnnotationSource {
+  image: string;
+  annotation?: WebAnnotation;
+  /** Captured CSS width preserves tool sizing for high-DPI browser screenshots. */
+  cssWidth?: number;
+  key?: string;
+}
 
 type Tool = AnnotationMark["tool"] | "select" | "pan";
 type PathMark = Extract<AnnotationMark, { tool: "path" }>;
@@ -81,7 +95,7 @@ registerView(
 /** Opens over the existing note: its textarea, selection and draft DOM are never replaced. */
 export function openAnnotation(
   route: string,
-  capture: WebCapture,
+  capture: AnnotationSource,
   apply: (annotation: WebAnnotation | null) => Promise<void>,
 ): Promise<void> {
   if (active) {
@@ -90,14 +104,15 @@ export function openAnnotation(
       ?.focus();
     return active;
   }
+  const replacePreview = closeImagePreviewForDrawing();
   active = editAnnotation(route, capture, apply);
-  setView("annotation", route);
+  setViews({ annotation: route, image: null }, { replace: replacePreview });
   return active;
 }
 
 function editAnnotation(
   route: string,
-  capture: WebCapture,
+  capture: AnnotationSource,
   apply: (annotation: WebAnnotation | null) => Promise<void>,
 ): Promise<void> {
   const { promise, resolve } = Promise.withResolvers<void>();
@@ -1732,7 +1747,11 @@ function editAnnotation(
           output.width = 0;
           output.height = 0;
         }
-        const ref = await upload(blob);
+        const encoded = encodeImageDrawing(
+          new Uint8Array(await blob.arrayBuffer()),
+          { source: capture.image, annotation: proposal },
+        );
+        const ref = await upload(new Blob([encoded], { type: "image/png" }));
         const annotation = webAnnotation({ ...proposal, image: ref });
         if (!annotation)
           throw new Error(
@@ -2056,11 +2075,11 @@ function editAnnotation(
     try {
       if (!context)
         throw new Error("This browser does not support a 2D drawing canvas.");
-      if (!capture.area)
+      if (!capture.image)
         throw new Error(
           "Point selections contain metadata only, with no screenshot to draw on.",
         );
-      const src = attachSrc(capture.area);
+      const src = attachSrc(capture.image);
       if (!src)
         throw new Error("The original screenshot attachment is unavailable.");
       const source = new Image();
@@ -2081,7 +2100,7 @@ function editAnnotation(
         throw new Error(
           "The original screenshot has no decodable image pixels.",
         );
-      sourceScale = naturalWidth / capture.rect.width;
+      sourceScale = naturalWidth / (capture.cssWidth ?? naturalWidth);
       padding = saved ? saved.padding : Math.round(64 * sourceScale);
       width = naturalWidth + 2 * padding;
       height = naturalHeight + 2 * padding;
@@ -2129,12 +2148,9 @@ function editAnnotation(
               repo: state.repo || location.origin,
               read: state.reviewId ? "#" + state.reviewId : state.range,
               route,
-              source: JSON.stringify([
-                capture.area,
-                capture.url,
-                capture.at,
-                capture.rect,
-              ]),
+              source:
+                capture.key ??
+                JSON.stringify([capture.image, capture.cssWidth]),
               baseline: initial,
               width: naturalWidth,
               height: naturalHeight,

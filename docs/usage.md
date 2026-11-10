@@ -239,6 +239,10 @@ Paste a screenshot into any note or reply, drop an image on the box, or open **F
 
 The same bytes are stored once even if used in several notes. Relative links let the agent open the same picture directly from disk. Attachments are never deleted automatically, because another note, review, or draft may still use them.
 
+Every attached image gets a preview card while editing a note or reply, in both diff and web mode. Choose **Draw / edit** to use the same drawing tools as web captures: arrows, shapes, pen, highlights, text, callouts, magnifiers, undo and zoom. Applying a drawing updates that image's Markdown link; save the note or reply to keep the change. Edit the comment again to revise the marks, or clear the drawing to restore the original image. Unfinished drawings offer browser-local recovery.
+
+Drawing exports are ordinary PNGs containing editable drawing data and a relative reference to the original image. Keep both attachments with the review to edit them after a restart. Clicking a saved image opens a shared preview with fit, zoom and actual-size controls; **Open image** opens the file separately.
+
 Agents can also link pictures in `assets/`, `images/`, or directly beside the review file:
 
 ```md
