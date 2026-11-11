@@ -209,7 +209,7 @@ test.skipIf(process.env.LCR_TEST_BROWSER !== "1")(
       await until(`${image}?.complete && ${image}.naturalWidth > 0`);
       expect(await js(`${image}.naturalWidth > 0`)).toBe(true);
       await js(
-        "document.querySelector('[aria-label=\"Comment on file\"]').click()",
+        "document.querySelector('[aria-label^=\"Comment on file\"]').click()",
       );
       await until(
         "!!document.querySelector('textarea[aria-label=\"Note text\"]')",

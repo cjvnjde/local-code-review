@@ -100,6 +100,7 @@ test("compiled executable reviews changes, preserves drafts, and continues the M
       remote.push(request.url());
   });
   await page.goto(url);
+  const notesPanel = page.getByRole("complementary", { name: "Review notes" });
   await expect(
     page.getByRole("heading", { name: "Local code review" }),
   ).toBeVisible();
@@ -121,6 +122,7 @@ test("compiled executable reviews changes, preserves drafts, and continues the M
       .evaluate((body) => getComputedStyle(body).backgroundColor),
   ).not.toBe("rgba(0, 0, 0, 0)");
   await page
+    .locator('[data-file-path="src/app.ts"][data-diff-kind="row"]')
     .getByRole("button", { name: "Comment on line 2", exact: true })
     .last()
     .click();
@@ -131,8 +133,8 @@ test("compiled executable reviews changes, preserves drafts, and continues the M
     );
   await page.getByRole("button", { name: "Save note", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect(page.getByRole("article")).toHaveCount(1);
-  await expect(page.locator("article table")).toBeVisible();
+  await expect(notesPanel.getByRole("article")).toHaveCount(1);
+  await expect(notesPanel.locator("article table")).toBeVisible();
   let review = await (await page.request.get(`${url}/api/review`)).json();
   const reviewPath = path.join(directory, review.file);
   expect(await readFile(reviewPath, "utf8")).toContain(
@@ -140,7 +142,7 @@ test("compiled executable reviews changes, preserves drafts, and continues the M
   );
   expect(review.notes[0].code).toBe("+  return 'hello world';");
   // An external agent appends a verdict and answer while the reviewer is typing.
-  await page.getByRole("button", { name: "Reply", exact: true }).click();
+  await notesPanel.getByRole("button", { name: "Reply", exact: true }).click();
   await page
     .getByRole("textbox", { name: "Note text" })
     .fill("Keep this **unsaved** follow-up.");
@@ -163,9 +165,13 @@ test("compiled executable reviews changes, preserves drafts, and continues the M
   );
   await page.getByRole("button", { name: "Send reply", exact: true }).click();
   await expect(
-    page.locator("article").getByText("This greeting is intentionally local."),
+    notesPanel
+      .locator("article")
+      .getByText("This greeting is intentionally local."),
   ).toBeVisible();
-  await expect(page.locator("article").getByText("Keep this")).toBeVisible();
+  await expect(
+    notesPanel.locator("article").getByText("Keep this"),
+  ).toBeVisible();
   // Markdown and library highlights cannot turn source or note HTML into active markup.
   await page.getByRole("button", { name: "Overall note", exact: true }).click();
   await page
@@ -231,6 +237,192 @@ test("compiled executable reviews changes, preserves drafts, and continues the M
   expect(codeNote.status).toBe("answered");
 });
 
+test("continuous scrolling follows files, reopens viewed files, and preserves the reading anchor", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  const saved = await (await page.request.get(`${url}/api/review`)).json();
+  if (
+    !saved.notes.some((note: { file: string }) => note.file === "src/app.ts")
+  ) {
+    await page.request.post(`${url}/api/note`, {
+      data: {
+        comment: {
+          id: "src/app.ts|n2|n2|#scrolltest",
+          file: "src/app.ts",
+          start: 2,
+          end: 2,
+          side: "new",
+          code: "+  return 'hello world';",
+          body: "Please **rename** this greeting.",
+        },
+        ask: false,
+      },
+    });
+  }
+  await page.goto(url);
+  const pane = page.getByRole("region", { name: "Code diff", exact: true });
+  const navigation = page.getByRole("navigation");
+  const notesPanel = page.getByRole("complementary", { name: "Review notes" });
+  await expect(pane).toHaveCount(1);
+  await expect(
+    navigation.getByRole("button", { name: /app.ts/ }),
+  ).toHaveAttribute("aria-current", "true");
+  // One wheel gesture carries the review into subsequent files, without picking a file.
+  await pane.hover();
+  await page.mouse.wheel(0, 2000);
+  await expect
+    .poll(() => pane.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(500);
+  await expect
+    .poll(async () =>
+      navigation.locator('[aria-current="true"]').getAttribute("title"),
+    )
+    .not.toBe("src/app.ts");
+  // The end of the same scroll surface contains the final large file.
+  await pane.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  await expect(
+    navigation.getByRole("button", { name: /untracked.ts/ }),
+  ).toHaveAttribute("aria-current", "true");
+  await expect(
+    pane.getByRole("heading", { name: "untracked.ts", exact: true }),
+  ).toBeVisible();
+  expect(await pane.locator('[data-diff-kind="row"]').count()).toBeLessThan(
+    100,
+  );
+  // A sidebar jump reuses that pane and reaches files even when their rows aren't mounted.
+  await navigation.getByRole("button", { name: /app.ts/ }).click();
+  await expect(
+    pane.getByRole("heading", { name: "src/app.ts", exact: true }),
+  ).toBeVisible();
+  await pane
+    .getByRole("button", { name: "Mark viewed: src/app.ts", exact: true })
+    .click();
+  await expect(
+    pane.getByRole("button", { name: "Expand src/app.ts", exact: true }),
+  ).toBeVisible();
+  await navigation.getByRole("button", { name: /app.ts/ }).click();
+  await expect(
+    pane.getByRole("button", { name: "Collapse src/app.ts", exact: true }),
+  ).toBeVisible();
+  await expect(
+    pane.getByRole("button", {
+      name: "Mark unviewed: src/app.ts",
+      exact: true,
+    }),
+  ).toHaveAttribute("aria-pressed", "true");
+  // The note list can bring an anchored conversation back into the stream.
+  await pane
+    .getByRole("button", { name: "Collapse src/app.ts", exact: true })
+    .click();
+  const codeNote = notesPanel
+    .getByRole("article")
+    .filter({ hasText: "Please rename this greeting." });
+  await codeNote.getByRole("button", { name: "In diff", exact: true }).click();
+  await expect(
+    pane
+      .getByRole("article")
+      .filter({ hasText: "Please rename this greeting." }),
+  ).toBeVisible();
+  await expect(
+    pane.getByRole("button", { name: "Collapse src/app.ts", exact: true }),
+  ).toBeVisible();
+  // Each collapsed deletion has an explicit way to read it again.
+  await navigation.getByRole("button", { name: /deleted.ts/ }).click();
+  const removedToggle = pane
+    .locator('[data-file-path="src/deleted.ts"][data-diff-kind="tools"]')
+    .getByRole("checkbox", { name: "Fold removed lines" });
+  await removedToggle.check();
+  await pane
+    .getByRole("button", { name: "Show 1 removed lines", exact: true })
+    .click();
+  await expect(
+    pane.getByRole("button", { name: "Hide 1 removed lines", exact: true }),
+  ).toBeVisible();
+  // Hold a middle row of a large file still while an earlier file grows.
+  await navigation.getByRole("button", { name: /untracked.ts/ }).click();
+  await pane.evaluate((element) => {
+    element.scrollTop += 26 * 600;
+  });
+  await expect(
+    navigation.getByRole("button", { name: /untracked.ts/ }),
+  ).toHaveAttribute("aria-current", "true");
+  async function topRow() {
+    return pane.evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      const header = element.querySelector<HTMLElement>('[data-sticky="true"]');
+      const top = bounds.top + (header?.offsetHeight || 0);
+      const row = [
+        ...element.querySelectorAll<HTMLElement>('[data-diff-kind="row"]'),
+      ].find((node) => {
+        const rect = node.getBoundingClientRect();
+        return rect.top >= top - 1 && rect.bottom <= bounds.bottom;
+      });
+      return row
+        ? {
+            key: row.dataset.itemKey,
+            y: row.getBoundingClientRect().top - bounds.top,
+          }
+        : null;
+    });
+  }
+  await expect.poll(topRow).not.toBeNull();
+  const before = (await topRow())!;
+  const source = await readFile(path.join(directory, "src/app.ts"), "utf8");
+  await writeFile(
+    path.join(directory, "src/app.ts"),
+    source +
+      Array.from(
+        { length: 200 },
+        (_, i) => `export const extra${i} = ${i};`,
+      ).join("\n") +
+      "\n",
+  );
+  await expect
+    .poll(
+      async () =>
+        (await (await page.request.get(`${url}/api/diff`)).json()).files.find(
+          (file: { path: string }) => file.path === "src/app.ts",
+        ).rows.length,
+    )
+    .toBeGreaterThan(200);
+  await expect.poll(async () => (await topRow())?.key).toBe(before.key);
+  await expect
+    .poll(async () => Math.abs(((await topRow())?.y || 0) - before.y))
+    .toBeLessThan(2);
+  // A diff refresh is deferred while an editor owns the selected subject and text.
+  await pane
+    .getByRole("button", { name: /Comment on line/ })
+    .first()
+    .click();
+  await page
+    .getByRole("textbox", { name: "Note text" })
+    .fill("Do not replace my subject while I write.");
+  await writeFile(
+    path.join(directory, "src/app.ts"),
+    source + "export const changedAgain = true;\n",
+  );
+  await expect(
+    page.getByText("Diff update waiting for the open editor to close."),
+  ).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Note text" })).toHaveValue(
+    "Do not replace my subject while I write.",
+  );
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(
+    page.getByText("Diff update waiting for the open editor to close."),
+  ).toHaveCount(0);
+  await expect(
+    navigation.getByRole("button", { name: /untracked.ts/ }),
+  ).toHaveAttribute("aria-current", "true");
+  await page.screenshot({ path: "/tmp/lcr-continuous-ui.png" });
+  expect(errors).toEqual([]);
+});
+
 test("live page capture saves through the embedded React editor", async ({
   page,
 }) => {
@@ -289,6 +481,7 @@ test("live page capture saves through the embedded React editor", async ({
     await page.goto(url);
     await expect(
       page
+        .getByRole("complementary", { name: "Review notes" })
         .getByRole("article")
         .filter({ hasText: "Increase this checkout target size." }),
     ).toBeVisible();

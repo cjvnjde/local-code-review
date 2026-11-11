@@ -1,4 +1,11 @@
-import { Copy, Pencil, Trash2, Reply, Sparkles } from "lucide-react";
+import {
+  Copy,
+  Pencil,
+  Trash2,
+  Reply,
+  Sparkles,
+  ArrowRight,
+} from "lucide-react";
 import type { DiffFile, ReviewNote } from "../../../shared/review-types.ts";
 import { noteKey } from "../../../shared/note-id.ts";
 import { Button, cn } from "../components/ui/button.tsx";
@@ -15,11 +22,15 @@ export function NoteCard({
   file,
   agent,
   onCompose,
+  inline = false,
+  onJump,
 }: {
   note: ReviewNote;
   file?: DiffFile;
   agent: boolean;
   onCompose: (draft: Draft) => void;
+  inline?: boolean;
+  onJump?: () => void;
 }) {
   const action = useAction();
   const editable =
@@ -34,7 +45,7 @@ export function NoteCard({
     <article
       className="rounded-xl border bg-card shadow-sm"
       data-note-id={note.id}
-      id={`note-${reference}`}
+      id={`${inline ? "diff-note" : "note"}-${reference}`}
     >
       <header className="flex items-center gap-2 border-b px-4 py-3">
         <span
@@ -74,7 +85,13 @@ export function NoteCard({
             {note.detail}
           </p>
         )}
-        <div className="flex items-center gap-1">
+        <div className="flex flex-wrap items-center gap-1">
+          {onJump && (
+            <Button size="sm" variant="ghost" onClick={onJump}>
+              <ArrowRight />
+              In diff
+            </Button>
+          )}
           {icon(
             "Copy note reference",
             <Button

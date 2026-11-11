@@ -21,10 +21,21 @@ config. `--no-agent` bypasses the default ACP profile.
 
 ## Read and comment
 
-Select a file from the sidebar or the mobile file picker. The viewer displays one
-file at a time and mounts a small window of rows for large files. Click a hunk
-header to expand omitted context. Toggle **Hide removed lines** to focus on the new
-version. **Viewed** records reading progress; an updated file becomes unviewed.
+Scroll through the entire review in one pane; files follow one another in sidebar
+order. The sidebar highlights the file under the top of the pane. Its links and
+the mobile file picker jump within that continuous review instead of replacing it.
+Only a small window of code and notes is mounted, even for very large diffs.
+
+File headers stay visible while reading their code. Collapse a file with its
+chevron, or mark it **Viewed** to collapse it and record progress. A navigation jump
+reopens it while keeping its viewed mark; a changed file becomes unviewed. Click a
+hunk header to expand omitted context. **Fold removed lines** replaces deletions
+with expandable markers; a run containing a note stays open.
+
+Notes appear inline beside their captured code as well as in the conversation
+pane. **In diff** jumps from a conversation card to that note, reopening its file.
+The pane preserves your reading position when notes or code change. Incoming diff
+updates wait until an open editor closes.
 
 Click the plus beside a line to comment immediately. To select a range, click its
 first line number, Shift-click its last line number, then choose **Comment on

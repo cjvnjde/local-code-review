@@ -57,9 +57,14 @@ Live refetches do not replace that snapshot. One draft is persisted per reposito
 and read; a successful save clears it. The server remains responsible for merging
 reviewer changes with current agent messages and verdicts.
 
-The diff viewer mounts one file at a time and virtualizes its rows. The sidebar
-and note list share a directory-first order. Captured code is retained in the
-Markdown file; missing or ambiguous anchors are shown as captured evidence.
+The diff viewer is one continuous scroll pane, virtualized across every file,
+code row, and inline conversation. Sticky file headers retain their controls;
+the sidebar follows the current file and its links scroll within the same pane.
+Viewed files collapse and navigation reopens them without erasing their marks.
+Stable item keys and captured row anchors preserve the reading position through
+context expansion, note updates, and diff refreshes. Diff refreshes wait while an
+editor is open. The sidebar and note list share a directory-first order. Captured
+code is retained in Markdown; missing or ambiguous anchors stay with their file.
 
 ## Validation and packaging
 
@@ -114,9 +119,10 @@ suggestions, Markdown previews, image attachments, replies and verdicts, review
 switching, viewed marks, themes, history export, and ACP queue controls. Live web
 capture uses the same React editor inside the reviewed page.
 
-The older UI's character selections, bookmarks, hide-pattern settings, screenshot
-drawing editor, capture comparison sliders, and rich reference previews are not
-ported. Existing evidence remains readable and the Markdown format is unchanged.
+Remaining UX parity work includes drag/character selections, bookmarks and the
+reading-resume marker, automatic viewed tracking, keyboard stepping, file hide
+patterns, word diffs, audio playback, screenshot drawing, capture comparisons, and
+rich reference previews. Existing evidence remains readable and the Markdown format is unchanged.
 Old browser preferences are left in their original storage keys; v2 uses its own
 keys. Saved review files are adopted normally, while unsaved drafts from the old
 UI are not migrated.

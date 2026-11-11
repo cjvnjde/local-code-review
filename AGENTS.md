@@ -6,6 +6,9 @@ libraries and clear React components over custom infrastructure.
 - Keep `src/index.ts` as the CLI entry point. Use Bun for development, tests,
   bundling, and compilation. The release must remain one standalone `lcr`
   executable, with its browser assets embedded and no runtime install step.
+- Preserve existing review UX when replacing its implementation. Check the original
+  behavior, especially continuous diff reading, navigation, and editor/scroll
+  protection during live updates.
 - Keep server code out of the browser. Shared types and models belong in
   `src/shared/`.
 - Preserve the core workflow: inspect Git changes, write notes, save Markdown

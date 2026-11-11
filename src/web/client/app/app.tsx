@@ -30,7 +30,7 @@ import { useStored } from "./preferences.ts";
 import { Button, cn } from "../components/ui/button.tsx";
 import { Tooltip } from "../components/ui/tooltip.tsx";
 import { Dialog, DialogContent } from "../components/ui/dialog.tsx";
-import { DiffView } from "../diff/diff-view.tsx";
+import { DiffView, type DiffViewHandle } from "../diff/diff-view.tsx";
 import { makeComment, orderFiles } from "../diff/model.ts";
 import { NoteCard } from "../notes/note-card.tsx";
 import { Composer, draftBody, type Draft } from "../notes/composer.tsx";
@@ -81,7 +81,7 @@ export function App() {
 }
 
 function Workspace({
-  diff,
+  diff: incomingDiff,
   review,
   error,
   onRefresh,
@@ -93,6 +93,9 @@ function Workspace({
   onRefresh: () => void;
   refreshing: boolean;
 }) {
+  const [diff, setDiff] = useState(incomingDiff);
+  const diffView = useRef<DiffViewHandle>(null);
+  const navigation = useRef<HTMLElement>(null);
   const scope = `${diff.repo}:${diff.id ? `#${diff.id}` : diff.range}`;
   const [draft, setDraft, storageError] = useStored<Draft | null>(
     `lcr:v2:draft:${scope}`,
@@ -115,6 +118,24 @@ function Workspace({
   const [busy, setBusy] = useState(false);
   const action = useAction();
   useHistoryCapture(diff, review);
+  const pendingDiff = incomingDiff.files !== diff.files;
+  useEffect(() => {
+    if (!draft && !busy) setDiff(incomingDiff);
+  }, [incomingDiff, draft, busy]);
+  function jumpToFile(path: string) {
+    diffView.current?.scrollToFile(path);
+  }
+  useEffect(() => {
+    const pane = navigation.current,
+      row = pane?.querySelector<HTMLElement>('button[aria-current="true"]');
+    if (!pane || !row) return;
+    const parent = pane.getBoundingClientRect(),
+      rect = row.getBoundingClientRect();
+    if (rect.top < parent.top + 16)
+      pane.scrollTop += rect.top - parent.top - 16;
+    else if (rect.bottom > parent.bottom - 16)
+      pane.scrollTop += rect.bottom - parent.bottom + 16;
+  }, [selected, navOpen]);
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
   }, [dark]);
@@ -134,8 +155,7 @@ function Workspace({
       files.filter((f) => f.path.toLowerCase().includes(search.toLowerCase())),
     [files, search],
   );
-  const file =
-    files.find((f) => f.path === selected) || shownFiles[0] || files[0];
+  const file = files.find((f) => f.path === selected) || files[0];
   const notes = review?.notes || [];
   const followed = useRef("");
   useEffect(() => {
@@ -145,7 +165,7 @@ function Workspace({
       const matches = notes.filter((note) => note.id.endsWith(`|#${ref}`));
       if (matches.length !== 1) return;
       followed.current = ref;
-      setSelected(matches[0]!.file);
+      diffView.current?.scrollToNote(matches[0]!);
       setAllNotes(true);
       setNotesOpen(true);
       setFilter("all");
@@ -161,7 +181,7 @@ function Workspace({
     return () => window.removeEventListener("hashchange", follow);
   }, [review?.notes]);
 
-  const agent = { ...diff, ...review };
+  const agent = { ...incomingDiff, ...review };
   const fileOrder = new Map(files.map((f, i) => [f.path, i]));
   const listed = [...notes]
     .filter(
@@ -293,6 +313,14 @@ function Workspace({
           </Button>
         </div>
       )}
+      {pendingDiff && (
+        <div
+          role="status"
+          className="border-b bg-primary/10 px-5 py-2 text-xs text-primary"
+        >
+          Diff update waiting for the open editor to close.
+        </div>
+      )}
       <div className="flex min-h-11 shrink-0 items-center gap-3 border-b px-4 text-xs text-muted-foreground">
         {icon(
           navOpen ? "Hide file sidebar" : "Show file sidebar",
@@ -310,7 +338,7 @@ function Workspace({
           className="min-w-0 flex-1 bg-transparent md:hidden"
           aria-label="Select file"
           value={file?.path || ""}
-          onChange={(e) => setSelected(e.target.value)}
+          onChange={(e) => jumpToFile(e.target.value)}
         >
           {files.map((f) => (
             <option key={f.path}>{f.path}</option>
@@ -356,13 +384,16 @@ function Workspace({
                 {viewed}/{files.length} viewed
               </span>
             </div>
-            <nav className="min-h-0 flex-1 overflow-auto px-2 pb-3">
+            <nav
+              ref={navigation}
+              className="min-h-0 flex-1 overflow-auto px-2 pb-3"
+            >
               {shownFiles.map((f) => (
                 <button
                   key={f.path}
                   aria-current={file?.path === f.path ? "true" : undefined}
                   title={f.path}
-                  onClick={() => setSelected(f.path)}
+                  onClick={() => jumpToFile(f.path)}
                   className={cn(
                     "mb-1 flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs transition-colors hover:bg-accent",
                     file?.path === f.path && "bg-primary/10 text-primary",
@@ -419,31 +450,27 @@ function Workspace({
           </aside>
         )}
         <main className="flex min-w-0 flex-1 flex-col">
-          {file ? (
-            <DiffView
-              key={`${file.path}:${file.hash}`}
-              file={file}
-              context={diff.context}
-              notes={notes.filter((n) => n.file === file.path)}
-              viewed={marks[file.path] === file.hash}
-              onViewed={() =>
-                setMarks({
-                  ...marks,
-                  [file.path]: marks[file.path] === file.hash ? "" : file.hash,
-                })
-              }
-              onComment={(comment) => compose({ kind: "note", comment })}
-            />
-          ) : (
-            <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
-              <Check className="size-10 text-primary" />
-              <h2 className="text-lg font-medium">Working tree is clean</h2>
-              <p className="max-w-sm text-sm text-muted-foreground">
-                Changes will appear here as you work. You can still leave an
-                overall note.
-              </p>
-            </div>
-          )}
+          <DiffView
+            ref={diffView}
+            files={files}
+            context={diff.context}
+            notes={notes}
+            marks={marks}
+            onViewed={(path) =>
+              setMarks((current) => ({
+                ...current,
+                [path]:
+                  current[path] ===
+                  files.find((file) => file.path === path)?.hash
+                    ? ""
+                    : files.find((file) => file.path === path)!.hash,
+              }))
+            }
+            onActiveChange={setSelected}
+            onComment={(comment) => compose({ kind: "note", comment })}
+            onCompose={compose}
+            agent={!!agent.agent}
+          />
         </main>
         {notesOpen && (
           <aside
@@ -493,6 +520,16 @@ function Workspace({
                   file={files.find((f) => f.path === note.file)}
                   agent={!!agent.agent}
                   onCompose={compose}
+                  onJump={
+                    note.scope === "global" ||
+                    files.some((file) => file.path === note.file)
+                      ? () => {
+                          diffView.current?.scrollToNote(note);
+                          if (matchMedia("(max-width: 639px)").matches)
+                            setNotesOpen(false);
+                        }
+                      : undefined
+                  }
                 />
               ))}
               {!listed.length && (
