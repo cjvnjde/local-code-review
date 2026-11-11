@@ -1,3 +1,6 @@
+import { useState } from "react";
+import { WebEvidence, ConversationBody } from "../web-review/evidence.tsx";
+import { AttachmentImage } from "../components/images.tsx";
 import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { HistoryStore } from "./history-store.ts";
@@ -5,6 +8,8 @@ import {
   historyScope,
   historySnapshot,
   historySummary,
+  historyMatches,
+  historyText,
 } from "./history-model.ts";
 import type { DiffResponse, ReviewResponse } from "../app/api.ts";
 import { Markdown } from "../components/markdown.tsx";
@@ -28,6 +33,7 @@ export function useHistoryCapture(diff: DiffResponse, review?: ReviewResponse) {
   }, [diff.repo, diff.range, diff.id, review, client]);
 }
 export function History({ diff }: { diff: DiffResponse }) {
+  const [query, setQuery] = useState("");
   const recording = useQuery<string>({
     queryKey: ["history-error"],
     queryFn: () => "",
@@ -55,6 +61,13 @@ export function History({ diff }: { diff: DiffResponse }) {
         Review states observed by this browser. History is read-only and stays
         after notes are deleted.
       </p>
+      <input
+        aria-label="Filter history"
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        placeholder="Find a note, reply, status or deleted content…"
+        className="w-full rounded-lg border bg-background p-3 text-xs"
+      />
       <Button
         variant="outline"
         size="sm"
@@ -73,34 +86,109 @@ export function History({ diff }: { diff: DiffResponse }) {
           {entries.error.message}
         </p>
       )}
-      {entries.data?.map((entry) => (
-        <details key={entry.id} className="rounded-lg border p-3">
-          <summary className="cursor-pointer text-sm">
-            {new Date(entry.at).toLocaleString()}
-            <span className="ml-3 text-xs text-muted-foreground">
-              {entry.reason || historySummary(entry)}
-            </span>
-          </summary>
-          <div className="mt-3 space-y-3">
-            {entry.snapshot.notes.map((note) => (
-              <div key={note.id} className="border-t pt-3">
-                <p className="mb-2 text-xs text-muted-foreground">
-                  {note.file || "Overall"} · {note.status}
-                </p>
-                <Markdown body={note.body} />
-                {note.messages.map((message, i) => (
-                  <div key={i} className="mt-3 border-l pl-3">
-                    <span className="text-xs text-muted-foreground">
-                      {message.role}
-                    </span>
-                    <Markdown body={message.body} />
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
-        </details>
-      ))}
+      {entries.data
+        ?.filter((entry) => historyMatches(entry, query))
+        .map((entry) => (
+          <details key={entry.id} className="rounded-lg border p-3">
+            <summary className="cursor-pointer text-sm">
+              {new Date(entry.at).toLocaleString()}
+              <span className="ml-3 text-xs text-muted-foreground">
+                {entry.reason || historySummary(entry)}
+              </span>
+            </summary>
+            <div className="mt-3 space-y-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() =>
+                  void navigator.clipboard.writeText(
+                    historyText(entry, "changes"),
+                  )
+                }
+              >
+                Copy changes
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() =>
+                  void navigator.clipboard.writeText(
+                    historyText(entry, "snapshot"),
+                  )
+                }
+              >
+                Copy snapshot
+              </Button>
+              {entry.changes.some((change) => !change.after) && (
+                <details className="rounded border p-3">
+                  <summary className="cursor-pointer text-xs">
+                    Removed notes
+                  </summary>
+                  {entry.changes
+                    .filter((change) => !change.after)
+                    .map((change) => (
+                      <div key={change.id} className="mt-3">
+                        <Markdown
+                          body={change.before?.body || ""}
+                          file={change.before?.file}
+                          captured={change.before?.code}
+                        />
+                        {change.before?.messages.map((message, i) => (
+                          <ConversationBody
+                            key={i}
+                            body={message.body}
+                            file={change.before!.file}
+                            captured={change.before!.code}
+                          />
+                        ))}
+                      </div>
+                    ))}
+                </details>
+              )}
+              {entry.snapshot.notes.map((note) => (
+                <div key={note.id} className="border-t pt-3">
+                  <p className="mb-2 text-xs text-muted-foreground">
+                    {note.file || "Overall"} · {note.status}
+                  </p>
+                  {note.code && (
+                    <details>
+                      <summary className="cursor-pointer text-xs">
+                        Captured code
+                      </summary>
+                      <pre className="max-h-48 overflow-auto text-xs">
+                        {note.code}
+                      </pre>
+                    </details>
+                  )}
+                  <WebEvidence value={note.web} editable={false} />
+                  {note.image && (
+                    <AttachmentImage
+                      source={note.image.capture}
+                      label="Selected screenshot region"
+                    />
+                  )}
+                  <Markdown
+                    body={note.body}
+                    file={note.file}
+                    captured={note.code}
+                  />
+                  {note.messages.map((message, i) => (
+                    <div key={i} className="mt-3 border-l pl-3">
+                      <span className="text-xs text-muted-foreground">
+                        {message.role}
+                      </span>
+                      <ConversationBody
+                        body={message.body}
+                        file={note.file}
+                        captured={note.code}
+                      />
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </details>
+        ))}
       {entries.data?.length === 0 && (
         <p className="text-sm text-muted-foreground">
           No observed changes yet.

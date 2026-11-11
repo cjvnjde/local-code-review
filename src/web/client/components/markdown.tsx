@@ -1,19 +1,15 @@
+import { ColorTools } from "./colors.tsx";
+import { ContextReference } from "./context.tsx";
+import { contextId } from "../../../shared/context.ts";
+import { NoteReference, remarkReferences } from "../notes/references.tsx";
+import { refIn } from "../notes/note-ref.ts";
+import { attachmentSrc } from "./attachments.ts";
+import { AttachmentImage } from "./images.tsx";
 import { memo } from "react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { diffLines } from "diff";
 import { Code, languageFor } from "./code.tsx";
-
-export function attachmentSrc(url: string) {
-  const raw = url.trim().replace(/^\.\//, "");
-  if (
-    !/^(?:(?:images|assets)\/)?[a-zA-Z0-9][a-zA-Z0-9._-]*\.(png|jpe?g|gif|webp|avif|bmp|ico|svg|apng)$/i.test(
-      raw,
-    )
-  )
-    return "";
-  return `/api/attachment?ref=${encodeURIComponent(raw)}`;
-}
 
 function Suggestion({
   value,
@@ -60,21 +56,38 @@ export const Markdown = memo(function Markdown({
   return (
     <div className="markdown">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[remarkGfm, remarkReferences]}
         urlTransform={(url, key) =>
-          key === "src" ? attachmentSrc(url) : defaultUrlTransform(url)
+          key === "src"
+            ? attachmentSrc(url)
+              ? url
+              : ""
+            : contextId(url)
+              ? url
+              : refIn(url)
+                ? `lcr:${refIn(url)}`
+                : defaultUrlTransform(url)
         }
         components={{
-          a: ({ href, children }) => (
-            <a href={href} target="_blank" rel="noreferrer noopener">
-              {children}
-            </a>
-          ),
+          p: ({ children }) => <div className="my-2">{children}</div>,
+          a: ({ href, children }) =>
+            contextId(href) ? (
+              <ContextReference source={href!} label={String(children)} />
+            ) : refIn(href || "") ? (
+              <NoteReference
+                reference={refIn(href || "")}
+                render={(body, file, captured) => (
+                  <Markdown body={body} file={file} captured={captured} />
+                )}
+              />
+            ) : (
+              <a href={href} target="_blank" rel="noreferrer noopener">
+                {children}
+              </a>
+            ),
           img: ({ src, alt }) =>
             src ? (
-              <a href={src} target="_blank" rel="noreferrer noopener">
-                <img src={src} alt={alt || "Attachment"} loading="lazy" />
-              </a>
+              <AttachmentImage source={src} label={alt || "Attachment"} />
             ) : (
               <span className="text-muted-foreground">
                 [Image: {alt || "external image"}]
@@ -97,6 +110,7 @@ export const Markdown = memo(function Markdown({
       >
         {body}
       </ReactMarkdown>
+      <ColorTools body={body} />
     </div>
   );
 });

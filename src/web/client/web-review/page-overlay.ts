@@ -348,12 +348,25 @@ export function installPageReview(config: {
     node.textContent = e instanceof Error ? e.message : String(e);
   }
   function close(discard = false) {
-    if (
-      !discard &&
-      frameDirty &&
-      !confirm("Discard the note changes you are writing?")
-    )
+    if (!discard && frameDirty) {
+      if (!content.querySelector("[data-discard-prompt]")) {
+        const prompt = document.createElement("div");
+        prompt.className = "error";
+        prompt.setAttribute("data-discard-prompt", "");
+        const label = document.createElement("span");
+        label.textContent = "Discard the open note changes? ";
+        const keep = document.createElement("button");
+        keep.textContent = "Keep editing";
+        keep.onclick = () => prompt.remove();
+        const discardButton = document.createElement("button");
+        discardButton.textContent = "Discard note";
+        discardButton.onclick = () => close(true);
+        prompt.append(label, keep, discardButton);
+        content.prepend(prompt);
+      }
       return false;
+    }
+    content.querySelector("[data-discard-prompt]")?.remove();
     if (frameKind === "draft" && activeToken)
       void rpc("discard", { draftId: activeToken }).catch(() => {});
     panelGeneration++;

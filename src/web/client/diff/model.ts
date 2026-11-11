@@ -12,6 +12,7 @@ export function makeComment(
   file?: DiffFile,
   from?: number,
   to = from,
+  characters?: { ca: number; cb: number },
 ): ReviewComment {
   if (!file)
     return {
@@ -42,13 +43,27 @@ export function makeComment(
   const start = Math.min(...numbers),
     end = Math.max(...numbers);
   return {
-    id: mintNoteId(file.path, rowKey(rows[0]!), rowKey(rows.at(-1)!)),
+    id: mintNoteId(
+      file.path,
+      rowKey(rows[0]!),
+      rowKey(rows.at(-1)!),
+      characters?.ca,
+      characters?.cb,
+    ),
     file: file.path,
     body: "",
     start,
     end,
     side: newNumbers.length ? "new" : "old",
-    label: start === end ? String(start) : `${start}-${end}`,
+    label:
+      (start === end ? String(start) : `${start}-${end}`) +
+      (characters ? `:${characters.ca + 1}-${characters.cb}` : ""),
+    ...(characters
+      ? {
+          ...characters,
+          snippet: rows[0]!.text.slice(characters.ca, characters.cb),
+        }
+      : {}),
     code: rows
       .map(
         (row) =>

@@ -186,6 +186,7 @@ test("compiled executable reviews changes, preserves drafts, and continues the M
     ),
   ).toBeUndefined();
   expect(remote).toEqual([]);
+  await expect(page.locator("[data-review-editor]")).toHaveCount(0);
   // A draft survives reload and never gets replaced by SSE refetches.
   await page.getByRole("button", { name: "Overall note", exact: true }).click();
   await page
@@ -195,12 +196,11 @@ test("compiled executable reviews changes, preserves drafts, and continues the M
   await expect(page.getByRole("textbox", { name: "Note text" })).toHaveValue(
     "Recovered draft",
   );
-  page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
   // Only a bounded window of large-file rows is mounted.
   await page
     .getByRole("navigation")
-    .getByRole("button", { name: /untracked.ts/ })
+    .locator('button[title="untracked.ts"]')
     .click();
   await expect(
     page.getByRole("heading", { name: "untracked.ts", exact: true }),
@@ -237,6 +237,422 @@ test("compiled executable reviews changes, preserves drafts, and continues the M
   expect(codeNote.status).toBe("answered");
 });
 
+test("line, range and character gestures keep comments inline and protect draft text", async ({
+  page,
+}) => {
+  await page.goto(url);
+  const pane = page.getByRole("region", { name: "Code diff" });
+  const editor = page.locator("[data-review-editor]");
+  const code = pane
+    .locator('[data-file-path="src/app.ts"] [data-code-cell]')
+    .filter({ hasText: "hello world" });
+  await expect(code).toBeVisible();
+  await code.click();
+  await expect(editor).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(editor).toContainText("src/app.ts:2");
+  await page
+    .getByRole("textbox", { name: "Note text" })
+    .fill("Keep my draft while changing its selection");
+  // Shift-click extends the existing draft rather than replacing its body.
+  await pane
+    .locator('[data-file-path="src/app.ts"]')
+    .getByRole("button", { name: "Select line 3", exact: true })
+    .click({ modifiers: ["Shift"] });
+  await expect(editor).toContainText("src/app.ts:2-3");
+  await expect(page.getByRole("textbox", { name: "Note text" })).toHaveValue(
+    "Keep my draft while changing its selection",
+  );
+  // An unrelated file cannot steal a dirty draft.
+  await page.getByRole("button", { name: "Overall note", exact: true }).click();
+  await expect(editor).toContainText("src/app.ts:2-3");
+  await editor.getByRole("button", { name: "Cancel", exact: true }).click();
+  await page
+    .getByRole("navigation")
+    .locator('button[title="src/app.ts"]')
+    .click();
+  await expect(code).toBeInViewport();
+  // A real native drag through syntax-highlighted text, then save/reload its columns.
+  const point = async (offset: number) =>
+    code.evaluate((cell, offset) => {
+      const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT);
+      let left = offset;
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (left <= node.textContent!.length) {
+          const range = document.createRange();
+          range.setStart(node, left);
+          range.collapse(true);
+          const rect = range.getBoundingClientRect();
+          return { x: rect.x + 0.2, y: rect.y + rect.height / 2 };
+        }
+        left -= node.textContent!.length;
+      }
+      throw new Error("No character position");
+    }, offset);
+  const from = await point(10),
+    to = await point(15);
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(to.x, to.y, { steps: 8 });
+  await page.mouse.up();
+  await expect(editor).toContainText("src/app.ts:2:11-15");
+  await page
+    .getByRole("textbox", { name: "Note text" })
+    .fill("Character selection round trip");
+  await editor.getByRole("button", { name: "Save note", exact: true }).click();
+  const review = await (await page.request.get(`${url}/api/review`)).json();
+  expect(
+    review.notes.find(
+      (note: any) => note.body === "Character selection round trip",
+    ),
+  ).toMatchObject({
+    ca: 10,
+    cb: 15,
+    snippet: "hello",
+    code: "+  return 'hello world';",
+  });
+  await expect(editor).toHaveCount(0);
+  await page.reload();
+  await expect(code).toBeVisible();
+  // Alt-drag leaves native browser text selection and does not open an editor.
+  const a = await point(10),
+    b = await point(15);
+  await page.keyboard.down("Alt");
+  await page.mouse.move(a.x, a.y);
+  await page.mouse.down();
+  await page.mouse.move(b.x, b.y, { steps: 8 });
+  await page.mouse.up();
+  await page.keyboard.up("Alt");
+  await expect(editor).toHaveCount(0);
+  expect(await page.evaluate(() => window.getSelection()?.toString())).toBe(
+    "hello",
+  );
+  // Reverse multiline drag on adjacent rows in the continuous diff.
+  await page
+    .getByRole("navigation")
+    .locator('button[title="untracked.ts"]')
+    .click();
+  const rows = pane.locator('[data-file-path="untracked.ts"]');
+  const first = rows.getByRole("button", {
+    name: "Select line 2",
+    exact: true,
+  });
+  const last = rows.getByRole("button", { name: "Select line 4", exact: true });
+  await expect(last).toBeInViewport();
+  const end = await last.boundingBox();
+  const start = await first.boundingBox();
+  await page.mouse.move(end!.x + 10, end!.y + 10);
+  await page.mouse.down();
+  await page.mouse.move(start!.x + 10, start!.y + 10, { steps: 10 });
+  await page.mouse.up();
+  await expect(editor).toContainText("untracked.ts:2-4");
+  await editor.getByRole("button", { name: "Cancel", exact: true }).click();
+});
+
+test("image attachments preview, retain editable drawings and survive note and reply saves", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto(url);
+  await page.getByRole("button", { name: "Overall note", exact: true }).click();
+  const editor = page.locator("[data-review-editor]");
+  await page
+    .getByRole("textbox", { name: "Note text" })
+    .fill("Image editing round trip");
+  const png = await page.evaluate(() => {
+    const c = document.createElement("canvas");
+    c.width = 240;
+    c.height = 160;
+    const ctx = c.getContext("2d")!;
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, 240, 160);
+    ctx.fillStyle = "#222";
+    ctx.fillText("Original evidence", 20, 40);
+    return c.toDataURL().split(",")[1]!;
+  });
+  await editor.locator('input[accept="image/*"]').setInputFiles({
+    name: "evidence.png",
+    mimeType: "image/png",
+    buffer: Buffer.from(png, "base64"),
+  });
+  const images = editor.getByRole("region", { name: "Attached images" });
+  await expect(images.getByRole("img")).toBeVisible();
+  await images.getByRole("button", { name: "Preview", exact: true }).click();
+  const viewer = page.locator("dialog.image-viewer");
+  await expect(viewer).toBeVisible();
+  await viewer.getByRole("button", { name: "100%", exact: true }).click();
+  await viewer.getByRole("button", { name: "Fit", exact: true }).click();
+  await viewer.getByRole("button", { name: "Close", exact: true }).click();
+  await images
+    .getByRole("button", { name: "Draw / edit", exact: true })
+    .click();
+  const drawing = page.getByRole("dialog", {
+    name: "Draw on screenshot",
+    exact: true,
+  });
+  await expect(drawing).toBeVisible();
+  await drawing
+    .getByRole("button", { name: "Draw a rectangle", exact: true })
+    .click();
+  const canvas = drawing.locator("canvas");
+  await expect(canvas).toBeVisible();
+  const box = await canvas.boundingBox();
+  await page.mouse.move(
+    box!.x + box!.width * 0.35,
+    box!.y + box!.height * 0.35,
+  );
+  await page.mouse.down();
+  await page.mouse.move(box!.x + box!.width * 0.6, box!.y + box!.height * 0.6, {
+    steps: 8,
+  });
+  await page.mouse.up();
+  await drawing
+    .getByRole("button", { name: "Apply drawing", exact: true })
+    .click();
+  await expect(drawing).toHaveCount(0);
+  const body = await page
+    .getByRole("textbox", { name: "Note text" })
+    .inputValue();
+  const ref = /!\[[^\]]*\]\(([^)]+)\)/.exec(body)![1]!;
+  const { decodeImageDrawing } =
+    await import("../../src/shared/image-drawing.ts");
+  const response = await page.request.get(
+    `${url}/api/attachment?ref=${encodeURIComponent(ref)}`,
+  );
+  const metadata = decodeImageDrawing(
+    new Uint8Array(await response.body()),
+    ref,
+  );
+  expect(metadata?.annotation.marks).toHaveLength(1);
+  expect(metadata?.annotation.marks[0]?.tool).toBe("rectangle");
+  // Reopen uses the original image and editable vectors, not a flattened second layer.
+  await images
+    .getByRole("button", { name: "Draw / edit", exact: true })
+    .click();
+  await expect(drawing).toBeVisible();
+  await drawing
+    .getByRole("button", { name: "Select and edit drawings", exact: true })
+    .click();
+  await expect(
+    drawing
+      .getByRole("combobox", { name: "Select an editable drawing" })
+      .locator("option"),
+  ).toHaveCount(2);
+  await drawing
+    .getByRole("button", { name: "Close drawing editor", exact: true })
+    .click();
+  await editor.getByRole("button", { name: "Save note", exact: true }).click();
+  const panel = page.getByRole("complementary", { name: "Review notes" });
+  const card = panel
+    .getByRole("article")
+    .filter({ hasText: "Image editing round trip" });
+  await expect(card.getByRole("img")).toBeVisible();
+  await card.getByRole("button", { name: "Reply", exact: true }).click();
+  await page
+    .getByRole("textbox", { name: "Note text" })
+    .fill(`Reply with preview\n![same image](${ref})`);
+  await expect(
+    editor.getByRole("region", { name: "Attached images" }).getByRole("img"),
+  ).toBeVisible();
+  await editor.getByRole("button", { name: "Send reply", exact: true }).click();
+  await expect(editor).toHaveCount(0);
+  await page.reload();
+  await expect(card.getByRole("img")).toHaveCount(2);
+  expect(errors).toEqual([]);
+});
+
+test("bookmarks, full review search, references and context stay usable across navigation", async ({
+  page,
+}) => {
+  await page.request.post(`${url}/api/note`, {
+    data: {
+      comment: {
+        id: "|@|@|#refseed123",
+        scope: "global",
+        file: "",
+        start: 0,
+        end: 0,
+        body: "Reference target",
+      },
+      ask: false,
+    },
+  });
+  await page.goto(url);
+  const pane = page.getByRole("region", { name: "Code diff" });
+  const nav = page.getByRole("complementary", { name: "Changed files" });
+  await pane
+    .locator('[data-file-path="src/app.ts"]')
+    .getByRole("button", { name: "Bookmark line 2", exact: true })
+    .last()
+    .click();
+  await expect(nav.getByText("Bookmarks · 1")).toBeVisible();
+  await page.reload();
+  await expect(nav.getByText("Bookmarks · 1")).toBeVisible();
+  await nav
+    .getByRole("button", { name: "Hide file src/app.ts", exact: true })
+    .click();
+  await expect(
+    pane.getByRole("heading", { name: "src/app.ts", exact: true }),
+  ).toHaveCount(0);
+  await page.keyboard.press("Control+k");
+  await page
+    .getByRole("textbox", { name: "Search review", exact: true })
+    .fill("hello world");
+  await page
+    .getByRole("region", { name: "Search this review" })
+    .getByRole("button")
+    .filter({ hasText: "Added · new 2" })
+    .click();
+  await expect(
+    pane
+      .locator('[data-file-path="src/app.ts"] [data-code-cell]')
+      .filter({ hasText: "hello world" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Overall note", exact: true }).click();
+  const editor = page.locator("[data-review-editor]");
+  await page
+    .getByRole("textbox", { name: "Note text" })
+    .fill("References and context audit");
+  await editor.getByText("Formatting and references", { exact: true }).click();
+  const refs = editor.getByRole("combobox", { name: "Insert note reference" });
+  const reference = await refs.locator("option").nth(1).getAttribute("value");
+  await refs.selectOption(reference!);
+  await editor
+    .getByText("Add context · file, text or JSON", { exact: true })
+    .click();
+  await editor
+    .getByRole("textbox", { name: "Context label", exact: true })
+    .fill("Debug details");
+  await editor
+    .getByRole("textbox", { name: "Additional context", exact: true })
+    .fill("Some independently readable context");
+  await editor
+    .getByRole("button", { name: "Attach context", exact: true })
+    .click();
+  await expect(page.getByRole("textbox", { name: "Note text" })).toHaveValue(
+    /context\/.*\/manifest.json/,
+  );
+  await editor.getByRole("button", { name: "Save note", exact: true }).click();
+  const card = page
+    .getByRole("complementary", { name: "Review notes" })
+    .getByRole("article")
+    .filter({ hasText: "References and context audit" });
+  await card
+    .getByRole("button")
+    .filter({ hasText: `#${reference!.slice(-8)}` })
+    .click();
+  await expect(
+    card.getByRole("button", { name: "Go to note", exact: true }),
+  ).toBeVisible();
+  await card
+    .getByRole("button", {
+      name: "Additional context: Debug details · Inspect context",
+      exact: true,
+    })
+    .click();
+  await card.getByRole("button", { name: "Read text", exact: true }).click();
+  await expect(
+    card.getByText("Some independently readable context", { exact: true }),
+  ).toBeVisible();
+  // Deletion confirmation belongs to the card; it never invokes a native popup.
+  await card.getByRole("button", { name: "Delete note", exact: true }).click();
+  await expect(
+    card.getByText("Delete this note and its conversation?", { exact: true }),
+  ).toBeVisible();
+  await card.getByRole("button", { name: "Keep", exact: true }).click();
+});
+
+test("folder controls, color edits and local resolution preserve the underlying conversation", async ({
+  page,
+}) => {
+  await page.request.delete(`${url}/api/review`);
+  await page.request.post(`${url}/api/note`, {
+    data: {
+      comment: {
+        id: "src/app.ts|n2|n2|#resolve123",
+        file: "src/app.ts",
+        start: 2,
+        end: 2,
+        side: "new",
+        label: "2",
+        code: "+  return 'hello world';",
+        body: "Local acknowledgement audit",
+      },
+      ask: false,
+    },
+  });
+  let review = await (await page.request.get(`${url}/api/review`)).json();
+  const file = path.join(directory, review.file);
+  await writeFile(
+    file,
+    (await readFile(file, "utf8")).replace(
+      "Status: pending",
+      "Status: answered\n\n**Agent** <!-- lcr:m 2026-11-11T10:00:00.000Z -->\n\nFirst answer.",
+    ),
+  );
+  await page.goto(url);
+  const nav = page.getByRole("navigation");
+  await nav
+    .getByRole("button", { name: "Collapse folders", exact: true })
+    .click();
+  await expect(nav.locator('button[title="src/app.ts"]')).toHaveCount(0);
+  await nav
+    .getByRole("button", { name: "Reveal current file", exact: true })
+    .click();
+  await expect(nav.locator('button[title="src/app.ts"]')).toBeVisible();
+  const panel = page.getByRole("complementary", { name: "Review notes" });
+  const card = panel
+    .getByRole("article")
+    .filter({ hasText: "Local acknowledgement audit" });
+  await expect(card.getByText("First answer.", { exact: true })).toBeVisible();
+  await card.getByRole("button", { name: "Resolve", exact: true }).click();
+  await expect(card).toHaveCount(0);
+  const resolved = panel.getByRole("checkbox", { name: /Show resolved/ });
+  await resolved.check();
+  await expect(
+    card.getByRole("button", { name: "Reopen", exact: true }),
+  ).toBeVisible();
+  await page.reload();
+  await expect(
+    card.getByRole("button", { name: "Reopen", exact: true }),
+  ).toBeVisible();
+  await resolved.uncheck();
+  // A later agent message invalidates the local acknowledgement without changing its status on disk.
+  await writeFile(
+    file,
+    (await readFile(file, "utf8")).replace(
+      "First answer.",
+      "First answer.\n\n**Agent** <!-- lcr:m 2026-11-11T11:00:00.000Z -->\n\nA new answer needs your attention.",
+    ),
+  );
+  await expect(
+    card.getByRole("button", { name: "Resolve", exact: true }),
+  ).toBeVisible();
+  await expect(
+    card.getByText("A new answer needs your attention.", { exact: true }),
+  ).toBeVisible();
+  review = await (await page.request.get(`${url}/api/review`)).json();
+  expect(review.notes[0].messages).toHaveLength(2);
+  expect(review.notes[0].status).toBe("answered");
+  await page.getByRole("button", { name: "Overall note", exact: true }).click();
+  const editor = page.locator("[data-review-editor]");
+  await page
+    .getByRole("textbox", { name: "Note text" })
+    .fill("Use #123456 for this border.");
+  await editor.getByText("Colors · 1", { exact: true }).click();
+  await editor
+    .getByRole("textbox", { name: "Color value #123456", exact: true })
+    .fill("#22c55e80");
+  await editor
+    .getByRole("button", { name: "Apply color", exact: true })
+    .click();
+  await expect(page.getByRole("textbox", { name: "Note text" })).toHaveValue(
+    "Use #22c55e80 for this border.",
+  );
+  await editor.getByRole("button", { name: "Cancel", exact: true }).click();
+});
+
 test("continuous scrolling follows files, reopens viewed files, and preserves the reading anchor", async ({
   page,
 }) => {
@@ -244,7 +660,10 @@ test("continuous scrolling follows files, reopens viewed files, and preserves th
   page.on("pageerror", (error) => errors.push(error.message));
   const saved = await (await page.request.get(`${url}/api/review`)).json();
   if (
-    !saved.notes.some((note: { file: string }) => note.file === "src/app.ts")
+    !saved.notes.some(
+      (note: { body: string }) =>
+        note.body === "Please **rename** this greeting.",
+    )
   ) {
     await page.request.post(`${url}/api/note`, {
       data: {
@@ -267,8 +686,12 @@ test("continuous scrolling follows files, reopens viewed files, and preserves th
   const notesPanel = page.getByRole("complementary", { name: "Review notes" });
   await expect(pane).toHaveCount(1);
   await expect(
-    navigation.getByRole("button", { name: /app.ts/ }),
+    navigation.locator('button[title="src/app.ts"]'),
   ).toHaveAttribute("aria-current", "true");
+  await navigation.locator('button[title="src/app.ts"]').click();
+  await expect(
+    pane.getByRole("heading", { name: "src/app.ts", exact: true }),
+  ).toBeInViewport();
   // One wheel gesture carries the review into subsequent files, without picking a file.
   await pane.hover();
   await page.mouse.wheel(0, 2000);
@@ -285,7 +708,7 @@ test("continuous scrolling follows files, reopens viewed files, and preserves th
     element.scrollTop = element.scrollHeight;
   });
   await expect(
-    navigation.getByRole("button", { name: /untracked.ts/ }),
+    navigation.locator('button[title="untracked.ts"]'),
   ).toHaveAttribute("aria-current", "true");
   await expect(
     pane.getByRole("heading", { name: "untracked.ts", exact: true }),
@@ -294,7 +717,7 @@ test("continuous scrolling follows files, reopens viewed files, and preserves th
     100,
   );
   // A sidebar jump reuses that pane and reaches files even when their rows aren't mounted.
-  await navigation.getByRole("button", { name: /app.ts/ }).click();
+  await navigation.locator('button[title="src/app.ts"]').click();
   await expect(
     pane.getByRole("heading", { name: "src/app.ts", exact: true }),
   ).toBeVisible();
@@ -304,7 +727,7 @@ test("continuous scrolling follows files, reopens viewed files, and preserves th
   await expect(
     pane.getByRole("button", { name: "Expand src/app.ts", exact: true }),
   ).toBeVisible();
-  await navigation.getByRole("button", { name: /app.ts/ }).click();
+  await navigation.locator('button[title="src/app.ts"]').click();
   await expect(
     pane.getByRole("button", { name: "Collapse src/app.ts", exact: true }),
   ).toBeVisible();
@@ -331,7 +754,7 @@ test("continuous scrolling follows files, reopens viewed files, and preserves th
     pane.getByRole("button", { name: "Collapse src/app.ts", exact: true }),
   ).toBeVisible();
   // Each collapsed deletion has an explicit way to read it again.
-  await navigation.getByRole("button", { name: /deleted.ts/ }).click();
+  await navigation.locator('button[title="src/deleted.ts"]').click();
   const removedToggle = pane
     .locator('[data-file-path="src/deleted.ts"][data-diff-kind="tools"]')
     .getByRole("checkbox", { name: "Fold removed lines" });
@@ -343,12 +766,12 @@ test("continuous scrolling follows files, reopens viewed files, and preserves th
     pane.getByRole("button", { name: "Hide 1 removed lines", exact: true }),
   ).toBeVisible();
   // Hold a middle row of a large file still while an earlier file grows.
-  await navigation.getByRole("button", { name: /untracked.ts/ }).click();
+  await navigation.locator('button[title="untracked.ts"]').click();
   await pane.evaluate((element) => {
     element.scrollTop += 26 * 600;
   });
   await expect(
-    navigation.getByRole("button", { name: /untracked.ts/ }),
+    navigation.locator('button[title="untracked.ts"]'),
   ).toHaveAttribute("aria-current", "true");
   async function topRow() {
     return pane.evaluate((element) => {
@@ -411,16 +834,125 @@ test("continuous scrolling follows files, reopens viewed files, and preserves th
   await expect(page.getByRole("textbox", { name: "Note text" })).toHaveValue(
     "Do not replace my subject while I write.",
   );
-  page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(
     page.getByText("Diff update waiting for the open editor to close."),
   ).toHaveCount(0);
   await expect(
-    navigation.getByRole("button", { name: /untracked.ts/ }),
+    navigation.locator('button[title="untracked.ts"]'),
   ).toHaveAttribute("aria-current", "true");
   await page.screenshot({ path: "/tmp/lcr-continuous-ui.png" });
   expect(errors).toEqual([]);
+});
+
+test("image-region comments, audio playback, preferences and the resume marker remain available", async ({
+  page,
+}) => {
+  await writeFile(
+    path.join(directory, "screenshot.svg"),
+    '<svg xmlns="http://www.w3.org/2000/svg" width="240" height="160"><rect width="240" height="160" fill="white"/><rect x="30" y="30" width="90" height="60" fill="#22c55e"/></svg>',
+  );
+  const wav = Buffer.alloc(46);
+  wav.write("RIFF");
+  wav.writeUInt32LE(38, 4);
+  wav.write("WAVEfmt ", 8);
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(8000, 24);
+  wav.writeUInt32LE(16000, 28);
+  wav.writeUInt16LE(2, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write("data", 36);
+  wav.writeUInt32LE(2, 40);
+  await writeFile(path.join(directory, "sound.wav"), wav);
+  await page.goto(url);
+  const nav = page.getByRole("navigation");
+  const pane = page.getByRole("region", { name: "Code diff" });
+  await nav.locator('button[title="screenshot.svg"]').click();
+  const image = pane.getByRole("img", {
+    name: "After: screenshot.svg",
+    exact: true,
+  });
+  await expect(image).toBeInViewport();
+  await expect
+    .poll(() => image.evaluate((img: HTMLImageElement) => img.naturalWidth))
+    .toBe(240);
+  const box = await image.boundingBox();
+  await page.mouse.move(box!.x + 30, box!.y + 30);
+  await page.mouse.down();
+  await page.mouse.move(box!.x + 120, box!.y + 90, { steps: 10 });
+  await page.mouse.up();
+  const editor = page.locator("[data-review-editor]");
+  await expect(
+    editor.getByRole("img", {
+      name: "Selected screenshot region",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await page
+    .getByRole("textbox", { name: "Note text" })
+    .fill("Screenshot region round trip");
+  await editor.getByRole("button", { name: "Save note", exact: true }).click();
+  await expect(editor).toHaveCount(0);
+  const review = await (await page.request.get(`${url}/api/review`)).json();
+  const note = review.notes.find(
+    (note: any) => note.body === "Screenshot region round trip",
+  );
+  expect(note.image).toMatchObject({
+    side: "new",
+    x: 30,
+    y: 30,
+    width: 90,
+    height: 60,
+    imageWidth: 240,
+    imageHeight: 160,
+  });
+  await nav.locator('button[title="sound.wav"]').click();
+  await expect(pane.locator("audio[controls]")).toBeVisible();
+  expect(
+    (
+      await page.request.get(
+        new URL((await pane.locator("audio").getAttribute("src"))!, url).href,
+      )
+    ).headers()["content-type"],
+  ).toBe("audio/wav");
+  await nav.locator('button[title="untracked.ts"]').click();
+  await expect(
+    pane.getByRole("button", { name: "Select line 5", exact: true }),
+  ).toBeInViewport();
+  await pane.hover();
+  await page.mouse.wheel(0, 260);
+  const resume = page.getByRole("button", {
+    name: "Resume reading",
+    exact: true,
+  });
+  await expect(resume).toBeVisible();
+  await page.reload();
+  await expect(resume).toBeVisible();
+  await resume.click();
+  await expect(nav.locator('button[title="untracked.ts"]')).toHaveAttribute(
+    "aria-current",
+    "true",
+  );
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const settings = page.getByRole("dialog", { name: "Settings", exact: true });
+  await settings
+    .getByRole("checkbox", {
+      name: "Enter saves · Shift+Enter inserts a newline",
+      exact: true,
+    })
+    .check();
+  await settings
+    .getByRole("combobox", { name: "Context expansion", exact: true })
+    .selectOption("50");
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Overall note", exact: true }).click();
+  await page
+    .getByRole("textbox", { name: "Note text" })
+    .fill("Enter preference saves inline");
+  await page.getByRole("textbox", { name: "Note text" }).press("Enter");
+  await expect(editor).toHaveCount(0);
 });
 
 test("live page capture saves through the embedded React editor", async ({
@@ -479,11 +1011,38 @@ test("live page capture saves through the embedded React editor", async ({
     );
     expect(picture.ok()).toBe(true);
     await page.goto(url);
+    const card = page
+      .getByRole("complementary", { name: "Review notes" })
+      .getByRole("article")
+      .filter({ hasText: "Increase this checkout target size." });
+    await expect(card).toBeVisible();
+    await target
+      .locator("#target")
+      .evaluate((element) => (element.style.backgroundColor = "#22c55e"));
+    await card
+      .getByRole("button", { name: "Capture after", exact: true })
+      .click();
+    const reply = page.locator("[data-review-editor]");
+    await expect(reply).toBeVisible();
+    await page
+      .getByRole("textbox", { name: "Note text" })
+      .fill("Updated checkout appearance.");
+    await reply
+      .getByRole("button", { name: "Send reply", exact: true })
+      .click();
+    await expect(reply).toHaveCount(0);
     await expect(
-      page
-        .getByRole("complementary", { name: "Review notes" })
-        .getByRole("article")
-        .filter({ hasText: "Increase this checkout target size." }),
+      card.getByText("Updated checkout appearance.", { exact: true }),
+    ).toBeVisible();
+    await card
+      .getByText("Compare original screenshots", { exact: true })
+      .click();
+    await expect(
+      card.getByRole("button", { name: "Wipe", exact: true }),
+    ).toBeEnabled();
+    await card.getByRole("button", { name: "Wipe", exact: true }).click();
+    await expect(
+      card.getByRole("slider", { name: "Comparison wipe", exact: true }),
     ).toBeVisible();
   } finally {
     await stop();

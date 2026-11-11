@@ -1,3 +1,7 @@
+import { webReview } from "../../../shared/web-review.ts";
+import { useState } from "react";
+import { useNoteState, canResolve } from "./review-state.tsx";
+import { AttachmentImage } from "../components/images.tsx";
 import {
   Copy,
   Pencil,
@@ -12,7 +16,7 @@ import { Button, cn } from "../components/ui/button.tsx";
 import { Tooltip } from "../components/ui/tooltip.tsx";
 import { Markdown } from "../components/markdown.tsx";
 import { Code } from "../components/code.tsx";
-import { useAction } from "../app/api.ts";
+import { useAction, useDiff } from "../app/api.ts";
 import type { Draft } from "./composer.tsx";
 import { WebEvidence, ConversationBody } from "../web-review/evidence.tsx";
 import { placeNote } from "../diff/model.ts";
@@ -24,6 +28,7 @@ export function NoteCard({
   onCompose,
   inline = false,
   onJump,
+  editor,
 }: {
   note: ReviewNote;
   file?: DiffFile;
@@ -31,8 +36,12 @@ export function NoteCard({
   onCompose: (draft: Draft) => void;
   inline?: boolean;
   onJump?: () => void;
+  editor?: React.ReactNode;
 }) {
+  const state = useNoteState();
+  const webEnabled = !!useDiff().data?.web;
   const action = useAction();
+  const [removing, setRemoving] = useState<string | null>(null);
   const editable =
     !note.messages.some((m) => m.role === "agent") &&
     !["applied", "answered", "skipped"].includes(note.status);
@@ -45,6 +54,8 @@ export function NoteCard({
     <article
       className="rounded-xl border bg-card shadow-sm"
       data-note-id={note.id}
+      onPointerEnter={() => state.read(note)}
+      onFocus={() => state.read(note)}
       id={`${inline ? "diff-note" : "note"}-${reference}`}
     >
       <header className="flex items-center gap-2 border-b px-4 py-3">
@@ -54,6 +65,14 @@ export function NoteCard({
         >
           {noteKey(note)}
         </span>
+        {state.unread(note) > 0 && (
+          <span className="rounded bg-primary/15 px-2 py-1 text-[10px] text-primary">
+            {state.unread(note)} new
+          </span>
+        )}
+        {state.resolved(note) && (
+          <span className="text-[10px] text-emerald-500">Resolved</span>
+        )}
         <span
           className={cn(
             "rounded-full border px-2 py-0.5 text-[10px] font-medium",
@@ -78,7 +97,90 @@ export function NoteCard({
             </pre>
           </details>
         )}
-        <WebEvidence value={note.web} />
+        {webEnabled && note.web && (
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={action.isPending}
+              onClick={() =>
+                action.mutate({
+                  url: "/api/web/focus",
+                  method: "POST",
+                  body: { id: note.id },
+                })
+              }
+            >
+              Select more / reply on page
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={action.isPending}
+              onClick={async () => {
+                const result = (await action
+                  .mutateAsync({
+                    url: "/api/web/capture",
+                    method: "POST",
+                    body: { id: note.id },
+                  })
+                  .catch(() => null)) as {
+                  web?: unknown;
+                  draftId?: string;
+                } | null;
+                const web = webReview(result?.web);
+                if (web)
+                  onCompose({
+                    kind: "reply",
+                    id: note.id,
+                    body: "",
+                    label: noteKey(note),
+                    file: note.file,
+                    code: note.code,
+                    web,
+                    webDraftId: result?.draftId,
+                  });
+              }}
+            >
+              Capture after
+            </Button>
+          </div>
+        )}
+        <WebEvidence
+          value={note.web}
+          editable={editable}
+          messages={note.messages}
+          onAnnotate={async (target, annotation) => {
+            await action.mutateAsync({
+              url: "/api/web/annotation",
+              method: "POST",
+              body: { id: note.id, target, annotation },
+            });
+          }}
+          onRemove={async (index, key) => {
+            await action.mutateAsync({
+              url: "/api/web/selection",
+              method: "POST",
+              body: { id: note.id, index, key },
+            });
+          }}
+        />
+        {note.image && (
+          <div className="rounded-lg border p-3 text-xs">
+            <p className="mb-2">
+              Screenshot region ·{" "}
+              {note.image.side === "old" ? "before" : "after"} ·{" "}
+              {note.image.width}×{note.image.height}
+              {file && note.image.source !== file.hash
+                ? " · image has changed"
+                : ""}
+            </p>
+            <AttachmentImage
+              source={note.image.capture}
+              label="Selected screenshot region"
+            />
+          </div>
+        )}
         <Markdown body={note.body} file={note.file} captured={note.code} />
         {note.detail && (
           <p className="rounded-md bg-muted p-2 text-xs text-muted-foreground">
@@ -111,6 +213,16 @@ export function NoteCard({
             </Button>,
           )}
           <div className="ml-auto" />
+          {(state.resolved(note) || canResolve(note)) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={!!editor}
+              onClick={() => state.toggle(note)}
+            >
+              {state.resolved(note) ? "Reopen" : "Resolve"}
+            </Button>
+          )}
           {editable &&
             icon(
               "Edit note",
@@ -133,13 +245,7 @@ export function NoteCard({
               className="text-muted-foreground hover:text-destructive"
               aria-label="Delete note"
               disabled={action.isPending}
-              onClick={() => {
-                if (confirm("Delete this note and its conversation?"))
-                  action.mutate({
-                    url: `/api/note?${new URLSearchParams({ id: note.id })}`,
-                    method: "DELETE",
-                  });
-              }}
+              onClick={() => setRemoving("note")}
             >
               <Trash2 />
             </Button>,
@@ -216,13 +322,7 @@ export function NoteCard({
                       variant="ghost"
                       aria-label="Delete reply"
                       disabled={action.isPending}
-                      onClick={() => {
-                        if (confirm("Delete this reply?"))
-                          action.mutate({
-                            url: `/api/reply?${new URLSearchParams({ id: note.id, at: message.at })}`,
-                            method: "DELETE",
-                          });
-                      }}
+                      onClick={() => setRemoving(message.at!)}
                     >
                       <Trash2 />
                     </Button>,
@@ -238,25 +338,61 @@ export function NoteCard({
           </section>
         );
       })}
-      <div className="border-t px-4 py-2">
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() =>
-            onCompose({
-              kind: "reply",
-              id: note.id,
-              body: "",
-              label: noteKey(note),
-              file: note.file,
-              code: note.code,
-            })
-          }
-        >
-          <Reply />
-          Reply
-        </Button>
-      </div>
+      {editor ? (
+        <div className="border-t p-3">{editor}</div>
+      ) : (
+        <div className="border-t px-4 py-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() =>
+              onCompose({
+                kind: "reply",
+                id: note.id,
+                body: "",
+                label: noteKey(note),
+                file: note.file,
+                code: note.code,
+              })
+            }
+          >
+            <Reply />
+            Reply
+          </Button>
+        </div>
+      )}
+      {removing && (
+        <div className="flex items-center gap-3 border-t p-3 text-xs">
+          <span className="flex-1">
+            Delete{" "}
+            {removing === "note"
+              ? "this note and its conversation"
+              : "this reply"}
+            ?
+          </span>
+          <Button size="sm" variant="ghost" onClick={() => setRemoving(null)}>
+            Keep
+          </Button>
+          <Button
+            size="sm"
+            disabled={action.isPending}
+            onClick={() =>
+              action.mutate(
+                {
+                  url:
+                    removing === "note"
+                      ? `/api/note?${new URLSearchParams({ id: note.id })}`
+                      : `/api/reply?${new URLSearchParams({ id: note.id, at: removing })}`,
+                  method: "DELETE",
+                },
+                { onSuccess: () => setRemoving(null) },
+              )
+            }
+          >
+            Delete
+          </Button>
+        </div>
+      )}
       {action.error && (
         <p className="p-4 text-sm text-destructive" role="alert">
           {action.error.message}

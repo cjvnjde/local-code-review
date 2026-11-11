@@ -71,6 +71,23 @@ export function EmbeddedReview({
         setCapturing(event.data.busy === true);
       if (event.data.action === "evidence") {
         const web = webReview(event.data.web);
+        if (noteId && event.data.reply && web) {
+          const note = review?.notes.find((note) => note.id === noteId);
+          setDraft((current) =>
+            current?.kind === "reply"
+              ? { ...current, web, webDraftId: event.data.draftId }
+              : {
+                  kind: "reply",
+                  id: noteId,
+                  body: "",
+                  label: note?.key || "UI note",
+                  file: note?.file || "",
+                  code: note?.code,
+                  web,
+                  webDraftId: event.data.draftId,
+                },
+          );
+        }
         if (draftId && web)
           setDraft((current) =>
             current?.kind === "note"
@@ -83,7 +100,7 @@ export function EmbeddedReview({
     window.addEventListener("message", receive);
     tell("ready");
     return () => window.removeEventListener("message", receive);
-  }, [origin, client]);
+  }, [origin, client, review?.notes]);
   useEffect(() => {
     tell("dirty", {
       dirty: !!draft && !!draftBody(draft).trim(),
@@ -92,12 +109,7 @@ export function EmbeddedReview({
     });
   }, [draft, busy, capturing]);
   const close = () => {
-    if (
-      busy ||
-      capturing ||
-      (draft && draftBody(draft).trim() && !confirm("Discard this draft?"))
-    )
-      return;
+    if (busy || capturing) return;
     setDraft(null);
     tell("dirty", { dirty: false, saving: false });
     tell("close");
@@ -129,6 +141,10 @@ export function EmbeddedReview({
           agent={!!diff.agent}
           embedded
           onBusy={setBusy}
+          webDraftId={draftId || undefined}
+          onWebDrawing={(open) =>
+            tell("annotation", { open, ...(draftId ? { draftId } : {}) })
+          }
         />
       ) : note ? (
         <div className="p-3">

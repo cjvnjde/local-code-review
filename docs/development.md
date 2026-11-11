@@ -112,17 +112,15 @@ Do not format generated review files. The optional skill copies must stay identi
 cmp skills/apply-lcr/SKILL.md .agents/skills/apply-lcr/SKILL.md
 ```
 
-## Current experiment scope
+## UX preservation
 
-The v2 UI supports Git review, line and range notes, file and overall notes,
-suggestions, Markdown previews, image attachments, replies and verdicts, review
-switching, viewed marks, themes, history export, and ACP queue controls. Live web
-capture uses the same React editor inside the reviewed page.
+The React implementation keeps the original review interactions. See the
+[feature audit](ux-parity.md) for the capability inventory and verification scope.
+Run both the source suite (with `LCR_TEST_BROWSER=1` for the drawing/page-overlay
+checks) and `bun run test:browser` when changing interactions. A production compile
+must still work outside this checkout with no runtime install or adjacent assets.
 
-Remaining UX parity work includes drag/character selections, bookmarks and the
-reading-resume marker, automatic viewed tracking, keyboard stepping, file hide
-patterns, word diffs, audio playback, screenshot drawing, capture comparisons, and
-rich reference previews. Existing evidence remains readable and the Markdown format is unchanged.
-Old browser preferences are left in their original storage keys; v2 uses its own
-keys. Saved review files are adopted normally, while unsaved drafts from the old
-UI are not migrated.
+React, TanStack Query/Virtual, Radix, Tailwind, react-markdown/remark-gfm,
+highlight.js and diff own their respective UI, data, rendering and bundling
+concerns. The tested drawing geometry, immutable attachment format, review models
+and local server contracts are retained where replacing them would lose behavior.

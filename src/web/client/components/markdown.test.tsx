@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { Markdown, attachmentSrc } from "./markdown.tsx";
+import { Markdown } from "./markdown.tsx";
+import { attachmentSrc } from "./attachments.ts";
 
 const render = (body: string, captured?: string) =>
   renderToStaticMarkup(

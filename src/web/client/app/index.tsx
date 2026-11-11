@@ -1,3 +1,4 @@
+import { startNavigation } from "../navigation/ui-navigation.ts";
 import { Component, StrictMode, type ErrorInfo, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -34,6 +35,7 @@ class ErrorBoundary extends Component<
     );
   }
 }
+startNavigation();
 const client = new QueryClient({
   defaultOptions: {
     queries: { staleTime: 10_000, retry: 1, refetchOnWindowFocus: true },

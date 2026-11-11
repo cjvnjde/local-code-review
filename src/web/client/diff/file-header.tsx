@@ -1,3 +1,4 @@
+import { useUi } from "../app/ui-preferences.tsx";
 import {
   Check,
   ChevronDown,
@@ -27,6 +28,7 @@ export function FileHeader({
   onComment: () => void;
 }) {
   const action = useAction();
+  const { settings } = useUi();
   return (
     <div className="border-y bg-card">
       <div className="flex min-h-14 flex-wrap items-center gap-2 px-3 py-2">
@@ -80,7 +82,7 @@ export function FileHeader({
               action.mutate({
                 url: "/api/open-file",
                 method: "POST",
-                body: { path: file.path },
+                body: { path: file.path, editor: settings.editor },
               })
             }
           >

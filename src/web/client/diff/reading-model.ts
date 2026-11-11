@@ -1,4 +1,8 @@
-import type { DiffFile, ReviewNote } from "../../../shared/review-types.ts";
+import type {
+  DiffFile,
+  ReviewNote,
+  ReviewComment,
+} from "../../../shared/review-types.ts";
 import { placeNote, rowKey } from "./model.ts";
 
 export type DiffItem = { key: string; path: string } & (
@@ -13,6 +17,7 @@ export type DiffItem = { key: string; path: string } & (
       hasNotes: boolean;
     }
   | { kind: "note"; note: ReviewNote; file?: DiffFile }
+  | { kind: "editor"; comment: ReviewComment; file?: DiffFile }
 );
 export const itemKey = (path: string, part: string) =>
   JSON.stringify([path, part]);
@@ -29,9 +34,23 @@ export function diffItems(
     folded: (file: DiffFile) => boolean;
     removed: Readonly<Record<string, boolean>>;
     openRuns: ReadonlySet<string>;
+    editor?: ReviewComment;
   },
 ): DiffItem[] {
   const items: DiffItem[] = [];
+  const editor = options.editor;
+  const heldNotes = notes.filter((note) => note.id !== editor?.id);
+  const addEditor = (file?: DiffFile) => {
+    if (editor)
+      items.push({
+        key: itemKey("", "editor"),
+        path: file?.path || "",
+        kind: "editor",
+        comment: editor,
+        file,
+      });
+  };
+  if (editor?.scope === "global") addEditor();
   const addNote = (note: ReviewNote, file?: DiffFile) =>
     items.push({
       key: itemKey(note.file, `note:${note.id}`),
@@ -40,7 +59,7 @@ export function diffItems(
       file,
       note,
     });
-  notes
+  heldNotes
     .filter((note) => note.scope === "global")
     .forEach((note) => addNote(note));
   for (const file of files) {
@@ -52,7 +71,24 @@ export function diffItems(
     });
     const at = new Map<number, ReviewNote[]>();
     const protectedRows = new Set<number>();
-    for (const note of notes.filter(
+    const draftPlace =
+      editor?.file === file.path && !editor.scope
+        ? placeNote(file, {
+            ...editor,
+            id: editor.id!,
+            label: editor.label || "",
+            key: "",
+            status: "pending",
+            detail: "",
+            messages: [],
+          })
+        : null;
+    if (editor?.file === file.path && editor.scope !== "global" && !draftPlace)
+      addEditor(file);
+    if (draftPlace)
+      for (let index = draftPlace.from; index <= draftPlace.to; index++)
+        protectedRows.add(index);
+    for (const note of heldNotes.filter(
       (note) => note.file === file.path && note.scope !== "global",
     )) {
       const place = placeNote(file, note);
@@ -70,7 +106,11 @@ export function diffItems(
       kind: "tools",
       file,
     });
-    if (isImage(file.path) || file.binary)
+    if (
+      isImage(file.path) ||
+      file.binary ||
+      /\.(mp3|wav|ogg|oga|m4a|aac|flac|opus|aiff?|weba)$/i.test(file.path)
+    )
       items.push({
         key: itemKey(file.path, "media"),
         path: file.path,
@@ -118,6 +158,7 @@ export function diffItems(
             row,
           });
           at.get(row)?.forEach((note) => addNote(note, file));
+          if (draftPlace?.to === row) addEditor(file);
         }
         row = to;
         continue;
@@ -135,12 +176,15 @@ export function diffItems(
         row,
       });
       at.get(row)?.forEach((note) => addNote(note, file));
+      if (draftPlace?.to === row) addEditor(file);
     }
   }
   const paths = new Set(files.map((file) => file.path));
-  notes
+  heldNotes
     .filter((note) => note.scope !== "global" && !paths.has(note.file))
     .forEach((note) => addNote(note));
+  if (editor && editor.scope !== "global" && !paths.has(editor.file))
+    addEditor();
   return items;
 }
 
@@ -148,6 +192,7 @@ export interface ReadingAnchor {
   key: string;
   path: string;
   offset: number;
+  editorId?: string;
   code?: string;
   side?: "n" | "o";
 }
@@ -157,6 +202,7 @@ export function readingAnchor(item: DiffItem, offset: number): ReadingAnchor {
     key: item.key,
     path: item.path,
     offset,
+    ...(item.kind === "editor" ? { editorId: item.comment.id } : {}),
     ...(row && row.t !== "hunk"
       ? {
           code: row.text,
@@ -176,6 +222,12 @@ export function readingIndex(items: DiffItem[], anchor: ReadingAnchor) {
       (item.kind === "row" && item.file.rows[item.row]!.text === anchor.code)
     )
       return { index: exact, offset: anchor.offset };
+  }
+  if (anchor.editorId) {
+    const index = items.findIndex(
+      (item) => item.kind === "note" && item.note.id === anchor.editorId,
+    );
+    if (index >= 0) return { index, offset: anchor.offset };
   }
   if (anchor.code?.trim()) {
     const matches = items.flatMap((item, index) =>

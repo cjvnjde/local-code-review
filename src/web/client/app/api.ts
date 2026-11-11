@@ -86,6 +86,7 @@ export function useAction() {
       await Promise.all([
         client.invalidateQueries({ queryKey: ["review"] }),
         client.invalidateQueries({ queryKey: ["reviews"] }),
+        client.invalidateQueries({ queryKey: ["ghosts"] }),
       ]);
     },
   });
@@ -107,7 +108,10 @@ export function useLive() {
           void client.invalidateQueries({ queryKey: ["diff"] });
         else if (data.type === "settings")
           void client.invalidateQueries({ queryKey: ["settings"] });
-        else void client.invalidateQueries({ queryKey: ["review"] });
+        else {
+          void client.invalidateQueries({ queryKey: ["review"] });
+          void client.invalidateQueries({ queryKey: ["ghosts"] });
+        }
       } catch {
         /* A heartbeat carries no state. */
       }
