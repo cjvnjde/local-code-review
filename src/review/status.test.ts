@@ -6,7 +6,7 @@ import { renderMarkdown } from "./render.ts";
 import { noteFromComment } from "./thread.ts";
 import { collectStatuses, parseStatuses } from "./status.ts";
 import type { ReviewComment } from "../shared/review-types.ts";
-import { mintNoteId, noteKey } from "../web/client/app/state.ts";
+import { mintNoteId, noteKey } from "../shared/note-id.ts";
 
 const roots: string[] = [];
 const workspace = async () => {

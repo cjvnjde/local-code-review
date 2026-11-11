@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "Preserve",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "types": ["bun", "react", "react-dom"],
+    "lib": ["ESNext", "DOM", "DOM.Iterable"]
+  },
+  "include": [
+    "src/web/client/**/*.tsx",
+    "src/shared/note-id.ts",
+    "scripts/build.ts",
+    "playwright.config.ts",
+    "tests/browser/**/*.ts"
+  ],
+  "exclude": ["node_modules"]
+}

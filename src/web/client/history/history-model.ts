@@ -83,11 +83,13 @@ export function historySnapshot(file: string, notes: any[]): HistorySnapshot {
         body: text(n.body),
         status: text(n.status) || "pending",
         detail: text(n.detail),
-        messages: (Array.isArray(n.messages) ? n.messages : []).map((m) => ({
-          role: text(m.role),
-          at: text(m.at),
-          body: text(m.body),
-        })),
+        messages: (Array.isArray(n.messages) ? n.messages : []).map(
+          (m: { role?: unknown; at?: unknown; body?: unknown }) => ({
+            role: text(m.role),
+            at: text(m.at),
+            body: text(m.body),
+          }),
+        ),
         ...(webReview(n.web) ? { web: webReview(n.web)! } : {}),
         ...(imageRegion(n.image) ? { image: imageRegion(n.image)! } : {}),
       }))

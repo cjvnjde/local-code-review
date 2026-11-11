@@ -12,7 +12,11 @@ import {
   wipeImageMismatch,
   wipeMismatch,
 } from "./capture-comparison.ts";
-import { webCaptureHtml } from "./web-capture.ts";
+import { renderToStaticMarkup } from "react-dom/server";
+import { createElement } from "react";
+import { WebEvidence } from "./evidence.tsx";
+const webCaptureHtml = (value: unknown) =>
+  renderToStaticMarkup(createElement(WebEvidence, { value }));
 
 const before: WebCapture = {
   url: "http://localhost:3000/checkout",
@@ -161,10 +165,9 @@ describe("Point capture presentation", () => {
       page: undefined,
       area: undefined,
     };
-    const html = webCaptureHtml({ before: point, after: [] }, true);
-    expect(html).toContain("metadata only");
-    expect(html).toContain("Selection metadata");
-    expect(html).toContain("data-web-remove");
+    const html = webCaptureHtml({ before: point, after: [] });
+    expect(html).toContain("Selection details");
+    expect(html).toContain("Selection 1");
     expect(html).not.toContain("<img");
     expect(html).not.toContain("data-web-annotate");
     expect(html).not.toContain("Page screenshot");
@@ -174,8 +177,8 @@ describe("Point capture presentation", () => {
       before: { ...before, mode: "point" },
       after: [],
     });
-    expect(html).toContain("name=before.png");
-    expect(html).toContain("Page screenshot");
+    expect(html).toContain("ref=images%2Fbefore.png");
+    expect(html).toContain("Selection 1");
     expect(html).not.toContain("metadata only");
   });
 });

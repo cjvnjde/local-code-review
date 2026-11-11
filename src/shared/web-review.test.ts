@@ -35,7 +35,11 @@ import {
   historySnapshot,
   historyText,
 } from "../web/client/history/history-model.ts";
-import { webCaptureHtml } from "../web/client/web-review/web-capture.ts";
+import { renderToStaticMarkup } from "react-dom/server";
+import { createElement } from "react";
+import { WebEvidence } from "../web/client/web-review/evidence.tsx";
+const webCaptureHtml = (value: unknown) =>
+  renderToStaticMarkup(createElement(WebEvidence, { value }));
 
 export const capture: WebCapture = {
   url: "http://localhost:3000/checkout?step=2",

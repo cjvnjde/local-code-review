@@ -9,7 +9,7 @@ import { runGit } from "../git/commands.ts";
 import type { WebCapture } from "../shared/web-review.ts";
 
 test.skipIf(process.env.LCR_TEST_BROWSER !== "1")(
-  "playground selects floating controls and preserves captured SVG regions",
+  "playground selects floating controls and renders SVG files in the React review",
   async () => {
     const repoRoot = await mkdtemp(path.join(tmpdir(), "lcr-playground-test-"));
     let playground: Awaited<ReturnType<typeof startWebPlayground>> | undefined;
@@ -76,7 +76,14 @@ test.skipIf(process.env.LCR_TEST_BROWSER !== "1")(
           if (await js(expression)) return;
           await Bun.sleep(50);
         }
-        throw new Error("Timed out: " + expression);
+        throw new Error(
+          "Timed out: " +
+            expression +
+            "\n" +
+            (await js(
+              "document.body.innerText + '\\nTEXT: ' + [...document.querySelectorAll('textarea')].map(t=>t.value).join(' | ')",
+            )),
+        );
       }
       const example =
         "document.getElementById(window.__lcr_playground_example__)";
@@ -85,7 +92,7 @@ test.skipIf(process.env.LCR_TEST_BROWSER !== "1")(
       const b = reviewer + ".shadowRoot";
       async function bounds(expression: string) {
         return js(
-          `(()=>{const r=(${expression}).getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height}})()`,
+          `(()=>{const node=(${expression});if(!node)throw new Error(${JSON.stringify("Missing: " + expression)});const r=node.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height}})()`,
         );
       }
       const center = (rect: {
@@ -192,49 +199,46 @@ test.skipIf(process.env.LCR_TEST_BROWSER !== "1")(
       expect(await js(`${example}.inert`)).toBe(false);
 
       await send("Page.navigate", { url: playground.showcaseUrl });
+      await send("Page.bringToFront");
+      const fileButton =
+        "document.querySelector('button[title=\"assets/review-mark.svg\"]')";
+      await until(`!!${fileButton}`);
+      await click(fileButton);
       const image =
-        "document.querySelector('[data-path=\"assets/review-mark.svg\"] .imgf.new .imgstage img')";
-      await until(
-        `${image}?.complete && ${image}.naturalWidth > 0 && ${image}.getBoundingClientRect().width > 0`,
+        "document.querySelector('img[alt=\"After: assets/review-mark.svg\"]')";
+      await until(`${image}?.complete && ${image}.naturalWidth > 0`);
+      expect(await js(`${image}.naturalWidth > 0`)).toBe(true);
+      await js(
+        "document.querySelector('[aria-label=\"Comment on file\"]').click()",
       );
-      await js(`${image}.scrollIntoView({block:'center'})`);
-      const imageBounds = await bounds(image);
-      const from = {
-        x: imageBounds.x + imageBounds.width * 0.5,
-        y: imageBounds.y + imageBounds.height * 0.25,
-      };
-      const to = {
-        x: imageBounds.x + imageBounds.width * 0.75,
-        y: imageBounds.y + imageBounds.height * 0.75,
-      };
-      await mouse("mouseMoved", from);
-      await mouse("mousePressed", from);
-      await mouse("mouseMoved", to);
-      await mouse("mouseReleased", to);
-      const preview = "document.querySelector('.imgdraft .image-preview img')";
-      await until(`${preview}?.complete && ${preview}.naturalWidth > 0`);
-      const capturedPixel = await js(`(()=>{
-        const img=${preview}, canvas=document.createElement('canvas');
-        canvas.width=img.naturalWidth; canvas.height=img.naturalHeight;
-        const context=canvas.getContext('2d');
-        context.drawImage(img,0,0);
-        return [...context.getImageData(Math.floor(canvas.width/2),Math.floor(canvas.height/2),1,1).data];
-      })()`);
-      expect(capturedPixel).toEqual([166, 218, 149, 255]);
-      await click("document.querySelector('.imgdraft textarea')");
+      await until(
+        "!!document.querySelector('textarea[aria-label=\"Note text\"]')",
+      );
+      await click(
+        "document.querySelector('textarea[aria-label=\"Note text\"]')",
+      );
+      await js(
+        "document.querySelector('textarea[aria-label=\"Note text\"]').focus()",
+      );
       await send("Input.insertText", {
         text: "Keep the green circle centered.",
       });
-      await click("document.querySelector('.imgdraft [data-save-note]')");
-      const savedNote =
-        "document.querySelector('[data-path=\"assets/review-mark.svg\"] .nbody')";
       await until(
-        `${savedNote}?.textContent === 'Keep the green circle centered.'`,
+        "document.querySelector('textarea')?.value === 'Keep the green circle centered.'",
       );
-      await until("!document.querySelector('.imgdraft')");
-      await send("Page.reload");
+      await js(
+        "[...document.querySelectorAll('button')].find(b=>b.textContent==='Save note').click()",
+      );
       await until(
-        `${savedNote}?.textContent === 'Keep the green circle centered.'`,
+        "[...document.querySelectorAll('article')].some(n=>n.textContent.includes('Keep the green circle centered.'))",
+      );
+      await send("Page.navigate", {
+        url: playground.showcaseUrl + "?reload=1",
+      });
+      await until(`location.search === "?reload=1" && !!${fileButton}`);
+      await js(`${fileButton}.click()`);
+      await until(
+        "[...document.querySelectorAll('article')].some(n=>n.textContent.includes('Keep the green circle centered.'))",
       );
     } finally {
       cdp?.close();

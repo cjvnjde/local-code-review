@@ -1,30 +1,196 @@
-@import "./conversation.css";
-@import "./tokens.css";
-@import "./themes/default.css";
-@import "./base.css";
-@import "./app-header.css";
-@import "./app-settings.css";
-@import "./app-shell.css";
-@import "./navigation.css";
-@import "./diff.css";
-@import "./diff-media.css";
-@import "./diff-lines.css";
-@import "./note-previews.css";
-@import "./notes.css";
-@import "./app-controls.css";
-@import "./threads.css";
-@import "./markdown.css";
-@import "./references.css";
-@import "./navigation-reading.css";
-@import "./markdown-code.css";
-@import "./note-context.css";
-@import "./reader.css";
-@import "./history.css";
-@import "./search.css";
-@import "./app-responsive.css";
-@import "./note-navigation.css";
-@import "./app-live.css";
-@import "./web-review.css";
-@import "./web-annotation.css";
-@import "./comment-images.css";
-@import "./app-agent-queue.css";
+@import "tailwindcss";
+@import "highlight.js/styles/github-dark-dimmed.css";
+@source "../client";
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  color-scheme: light;
+  --background: #fafafa;
+  --foreground: #18181b;
+  --card: #ffffff;
+  --popover: #ffffff;
+  --muted: #f0f0f3;
+  --muted-foreground: #71717a;
+  --accent: #ededf2;
+  --accent-foreground: #18181b;
+  --primary: #6d5bd0;
+  --primary-foreground: #ffffff;
+  --border: #e4e4e7;
+  --ring: #9482ef;
+  --destructive: #dc2626;
+}
+.dark {
+  color-scheme: dark;
+  --background: #111114;
+  --foreground: #e8e8ed;
+  --card: #18181c;
+  --popover: #222228;
+  --muted: #242429;
+  --muted-foreground: #91919f;
+  --accent: #2a2a32;
+  --accent-foreground: #fafafa;
+  --primary: #b0a0ff;
+  --primary-foreground: #19142e;
+  --border: #2b2b33;
+  --ring: #b0a0ff;
+  --destructive: #fb7185;
+}
+@theme inline {
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-border: var(--border);
+  --color-ring: var(--ring);
+  --color-destructive: var(--destructive);
+}
+@layer base {
+  * {
+    @apply border-border;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  body {
+    @apply m-0 bg-background font-sans text-foreground antialiased;
+  }
+  button,
+  summary,
+  select,
+  input[type="checkbox"] {
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: default;
+  }
+  button,
+  a,
+  input,
+  textarea,
+  select,
+  summary {
+    @apply focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring;
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--primary) 30%, transparent);
+  }
+  input[type="checkbox"] {
+    accent-color: var(--primary);
+  }
+}
+.diff-add {
+  background-color: color-mix(in srgb, #22c55e 9%, transparent);
+}
+.diff-del {
+  background-color: color-mix(in srgb, #f43f5e 9%, transparent);
+}
+.markdown {
+  @apply break-words text-sm leading-relaxed;
+  overflow-wrap: anywhere;
+}
+.markdown > :first-child {
+  margin-top: 0;
+}
+.markdown > :last-child {
+  margin-bottom: 0;
+}
+.markdown p,
+.markdown ul,
+.markdown ol,
+.markdown blockquote,
+.markdown pre,
+.markdown table {
+  @apply my-3;
+}
+.markdown h1,
+.markdown h2,
+.markdown h3,
+.markdown h4,
+.markdown h5,
+.markdown h6 {
+  @apply mt-5 mb-2 font-semibold;
+}
+.markdown h1 {
+  @apply text-xl;
+}
+.markdown h2 {
+  @apply text-lg;
+}
+.markdown h3 {
+  @apply text-base;
+}
+.markdown ul {
+  @apply list-disc pl-5;
+}
+.markdown ol {
+  @apply list-decimal pl-5;
+}
+.markdown li {
+  @apply my-1;
+}
+.markdown li:has(> input[type="checkbox"]) {
+  list-style: none;
+}
+.markdown li input {
+  @apply mr-2;
+}
+.markdown blockquote {
+  @apply border-l-2 pl-3 text-muted-foreground;
+}
+.markdown a {
+  @apply text-primary underline decoration-primary/40 underline-offset-2;
+}
+.markdown pre {
+  @apply max-w-full overflow-auto rounded-lg border bg-muted/40 p-3 text-xs;
+}
+.markdown :not(pre) > code {
+  @apply rounded bg-muted px-1 py-0.5 font-mono text-[0.85em];
+}
+.markdown pre code {
+  @apply font-mono;
+}
+.markdown table {
+  @apply block max-w-full overflow-auto border-collapse text-xs;
+}
+.markdown th,
+.markdown td {
+  @apply border px-3 py-2 text-left;
+}
+.markdown th {
+  @apply bg-muted;
+}
+.markdown img {
+  @apply my-2 max-h-96 max-w-full rounded-lg border object-contain;
+}
+.markdown hr {
+  @apply my-4 border-t;
+}
+.suggestion > span:not(:first-child) {
+  @apply px-2 py-0.5;
+}
+/* Library token colors tuned for the light palette. Source remains escaped by highlight.js. */
+:root:not(.dark) .hljs-keyword,
+:root:not(.dark) .hljs-literal {
+  color: #a626a4;
+}
+:root:not(.dark) .hljs-string,
+:root:not(.dark) .hljs-addition {
+  color: #16824a;
+}
+:root:not(.dark) .hljs-title,
+:root:not(.dark) .hljs-number {
+  color: #285cb4;
+}
+:root:not(.dark) .hljs-comment {
+  color: #757580;
+}

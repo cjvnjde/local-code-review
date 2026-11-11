@@ -131,7 +131,8 @@ export function webCapture(value: unknown): WebCapture | null {
     );
   const metadata = (
     target: unknown,
-  ): target is Pick<WebCapture, "selector" | "element" | "components"> => {
+  ): target is Record<string, unknown> &
+    Pick<WebCapture, "selector" | "element" | "components"> => {
     if (!record(target)) return false;
     const element = target.element;
     if (

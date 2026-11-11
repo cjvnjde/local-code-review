@@ -92,3 +92,39 @@ export interface CliOptions {
   browserDataDir?: string;
   diffArgs: string[];
 }
+
+export type MessageRole = "reviewer" | "agent";
+
+export interface ReviewMessage {
+  role: MessageRole;
+  /** ISO stamp from the marker; empty when the writer left it out. */
+  at: string;
+  body: string;
+}
+
+/** One note as the review file holds it: the page's fields, plus what the agent wrote back. */
+export interface ReviewNote {
+  id: string;
+  /** `<file>:<label>` heading text, used to match a status when the id marker was lost. */
+  key: string;
+  /** Empty for a note about the review as a whole, which belongs to no file. */
+  file: string;
+  /** Line label such as `42` or `12:7-14`; empty for a note on the whole file. */
+  label: string;
+  scope?: "file" | "global";
+  side?: "new" | "old";
+  start: number;
+  end: number;
+  ca?: number;
+  cb?: number;
+  snippet?: string;
+  image?: ImageRegion;
+  web?: import("./web-review.ts").WebReview;
+  code?: string;
+  body: string;
+  status: NoteStatusKind;
+  detail: string;
+  messages: ReviewMessage[];
+  /** `<review file>#<note id>` of the note this one continues, for a note carried in from an earlier review. */
+  from?: string;
+}
