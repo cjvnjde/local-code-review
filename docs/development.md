@@ -18,18 +18,19 @@ restarts the server when source changes. Bun's HTML bundler handles React and CS
 
 ## Stack
 
-| Concern                                   | Implementation                                              |
-| ----------------------------------------- | ----------------------------------------------------------- |
-| UI and editor state                       | React 19 components and hooks                               |
-| Server state, mutations, refetches        | TanStack Query                                              |
-| Large code files                          | TanStack Virtual                                            |
-| Accessible dialogs, tooltips, composition | Radix primitives                                            |
-| Local UI components                       | shadcn-style Tailwind components, CVA, clsx, tailwind-merge |
-| Icons                                     | Lucide React                                                |
-| Markdown and GFM                          | react-markdown and remark-gfm                               |
-| Syntax coloring                           | highlight.js                                                |
-| Suggested replacement diffs               | jsdiff (`diff`)                                             |
-| Local serving and executable packaging    | Bun                                                         |
+| Concern                                   | Implementation                                                              |
+| ----------------------------------------- | --------------------------------------------------------------------------- |
+| UI and editor state                       | React 19 components and hooks                                               |
+| Server state, mutations, refetches        | TanStack Query                                                              |
+| Large code files                          | TanStack Virtual                                                            |
+| Accessible dialogs, tooltips, composition | [Base UI](https://base-ui.com/react/overview/quick-start)                   |
+| Local UI components                       | shadcn-style Tailwind components, CVA, clsx, tailwind-merge                 |
+| Pane sizing                               | [react-resizable-panels](https://github.com/bvaughn/react-resizable-panels) |
+| Icons                                     | Lucide React                                                                |
+| Markdown and GFM                          | react-markdown and remark-gfm                                               |
+| Syntax coloring                           | highlight.js                                                                |
+| Suggested replacement diffs               | jsdiff (`diff`)                                                             |
+| Local serving and executable packaging    | Bun                                                                         |
 
 The small UI components are owned here rather than pulled from a hosted registry
 at runtime. There is no frontend server or CDN in the distributed application.
@@ -120,7 +121,7 @@ Run both the source suite (with `LCR_TEST_BROWSER=1` for the drawing/page-overla
 checks) and `bun run test:browser` when changing interactions. A production compile
 must still work outside this checkout with no runtime install or adjacent assets.
 
-React, TanStack Query/Virtual, Radix, Tailwind, react-markdown/remark-gfm,
+React, TanStack Query/Virtual, Base UI, Tailwind, react-markdown/remark-gfm,
 highlight.js and diff own their respective UI, data, rendering and bundling
 concerns. The tested drawing geometry, immutable attachment format, review models
 and local server contracts are retained where replacing them would lose behavior.

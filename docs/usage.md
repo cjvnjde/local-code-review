@@ -26,6 +26,12 @@ order. The sidebar highlights the file under the top of the pane. Its links and
 the mobile file picker jump within that continuous review instead of replacing it.
 Only a small window of code and notes is mounted, even for very large diffs.
 
+Drag the vertical dividers to resize the file sidebar and conversation pane.
+Focused dividers also accept arrow keys and Home/End; double-click resets that
+pane's width. Widths survive reloads and hide/show toggles. Resizing keeps the
+current code position and open draft; narrow screens retain the file picker and
+conversation drawer.
+
 File headers stay visible while reading their code. Collapse a file with its
 chevron, or mark it **Viewed** to collapse it and record progress. A navigation jump
 reopens it while keeping its viewed mark; a changed file becomes unviewed. Click a

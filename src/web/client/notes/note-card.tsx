@@ -47,7 +47,7 @@ export function NoteCard({
     !["applied", "answered", "skipped"].includes(note.status);
   const reference = note.id.split("|#").at(-1)!;
   const outdated = !note.scope && (!file || !placeNote(file, note));
-  const icon = (label: string, element: React.ReactNode) => (
+  const icon = (label: string, element: React.ReactElement) => (
     <Tooltip label={label}>{element}</Tooltip>
   );
   return (

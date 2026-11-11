@@ -7,6 +7,7 @@ change; reading, commenting, evidence, and saved conversations must keep working
 | Original capability          | React implementation                                                                                                                                      |
 | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Continuous diff reading      | One virtualized surface, sticky file headers, sidebar following and jumps                                                                                 |
+| Pane sizing                  | Drag/keyboard resizing, double-click reset, persisted sidebar and conversation widths, draft/scroll retention and mobile drawer                           |
 | Progress and file controls   | Viewed marks, automatic reading tracking, backtracking, folding, folder controls, visibility overrides and glob filters                                   |
 | Hidden code                  | Up/down/all context expansion, configurable batch size, expandable deleted runs with note protection                                                      |
 | Comment gestures             | Whole-line clicks, Shift extension, forward/reverse drag ranges, character selections across syntax tokens, Alt-drag copying, edge auto-scroll            |

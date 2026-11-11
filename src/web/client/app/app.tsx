@@ -1,3 +1,4 @@
+import { ReviewLayout } from "../navigation/review-layout.tsx";
 import { FileTree } from "../navigation/file-tree.tsx";
 import { NoteState, useReviewState } from "../notes/review-state.tsx";
 import { setView } from "../navigation/ui-navigation.ts";
@@ -604,11 +605,12 @@ function Workspace({
               </Button>
             </div>
           </div>
-          <div className="flex min-h-0 flex-1">
-            {navOpen && (
+          <ReviewLayout
+            navOpen={navOpen}
+            notesOpen={notesOpen}
+            files={
               <aside
-                className="hidden shrink-0 flex-col border-r bg-card/50 md:flex"
-                style={{ width: settings.navWidth || 256 }}
+                className="flex h-full min-w-0 flex-col bg-card/50"
                 aria-label="Changed files"
               >
                 <div className="p-3">
@@ -706,8 +708,194 @@ function Workspace({
                   </p>
                 </div>
               </aside>
-            )}
-            <main className="relative flex min-w-0 flex-1 flex-col">
+            }
+            notes={
+              notesOpen && (
+                <aside
+                  className="flex h-full min-w-0 flex-col bg-muted/15 max-sm:fixed max-sm:inset-x-0 max-sm:top-[108px] max-sm:bottom-10 max-sm:z-20 max-sm:h-auto max-sm:w-full max-sm:bg-background"
+                  aria-label="Review notes"
+                >
+                  <div className="flex items-center gap-2 border-b px-4 py-3">
+                    <h2 className="text-sm font-semibold">Conversation</h2>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Previous note"
+                      onClick={() => stepNote(-1)}
+                    >
+                      <ArrowUp />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Next note"
+                      onClick={() => stepNote(1)}
+                    >
+                      <ArrowDown />
+                    </Button>
+                    <span className="text-xs text-muted-foreground">
+                      {listed.length}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="ml-auto"
+                      onClick={() => setAllNotes(!allNotes)}
+                    >
+                      {allNotes ? "This file" : "All notes"}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="sm:hidden"
+                      onClick={() => {
+                        if (draft?.host === "panel") focusEditor();
+                        else setNotesOpen(false);
+                      }}
+                    >
+                      Close
+                    </Button>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2 text-xs">
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={noteState.showResolved}
+                        onChange={(event) =>
+                          noteState.setShowResolved(event.target.checked)
+                        }
+                      />
+                      Show resolved ({notes.filter(noteState.resolved).length})
+                    </label>
+                    <details className="ml-auto">
+                      <summary className="cursor-pointer text-muted-foreground">
+                        Manage
+                      </summary>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={!!draft}
+                          onClick={() =>
+                            setBulkDelete(
+                              notes
+                                .filter((note) => note.status === "applied")
+                                .map((note) => note.id),
+                            )
+                          }
+                        >
+                          Remove applied
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={!!draft}
+                          onClick={() =>
+                            setBulkDelete(notes.map((note) => note.id))
+                          }
+                        >
+                          Clear notes
+                        </Button>
+                      </div>
+                    </details>
+                  </div>
+                  {bulkDelete.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-2 border-b p-3 text-xs">
+                      <span>
+                        Delete {bulkDelete.length} notes from this review?
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setBulkDelete([])}
+                      >
+                        Keep notes
+                      </Button>
+                      <Button
+                        size="sm"
+                        disabled={action.isPending}
+                        onClick={() =>
+                          action.mutate(
+                            {
+                              url: `/api/note?${new URLSearchParams(bulkDelete.map((id) => ["id", id]))}`,
+                              method: "DELETE",
+                            },
+                            { onSuccess: () => setBulkDelete([]) },
+                          )
+                        }
+                      >
+                        Delete notes
+                      </Button>
+                    </div>
+                  )}
+                  <div className="flex gap-1 border-b px-3 py-2">
+                    {["all", "open", "done"].map((kind) => (
+                      <Button
+                        key={kind}
+                        variant={filter === kind ? "outline" : "ghost"}
+                        size="sm"
+                        onClick={() => setFilter(kind)}
+                        className="capitalize"
+                      >
+                        {kind}
+                      </Button>
+                    ))}
+                  </div>
+                  <div className="min-h-0 flex-1 space-y-4 overflow-auto p-3">
+                    {listed.map((note) => (
+                      <NoteCard
+                        key={note.id}
+                        note={note}
+                        file={files.find((f) => f.path === note.file)}
+                        agent={!!agent.agent}
+                        onCompose={(next) =>
+                          compose({ ...next, host: "panel" })
+                        }
+                        editor={
+                          draft?.host === "panel" &&
+                          (draft.kind === "note"
+                            ? draft.comment.id
+                            : draft.id) === note.id ? (
+                            <Composer
+                              draft={draft}
+                              onChange={setDraft}
+                              onClose={closeDraft}
+                              onSaved={() => setDraft(null)}
+                              agent={!!agent.agent}
+                              onBusy={setBusy}
+                            />
+                          ) : undefined
+                        }
+                        onJump={
+                          note.scope === "global" ||
+                          files.some((file) => file.path === note.file)
+                            ? () => {
+                                jumpToNote(note);
+                                if (matchMedia("(max-width: 639px)").matches)
+                                  setNotesOpen(false);
+                              }
+                            : undefined
+                        }
+                      />
+                    ))}
+                    {!listed.length && (
+                      <div className="px-4 py-12 text-center">
+                        <MessageSquare className="mx-auto mb-4 size-6 text-muted-foreground/50" />
+                        <p className="text-sm font-medium">
+                          Room for a conversation
+                        </p>
+                        <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                          Comment on a code line or add an overall note. Notes
+                          and replies are saved to Markdown.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </aside>
+              )
+            }
+          >
+            <main className="relative flex h-full min-w-0 flex-col">
               {searchOpen && (
                 <SearchResults
                   files={files}
@@ -788,188 +976,7 @@ function Workspace({
                 onBusy={setBusy}
               />
             </main>
-            {notesOpen && (
-              <aside
-                className="flex w-[min(40vw,390px)] min-w-72 shrink-0 flex-col border-l bg-muted/15 max-sm:absolute max-sm:inset-x-0 max-sm:top-[108px] max-sm:bottom-10 max-sm:z-20 max-sm:w-full max-sm:bg-background"
-                aria-label="Review notes"
-              >
-                <div className="flex items-center gap-2 border-b px-4 py-3">
-                  <h2 className="text-sm font-semibold">Conversation</h2>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Previous note"
-                    onClick={() => stepNote(-1)}
-                  >
-                    <ArrowUp />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Next note"
-                    onClick={() => stepNote(1)}
-                  >
-                    <ArrowDown />
-                  </Button>
-                  <span className="text-xs text-muted-foreground">
-                    {listed.length}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="ml-auto"
-                    onClick={() => setAllNotes(!allNotes)}
-                  >
-                    {allNotes ? "This file" : "All notes"}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="sm:hidden"
-                    onClick={() => {
-                      if (draft?.host === "panel") focusEditor();
-                      else setNotesOpen(false);
-                    }}
-                  >
-                    Close
-                  </Button>
-                </div>
-                <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2 text-xs">
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={noteState.showResolved}
-                      onChange={(event) =>
-                        noteState.setShowResolved(event.target.checked)
-                      }
-                    />
-                    Show resolved ({notes.filter(noteState.resolved).length})
-                  </label>
-                  <details className="ml-auto">
-                    <summary className="cursor-pointer text-muted-foreground">
-                      Manage
-                    </summary>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        disabled={!!draft}
-                        onClick={() =>
-                          setBulkDelete(
-                            notes
-                              .filter((note) => note.status === "applied")
-                              .map((note) => note.id),
-                          )
-                        }
-                      >
-                        Remove applied
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        disabled={!!draft}
-                        onClick={() =>
-                          setBulkDelete(notes.map((note) => note.id))
-                        }
-                      >
-                        Clear notes
-                      </Button>
-                    </div>
-                  </details>
-                </div>
-                {bulkDelete.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-2 border-b p-3 text-xs">
-                    <span>
-                      Delete {bulkDelete.length} notes from this review?
-                    </span>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setBulkDelete([])}
-                    >
-                      Keep notes
-                    </Button>
-                    <Button
-                      size="sm"
-                      disabled={action.isPending}
-                      onClick={() =>
-                        action.mutate(
-                          {
-                            url: `/api/note?${new URLSearchParams(bulkDelete.map((id) => ["id", id]))}`,
-                            method: "DELETE",
-                          },
-                          { onSuccess: () => setBulkDelete([]) },
-                        )
-                      }
-                    >
-                      Delete notes
-                    </Button>
-                  </div>
-                )}
-                <div className="flex gap-1 border-b px-3 py-2">
-                  {["all", "open", "done"].map((kind) => (
-                    <Button
-                      key={kind}
-                      variant={filter === kind ? "outline" : "ghost"}
-                      size="sm"
-                      onClick={() => setFilter(kind)}
-                      className="capitalize"
-                    >
-                      {kind}
-                    </Button>
-                  ))}
-                </div>
-                <div className="min-h-0 flex-1 space-y-4 overflow-auto p-3">
-                  {listed.map((note) => (
-                    <NoteCard
-                      key={note.id}
-                      note={note}
-                      file={files.find((f) => f.path === note.file)}
-                      agent={!!agent.agent}
-                      onCompose={(next) => compose({ ...next, host: "panel" })}
-                      editor={
-                        draft?.host === "panel" &&
-                        (draft.kind === "note"
-                          ? draft.comment.id
-                          : draft.id) === note.id ? (
-                          <Composer
-                            draft={draft}
-                            onChange={setDraft}
-                            onClose={closeDraft}
-                            onSaved={() => setDraft(null)}
-                            agent={!!agent.agent}
-                            onBusy={setBusy}
-                          />
-                        ) : undefined
-                      }
-                      onJump={
-                        note.scope === "global" ||
-                        files.some((file) => file.path === note.file)
-                          ? () => {
-                              jumpToNote(note);
-                              if (matchMedia("(max-width: 639px)").matches)
-                                setNotesOpen(false);
-                            }
-                          : undefined
-                      }
-                    />
-                  ))}
-                  {!listed.length && (
-                    <div className="px-4 py-12 text-center">
-                      <MessageSquare className="mx-auto mb-4 size-6 text-muted-foreground/50" />
-                      <p className="text-sm font-medium">
-                        Room for a conversation
-                      </p>
-                      <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                        Comment on a code line or add an overall note. Notes and
-                        replies are saved to Markdown.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </aside>
-            )}
-          </div>
+          </ReviewLayout>
           <footer className="flex min-h-10 shrink-0 items-center gap-3 border-t bg-card px-4 text-[11px] text-muted-foreground">
             <span className="flex items-center gap-2">
               <Circle className="size-2 fill-emerald-500 text-emerald-500" />

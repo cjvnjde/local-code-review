@@ -46,7 +46,7 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ErrorBoundary>
       <QueryClientProvider client={client}>
-        <TooltipProvider delayDuration={200}>
+        <TooltipProvider delay={200}>
           <App />
         </TooltipProvider>
       </QueryClientProvider>

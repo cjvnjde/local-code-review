@@ -955,6 +955,171 @@ test("image-region comments, audio playback, preferences and the resume marker r
   await expect(editor).toHaveCount(0);
 });
 
+test("Base UI focus and pane resizing preserve drafts, reading position and saved widths", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto(url);
+  const settings = page.getByRole("button", { name: "Settings", exact: true });
+  await settings.hover();
+  await expect(page.getByText("Settings", { exact: true })).toBeVisible();
+  await settings.click();
+  const dialog = page.getByRole("dialog", { name: "Settings", exact: true });
+  await expect(dialog).toBeVisible();
+  await dialog
+    .getByRole("textbox", { name: "External editor", exact: true })
+    .focus();
+  await page.keyboard.press("Tab");
+  expect(
+    await page.evaluate(
+      () => !!document.activeElement?.closest('[role="dialog"]'),
+    ),
+  ).toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(settings).toBeFocused();
+  await settings.click();
+  await expect(dialog).toBeVisible();
+  await page.mouse.click(8, 300);
+  await expect(dialog).toHaveCount(0);
+
+  const files = page.getByRole("complementary", { name: "Changed files" });
+  const notes = page.getByRole("complementary", { name: "Review notes" });
+  const left = page.getByRole("separator", {
+    name: "Resize file sidebar",
+    exact: true,
+  });
+  const right = page.getByRole("separator", {
+    name: "Resize conversation pane",
+    exact: true,
+  });
+  const width = (locator: typeof files) =>
+    locator.evaluate((element) => element.getBoundingClientRect().width);
+  const initialLeft = await width(files),
+    initialRight = await width(notes);
+  async function drag(handle: typeof left, delta: number) {
+    const box = await handle.boundingBox();
+    await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(
+      box!.x + box!.width / 2 + delta,
+      box!.y + box!.height / 2,
+      { steps: 12 },
+    );
+    await page.mouse.up();
+  }
+  await drag(left, 100);
+  await expect.poll(() => width(files)).toBeCloseTo(initialLeft + 100, 0);
+  await expect.poll(() => width(notes)).toBeCloseTo(initialRight, 0);
+  await drag(right, -100);
+  await expect.poll(() => width(notes)).toBeCloseTo(initialRight + 100, 0);
+  const savedLeft = await width(files),
+    savedRight = await width(notes);
+  await page.reload();
+  await expect.poll(() => width(files)).toBeCloseTo(savedLeft, 0);
+  await expect.poll(() => width(notes)).toBeCloseTo(savedRight, 0);
+  await left.focus();
+  await left.press("ArrowRight");
+  await expect.poll(() => width(files)).toBeGreaterThan(savedLeft + 1);
+  await left.press("Home");
+  await expect.poll(() => width(files)).toBeCloseTo(180, 0);
+  await left.dblclick();
+  await right.dblclick();
+  await expect.poll(() => width(files)).toBeCloseTo(256, 0);
+  await expect.poll(() => width(notes)).toBeCloseTo(390, 0);
+
+  const pane = page.getByRole("region", { name: "Code diff" });
+  await page
+    .getByRole("navigation")
+    .locator('button[title="untracked.ts"]')
+    .click();
+  await expect(
+    pane.getByRole("heading", { name: "untracked.ts", exact: true }),
+  ).toBeInViewport();
+  await pane.evaluate((element) => (element.scrollTop += 26 * 250));
+  async function topRow() {
+    return pane.evaluate((element) => {
+      const top =
+        element.getBoundingClientRect().top +
+        (element.querySelector<HTMLElement>('[data-sticky="true"]')
+          ?.offsetHeight || 0);
+      const row = [
+        ...element.querySelectorAll<HTMLElement>('[data-diff-kind="row"]'),
+      ].find((row) => row.getBoundingClientRect().top >= top - 1);
+      return row
+        ? { key: row.dataset.itemKey, y: row.getBoundingClientRect().top - top }
+        : null;
+    });
+  }
+  await expect.poll(topRow).not.toBeNull();
+  const before = (await topRow())!;
+  await drag(left, 80);
+  await drag(right, 60);
+  await expect.poll(async () => (await topRow())?.key).toBe(before.key);
+  await expect
+    .poll(async () => Math.abs((await topRow())!.y - before.y))
+    .toBeLessThan(2);
+  await pane
+    .getByRole("button", { name: /Comment on line/ })
+    .first()
+    .click();
+  const text = page.getByRole("textbox", { name: "Note text", exact: true });
+  await text.fill("Preserve this draft while resizing panels");
+  await text.evaluate((text: HTMLTextAreaElement) =>
+    text.setSelectionRange(9, 13),
+  );
+  await drag(left, -40);
+  await drag(right, -40);
+  await expect(text).toHaveValue("Preserve this draft while resizing panels");
+  expect(
+    await text.evaluate((text: HTMLTextAreaElement) => [
+      text.selectionStart,
+      text.selectionEnd,
+    ]),
+  ).toEqual([9, 13]);
+  const desktopLeft = await width(files),
+    desktopRight = await width(notes);
+  await page
+    .getByRole("button", { name: "Hide file sidebar", exact: true })
+    .click();
+  await expect(left).toHaveCount(0);
+  await expect(text).toHaveValue("Preserve this draft while resizing panels");
+  await page
+    .getByRole("button", { name: "Show file sidebar", exact: true })
+    .click();
+  await expect(left).toBeVisible();
+  await expect.poll(() => width(files)).toBeCloseTo(desktopLeft, 0);
+  await expect.poll(() => width(notes)).toBeCloseTo(desktopRight, 0);
+  const notesToggle = page.getByRole("button", { name: /^\d+ notes$/ });
+  await notesToggle.click();
+  await expect(right).toHaveCount(0);
+  await expect(text).toHaveValue("Preserve this draft while resizing panels");
+  await notesToggle.click();
+  await expect(right).toBeVisible();
+  await expect.poll(() => width(notes)).toBeCloseTo(desktopRight, 0);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole("separator")).toHaveCount(0);
+  await expect(text).toHaveValue("Preserve this draft while resizing panels");
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await expect(left).toBeVisible();
+  await expect(right).toBeVisible();
+  await expect.poll(() => width(files)).toBeCloseTo(desktopLeft, 0);
+  await expect.poll(() => width(notes)).toBeCloseTo(desktopRight, 0);
+  await expect(text).toHaveValue("Preserve this draft while resizing panels");
+  await page
+    .locator("[data-review-editor]")
+    .getByRole("button", { name: "Cancel", exact: true })
+    .click();
+  await page.screenshot({ path: "/tmp/lcr-base-ui-resizable.png" });
+  expect(errors).toEqual([]);
+});
+
 test("live page capture saves through the embedded React editor", async ({
   page,
 }) => {

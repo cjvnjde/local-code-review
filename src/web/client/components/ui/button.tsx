@@ -1,4 +1,4 @@
-import { Slot } from "@radix-ui/react-slot";
+import { Button as ButtonPrimitive } from "@base-ui/react/button";
 import { cva, type VariantProps } from "class-variance-authority";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -26,13 +26,11 @@ export function Button({
   className,
   variant,
   size,
-  asChild,
   ...props
-}: ComponentProps<"button"> &
-  VariantProps<typeof buttonVariants> & { asChild?: boolean }) {
-  const Comp = asChild ? Slot : "button";
+}: Omit<ComponentProps<typeof ButtonPrimitive>, "className"> &
+  VariantProps<typeof buttonVariants> & { className?: string }) {
   return (
-    <Comp
+    <ButtonPrimitive
       type="button"
       className={cn(buttonVariants({ variant, size }), className)}
       {...props}

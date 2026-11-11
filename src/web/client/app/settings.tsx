@@ -87,7 +87,7 @@ export function Settings({
             aria-label="Sidebar width"
             type="range"
             min="180"
-            max="480"
+            max={Math.max(480, ui.settings.navWidth)}
             value={ui.settings.navWidth || 256}
             onChange={(event) => ui.update({ navWidth: +event.target.value })}
             className="ml-3"

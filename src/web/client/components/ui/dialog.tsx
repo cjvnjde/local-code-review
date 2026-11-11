@@ -1,4 +1,4 @@
-import * as DialogPrimitive from "@radix-ui/react-dialog";
+import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { X } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
 import { cn } from "./button.tsx";
@@ -11,14 +11,15 @@ export function DialogContent({
   description,
   className,
   ...props
-}: ComponentProps<typeof DialogPrimitive.Content> & {
+}: Omit<ComponentProps<typeof DialogPrimitive.Popup>, "title" | "className"> & {
   title: string;
   description?: ReactNode;
+  className?: string;
 }) {
   return (
     <DialogPrimitive.Portal>
-      <DialogPrimitive.Overlay className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm" />
-      <DialogPrimitive.Content
+      <DialogPrimitive.Backdrop className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm" />
+      <DialogPrimitive.Popup
         className={cn(
           "fixed top-1/2 left-1/2 z-50 flex max-h-[90dvh] w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border bg-card p-6 shadow-2xl outline-none",
           className,
@@ -45,7 +46,7 @@ export function DialogContent({
         >
           <X className="size-4" />
         </DialogPrimitive.Close>
-      </DialogPrimitive.Content>
+      </DialogPrimitive.Popup>
     </DialogPrimitive.Portal>
   );
 }

@@ -2,7 +2,7 @@
 
 Review local Git changes and annotate a running web app. Feedback stays in Markdown, ready for any coding agent.
 
-This `v2` branch experiments with React, Tailwind, Radix UI primitives, TanStack
+This `v2` branch experiments with React, Tailwind, Base UI primitives, TanStack
 Query/Virtual, react-markdown, highlight.js, and jsdiff. It replaces the handwritten
 browser UI while keeping the terminal CLI and standalone executable. See
 [development](docs/development.md) for the architecture and current feature scope.
