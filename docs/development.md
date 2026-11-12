@@ -18,19 +18,20 @@ restarts the server when source changes. Bun's HTML bundler handles React and CS
 
 ## Stack
 
-| Concern                                   | Implementation                                                              |
-| ----------------------------------------- | --------------------------------------------------------------------------- |
-| UI and editor state                       | React 19 components and hooks                                               |
-| Server state, mutations, refetches        | TanStack Query                                                              |
-| Large code files                          | TanStack Virtual                                                            |
-| Accessible dialogs, tooltips, composition | [Base UI](https://base-ui.com/react/overview/quick-start)                   |
-| Local UI components                       | shadcn-style Tailwind components, CVA, clsx, tailwind-merge                 |
-| Pane sizing                               | [react-resizable-panels](https://github.com/bvaughn/react-resizable-panels) |
-| Icons                                     | Lucide React                                                                |
-| Markdown and GFM                          | react-markdown and remark-gfm                                               |
-| Syntax coloring                           | highlight.js                                                                |
-| Suggested replacement diffs               | jsdiff (`diff`)                                                             |
-| Local serving and executable packaging    | Bun                                                                         |
+| Concern                                    | Implementation                                                              |
+| ------------------------------------------ | --------------------------------------------------------------------------- |
+| UI and editor state                        | React 19 components and hooks                                               |
+| Server state, mutations, refetches         | TanStack Query                                                              |
+| Large code files                           | TanStack Virtual                                                            |
+| Accessible dialogs, tooltips, composition  | [Base UI](https://base-ui.com/react/overview/quick-start)                   |
+| Local UI components                        | shadcn-style Tailwind components, CVA, clsx, tailwind-merge                 |
+| Pane sizing                                | [react-resizable-panels](https://github.com/bvaughn/react-resizable-panels) |
+| Icons                                      | Lucide React                                                                |
+| Image drawing, selection and PNG rendering | [Konva](https://konvajs.org/) with react-konva                              |
+| Markdown and GFM                           | react-markdown and remark-gfm                                               |
+| Syntax coloring                            | highlight.js                                                                |
+| Suggested replacement diffs                | jsdiff (`diff`)                                                             |
+| Local serving and executable packaging     | Bun                                                                         |
 
 The small UI components are owned here rather than pulled from a hosted registry
 at runtime. There is no frontend server or CDN in the distributed application.
@@ -122,6 +123,11 @@ checks) and `bun run test:browser` when changing interactions. A production comp
 must still work outside this checkout with no runtime install or adjacent assets.
 
 React, TanStack Query/Virtual, Base UI, Tailwind, react-markdown/remark-gfm,
-highlight.js and diff own their respective UI, data, rendering and bundling
-concerns. The tested drawing geometry, immutable attachment format, review models
-and local server contracts are retained where replacing them would lose behavior.
+highlight.js, diff and Konva own their respective UI, data and rendering concerns.
+`annotation-scene.tsx` uses Konva nodes for every drawing tool, hit testing and PNG
+export. Numbered callouts combine an arrow, badge, number and optional label into
+one editable mark; no second drawing engine is involved. The editor retains its
+tool controls, undo/redo, path editing, zoom/pan and draft recovery. Portable,
+validated marks remain embedded in immutable PNG attachments, so existing saved
+drawings reopen against their original image. Pure geometry handles coordinate
+constraints and point editing; it no longer paints or performs shape hit testing.

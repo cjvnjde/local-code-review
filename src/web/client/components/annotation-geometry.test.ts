@@ -6,9 +6,7 @@ import {
   type AnnotationPoint,
 } from "../../../shared/web-annotation.ts";
 import {
-  drawMark,
   editHandle,
-  hitMark,
   insertPathNode,
   markBounds,
   markHandles,
@@ -193,7 +191,6 @@ describe("editable bounds and handle ordering", () => {
       { tool: "pen", color, width: 2, points: [] } as AnnotationMark,
     ]) {
       expect(markBounds(mark)).toEqual({ x: 0, y: 0, width: 0, height: 0 });
-      expect(hitMark(mark, { x: 0, y: 0 }, 3)).toBe(false);
     }
     expect(markHandles({ ...rectangle, to: rectangle.from })).toHaveLength(8);
   });
@@ -751,9 +748,6 @@ describe("exact immutable path subdivision", () => {
           : cubic(divided.nodes[3]!, divided.nodes[0]!, (t - 0.35) / 0.65);
       expectPoint(actual, cubic(mark.nodes[2]!, mark.nodes[0]!, t));
     }
-    expect(
-      hitMark(divided, cubic(mark.nodes[2]!, mark.nodes[0]!, 0.35), 1),
-    ).toBe(true);
   });
 
   test("endpoint splits retain the entire cubic and degenerate segments remain finite", () => {
@@ -790,174 +784,6 @@ describe("exact immutable path subdivision", () => {
   test("invalid or nonsegment indices do not modify an open path", () => {
     for (const index of [-1, 0.5, 1, 2, 100])
       expect(insertPathNode(curve, index, 0.5)).toBe(curve);
-  });
-});
-
-describe("stroke-aware selection", () => {
-  test("diagonal lines and pen strokes do not select their empty bounding-box corners", () => {
-    const line: AnnotationMark = {
-      tool: "line",
-      color,
-      width: 4,
-      from: { x: 20, y: 20 },
-      to: { x: 100, y: 100 },
-    };
-    const pen: AnnotationMark = {
-      tool: "pen",
-      color,
-      width: 4,
-      points: [
-        { x: 20, y: 20 },
-        { x: 100, y: 100 },
-        { x: 120, y: 30 },
-      ],
-    };
-    for (const mark of [line, pen]) {
-      expect(hitMark(mark, { x: 60, y: 60 }, 0)).toBe(true);
-      expect(hitMark(mark, { x: 20, y: 90 }, 2)).toBe(false);
-      expect(hitMark(mark, { x: 18, y: 20 }, 0)).toBe(true);
-      expect(hitMark(mark, { x: 17, y: 20 }, 0)).toBe(false);
-      expect(hitMark(mark, { x: 17, y: 20 }, 1)).toBe(true);
-    }
-  });
-
-  test("hollow boxes, triangles and ellipses reject interiors but select real edges", () => {
-    for (const mark of [
-      { ...rectangle, radius: 0 },
-      { ...rectangle, tool: "ellipse" } as AnnotationMark,
-      { ...rectangle, tool: "triangle" } as AnnotationMark,
-    ]) {
-      expect(hitMark(mark, { x: 50, y: 50 }, 0)).toBe(false);
-      expect(hitMark(mark, { x: 50, y: 70 }, 0)).toBe(true);
-      expect(hitMark(mark, { x: 50, y: 30 }, 0)).toBe(true);
-      expect(hitMark(mark, { x: 20, y: 30 }, 0)).toBe(
-        mark.tool === "rectangle",
-      );
-    }
-    const triangle: AnnotationMark = { ...rectangle, tool: "triangle" };
-    expect(hitMark(triangle, { x: 35, y: 50 }, 0)).toBe(true);
-    const ellipse: AnnotationMark = { ...rectangle, tool: "ellipse" };
-    expect(hitMark(ellipse, { x: 80, y: 50 }, 0)).toBe(true);
-  });
-
-  test("rounded corners use their arc, not the square corner or its interior", () => {
-    const mark = { ...rectangle, radius: 20 };
-    expect(hitMark(mark, { x: 20, y: 30 }, 0)).toBe(false);
-    expect(hitMark(mark, { x: 40, y: 30 }, 0)).toBe(true);
-    expect(
-      hitMark(
-        mark,
-        { x: 40 - 20 / Math.sqrt(2), y: 50 - 20 / Math.sqrt(2) },
-        0,
-      ),
-    ).toBe(true);
-    expect(hitMark(mark, { x: 30, y: 40 }, 0)).toBe(false);
-    expect(hitMark(mark, { x: 22, y: 32 }, 7)).toBe(true);
-  });
-
-  test("arrow wings select outside the shaft and endpoint coordinate bounds", () => {
-    const mark: AnnotationMark = {
-      tool: "arrow",
-      color,
-      width: 2,
-      from: { x: 20, y: 50 },
-      to: { x: 100, y: 50 },
-    };
-    expect(hitMark(mark, { x: 100 - 5 * Math.sqrt(3), y: 55 }, 0)).toBe(true);
-    expect(hitMark(mark, { x: 80, y: 55 }, 0)).toBe(false);
-    expect(
-      hitMark(
-        { ...mark, tool: "line" },
-        { x: 100 - 5 * Math.sqrt(3), y: 55 },
-        0,
-      ),
-    ).toBe(false);
-  });
-
-  test("Bezier selection follows the actual curve, never its controls or chord", () => {
-    const mark = path([
-      { ...node(20, 20), out: { x: 20, y: 120 } },
-      { ...node(120, 20), in: { x: 120, y: 120 } },
-    ]);
-    expect(hitMark(mark, { x: 70, y: 95 }, 0)).toBe(true);
-    expect(hitMark(mark, { x: 70, y: 20 }, 0)).toBe(false);
-    expect(hitMark(mark, { x: 20, y: 120 }, 1)).toBe(false);
-    expect(hitMark(mark, { x: 70, y: 98 }, 3)).toBe(true);
-  });
-
-  test("closed paths select their closing segment, but still not their interior", () => {
-    const mark = path([node(20, 20), node(100, 20), node(100, 100)]);
-    expect(hitMark(mark, { x: 60, y: 60 }, 0)).toBe(false);
-    expect(hitMark({ ...mark, closed: true }, { x: 60, y: 60 }, 0)).toBe(true);
-    expect(hitMark({ ...mark, closed: true }, { x: 80, y: 50 }, 0)).toBe(false);
-  });
-
-  test("loops and collinear backtracking controls are not flattened into endpoint chords", () => {
-    const loop = path([
-      { ...node(50, 50), out: { x: 150, y: 140 } },
-      { ...node(50, 50), in: { x: 0, y: 140 } },
-    ]);
-    expect(hitMark(loop, cubic(loop.nodes[0]!, loop.nodes[1]!, 0.5), 0)).toBe(
-      true,
-    );
-    expect(hitMark(loop, { x: 100, y: 50 }, 0)).toBe(false);
-    const backtrack = path([
-      { ...node(50, 50), out: { x: 200, y: 50 } },
-      { ...node(60, 50), in: { x: 200, y: 50 } },
-    ]);
-    expect(
-      hitMark(
-        backtrack,
-        cubic(backtrack.nodes[0]!, backtrack.nodes[1]!, 0.5),
-        0,
-      ),
-    ).toBe(true);
-  });
-
-  test("text hit selection uses its multiline measured bounds", () => {
-    expect(hitMark(text, { x: 59, y: 54 }, 0)).toBe(true);
-    expect(hitMark(text, { x: 60, y: 55 }, 0)).toBe(true);
-    expect(hitMark(text, { x: 61, y: 55 }, 0)).toBe(false);
-    expect(hitMark(text, { x: 61, y: 55 }, 1)).toBe(true);
-    expect(
-      hitMark(
-        text,
-        { x: 50, y: 40 },
-        0,
-        (line, size) => (line.length * size) / 2,
-      ),
-    ).toBe(false);
-  });
-
-  test("dots and zero-axis geometry retain round-stroke selection", () => {
-    const pen: AnnotationMark = {
-      tool: "pen",
-      color,
-      width: 8,
-      points: [{ x: 40, y: 50 }],
-    };
-    expect(hitMark(pen, { x: 44, y: 50 }, 0)).toBe(true);
-    expect(hitMark(pen, { x: 44.1, y: 50 }, 0)).toBe(false);
-    for (const tool of [
-      "line",
-      "arrow",
-      "rectangle",
-      "ellipse",
-      "triangle",
-    ] as const) {
-      const mark = {
-        ...rectangle,
-        tool,
-        radius: 0,
-        from: { x: 40, y: 20 },
-        to: { x: 40, y: 100 },
-      };
-      expect(hitMark(mark, { x: 40, y: 60 }, 0)).toBe(true);
-      expect(hitMark(mark, { x: 45, y: 60 }, 1)).toBe(false);
-    }
-    expect(
-      hitMark(path([node(30, 30), node(30, 30)]), { x: 30, y: 30 }, 0),
-    ).toBe(true);
   });
 });
 
@@ -1066,22 +892,6 @@ describe("nearest insertion segment", () => {
     expect(nearest).not.toBeNull();
     expect(nearest!.t).toBeCloseTo(0.37, 6);
   });
-
-  test("scaled arrow wings hit the same geometry rendered on high-DPR captures", () => {
-    const mark: AnnotationMark = {
-      tool: "arrow",
-      color,
-      width: 2,
-      from: { x: 20, y: 50 },
-      to: { x: 100, y: 50 },
-    };
-    const wing = { x: 100 - 10 * Math.sqrt(3), y: 60 };
-    expect(hitMark(mark, wing, 0)).toBe(false);
-    expect(hitMark(mark, wing, 0, undefined, 2)).toBe(true);
-    expect(hitMark({ ...mark, tool: "line" }, wing, 0, undefined, 2)).toBe(
-      false,
-    );
-  });
 });
 
 const callout: Extract<AnnotationMark, { tool: "callout" }> = {
@@ -1144,7 +954,6 @@ describe("enhanced drawing geometry", () => {
     expect(
       editHandle(mark, target, { x: 500, y: -100 }, canvas, measure),
     ).toMatchObject({ target: { x: 200, y: 0 }, at: mark.at });
-    expect(hitMark(mark, { x: 150, y: 123 }, 4, measure)).toBe(true);
   });
 
   test("text scaling retains wrapping and anchored leaders without modifying the original", () => {
@@ -1163,42 +972,6 @@ describe("enhanced drawing geometry", () => {
     expect(mark.size).toBe(10);
   });
 
-  test("filled interiors are selectable while transparent fills and hollow empty spaces are not", () => {
-    for (const tool of ["rectangle", "ellipse", "triangle"] as const) {
-      const mark = { ...rectangle, tool };
-      expect(hitMark(mark, { x: 50, y: 50 }, 0)).toBe(false);
-      expect(
-        hitMark(
-          { ...mark, fill: "#ffff00", opacity: 0.3 },
-          { x: 50, y: 50 },
-          0,
-        ),
-      ).toBe(true);
-      expect(
-        hitMark({ ...mark, fill: "#ffff00", opacity: 0 }, { x: 50, y: 50 }, 0),
-      ).toBe(false);
-      expect(hitMark({ ...mark, fill: "#ffff00" }, { x: 0, y: 0 }, 0)).toBe(
-        false,
-      );
-    }
-    expect(
-      hitMark({ ...rectangle, fill: "#ffff00" }, { x: 20, y: 30 }, 0),
-    ).toBe(false);
-    const curved = {
-      ...path([
-        { ...node(20, 80), out: { x: 20, y: 0 } },
-        { ...node(100, 80), in: { x: 100, y: 0 } },
-      ]),
-      fill: "#ffff00",
-      opacity: 0.5,
-    };
-    expect(hitMark(curved, { x: 60, y: 40 }, 0)).toBe(true);
-    expect(hitMark({ ...curved, fill: undefined }, { x: 60, y: 40 }, 0)).toBe(
-      false,
-    );
-    expect(hitMark(curved, { x: 60, y: 0 }, 0)).toBe(false);
-  });
-
   test("highlighters retain sampled geometry and opacity under movement and resizing", () => {
     const mark = frozen({
       tool: "highlighter",
@@ -1211,8 +984,7 @@ describe("enhanced drawing geometry", () => {
       ],
     } as const);
     const mutable = { ...mark, points: [...mark.points] };
-    expect(hitMark(mutable, { x: 50, y: 48 }, 0)).toBe(true);
-    expect(hitMark(mutable, { x: 50, y: 70 }, 0)).toBe(false);
+
     expect(moveMark(mutable, 5, 10, canvas)).toMatchObject({
       opacity: 0.25,
       points: [
@@ -1231,24 +1003,12 @@ describe("enhanced drawing geometry", () => {
     });
   });
 
-  test("callout badge and leader select independently of empty bounding-box space and IDs survive edits", () => {
+  test("callout endpoint handles and stable IDs survive movement and edits", () => {
     expect(markHandles(callout)).toEqual([
       { kind: "endpoint", end: "from", x: 40, y: 40 },
       { kind: "endpoint", end: "to", x: 100, y: 100 },
     ]);
-    expect(hitMark(callout, { x: 30, y: 40 }, 0)).toBe(true);
-    expect(hitMark(callout, { x: 80, y: 80 }, 0)).toBe(true);
-    const horizontal = {
-      ...callout,
-      from: { x: 20, y: 40 },
-      to: { x: 120, y: 40 },
-    };
-    expect(hitMark(horizontal, { x: 111.34, y: 35 }, 0)).toBe(true);
-    expect(hitMark(horizontal, { x: 110, y: 28 }, 0)).toBe(false);
-    expect(hitMark(callout, { x: 30, y: 90 }, 0)).toBe(false);
-    expect(hitMark({ ...callout, label: "Label" }, { x: 65, y: 40 }, 0)).toBe(
-      true,
-    );
+
     const moved = moveMark(frozen(callout), -1000, -1000, canvas);
     expectInside(moved);
     expect(moved).toMatchObject({ id: callout.id, number: 7 });
@@ -1277,9 +1037,7 @@ describe("enhanced drawing geometry", () => {
       to: magnifier.to,
       scale: 3,
     });
-    expect(hitMark(magnifier, { x: 100, y: 100 }, 0)).toBe(true);
-    expect(hitMark(magnifier, { x: 20, y: 25 }, 0)).toBe(true);
-    expect(hitMark(magnifier, { x: 25, y: 25 }, 0)).toBe(false);
+
     const edited = editHandle(
       magnifier,
       markHandles(magnifier)[1]!,
@@ -1324,178 +1082,5 @@ describe("enhanced drawing geometry", () => {
         markBounds(changed).width / markBounds(changed).height,
       ).toBeCloseTo(20 / 15);
     }
-  });
-});
-
-type PaintOperation = {
-  name: string;
-  args: unknown[];
-  alpha: number;
-  fill: unknown;
-  stroke: unknown;
-  lineWidth: unknown;
-};
-function recordingContext() {
-  const operations: PaintOperation[] = [],
-    stack: Record<string, unknown>[] = [];
-  const state: Record<string, unknown> = {
-    globalAlpha: 1,
-    fillStyle: "#000000",
-    strokeStyle: "#000000",
-    lineWidth: 1,
-    font: "10px sans-serif",
-  };
-  const ctx = new Proxy(state, {
-    get(target, name: string) {
-      if (name in target) return target[name];
-      if (name === "measureText")
-        return (line: string) => ({
-          width:
-            (Array.from(line).length *
-              Number(String(target.font).match(/[\d.]+/)?.[0] ?? 10)) /
-            2,
-        });
-      return (...args: unknown[]) => {
-        operations.push({
-          name,
-          args,
-          alpha: Number(target.globalAlpha),
-          fill: target.fillStyle,
-          stroke: target.strokeStyle,
-          lineWidth: target.lineWidth,
-        });
-        if (name === "save") stack.push({ ...target });
-        if (name === "restore") Object.assign(target, stack.pop());
-      };
-    },
-    set(target, name: string, value: unknown) {
-      target[name] = value;
-      return true;
-    },
-  }) as unknown as CanvasRenderingContext2D;
-  return { ctx, operations, state };
-}
-
-describe("enhanced drawing painting", () => {
-  test("shape transparency affects fill only and highlighter opacity affects the complete stroke", () => {
-    const { ctx, operations, state } = recordingContext();
-    drawMark(ctx, { ...rectangle, fill: "#ffff00", opacity: 0.25 });
-    expect(operations.find((op) => op.name === "fill")).toMatchObject({
-      alpha: 0.25,
-      fill: "#ffff00",
-    });
-    expect(operations.find((op) => op.name === "stroke")).toMatchObject({
-      alpha: 1,
-      stroke: color,
-    });
-    drawMark(ctx, {
-      tool: "highlighter",
-      color: "#ffff00",
-      width: 20,
-      opacity: 0.4,
-      points: [
-        { x: 0, y: 0 },
-        { x: 30, y: 30 },
-      ],
-    });
-    expect(
-      operations.filter((op) => op.name === "stroke").at(-1),
-    ).toMatchObject({ alpha: 0.4 });
-    expect(state.globalAlpha).toBe(1);
-    drawMark(ctx, {
-      tool: "highlighter",
-      color: "#ffff00",
-      width: 20,
-      opacity: 0.2,
-      points: [{ x: 10, y: 10 }],
-    });
-    expect(operations.filter((op) => op.name === "fill").at(-1)).toMatchObject({
-      alpha: 0.2,
-    });
-  });
-
-  test("text painting and bounds use identical wrapping and include background, contrast outline and leader", () => {
-    const { ctx, operations } = recordingContext();
-    const mark = {
-      ...text,
-      text: "one two\n\nabcdef",
-      wrap: 20,
-      background: "#ffffff",
-      outline: true,
-      target: { x: 180, y: 140 },
-    };
-    drawMark(ctx, mark, 2);
-    const painted = operations.filter((op) => op.name === "fillText");
-    expect(painted.map((op) => op.args[0])).toEqual([
-      "one",
-      "two",
-      "",
-      "abcd",
-      "ef",
-    ]);
-    expect(painted[0]!.args.slice(1)).toEqual([24, 34]);
-    expect(painted.at(-1)!.args.slice(1)).toEqual([24, 84]);
-    expect(operations.find((op) => op.name === "fillRect")!.args).toEqual([
-      20, 30, 28, 70.5,
-    ]);
-    expect(operations.find((op) => op.name === "moveTo")!.args).toEqual([
-      180, 140,
-    ]);
-    expect(operations.filter((op) => op.name === "strokeText")).toHaveLength(5);
-    expect(operations.find((op) => op.name === "strokeText")).toMatchObject({
-      lineWidth: 4,
-      stroke: "#000000",
-    });
-  });
-
-  test("callout numbers contrast with their badge and labels render as readable text", () => {
-    for (const [color, ink] of [
-      ["#ffff00", "#000000"],
-      ["#000088", "#ffffff"],
-    ] as const) {
-      const { ctx, operations } = recordingContext();
-      drawMark(ctx, { ...callout, color, label: "Readable label" });
-      expect(operations.find((op) => op.name === "fillText")).toMatchObject({
-        fill: ink,
-        args: ["7", 40, 40, 20.4],
-      });
-      expect(
-        operations
-          .filter((op) => op.name === "fillText")
-          .slice(1)
-          .map((op) => op.args[0]),
-      ).toEqual(["Readable label"]);
-      expect(operations.some((op) => op.name === "fillRect")).toBe(true);
-    }
-  });
-
-  test("magnifiers draw one original-only crop using padding-correct coordinates, border and source guide", () => {
-    const { ctx, operations } = recordingContext(),
-      image = {} as CanvasImageSource;
-    drawMark(ctx, { ...magnifier, from: magnifier.to, to: magnifier.from }, 2, {
-      image,
-      padding: 20,
-    });
-    expect(operations.filter((op) => op.name === "drawImage")).toHaveLength(1);
-    expect(operations.find((op) => op.name === "drawImage")!.args).toEqual([
-      image,
-      0,
-      0,
-      20,
-      15,
-      70,
-      80,
-      60,
-      45,
-    ]);
-    expect(
-      operations.filter((op) => op.name === "strokeRect").map((op) => op.args),
-    ).toEqual([
-      [20, 20, 20, 15],
-      [70, 80, 60, 45],
-    ]);
-    expect(operations.find((op) => op.name === "setLineDash")!.args).toEqual([
-      [10, 6],
-    ]);
   });
 });

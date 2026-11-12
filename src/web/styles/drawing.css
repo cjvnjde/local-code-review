@@ -281,14 +281,15 @@
   background: #fff;
   box-shadow: 0 0 0 1px var(--edge-hi);
 }
-.annotation-surface canvas {
+.annotation-surface canvas,
+[data-drawing-surface] {
   display: block;
   max-width: none;
   touch-action: none;
   user-select: none;
 }
 .annotation-viewport.panning,
-.annotation-viewport.panning canvas {
+.annotation-viewport.panning [data-drawing-surface] {
   cursor: grabbing !important;
 }
 .annotation-source-outline {

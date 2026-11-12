@@ -7,9 +7,7 @@ import {
   type WebAnnotation,
 } from "../../../shared/web-annotation.ts";
 import {
-  drawMark,
   editHandle,
-  hitMark,
   insertPathNode,
   markBounds,
   markHandles,
@@ -23,6 +21,10 @@ import {
   uploadImage as upload,
 } from "./attachments.ts";
 import { SVG } from "./drawing-icons.ts";
+import {
+  createAnnotationScene,
+  type AnnotationSceneModel,
+} from "./annotation-scene.tsx";
 import {
   registerView,
   setView,
@@ -273,12 +275,12 @@ function editAnnotation(
       </div>
       <div class="annotation-recovery" role="status" hidden><span>Unfinished drawing found.</span><button type="button" data-command="restore-draft">Restore draft</button><button type="button" data-command="discard-draft">Discard draft</button></div>
       <p id="annotation-help" class="annotation-help">Select a drawing to resize it using handles. Drag line endpoints or path points and curve handles. Double-click a path segment to add a point. Path tool: click points, drag for curves, Enter or double-click to finish; click the first point to close. Shift draws squares and circles. Escape cancels an active gesture or unfinished path. White margins are drawing space, not page context. Wheel to zoom; Space and drag to pan.</p>
-      <div class="annotation-viewport"><div class="annotation-surface"><canvas tabindex="0" aria-label="Screenshot drawing canvas. Select to resize or edit points. Path: click points, drag for curves, Enter to finish."></canvas><div class="annotation-source-outline" aria-hidden="true"></div><label class="annotation-text-label" hidden><textarea data-field="text" rows="2" maxlength="${LIMITS.maxText}" aria-label="Text to draw" placeholder="Type your label"></textarea></label></div></div>
+      <div class="annotation-viewport"><div class="annotation-surface"><div data-drawing-surface tabindex="0" role="img" aria-label="Screenshot drawing canvas. Select to resize or edit points. Path: click points, drag for curves, Enter to finish."></div><div class="annotation-source-outline" aria-hidden="true"></div><label class="annotation-text-label" hidden><textarea data-field="text" rows="2" maxlength="${LIMITS.maxText}" aria-label="Text to draw" placeholder="Type your label"></textarea></label></div></div>
       <div class="annotation-feedback"><div class="annotation-message" role="status" aria-live="polite">Loading original screenshot…</div>
         <div class="annotation-error" role="alert" hidden></div><button type="button" data-command="retry" hidden>Retry image load</button></div>`;
   const find = <T extends Element>(selector: string) =>
     dialog.querySelector<T>(selector)!;
-  const canvas = find<HTMLCanvasElement>("canvas"),
+  const canvas = find<HTMLElement>("[data-drawing-surface]"),
     viewport = find<HTMLElement>(".annotation-viewport");
   const surface = find<HTMLElement>(".annotation-surface"),
     outline = find<HTMLElement>(".annotation-source-outline");
@@ -291,7 +293,7 @@ function editAnnotation(
   const button = (name: string) =>
     find<HTMLButtonElement>('[data-command="' + name + '"]');
   const colorPopup = find<HTMLElement>(".annotation-colors");
-  const context = canvas.getContext("2d");
+  const scene = createAnnotationScene(canvas);
   let draftStore: ReturnType<typeof createAnnotationDraftStore> | null = null;
   let recoverable: AnnotationDraft | null = null;
   function persistDraft() {
@@ -584,11 +586,7 @@ function editAnnotation(
     paint();
     persistDraft();
   }
-  const measure = (value: string, fontSize: number) => {
-    if (!context) return value.length * fontSize;
-    context.font = fontSize + "px sans-serif";
-    return context.measureText(value).width;
-  };
+  const measure = scene.measure;
   const bounds = (mark: AnnotationMark) => markBounds(mark, measure);
   const handles = (mark: AnnotationMark) => markHandles(mark, measure);
   function syncTextEditor() {
@@ -697,110 +695,33 @@ function editAnnotation(
     selectedNode = -1;
     updatePath({ ...mark, nodes });
   }
-  function render(ctx: CanvasRenderingContext2D, guides: boolean) {
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, width, height);
-    if (image) ctx.drawImage(image, padding, padding);
-    if (guides && (original || heldOriginal)) return;
-    const source = image ? { image, padding } : undefined;
-    marks.forEach((mark, i) => {
-      if (
-        (!gesture?.move || i !== gesture.index) &&
-        (!guides ||
-          (!hidden.has(mark) &&
-            !(textEditing && i === selected && mark.tool === "text")))
-      )
-        drawMark(ctx, mark, sourceScale, source);
-    });
-    if (pathDraft && !gesture?.path)
-      drawMark(ctx, pathDraft, sourceScale, source);
-    if (gesture) drawMark(ctx, gesture.mark, sourceScale, source);
-    if (guides && selected >= 0 && !hidden.has(marks[selected]!)) {
-      const current = gesture?.move ? gesture.mark : marks[selected]!;
-      const b = bounds(current);
-      ctx.save();
-      ctx.strokeStyle = "#2563eb";
-      ctx.lineWidth = 1 / zoom;
-      ctx.setLineDash([5 / zoom, 4 / zoom]);
-      ctx.strokeRect(
-        b.x - 4 / zoom,
-        b.y - 4 / zoom,
-        b.width + 8 / zoom,
-        b.height + 8 / zoom,
-      );
-      ctx.setLineDash([]);
-      if (tool === "select") {
-        if (current.tool === "path") {
-          for (const node of current.nodes) {
-            for (const control of [node.in, node.out]) {
-              if (!control) continue;
-              ctx.beginPath();
-              ctx.moveTo(node.x, node.y);
-              ctx.lineTo(control.x, control.y);
-              ctx.stroke();
-            }
-          }
-        }
-        for (const handle of handles(current)) {
-          const r = (handle.kind === "control" ? 3 : 4) / zoom;
-          ctx.fillStyle =
-            handle.kind === "node" && handle.index === selectedNode
-              ? "#2563eb"
-              : "#ffffff";
-          ctx.beginPath();
-          if (handle.kind === "control")
-            ctx.arc(handle.x, handle.y, r, 0, Math.PI * 2);
-          else ctx.rect(handle.x - r, handle.y - r, 2 * r, 2 * r);
-          ctx.fill();
-          ctx.stroke();
-        }
-      }
-      ctx.restore();
-    }
-    if (guides && (gesture?.path || pathDraft)) {
-      const path = gesture?.path ? (gesture.mark as PathMark) : pathDraft!;
-      ctx.save();
-      ctx.strokeStyle = "#2563eb";
-      ctx.fillStyle = "#ffffff";
-      ctx.lineWidth = 1 / zoom;
-      for (const node of path.nodes) {
-        for (const control of [node.in, node.out]) {
-          if (!control) continue;
-          ctx.beginPath();
-          ctx.moveTo(node.x, node.y);
-          ctx.lineTo(control.x, control.y);
-          ctx.stroke();
-        }
-        ctx.fillRect(node.x - 4 / zoom, node.y - 4 / zoom, 8 / zoom, 8 / zoom);
-        ctx.strokeRect(
-          node.x - 4 / zoom,
-          node.y - 4 / zoom,
-          8 / zoom,
-          8 / zoom,
-        );
-      }
-      ctx.restore();
-    }
-    if (guides && pendingText) {
-      ctx.save();
-      ctx.strokeStyle = "#2563eb";
-      ctx.lineWidth = 1 / zoom;
-      ctx.beginPath();
-      ctx.moveTo(pendingText.x - 6 / zoom, pendingText.y);
-      ctx.lineTo(pendingText.x + 6 / zoom, pendingText.y);
-      ctx.moveTo(pendingText.x, pendingText.y - 6 / zoom);
-      ctx.lineTo(pendingText.x, pendingText.y + 6 / zoom);
-      ctx.stroke();
-      ctx.restore();
-    }
+  function sceneModel(): AnnotationSceneModel {
+    return {
+      image: image!,
+      width,
+      height,
+      padding,
+      sourceScale,
+      zoom,
+      marks,
+      hidden,
+      original: original || heldOriginal,
+      textEditing,
+      selected,
+      selectedNode,
+      selecting: tool === "select",
+      gesture,
+      pathDraft,
+      pendingText,
+    };
   }
   function paint() {
-    if (paintFrame || !image || !context || closed) return;
+    if (paintFrame || !image || closed) return;
     paintFrame = requestAnimationFrame(() => {
       paintFrame = 0;
       if (closed) return;
       try {
-        render(context, true);
+        scene.render(sceneModel());
       } catch (reason) {
         fail(reason);
       }
@@ -1074,11 +995,11 @@ function editAnnotation(
         current && !hidden.has(current) ? handleAt(current, at) : undefined;
       const index = handle
         ? selected
-        : marks.findLastIndex(
-            (mark) =>
-              !hidden.has(mark) &&
-              hitMark(mark, at, 8 / zoom, measure, sourceScale),
-          );
+        : (() => {
+            // Tool/style changes may have happened since the last animation frame.
+            scene.render(sceneModel());
+            return scene.hit(at);
+          })();
       select(index);
       textEditing = false;
       syncTextEditor();
@@ -1719,7 +1640,7 @@ function editAnnotation(
     if (canLeave(null)) close(true);
   }
   async function save() {
-    if (loading || saving || recoverable || !image || !context) return;
+    if (loading || saving || recoverable || !image) return;
     cancelGesture();
     if (pathDraft) {
       finishPath();
@@ -1744,32 +1665,8 @@ function editAnnotation(
           throw new Error(
             "The drawing exceeds the supported annotation limits. Reduce its size or remove drawings and try again.",
           );
-        // Export separately so selection handles and the editor's screenshot outline never enter the PNG.
-        const output = document.createElement("canvas");
-        output.width = width;
-        output.height = height;
-        const ctx = output.getContext("2d");
-        if (!ctx) throw new Error("The browser could not create a PNG canvas.");
-        let blob: Blob;
-        try {
-          render(ctx, false);
-          const encoded = Promise.withResolvers<Blob>();
-          output.toBlob(
-            (result) =>
-              result
-                ? encoded.resolve(result)
-                : encoded.reject(
-                    new Error(
-                      "The browser could not encode this drawing as PNG.",
-                    ),
-                  ),
-            "image/png",
-          );
-          blob = await encoded.promise;
-        } finally {
-          output.width = 0;
-          output.height = 0;
-        }
+        // Export the same Konva scene without guides or preview-only visibility settings.
+        const blob = await scene.export(sceneModel());
         const encoded = encodeImageDrawing(
           new Uint8Array(await blob.arrayBuffer()),
           { source: capture.image, annotation: proposal },
@@ -2063,8 +1960,7 @@ function editAnnotation(
     window.removeEventListener("pagehide", persistDraft);
     document.removeEventListener("visibilitychange", onVisibility);
     image = null;
-    canvas.width = 0;
-    canvas.height = 0;
+    scene.destroy();
     dialog.remove();
     emit();
     if (previous?.isConnected) {
@@ -2098,8 +1994,6 @@ function editAnnotation(
     message.textContent = "Loading original screenshot…";
     sync();
     try {
-      if (!context)
-        throw new Error("This browser does not support a 2D drawing canvas.");
       if (!capture.image)
         throw new Error(
           "Point selections contain metadata only, with no screenshot to draw on.",
@@ -2154,8 +2048,7 @@ function editAnnotation(
           "The saved drawing does not match the original screenshot or exceeds supported limits.",
         );
       image = source;
-      canvas.width = width;
-      canvas.height = height;
+      scene.render(sceneModel());
       stroke = Math.min(
         LIMITS.maxWidth,
         Math.max(1, Math.round(3 * sourceScale)),

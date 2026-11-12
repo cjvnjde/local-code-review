@@ -31,7 +31,9 @@ change; reading, commenting, evidence, and saved conversations must keep working
 running in a temporary repository without dependencies or adjacent browser assets.
 It includes actual mouse gestures, image metadata round trips, context reads,
 resolution invalidation, live capture comparisons and live-update scroll retention.
-The restored drawing engine also keeps its original browser and geometry tests.
+The Konva drawing workspace keeps its editing and geometry tests, with browser
+checks for native hit testing, numbered callout identity and endpoint editing,
+HiDPI exports, original-only magnifiers and editable attachment round trips.
 Pure search, reference, bookmark, filter, word-diff and color models retain their
 original regression coverage.
 

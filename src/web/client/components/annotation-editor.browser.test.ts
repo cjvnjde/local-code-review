@@ -30,13 +30,22 @@ async function withEditor(
     reopen(): Promise<void>;
     reload(): Promise<void>;
   }) => Promise<void>,
+  dpr = 1,
 ) {
-  const bundle = await Bun.build({
-    entrypoints: [path.join(import.meta.dir, "annotation-editor.ts")],
-    target: "browser",
-  });
+  const [bundle, sceneBundle] = await Promise.all([
+    Bun.build({
+      entrypoints: [path.join(import.meta.dir, "annotation-editor.ts")],
+      target: "browser",
+    }),
+    Bun.build({
+      entrypoints: [path.join(import.meta.dir, "annotation-scene.tsx")],
+      target: "browser",
+    }),
+  ]);
   if (!bundle.success) throw new AggregateError(bundle.logs);
+  if (!sceneBundle.success) throw new AggregateError(sceneBundle.logs);
   const script = await bundle.outputs[0]!.text();
+  const sceneScript = await sceneBundle.outputs[0]!.text();
   let source: Uint8Array = new Uint8Array(),
     output: Uint8Array = new Uint8Array();
   const server = Bun.serve({
@@ -46,6 +55,10 @@ async function withEditor(
       const url = new URL(req.url);
       if (url.pathname === "/editor.js")
         return new Response(script, {
+          headers: { "content-type": "text/javascript" },
+        });
+      if (url.pathname === "/scene.js")
+        return new Response(sceneScript, {
           headers: { "content-type": "text/javascript" },
         });
       if (url.pathname.startsWith("/styles/"))
@@ -99,6 +112,12 @@ async function withEditor(
     });
     const send = (method: string, params = {}) =>
       chrome!.cdp.send(method, params, sessionId);
+    await send("Emulation.setDeviceMetricsOverride", {
+      width: 1500,
+      height: 1000,
+      deviceScaleFactor: dpr,
+      mobile: false,
+    });
     await send("Page.enable");
     const loaded = Promise.withResolvers<void>();
     const off = chrome.cdp.on("Page.loadEventFired", (_, session) => {
@@ -133,7 +152,7 @@ async function withEditor(
     };
     const mouse = async (type: string, at: Point, extra = {}) => {
       const b = await js(
-        '(()=>{const c=document.querySelector("canvas"),r=c.getBoundingClientRect();return {x:r.x,y:r.y,s:r.width/c.width}})()',
+        '(()=>{const c=document.querySelector("[data-drawing-surface]"),r=c.getBoundingClientRect();return {x:r.x,y:r.y,s:r.width/Number(c.dataset.width)}})()',
       );
       await send("Input.dispatchMouseEvent", {
         type,
@@ -156,7 +175,7 @@ async function withEditor(
       await mouse("mouseMoved", to, { modifiers });
       if (cancel)
         await js(
-          `document.querySelector('canvas').dispatchEvent(new PointerEvent('pointercancel',{pointerId:1,isPrimary:true,bubbles:true}))`,
+          `document.querySelector('[data-drawing-surface]').dispatchEvent(new PointerEvent('pointercancel',{pointerId:1,isPrimary:true,bubbles:true}))`,
         );
       await mouse("mouseReleased", to, { modifiers });
     };
@@ -414,7 +433,90 @@ browserTest(
 );
 
 browserTest(
-  "numbered callouts keep identity and labels; translucent marks and visibility export all drawings",
+  "fit and zoom keep the drawing surface within its viewport without phantom scroll space",
+  async () => {
+    await withEditor(async ({ js, click, drag }) => {
+      await js(
+        `Object.assign(document.querySelector('[data-annotation-editor]').style,{width:'650px',height:'650px'})`,
+      );
+      await click("[data-command=fit]");
+      const dimensions = () =>
+        js(`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>{
+        const view=document.querySelector('.annotation-viewport'),surface=document.querySelector('[data-drawing-surface]');
+        resolve({width:view.clientWidth,height:view.clientHeight,scrollWidth:view.scrollWidth,scrollHeight:view.scrollHeight,zoom:surface.getBoundingClientRect().width/Number(surface.dataset.width)});
+      })))`);
+      const fit = await dimensions();
+      expect(fit.zoom).toBeLessThan(1);
+      expect(fit.scrollWidth).toBeLessThanOrEqual(fit.width + 1);
+      expect(fit.scrollHeight).toBeLessThanOrEqual(fit.height + 1);
+      await click("[data-command=actual]");
+      expect((await dimensions()).zoom).toBe(1);
+      await click("[data-tool=pan]");
+      await js(
+        `document.querySelector('.annotation-viewport').scrollTo(30,30)`,
+      );
+      await drag({ x: 150, y: 150 }, { x: 120, y: 130 });
+      expect(
+        await js(`document.querySelector('.annotation-viewport').scrollLeft`),
+      ).toBeGreaterThan(30);
+      await click("[data-command=fit]");
+      const restored = await dimensions();
+      expect(restored.zoom).toBeCloseTo(fit.zoom);
+      expect(restored.scrollWidth).toBeLessThanOrEqual(restored.width + 1);
+      expect(restored.scrollHeight).toBeLessThanOrEqual(restored.height + 1);
+    });
+  },
+  30000,
+);
+
+browserTest(
+  "Konva selects rendered strokes, curves, filled areas, callout badges and labels without selecting empty corners",
+  async () => {
+    await withEditor(async ({ js }) => {
+      const results = await js(`(async()=>{
+        const {createAnnotationScene}=await import('/scene.js');
+        const host=document.createElement('div');document.body.append(host);
+        const scene=createAnnotationScene(host),image=new Image();image.src='/api/attachment?ref=images/source.png';await image.decode();
+        const model={image,width:768,height:528,padding:64,sourceScale:1,zoom:1,marks:[],hidden:new Set(),original:false,textEditing:false,selected:-1,selectedNode:-1,selecting:true,gesture:null,pathDraft:null,pendingText:null};
+        const base={color:'#ef4444',width:2,from:{x:100,y:100},to:{x:300,y:200}};
+        const cases=[
+          [{...base,tool:'line'},[200,150],[100,200]],
+          [{...base,tool:'arrow'},[290,200],[200,210]],
+          [{...base,tool:'pen',points:[base.from,base.to]},[200,150],[100,200]],
+          [{...base,tool:'highlighter',opacity:.25,width:20,points:[base.from,base.to]},[200,150],[100,200]],
+          [{...base,tool:'rectangle',radius:0},[100,150],[200,150]],
+          [{...base,tool:'rectangle',radius:50},[100,150],[100,100]],
+          [{...base,tool:'ellipse'},[300,150],[200,150]],
+          [{...base,tool:'triangle'},[200,100],[200,150]],
+          [{...base,tool:'rectangle',radius:0,fill:'#ffff00',opacity:.25},[200,150],[350,150]],
+          [{...base,tool:'ellipse',fill:'#ffff00',opacity:.25},[200,150],[350,150]],
+          [{...base,tool:'triangle',fill:'#ffff00',opacity:.25},[200,150],[100,100]],
+          [{...base,tool:'path',closed:false,nodes:[{x:100,y:200,kind:'corner',out:{x:100,y:80}},{x:300,y:200,kind:'corner',in:{x:300,y:80}}]},[200,110],[200,200]],
+          [{...base,tool:'path',fill:'#ffff00',opacity:.25,closed:false,nodes:[{x:100,y:200,kind:'corner',out:{x:100,y:80}},{x:300,y:200,kind:'corner',in:{x:300,y:80}}]},[200,160],[200,240]],
+          [{...base,tool:'callout',id:'45a655ed-8e1e-4f42-a59c-8a9e69ba81f3',size:30,number:7,label:'Editable label'},[100,100],[100,200]],
+          [{...base,tool:'callout',id:'45a655ed-8e1e-4f42-a59c-8a9e69ba81f3',size:30,number:7,label:'Editable label'},[150,100],[100,200]],
+          [{tool:'text',at:{x:100,y:100},color:'#ef4444',text:'Text',size:20,background:'#ffffff'},[110,110],[110,160]],
+          [{...base,tool:'magnifier',at:{x:400,y:260},scale:1},[450,280],[150,180]],
+        ];
+        try{return cases.map(([mark,yes,no])=>{
+          model.marks=[mark];scene.render(model);
+          return {tool:mark.tool,hit:scene.hit({x:yes[0],y:yes[1]}),miss:scene.hit({x:no[0],y:no[1]})};
+        });}finally{scene.destroy();host.remove();}
+      })()`);
+      expect(results).toEqual(
+        results.map((result: { tool: string }) => ({
+          tool: result.tool,
+          hit: 0,
+          miss: -1,
+        })),
+      );
+    });
+  },
+  30000,
+);
+
+browserTest(
+  "numbered callouts keep identity and editable endpoints on HiDPI displays; visibility never changes exports",
   async () => {
     await withEditor(async ({ click, point, drag, js, save, reopen }) => {
       const change = (field: string, value: unknown) =>
@@ -436,7 +538,7 @@ browserTest(
       await drag({ x: 120, y: 340 }, { x: 280, y: 340 });
       const pixel = () =>
         js(`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>{
-        resolve([...document.querySelector('canvas').getContext('2d').getImageData(200,340,1,1).data]);
+        resolve([...document.querySelector('[data-drawing-surface] canvas').getContext('2d').getImageData(200,340,1,1).data]);
       })))`);
       const highlighted = await pixel();
       expect(highlighted).not.toEqual([255, 255, 255, 255]);
@@ -478,7 +580,22 @@ browserTest(
       await reopen();
       const second = await save();
       expect(second.marks).toEqual(first.marks);
-    });
+      await reopen();
+      await click("[data-tool=select]");
+      // Select by the actual badge, then move each endpoint independently.
+      await point({ x: 120, y: 120 });
+      await drag({ x: 220, y: 200 }, { x: 250, y: 230 });
+      await drag({ x: 120, y: 120 }, { x: 140, y: 100 });
+      await change("label", "Still editable after reopening");
+      const third = await save();
+      expect(third.marks[0]).toEqual({
+        ...first.marks[0],
+        from: { x: 140, y: 100 },
+        to: { x: 250, y: 230 },
+        label: "Still editable after reopening",
+      });
+      expect(third.marks[1]).toEqual(first.marks[1]);
+    }, 2);
   },
   30000,
 );
@@ -500,7 +617,7 @@ browserTest(
       })()`);
       const location = await js(`(()=>{
         const t=document.querySelector('[data-field=text]').getBoundingClientRect();
-        const c=document.querySelector('canvas').getBoundingClientRect();return {x:t.x-c.x,y:t.y-c.y,zoom:c.width/document.querySelector('canvas').width};
+        const surface=document.querySelector('[data-drawing-surface]');const c=surface.getBoundingClientRect();return {x:t.x-c.x,y:t.y-c.y,zoom:c.width/Number(surface.dataset.width)};
       })()`);
       expect(location.x / location.zoom).toBeCloseTo(120);
       expect(location.y / location.zoom).toBeCloseTo(280);

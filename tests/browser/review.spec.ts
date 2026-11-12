@@ -295,6 +295,7 @@ test("line, range and character gestures keep comments inline and protect draft 
   await page.mouse.down();
   await page.mouse.move(to.x, to.y, { steps: 8 });
   await page.mouse.up();
+
   await expect(editor).toContainText("src/app.ts:2:11-15");
   await page
     .getByRole("textbox", { name: "Note text" })
@@ -395,7 +396,7 @@ test("image attachments preview, retain editable drawings and survive note and r
   await drawing
     .getByRole("button", { name: "Draw a rectangle", exact: true })
     .click();
-  const canvas = drawing.locator("canvas");
+  const canvas = drawing.locator("[data-drawing-surface]");
   await expect(canvas).toBeVisible();
   const box = await canvas.boundingBox();
   await page.mouse.move(
@@ -407,6 +408,34 @@ test("image attachments preview, retain editable drawings and survive note and r
     steps: 8,
   });
   await page.mouse.up();
+  await drawing
+    .getByRole("button", { name: "Add numbered callout", exact: true })
+    .click();
+  for (const [from, to] of [
+    [
+      [0.18, 0.2],
+      [0.45, 0.45],
+    ],
+    [
+      [0.8, 0.2],
+      [0.7, 0.65],
+    ],
+  ]) {
+    await page.mouse.move(
+      box!.x + box!.width * from![0]!,
+      box!.y + box!.height * from![1]!,
+    );
+    await page.mouse.down();
+    await page.mouse.move(
+      box!.x + box!.width * to![0]!,
+      box!.y + box!.height * to![1]!,
+      { steps: 8 },
+    );
+    await page.mouse.up();
+  }
+  await drawing
+    .getByRole("textbox", { name: "Callout label", exact: true })
+    .fill("Check this detail");
   await drawing
     .getByRole("button", { name: "Apply drawing", exact: true })
     .click();
@@ -424,8 +453,12 @@ test("image attachments preview, retain editable drawings and survive note and r
     new Uint8Array(await response.body()),
     ref,
   );
-  expect(metadata?.annotation.marks).toHaveLength(1);
+  expect(metadata?.annotation.marks).toHaveLength(3);
   expect(metadata?.annotation.marks[0]?.tool).toBe("rectangle");
+  expect(metadata?.annotation.marks.slice(1)).toMatchObject([
+    { tool: "callout", number: 1 },
+    { tool: "callout", number: 2, label: "Check this detail" },
+  ]);
   // Reopen uses the original image and editable vectors, not a flattened second layer.
   await images
     .getByRole("button", { name: "Draw / edit", exact: true })
@@ -438,7 +471,7 @@ test("image attachments preview, retain editable drawings and survive note and r
     drawing
       .getByRole("combobox", { name: "Select an editable drawing" })
       .locator("option"),
-  ).toHaveCount(2);
+  ).toHaveCount(4);
   await drawing
     .getByRole("button", { name: "Close drawing editor", exact: true })
     .click();
