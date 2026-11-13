@@ -15,6 +15,10 @@ server. Write feedback, add images or a suggestion, and save. Captured screensho
 and element metadata remain in the review file, with pictures stored beside it.
 **Open full review** returns to the complete conversation.
 
+The input and save controls stay at the bottom of the note window while screenshots
+and capture details scroll above them. Clicking a screenshot opens a viewer across
+the browser viewport; closing it restores the note window and its draft.
+
 The **lcr** circle toggles annotation and normal browsing. Hold Alt to interact
 with the app temporarily. The targeting tools still support element, area, and
 point captures; metadata-only point captures have no screenshot. Additional

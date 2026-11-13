@@ -110,7 +110,8 @@ export function installPageReview(config: {
     width: number;
     height: number;
   } | null = null;
-  let annotationOpen = false;
+  let annotationOpen = false,
+    imagePreviewOpen = false;
   let expanded = false,
     suppressLauncherClick = false;
   let selected: Element[] = [],
@@ -179,9 +180,9 @@ export function installPageReview(config: {
     .resize svg{width:var(--icon);height:var(--icon);pointer-events:none}.resize:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}.dock.minimized .resize{display:none}
     .resize:is(:hover,:focus-visible)::before{content:attr(title);position:absolute;right:var(--space-2);bottom:100%;width:calc(var(--tap) * 9);max-width:calc(100vw - var(--space-4)*2);padding:var(--space-2);border:1px solid var(--edge);border-radius:var(--radius-sm);background:var(--panel);color:var(--ink);font-size:var(--fs-small);pointer-events:none;cursor:default}
     .bar[hidden],.dock[hidden],.selection-tools[hidden]{display:none}.head{display:flex;flex:none;align-items:center;gap:var(--space-1);min-height:var(--bar-height);padding:var(--space-2) var(--space-3);background:var(--panel);cursor:move;touch-action:none;user-select:none}.head b{display:flex;align-items:center;flex:1;min-width:0;min-height:var(--tap-lg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-radius:var(--radius-sm)}.head button,.head .review-link{flex:none}.head button{width:var(--tap-lg);padding:0}.head .review-link{display:inline-flex;align-items:center;color:var(--ink-dim)}.content{display:flex;flex-direction:column;flex:1;min-height:0;overflow:auto}.content iframe{width:100%;flex:1;min-height:0;border:0;background:var(--panel2)}.status,.error{padding:var(--space-3) var(--space-4);margin:0}
-    .dock.annotating .head,.dock.annotating .resize{display:none}
-    .dock.annotating{border:0;border-radius:0;box-shadow:none;max-width:none;max-height:none}
-    .dock.annotating~.launcher,.dock.annotating~.bar{display:none}
+    .dock.fullscreen .head,.dock.fullscreen .resize{display:none}
+    .dock.fullscreen{border:0;border-radius:0;box-shadow:none;max-width:none;max-height:none}
+    .dock.fullscreen~.launcher,.dock.fullscreen~.bar{display:none}
     .pin{pointer-events:auto;position:fixed;display:grid;place-items:center;border-radius:50%;background:var(--mark);border:0;box-shadow:0 2px 8px #0007;color:var(--crust);font-weight:700;padding:0;width:var(--tap);height:var(--tap)}.pin:hover{background:var(--mark);color:var(--crust);box-shadow:0 0 0 2px var(--crust),0 2px 8px #0007}.draft-pin{outline:2px dashed var(--accent);outline-offset:2px}
     .selected{position:fixed;pointer-events:none;border:2px solid var(--accent);background:var(--sel);border-radius:var(--radius-sm)}
     .selection-tools{pointer-events:auto;position:fixed;bottom:var(--space-4);left:50%;transform:translateX(-50%);display:flex;flex-wrap:wrap;gap:var(--space-2);align-items:center;padding:var(--space-2);border:0;border-radius:var(--radius-md);background:var(--panel2);box-shadow:0 4px 24px #0005;max-width:calc(100vw - var(--space-3)*2)}[data-write]{background:var(--accent);color:var(--crust)}[data-write]:hover{background:var(--accent);color:var(--crust)}
@@ -237,7 +238,9 @@ export function installPageReview(config: {
       ) + "px";
   }
   function positionDock() {
-    if (annotationOpen) {
+    const fullscreen = annotationOpen || imagePreviewOpen;
+    dock.classList.toggle("fullscreen", fullscreen);
+    if (fullscreen) {
       dock.style.left = "0";
       dock.style.right = "auto";
       dock.style.top = "0";
@@ -383,7 +386,7 @@ export function installPageReview(config: {
     pendingReply = false;
     resizePress = null;
     annotationOpen = false;
-    dock.classList.remove("annotating");
+    imagePreviewOpen = false;
     dock.hidden = true;
     content.textContent = "";
     minimize(false);
@@ -454,7 +457,8 @@ export function installPageReview(config: {
     void rpc("resume", { id: previous.id }).catch(() => {});
   }
   async function toggleFreeze() {
-    if (busy || freezing || frameSaving || annotationOpen) return;
+    if (busy || freezing || frameSaving || annotationOpen || imagePreviewOpen)
+      return;
     if (frozen) {
       resume();
       return;
@@ -1443,8 +1447,13 @@ export function installPageReview(config: {
       typeof message.open === "boolean"
     ) {
       annotationOpen = message.open;
-      dock.classList.toggle("annotating", annotationOpen);
       if (!annotationOpen) pendingWeb = undefined;
+      positionDock();
+    } else if (
+      message.action === "image-preview" &&
+      typeof message.open === "boolean"
+    ) {
+      imagePreviewOpen = message.open;
       positionDock();
     } else if (message.action === "freeze") {
       void toggleFreeze();

@@ -429,8 +429,8 @@ function Workspace({
       original,
       editing: next.kind === "note" && !!known,
     });
-    if (next.host !== "panel" && matchMedia("(max-width: 639px)").matches)
-      setNotesOpen(false);
+    if (next.host === "panel") setNotesOpen(true);
+    else if (matchMedia("(max-width: 639px)").matches) setNotesOpen(false);
     return true;
   };
   const closeDraft = () => {
@@ -520,7 +520,11 @@ function Workspace({
                 variant="outline"
                 disabled={!review || busy}
                 onClick={() =>
-                  compose({ kind: "note", comment: makeComment() })
+                  compose({
+                    kind: "note",
+                    host: "panel",
+                    comment: makeComment(),
+                  })
                 }
               >
                 <Plus />
@@ -891,6 +895,21 @@ function Workspace({
                       </div>
                     )}
                   </div>
+                  {draft?.host === "panel" &&
+                    draft.kind === "note" &&
+                    draft.comment.scope === "global" &&
+                    !draft.editing && (
+                      <div className="max-h-[70%] shrink-0 overflow-auto border-t p-3">
+                        <Composer
+                          draft={draft}
+                          onChange={setDraft}
+                          onClose={closeDraft}
+                          onSaved={() => setDraft(null)}
+                          agent={!!agent.agent}
+                          onBusy={setBusy}
+                        />
+                      </div>
+                    )}
                 </aside>
               )
             }

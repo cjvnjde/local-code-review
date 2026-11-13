@@ -59,6 +59,11 @@ export function EmbeddedReview({
   }, [evidence.data]);
   useEffect(() => {
     document.documentElement.classList.add("dark");
+    const preview = () => {
+      tell("image-preview", {
+        open: !!document.querySelector("dialog.image-viewer[open]"),
+      });
+    };
     const receive = (event: MessageEvent) => {
       if (
         event.source !== window.parent ||
@@ -98,8 +103,13 @@ export function EmbeddedReview({
       }
     };
     window.addEventListener("message", receive);
+    document.addEventListener("lcr:image-preview", preview);
     tell("ready");
-    return () => window.removeEventListener("message", receive);
+    preview();
+    return () => {
+      window.removeEventListener("message", receive);
+      document.removeEventListener("lcr:image-preview", preview);
+    };
   }, [origin, client, review?.notes]);
   useEffect(() => {
     tell("dirty", {
@@ -121,7 +131,7 @@ export function EmbeddedReview({
   };
   const note = review?.notes.find((n) => n.id === noteId);
   return (
-    <div className="min-h-dvh bg-background text-foreground">
+    <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-background text-foreground">
       {(evidence.error || storageError) && (
         <p role="alert" className="p-4 text-sm text-destructive">
           {evidence.error?.message || storageError}
@@ -147,7 +157,7 @@ export function EmbeddedReview({
           }
         />
       ) : note ? (
-        <div className="p-3">
+        <div className="min-h-0 flex-1 overflow-auto p-3">
           <NoteCard note={note} agent={!!diff.agent} onCompose={setDraft} />
         </div>
       ) : (
@@ -157,7 +167,7 @@ export function EmbeddedReview({
             : "This note is no longer in the review."}
         </p>
       )}
-      <div className="flex justify-end border-t p-2">
+      <div className="flex shrink-0 justify-end border-t p-2">
         <Button
           variant="ghost"
           size="sm"

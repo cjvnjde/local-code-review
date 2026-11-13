@@ -125,7 +125,10 @@ export function openImagePreview(
   dialog.addEventListener(
     "close",
     () => {
-      if (current?.close === close) current = null;
+      if (current?.close === close) {
+        current = null;
+        document.dispatchEvent(new Event("lcr:image-preview"));
+      }
       window.removeEventListener("keydown", onKey, true);
       dialog.remove();
       if (restoreFocus && previous?.isConnected)
@@ -136,6 +139,7 @@ export function openImagePreview(
   document.body.append(dialog);
   dialog.showModal();
   current = { ref, close };
+  document.dispatchEvent(new Event("lcr:image-preview"));
   setView("image", ref);
   return true;
 }

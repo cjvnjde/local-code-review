@@ -11,11 +11,26 @@ import { useReferences } from "./references.tsx";
 import { refOf } from "./note-ref.ts";
 import { useUi } from "../app/ui-preferences.tsx";
 import { useLayoutEffect, useRef, useState } from "react";
-import { ImagePlus, Code2, Eye, Pencil, LoaderCircle } from "lucide-react";
+import {
+  Bold,
+  Italic,
+  Code as CodeIcon,
+  SquareCode,
+  Quote,
+  List,
+  ListTodo,
+  Link,
+  ImagePlus,
+  Code2,
+  Eye,
+  Pencil,
+  LoaderCircle,
+} from "lucide-react";
 import type { ReviewComment } from "../../../shared/review-types.ts";
 import { noteKey } from "../../../shared/note-id.ts";
 import { request, useAction } from "../app/api.ts";
 import { Button } from "../components/ui/button.tsx";
+import { Tooltip } from "../components/ui/tooltip.tsx";
 import { ComposerImages } from "../components/images.tsx";
 import { Markdown } from "../components/markdown.tsx";
 import { Code } from "../components/code.tsx";
@@ -106,14 +121,14 @@ export function Composer({
       field.focus({ preventScroll: true });
       field.setSelectionRange(caret.current.start, caret.current.end);
     }
-  }, [subject]);
+  }, [subject, preview]);
   useLayoutEffect(() => {
     const field = textarea.current;
     if (field) {
       field.style.height = "auto";
-      field.style.height = `${Math.min(480, Math.max(112, field.scrollHeight))}px`;
+      field.style.height = `${Math.min(embedded ? 200 : 480, Math.max(112, field.scrollHeight))}px`;
     }
-  }, [body, preview]);
+  }, [body, preview, embedded]);
   // Upload completion reads the current draft, so text typed during an upload is kept.
   const latest = useRef(draft);
   latest.current = draft;
@@ -125,7 +140,7 @@ export function Composer({
     const next = value.slice(0, at) + text + value.slice(end);
     onChange(withBody(current, next));
     requestAnimationFrame(() => {
-      textarea.current?.focus();
+      textarea.current?.focus({ preventScroll: true });
       textarea.current?.setSelectionRange(at + text.length, at + text.length);
     });
   }
@@ -211,224 +226,8 @@ export function Composer({
       onBusy?.(false);
     }
   }
-  const content = (
-    <div
-      className="flex min-h-0 flex-col gap-3"
-      onDragOver={(event) => {
-        if (event.dataTransfer.types.includes("Files")) event.preventDefault();
-      }}
-      onDrop={(event) => {
-        if (event.dataTransfer.files.length) {
-          event.preventDefault();
-          void attach([...event.dataTransfer.files]);
-        }
-      }}
-    >
-      {draft.kind === "note" && draft.comment.image && (
-        <AttachmentImage
-          source={draft.comment.image.capture}
-          label="Selected screenshot region"
-        />
-      )}
-      {code && (
-        <details className="rounded-lg border bg-muted/30 text-xs">
-          <summary className="cursor-pointer px-3 py-2 text-muted-foreground">
-            Captured code · {file}
-          </summary>
-          <pre className="max-h-40 overflow-auto p-3">
-            <Code value={code} language="diff" />
-          </pre>
-        </details>
-      )}
-      {web && (
-        <div className="max-h-56 overflow-auto">
-          <WebEvidence
-            value={web}
-            editable={!draft.editing}
-            onDrawing={(value) => {
-              setDrawing(value);
-              onBusy?.(value);
-              onWebDrawing?.(value);
-            }}
-            onAnnotate={
-              captureDraft
-                ? async (target, annotation) => {
-                    const result = await request<{ web: unknown }>(
-                      "/api/web/annotation",
-                      "POST",
-                      { draftId: captureDraft, target, annotation },
-                    );
-                    changeWeb(webReview(result.web));
-                  }
-                : undefined
-            }
-            onRemove={async (index, key) => {
-              const current = latest.current;
-              const evidence =
-                current.kind === "note" ? current.comment.web : current.web;
-              if (!evidence) return;
-              changeWeb(
-                captureDraft
-                  ? webReview(
-                      (
-                        await request<{ web: unknown }>(
-                          "/api/web/selection",
-                          "POST",
-                          { draftId: captureDraft, index, key },
-                        )
-                      ).web,
-                    )
-                  : dropWebSelection(evidence, index, key),
-              );
-            }}
-            onChange={changeWeb}
-          />
-        </div>
-      )}
-      <div className="flex items-center gap-1">
-        <Button variant="ghost" size="sm" onClick={() => setPreview(!preview)}>
-          {preview ? <Pencil /> : <Eye />}
-          {preview ? "Write" : "Preview"}
-        </Button>
-        {code && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              setPreview(false);
-              insert(`\n\n${suggestionBlock(code)}\n`);
-            }}
-          >
-            <Code2 />
-            Suggest change
-          </Button>
-        )}
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={busy}
-          onClick={() => picker.current?.click()}
-        >
-          <ImagePlus />
-          Image
-        </Button>
-        <input
-          ref={picker}
-          type="file"
-          accept="image/*"
-          multiple
-          className="hidden"
-          onChange={(e) => {
-            void attach([...(e.target.files || [])]);
-            e.target.value = "";
-          }}
-        />
-      </div>
-      <details className="text-xs text-muted-foreground">
-        <summary className="cursor-pointer py-1">
-          Formatting and references
-        </summary>
-        <div className="mt-2 flex flex-wrap gap-1">
-          {[
-            ["Bold", "**", "**"],
-            ["Italic", "_", "_"],
-            ["Inline code", "`", "`"],
-            ["Code block", "\n```\n", "\n```\n"],
-            ["Quote", "\n> ", ""],
-            ["List", "\n- ", ""],
-            ["Checklist", "\n- [ ] ", ""],
-            ["Link", "[", "](https://)"],
-          ].map(([label, before, after]) => (
-            <Button
-              key={label}
-              variant="ghost"
-              size="sm"
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => wrap(before!, after!)}
-            >
-              {label}
-            </Button>
-          ))}
-          <select
-            aria-label="Insert note reference"
-            className="h-8 max-w-full rounded border bg-background px-2"
-            value=""
-            onChange={(event) => {
-              if (event.target.value) insert(` #${event.target.value} `);
-            }}
-          >
-            <option value="">Reference a note…</option>
-            {referenceNotes.map((note) => (
-              <option key={note.id} value={refOf(note.id)}>
-                {noteKey(note)} · {note.body.slice(0, 50)}
-              </option>
-            ))}
-          </select>
-        </div>
-      </details>
-      {preview ? (
-        <div className="max-h-80 min-h-40 overflow-auto rounded-lg border p-4">
-          <Markdown
-            body={body || "Nothing to preview yet."}
-            file={file}
-            captured={code}
-          />
-        </div>
-      ) : (
-        <textarea
-          ref={textarea}
-          aria-label="Note text"
-          disabled={action.isPending}
-          autoFocus
-          onSelect={(event) => {
-            caret.current = {
-              start: event.currentTarget.selectionStart,
-              end: event.currentTarget.selectionEnd,
-            };
-          }}
-          value={body}
-          onChange={(e) => onChange(withBody(draft, e.target.value))}
-          onPaste={(event) => {
-            const images = [...event.clipboardData.files].filter((f) =>
-              f.type.startsWith("image/"),
-            );
-            if (images.length) {
-              event.preventDefault();
-              void attach(images);
-            }
-          }}
-          onKeyDown={(event) => {
-            if (
-              (event.metaKey || event.ctrlKey) &&
-              ["KeyB", "KeyI"].includes(event.code)
-            ) {
-              event.preventDefault();
-              wrap(event.code === "KeyB" ? "**" : "_");
-              return;
-            }
-            if (
-              event.key === "Escape" &&
-              !busy &&
-              body === (draft.original || "")
-            ) {
-              event.preventDefault();
-              onClose();
-            }
-            if (
-              !event.nativeEvent.isComposing &&
-              event.key === "Enter" &&
-              (event.metaKey ||
-                event.ctrlKey ||
-                (settings.enterSaves ? !event.shiftKey : event.shiftKey))
-            ) {
-              event.preventDefault();
-              void save();
-            }
-          }}
-          placeholder="Write feedback, ask a question, or propose a change…"
-          className="min-h-28 w-full resize-y rounded-lg border bg-background p-3 text-sm leading-relaxed outline-none focus:ring-2 focus:ring-ring"
-        />
-      )}
+  const attachments = (
+    <>
       <ColorTools
         body={body}
         onChange={(body) => onChange(withBody(latest.current, body))}
@@ -446,6 +245,7 @@ export function Composer({
         onBusy={(value) => {
           setDrawing(value);
           onBusy?.(value);
+          onWebDrawing?.(value);
         }}
         onReplace={(from, to, expected, ref) => {
           const current = latest.current,
@@ -459,35 +259,299 @@ export function Composer({
           );
         }}
       />
-      {(action.error || uploadError) && (
-        <p role="alert" className="text-sm text-destructive">
-          {action.error?.message || uploadError}
-        </p>
-      )}
-      <div className="flex flex-wrap items-center gap-2 border-t pt-3">
-        <span className="mr-auto text-xs text-muted-foreground">
-          Markdown supported · ⌘/Ctrl Enter to save
-        </span>
-        <Button variant="ghost" disabled={busy} onClick={onClose}>
-          Cancel
-        </Button>
-        {agent && (
-          <Button
-            variant="outline"
-            disabled={busy || !hasContent}
-            onClick={() => void save(false)}
-          >
-            Save only
-          </Button>
+    </>
+  );
+  const content = (
+    <div
+      className={`flex min-h-0 flex-col gap-3 ${embedded ? "flex-1" : ""}`}
+      onDragOver={(event) => {
+        if (event.dataTransfer.types.includes("Files")) event.preventDefault();
+      }}
+      onDrop={(event) => {
+        if (event.dataTransfer.files.length) {
+          event.preventDefault();
+          void attach([...event.dataTransfer.files]);
+        }
+      }}
+    >
+      <div
+        role={embedded ? "region" : undefined}
+        aria-label={embedded ? "Evidence and attachments" : undefined}
+        className={
+          embedded ? "min-h-0 flex-1 space-y-3 overflow-auto px-4" : "contents"
+        }
+      >
+        {draft.kind === "note" && draft.comment.image && (
+          <AttachmentImage
+            source={draft.comment.image.capture}
+            label="Selected screenshot region"
+          />
         )}
-        <Button disabled={busy || !hasContent} onClick={() => void save()}>
-          {busy && <LoaderCircle className="animate-spin" />}
-          {agent
-            ? "Save & ask AI"
-            : draft.kind === "reply"
-              ? "Send reply"
-              : "Save note"}
-        </Button>
+        {code && (
+          <details className="rounded-lg border bg-muted/30 text-xs">
+            <summary className="cursor-pointer px-3 py-2 text-muted-foreground">
+              Captured code · {file}
+            </summary>
+            <pre className="max-h-40 overflow-auto p-3">
+              <Code value={code} language="diff" />
+            </pre>
+          </details>
+        )}
+        {web && (
+          <div className={embedded ? "" : "max-h-56 overflow-auto"}>
+            <WebEvidence
+              value={web}
+              editable={!draft.editing}
+              onDrawing={(value) => {
+                setDrawing(value);
+                onBusy?.(value);
+                onWebDrawing?.(value);
+              }}
+              onAnnotate={
+                captureDraft
+                  ? async (target, annotation) => {
+                      const result = await request<{ web: unknown }>(
+                        "/api/web/annotation",
+                        "POST",
+                        { draftId: captureDraft, target, annotation },
+                      );
+                      changeWeb(webReview(result.web));
+                    }
+                  : undefined
+              }
+              onRemove={async (index, key) => {
+                const current = latest.current;
+                const evidence =
+                  current.kind === "note" ? current.comment.web : current.web;
+                if (!evidence) return;
+                changeWeb(
+                  captureDraft
+                    ? webReview(
+                        (
+                          await request<{ web: unknown }>(
+                            "/api/web/selection",
+                            "POST",
+                            { draftId: captureDraft, index, key },
+                          )
+                        ).web,
+                      )
+                    : dropWebSelection(evidence, index, key),
+                );
+              }}
+              onChange={changeWeb}
+            />
+          </div>
+        )}
+        {embedded && attachments}
+      </div>
+      <div
+        className={
+          embedded
+            ? "shrink-0 space-y-3 border-t bg-background p-4"
+            : "space-y-3"
+        }
+      >
+        <div
+          role="toolbar"
+          aria-label="Text formatting"
+          className="flex flex-wrap items-center gap-0.5"
+        >
+          {[
+            { label: "Bold", Icon: Bold, before: "**", after: "**" },
+            { label: "Italic", Icon: Italic, before: "_", after: "_" },
+            { label: "Inline code", Icon: CodeIcon, before: "`", after: "`" },
+            {
+              label: "Code block",
+              Icon: SquareCode,
+              before: "\n```\n",
+              after: "\n```\n",
+            },
+            { label: "Quote", Icon: Quote, before: "\n> ", after: "" },
+            { label: "List", Icon: List, before: "\n- ", after: "" },
+            {
+              label: "Checklist",
+              Icon: ListTodo,
+              before: "\n- [ ] ",
+              after: "",
+            },
+            { label: "Link", Icon: Link, before: "[", after: "](https://)" },
+          ].map(({ label, Icon, before, after }) => (
+            <Tooltip key={label} label={label}>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8"
+                aria-label={label}
+                disabled={preview}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => wrap(before, after)}
+              >
+                <Icon />
+              </Button>
+            </Tooltip>
+          ))}
+          <Tooltip label={preview ? "Write" : "Preview"}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8"
+              aria-label={preview ? "Write" : "Preview"}
+              aria-pressed={preview}
+              onClick={() => setPreview(!preview)}
+            >
+              {preview ? <Pencil /> : <Eye />}
+            </Button>
+          </Tooltip>
+          {code && (
+            <Tooltip label="Suggest change">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8"
+                aria-label="Suggest change"
+                onClick={() => {
+                  setPreview(false);
+                  insert(`\n\n${suggestionBlock(code)}\n`);
+                }}
+              >
+                <Code2 />
+              </Button>
+            </Tooltip>
+          )}
+          <Tooltip label="Attach image">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8"
+              aria-label="Attach image"
+              disabled={busy}
+              onClick={() => picker.current?.click()}
+            >
+              <ImagePlus />
+            </Button>
+          </Tooltip>
+          <input
+            ref={picker}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              void attach([...(e.target.files || [])]);
+              e.target.value = "";
+            }}
+          />
+          <select
+            aria-label="Insert note reference"
+            className="h-8 min-w-0 max-w-full flex-1 basis-36 rounded border bg-background px-2 text-xs"
+            value=""
+            onChange={(event) => {
+              if (event.target.value) insert(` #${event.target.value} `);
+            }}
+          >
+            <option value="">Reference a note…</option>
+            {referenceNotes.map((note) => (
+              <option key={note.id} value={refOf(note.id)}>
+                {noteKey(note)} · {note.body.slice(0, 50)}
+              </option>
+            ))}
+          </select>
+        </div>
+        {preview ? (
+          <div className="max-h-80 min-h-40 overflow-auto rounded-lg border p-4">
+            <Markdown
+              body={body || "Nothing to preview yet."}
+              file={file}
+              captured={code}
+            />
+          </div>
+        ) : (
+          <textarea
+            ref={textarea}
+            aria-label="Note text"
+            disabled={action.isPending}
+            onSelect={(event) => {
+              caret.current = {
+                start: event.currentTarget.selectionStart,
+                end: event.currentTarget.selectionEnd,
+              };
+            }}
+            value={body}
+            onChange={(e) => onChange(withBody(draft, e.target.value))}
+            onPaste={(event) => {
+              const images = [...event.clipboardData.files].filter((f) =>
+                f.type.startsWith("image/"),
+              );
+              if (images.length) {
+                event.preventDefault();
+                void attach(images);
+              }
+            }}
+            onKeyDown={(event) => {
+              if (
+                (event.metaKey || event.ctrlKey) &&
+                ["KeyB", "KeyI"].includes(event.code)
+              ) {
+                event.preventDefault();
+                wrap(event.code === "KeyB" ? "**" : "_");
+                return;
+              }
+              if (
+                event.key === "Escape" &&
+                !busy &&
+                body === (draft.original || "")
+              ) {
+                event.preventDefault();
+                onClose();
+              }
+              if (
+                !event.nativeEvent.isComposing &&
+                event.key === "Enter" &&
+                (event.metaKey ||
+                  event.ctrlKey ||
+                  (settings.enterSaves ? !event.shiftKey : event.shiftKey))
+              ) {
+                event.preventDefault();
+                void save();
+              }
+            }}
+            placeholder="Write feedback, ask a question, or propose a change…"
+            className={`w-full rounded-lg border bg-background p-3 text-sm leading-relaxed outline-none focus:ring-2 focus:ring-ring ${embedded ? "min-h-20 max-h-[30dvh] resize-none" : "min-h-28 resize-y"}`}
+          />
+        )}
+        {!embedded && attachments}
+        {(action.error || uploadError) && (
+          <p role="alert" className="text-sm text-destructive">
+            {action.error?.message || uploadError}
+          </p>
+        )}
+        <div className="flex flex-wrap items-center gap-2 border-t pt-3">
+          <span className="mr-auto text-xs text-muted-foreground">
+            Markdown supported · ⌘/Ctrl Enter to save
+          </span>
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+            <Button variant="ghost" disabled={busy} onClick={onClose}>
+              Cancel
+            </Button>
+            {agent && (
+              <Button
+                variant="outline"
+                disabled={busy || !hasContent}
+                onClick={() => void save(false)}
+              >
+                Save only
+              </Button>
+            )}
+            <Button disabled={busy || !hasContent} onClick={() => void save()}>
+              {busy && <LoaderCircle className="animate-spin" />}
+              {agent
+                ? "Save & ask AI"
+                : draft.kind === "reply"
+                  ? "Send reply"
+                  : "Save note"}
+            </Button>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -498,11 +562,13 @@ export function Composer({
       aria-label="Comment editor"
       className={
         embedded
-          ? "p-4"
+          ? "flex min-h-0 flex-1 flex-col"
           : "rounded-xl border border-primary/40 bg-card p-4 shadow-sm"
       }
     >
-      <h2 className="mb-3 break-words font-mono text-xs font-medium text-primary">
+      <h2
+        className={`mb-3 shrink-0 break-words font-mono text-xs font-medium text-primary ${embedded ? "px-4 pt-4" : ""}`}
+      >
         {title}
       </h2>
       {content}

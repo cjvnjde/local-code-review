@@ -547,7 +547,6 @@ test("bookmarks, full review search, references and context stay usable across n
   await page
     .getByRole("textbox", { name: "Note text" })
     .fill("References and context audit");
-  await editor.getByText("Formatting and references", { exact: true }).click();
   const refs = editor.getByRole("combobox", { name: "Insert note reference" });
   const reference = await refs.locator("option").nth(1).getAttribute("value");
   await refs.selectOption(reference!);
@@ -1153,7 +1152,93 @@ test("Base UI focus and pane resizing preserve drafts, reading position and save
   expect(errors).toEqual([]);
 });
 
-test("live page capture saves through the embedded React editor", async ({
+test("overall notes and formatting tools preserve the code reading position", async ({
+  page,
+}) => {
+  await page.goto(url);
+  const pane = page.getByRole("region", { name: "Code diff" });
+  await page
+    .getByRole("navigation")
+    .locator('button[title="untracked.ts"]')
+    .click();
+  await expect(
+    pane.getByRole("heading", { name: "untracked.ts", exact: true }),
+  ).toBeInViewport();
+  await pane.evaluate((element) => (element.scrollTop += 26 * 300));
+  async function position() {
+    return pane.evaluate((element) => {
+      const top =
+        element.getBoundingClientRect().top +
+        (element.querySelector<HTMLElement>('[data-sticky="true"]')
+          ?.offsetHeight || 0);
+      const row = [
+        ...element.querySelectorAll<HTMLElement>('[data-diff-kind="row"]'),
+      ].find((row) => row.getBoundingClientRect().top >= top - 1);
+      return row
+        ? { key: row.dataset.itemKey, y: row.getBoundingClientRect().top - top }
+        : null;
+    });
+  }
+  await expect.poll(position).not.toBeNull();
+  const before = (await position())!;
+  const scrollTop = await pane.evaluate((element) => element.scrollTop);
+  const notes = page.getByRole("complementary", { name: "Review notes" });
+  const overall = page.getByRole("button", {
+    name: "Overall note",
+    exact: true,
+  });
+  await overall.click();
+  const editor = notes.locator("[data-review-editor]");
+  const text = editor.getByRole("textbox", { name: "Note text", exact: true });
+  await expect(text).toBeFocused();
+  await expect
+    .poll(() => pane.evaluate((element) => element.scrollTop))
+    .toBe(scrollTop);
+  const toolbar = editor.getByRole("toolbar", { name: "Text formatting" });
+  const bold = toolbar.getByRole("button", { name: "Bold", exact: true });
+  await expect(bold.locator("svg")).toBeVisible();
+  await expect(bold).toHaveText("");
+  await text.fill("Overall feedback without losing my place");
+  await text.evaluate((field: HTMLTextAreaElement) =>
+    field.setSelectionRange(0, 7),
+  );
+  await bold.click();
+  await expect(text).toHaveValue(
+    "**Overall** feedback without losing my place",
+  );
+  await toolbar.getByRole("button", { name: "Preview", exact: true }).click();
+  await expect(editor.locator("strong")).toHaveText("Overall");
+  await toolbar.getByRole("button", { name: "Write", exact: true }).click();
+  await expect(text).toBeFocused();
+  await page.screenshot({ path: "/tmp/lcr-overall-composer.png" });
+  await expect.poll(position).toEqual(before);
+  await editor.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect.poll(position).toEqual(before);
+  await overall.click();
+  await text.fill("Save overall feedback without jumping");
+  await editor.getByRole("button", { name: "Save note", exact: true }).click();
+  await expect(editor).toHaveCount(0);
+  await expect.poll(async () => (await position())?.key).toBe(before.key);
+  await expect
+    .poll(async () => Math.abs((await position())!.y - before.y))
+    .toBeLessThan(2);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobileTop = await pane.evaluate((element) => element.scrollTop);
+  await overall.click();
+  await expect(text).toBeVisible();
+  await page.screenshot({ path: "/tmp/lcr-overall-composer-mobile.png" });
+  await expect
+    .poll(() => pane.evaluate((element) => element.scrollTop))
+    .toBe(mobileTop);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await editor.getByRole("button", { name: "Cancel", exact: true }).click();
+});
+
+test("live page capture keeps its editor at the bottom and previews images across the viewport", async ({
   page,
 }) => {
   await stop();
@@ -1191,6 +1276,84 @@ test("live page capture saves through the embedded React editor", async ({
     await expect(
       frame.getByRole("textbox", { name: "Note text" }),
     ).toBeVisible();
+    const iframe = target.locator('iframe[title="New visual review note"]');
+    const input = frame.getByRole("textbox", {
+      name: "Note text",
+      exact: true,
+    });
+    const evidence = frame.getByRole("region", {
+      name: "Evidence and attachments",
+    });
+    const inputY = (await input.boundingBox())!.y;
+    await frame.getByText("Selection details", { exact: true }).click();
+    await evidence.evaluate(
+      (element) => (element.scrollTop = element.scrollHeight),
+    );
+    expect((await input.boundingBox())!.y).toBeCloseTo(inputY, 0);
+    await expect(
+      frame.getByRole("button", { name: "Save note", exact: true }),
+    ).toBeInViewport();
+    await input.fill(
+      Array.from({ length: 100 }, (_, i) => `Line ${i}`).join("\n"),
+    );
+    expect((await input.boundingBox())!.height).toBeLessThanOrEqual(200);
+    await expect(
+      frame.getByRole("button", { name: "Save note", exact: true }),
+    ).toBeInViewport();
+    await input.fill("Keep this draft through fullscreen previews");
+    await target.screenshot({ path: "/tmp/lcr-web-composer.png" });
+    const panel = (await iframe.boundingBox())!;
+    await frame
+      .getByRole("link", { name: "Preview Selection 1", exact: true })
+      .click();
+    const viewer = frame.locator("dialog.image-viewer");
+    await expect(viewer).toBeVisible();
+    await expect
+      .poll(async () => (await iframe.boundingBox())!.width)
+      .toBe(1200);
+    await expect
+      .poll(async () => (await iframe.boundingBox())!.height)
+      .toBe(900);
+    expect((await viewer.boundingBox())!.width).toBeGreaterThan(1100);
+    await target.screenshot({ path: "/tmp/lcr-web-image-preview.png" });
+    await viewer.getByRole("button", { name: "Close", exact: true }).click();
+    await expect(viewer).toHaveCount(0);
+    await expect.poll(() => iframe.boundingBox()).toEqual(panel);
+    await expect(input).toHaveValue(
+      "Keep this draft through fullscreen previews",
+    );
+    // Browser Back also restores the panel, and a preview can hand over to drawing without shrinking it.
+    await frame
+      .getByRole("link", { name: "Preview Selection 1", exact: true })
+      .click();
+    await expect
+      .poll(async () => (await iframe.boundingBox())!.width)
+      .toBe(1200);
+    await input.evaluate(() => history.back());
+    await expect(viewer).toHaveCount(0);
+    await expect.poll(() => iframe.boundingBox()).toEqual(panel);
+    await frame
+      .getByRole("link", { name: "Preview Selection 1", exact: true })
+      .click();
+    await viewer
+      .getByRole("button", { name: "Draw / edit", exact: true })
+      .click();
+    const drawing = frame.getByRole("dialog", {
+      name: "Draw on screenshot",
+      exact: true,
+    });
+    await expect(drawing).toBeVisible();
+    await expect
+      .poll(async () => (await iframe.boundingBox())!.width)
+      .toBe(1200);
+    await drawing
+      .getByRole("button", { name: "Close drawing editor", exact: true })
+      .click();
+    await expect(drawing).toHaveCount(0);
+    await expect.poll(() => iframe.boundingBox()).toEqual(panel);
+    await expect(input).toHaveValue(
+      "Keep this draft through fullscreen previews",
+    );
     await frame
       .getByRole("textbox", { name: "Note text" })
       .fill("Increase this checkout target size.");

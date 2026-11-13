@@ -49,11 +49,13 @@ or drag within a line to select specific characters. Shift-click extends a range
 Alt-drag keeps normal browser text selection for copying. Comments open directly
 below their subject. Re-aiming an overlapping selection preserves your draft text
 and caret; an unrelated click cannot replace a dirty draft. The file header offers
-a file comment; **Overall note** covers the whole review.
+a file comment; **Overall note** opens in the conversation pane and covers the
+whole review without moving your place in the diff.
 
 The editor accepts Markdown, including tables, checklists, and fenced code.
-**Preview** shows the rendered note. **Suggest change** inserts a fenced replacement
-for the captured lines. Use **Image**, paste, or drop to attach screenshots. Images
+The icon toolbar offers formatting, preview, suggestions, and image attachments;
+hover or focus an icon to see its label. **Suggest change** inserts a fenced replacement
+for the captured lines. Use **Attach image**, paste, or drop to attach screenshots. Images
 are stored beside the review and linked relatively; external images are not loaded.
 Attached images have inline thumbnails, a zoom viewer, and **Draw / edit**. Drawings
 retain editable shapes, text, paths, callouts and other tools when reopened. Image
