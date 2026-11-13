@@ -1,17 +1,10 @@
 import { useUi } from "../app/ui-preferences.tsx";
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { highlightCharacters } from "./selection.ts";
-import {
-  ChevronDown,
-  LoaderCircle,
-  Plus,
-  Bookmark,
-  BookmarkCheck,
-} from "lucide-react";
-import type { DiffFile, ReviewComment } from "../../../shared/review-types.ts";
+import { Bookmark, BookmarkCheck, MessageSquare } from "lucide-react";
+import type { DiffFile } from "../../../shared/review-types.ts";
 import { Code, languageFor } from "../components/code.tsx";
 import { cn } from "../components/ui/button.tsx";
-import { makeComment } from "./model.ts";
 import { gapOf } from "./gaps.ts";
 
 export function CodeRow({
@@ -22,7 +15,6 @@ export function CodeRow({
   notes,
   onSelect,
   onExpand,
-  onComment,
   onRead,
   bookmarked,
   onBookmark,
@@ -38,7 +30,6 @@ export function CodeRow({
   notes: number;
   onSelect: (extend: boolean) => void;
   onExpand: (direction: string) => void;
-  onComment: (comment: ReviewComment) => void;
   onRead: () => void;
   bookmarked?: boolean;
   onBookmark?: () => void;
@@ -76,13 +67,11 @@ export function CodeRow({
   return (
     <div
       className={cn(
-        "flex h-[26px] min-w-full w-max items-center font-mono text-xs",
+        "group relative flex h-[26px] min-w-full w-max items-center font-mono text-xs",
         row.t === "add" && "diff-add",
         row.t === "del" && "diff-del",
         row.t === "hunk" && "bg-muted/50 text-muted-foreground",
-        selected &&
-          !characters &&
-          "!bg-primary/15 ring-1 ring-inset ring-primary/40",
+        selected && !characters && "!bg-primary/15",
       )}
       data-row-key={row.n != null ? `n${row.n}` : `o${row.o}`}
     >
@@ -107,50 +96,69 @@ export function CodeRow({
         </div>
       ) : (
         <>
-          <button
-            className="flex h-full shrink-0 select-none items-center text-muted-foreground hover:bg-primary/15"
-            aria-label={`Select line ${row.n ?? row.o}${row.t === "del" ? " before change" : ""}`}
-            onClick={(e) => {
-              if (e.detail === 0 && !e.altKey) onSelect(e.shiftKey);
-            }}
-          >
-            <span className="w-12 pr-2 text-right">{row.o}</span>
-            <span className="w-12 pr-2 text-right">{row.n}</span>
-          </button>
-          <button
-            data-row-action
-            aria-label={`Comment on line ${row.n ?? row.o}`}
-            className="flex size-6 shrink-0 items-center justify-center text-primary opacity-40 hover:opacity-100 focus:opacity-100"
-            onClick={() => onComment(makeComment(file, index))}
-          >
-            <Plus className="size-3.5" />
-          </button>
-          <button
-            data-row-action
-            aria-label={`Bookmark line ${row.n ?? row.o}`}
-            aria-pressed={bookmarked}
-            className="flex size-6 shrink-0 items-center justify-center text-muted-foreground hover:text-primary"
-            onClick={onBookmark}
-          >
-            {bookmarked ? (
-              <BookmarkCheck className="size-3.5 text-primary" />
-            ) : (
-              <Bookmark className="size-3 opacity-35" />
+          <div
+            className={cn(
+              "flex h-full shrink-0 items-center",
+              !settings.lineNumbers &&
+                "sticky right-0 z-10 order-last -ml-16 w-16 rounded bg-popover shadow-sm opacity-0 group-hover:opacity-100 focus-within:opacity-100",
             )}
-          </button>
-          <span className="w-5 shrink-0 select-none text-center opacity-60">
-            {row.t === "add" ? "+" : row.t === "del" ? "−" : ""}
-          </span>
-          {notes > 0 && (
+          >
+            <button
+              data-row-action={!settings.lineNumbers || undefined}
+              className={cn(
+                "flex h-full shrink-0 select-none items-center text-muted-foreground hover:bg-primary/15 hover:text-primary",
+                !settings.lineNumbers && "w-6 justify-center",
+              )}
+              aria-label={`Comment on line ${row.n ?? row.o}${row.t === "del" ? " before change" : ""}`}
+              title="Comment on line (Shift to extend selection)"
+              onClick={(e) => {
+                if ((!settings.lineNumbers || e.detail === 0) && !e.altKey)
+                  onSelect(e.shiftKey);
+              }}
+            >
+              {settings.lineNumbers ? (
+                <>
+                  <span className="w-10 pr-1 text-right">{row.o}</span>
+                  <span className="w-10 pr-1 text-right">{row.n}</span>
+                </>
+              ) : (
+                <MessageSquare className="size-3.5" />
+              )}
+            </button>
             <button
               data-row-action
-              className="mr-2 rounded bg-primary px-1 font-sans text-[10px] text-primary-foreground"
-              aria-label={`Read ${notes} notes on line ${row.n ?? row.o}`}
-              onClick={onRead}
+              aria-label={`Bookmark line ${row.n ?? row.o}`}
+              aria-pressed={bookmarked}
+              title={`${bookmarked ? "Remove bookmark from" : "Bookmark"} line ${row.n ?? row.o}`}
+              className="flex h-full w-5 shrink-0 items-center justify-center text-muted-foreground hover:text-primary"
+              onClick={onBookmark}
             >
-              {notes}
+              {bookmarked ? (
+                <BookmarkCheck className="size-3.5 text-primary" />
+              ) : (
+                <Bookmark className="size-3 opacity-35" />
+              )}
             </button>
-          )}
+            <span className="flex h-full w-5 shrink-0 items-center justify-center">
+              {notes > 0 && (
+                <button
+                  data-row-action
+                  className="flex size-5 items-center justify-center text-primary"
+                  aria-label={`Read ${notes} notes on line ${row.n ?? row.o}`}
+                  title={`Read ${notes} notes`}
+                  onClick={onRead}
+                >
+                  <MessageSquare className="size-3.5" />
+                </button>
+              )}
+            </span>
+          </div>
+          <span
+            aria-hidden="true"
+            className="w-4 shrink-0 select-none text-center opacity-60"
+          >
+            {row.t === "add" ? "+" : row.t === "del" ? "−" : ""}
+          </span>
           <span
             ref={cell}
             data-code-cell

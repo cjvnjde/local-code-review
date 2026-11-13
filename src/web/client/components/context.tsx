@@ -12,6 +12,7 @@ import {
 } from "./context-api.ts";
 import { AttachmentImage } from "./images.tsx";
 import { Button } from "./ui/button.tsx";
+import { Select } from "./ui/select.tsx";
 
 export function ContextReference({
   source,
@@ -170,15 +171,16 @@ export function AddContext({
             onChange={(event) => setLabel(event.target.value)}
           />
         </label>
-        <select
-          aria-label="Context format"
-          className="rounded border bg-background p-2"
+        <Select
+          label="Context format"
           value={type}
-          onChange={(event) => setType(event.target.value as typeof type)}
-        >
-          <option value="text/plain">Plain text</option>
-          <option value="application/json">JSON</option>
-        </select>
+          onValueChange={setType}
+          disabled={busy}
+          options={[
+            { value: "text/plain", label: "Plain text" },
+            { value: "application/json", label: "JSON" },
+          ]}
+        />
         <textarea
           aria-label="Additional context"
           className="block h-32 w-full rounded border bg-background p-3 font-mono"

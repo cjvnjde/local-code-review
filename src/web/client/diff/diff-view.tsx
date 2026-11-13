@@ -125,7 +125,6 @@ export function DiffView({
     onComment,
   );
   const anchor = useRef<ReadingAnchor | null>(null);
-  const activeHeader = useRef(-1);
   const pendingJump = useRef<{
     path: string;
     note?: ReviewNote;
@@ -198,6 +197,19 @@ export function DiffView({
       items.flatMap((item, index) => (item.kind === "header" ? [index] : [])),
     [items],
   );
+  const headerEnds = useMemo(() => {
+    const ends = new Map<number, number>();
+    let header = -1;
+    for (let index = 0; index < items.length; index++) {
+      if (header >= 0 && items[index]!.path !== items[header]!.path) {
+        ends.set(header, index);
+        header = -1;
+      }
+      if (items[index]!.kind === "header") header = index;
+    }
+    if (header >= 0) ends.set(header, items.length);
+    return ends;
+  }, [items]);
   const indexByKey = useMemo(
     () => new Map(items.map((item, i) => [item.key, i])),
     [items],
@@ -238,7 +250,6 @@ export function DiffView({
             lo = mid + 1;
           } else hi = mid - 1;
         }
-        activeHeader.current = found;
         return [
           ...new Set([
             ...(found >= 0 ? [found] : []),
@@ -262,9 +273,16 @@ export function DiffView({
       frame.current = requestAnimationFrame(() => {
         frame.current = 0;
         if (appliedItems.current !== items || !scroll.current) return;
-        const sticky =
-          scroll.current.querySelector<HTMLElement>('[data-sticky="true"]')
-            ?.offsetHeight || 0;
+        const header = scroll.current.querySelector<HTMLElement>(
+          '[data-sticky="true"]',
+        );
+        const sticky = header
+          ? Math.max(
+              0,
+              header.getBoundingClientRect().bottom -
+                scroll.current.getBoundingClientRect().top,
+            )
+          : 0;
         const visible = instance.getVirtualItemForOffset(
           scroll.current.scrollTop + sticky + 1,
         );
@@ -337,7 +355,19 @@ export function DiffView({
     [],
   );
   const rendered = virtual.getVirtualItems();
-  const active = items[activeHeader.current]?.path || files[0]?.path || "";
+  const top = virtual.scrollOffset ?? 0;
+  let activeHeader = -1;
+  let lo = 0,
+    hi = headers.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const index = headers[mid]!;
+    if ((virtual.measurementsCache[index]?.start ?? Infinity) <= top) {
+      activeHeader = index;
+      lo = mid + 1;
+    } else hi = mid - 1;
+  }
+  const active = items[activeHeader]?.path || files[0]?.path || "";
   useEffect(() => {
     if (active) onActiveChange(active);
   }, [active, onActiveChange]);
@@ -528,6 +558,12 @@ export function DiffView({
         tabIndex={0}
         role="region"
         aria-label="Code diff"
+        onScroll={(event) => {
+          event.currentTarget.style.setProperty(
+            "--diff-scroll-left",
+            `${event.currentTarget.scrollLeft}px`,
+          );
+        }}
         onWheel={() => {
           manualUntil.current = Date.now() + 500;
         }}
@@ -564,8 +600,44 @@ export function DiffView({
         >
           {rendered.map((item) => {
             const entry = items[item.index]!;
-            const sticky =
-              entry.kind === "header" && item.index === activeHeader.current;
+            if (entry.kind === "header") {
+              const end =
+                virtual.measurementsCache[headerEnds.get(item.index)!]?.start ??
+                virtual.getTotalSize();
+              return (
+                <div
+                  key={item.key}
+                  className="pointer-events-none absolute left-0 top-0 w-full"
+                  style={{
+                    top: item.start,
+                    height: Math.max(item.size, end - item.start),
+                  }}
+                >
+                  {/* The file's full virtual extent bounds native sticky positioning. */}
+                  <div
+                    ref={virtual.measureElement}
+                    data-index={item.index}
+                    data-file-path={entry.path}
+                    data-diff-kind={entry.kind}
+                    data-item-key={entry.key}
+                    data-sticky={item.index === activeHeader || undefined}
+                    className="pointer-events-auto sticky top-0 z-20 w-full"
+                    style={{
+                      transform: "translateX(var(--diff-scroll-left, 0px))",
+                    }}
+                  >
+                    <FileHeader
+                      file={entry.file}
+                      folded={folded(entry.file)}
+                      viewed={marks[entry.path] === entry.file.hash}
+                      onFold={() => toggleFile(entry.file)}
+                      onViewed={() => mark(entry.file)}
+                      onComment={() => onComment(makeComment(entry.file))}
+                    />
+                  </div>
+                </div>
+              );
+            }
             return (
               <div
                 key={item.key}
@@ -575,31 +647,12 @@ export function DiffView({
                 data-diff-kind={entry.kind}
                 data-row-index={entry.kind === "row" ? entry.row : undefined}
                 data-item-key={entry.key}
-                data-sticky={sticky || undefined}
-                className={
-                  sticky
-                    ? "sticky top-0 left-0 z-20 w-full"
-                    : "absolute top-0 left-0 min-w-full"
-                }
-                style={
-                  sticky
-                    ? undefined
-                    : {
-                        transform: `translateY(${item.start}px)`,
-                        ...(entry.kind !== "row" ? { width: "100%" } : {}),
-                      }
-                }
+                className="absolute top-0 left-0 min-w-full"
+                style={{
+                  transform: `translateY(${item.start}px)`,
+                  ...(entry.kind !== "row" ? { width: "100%" } : {}),
+                }}
               >
-                {entry.kind === "header" && (
-                  <FileHeader
-                    file={entry.file}
-                    folded={folded(entry.file)}
-                    viewed={marks[entry.path] === entry.file.hash}
-                    onFold={() => toggleFile(entry.file)}
-                    onViewed={() => mark(entry.file)}
-                    onComment={() => onComment(makeComment(entry.file))}
-                  />
-                )}
                 {entry.kind === "tools" && (
                   <div className="flex min-h-10 flex-wrap items-center gap-3 border-b bg-muted/20 px-5 text-xs text-muted-foreground">
                     {entry.file.from && (
@@ -682,6 +735,7 @@ export function DiffView({
                       agent={agent}
                       onCompose={onCompose}
                       inline
+                      editorDraft={draft ?? undefined}
                       editor={
                         (draft?.kind === "note"
                           ? draft.comment.id
@@ -743,7 +797,6 @@ export function DiffView({
                     onExpand={(direction) =>
                       void expand(entry.file, entry.row, direction)
                     }
-                    onComment={onComment}
                     onRead={() =>
                       jump(
                         entry.path,

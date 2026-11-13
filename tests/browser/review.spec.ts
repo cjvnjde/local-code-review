@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createServer } from "node:http";
+import { DEFAULT_UI_SETTINGS } from "../../src/shared/settings.ts";
 
 let root: string,
   directory: string,
@@ -15,7 +16,7 @@ const git = (...args: string[]) =>
 async function launch(extra: string[] = []) {
   child = spawn(binary, ["--port", "0", "--no-open", "--no-agent", ...extra], {
     cwd: directory,
-    env: { ...process.env, XDG_CONFIG_HOME: path.join(directory, "config") },
+    env: { ...process.env, XDG_CONFIG_HOME: path.join(root, "config") },
     stdio: ["ignore", "pipe", "pipe"],
   });
   url = await new Promise<string>((resolve, reject) => {
@@ -88,6 +89,12 @@ test.afterAll(async () => {
   if (child) await stop();
   if (root) await rm(root, { recursive: true, force: true });
 });
+test.beforeEach(async ({ request }) => {
+  const response = await request.put(`${url}/api/settings`, {
+    data: DEFAULT_UI_SETTINGS,
+  });
+  expect(response.ok()).toBe(true);
+});
 
 test("compiled executable reviews changes, preserves drafts, and continues the Markdown conversation", async ({
   page,
@@ -121,6 +128,41 @@ test("compiled executable reviews changes, preserves drafts, and continues the M
       .locator("body")
       .evaluate((body) => getComputedStyle(body).backgroundColor),
   ).not.toBe("rgba(0, 0, 0, 0)");
+  // The next file pushes the pinned header away instead of overlapping it.
+  const readingPane = page.getByRole("region", { name: "Code diff" });
+  const firstHeader = readingPane.locator(
+    '[data-diff-kind="header"][data-file-path="src/app.ts"]',
+  );
+  const nextHeader = readingPane.locator(
+    '[data-diff-kind="header"][data-file-path="src/deleted.ts"]',
+  );
+  const nextTop = await nextHeader.evaluate((header) => {
+    const pane = header.closest('[role="region"]')!;
+    return (
+      header.getBoundingClientRect().top -
+      pane.getBoundingClientRect().top +
+      pane.scrollTop
+    );
+  });
+  await readingPane.evaluate((pane, top) => {
+    pane.scrollTop = top - 14;
+  }, nextTop);
+  await expect
+    .poll(async () => {
+      const first = await firstHeader.boundingBox(),
+        next = await nextHeader.boundingBox();
+      return first && next
+        ? Math.abs(first.y + first.height - next.y)
+        : Infinity;
+    })
+    .toBeLessThan(2);
+  await readingPane.evaluate((pane) => {
+    pane.scrollTop = 0;
+  });
+  const addedCode = page
+    .locator('[data-file-path="src/app.ts"] [data-code-cell]')
+    .filter({ hasText: "hello world" });
+  const codeLeft = (await addedCode.boundingBox())!.x;
   await page
     .locator('[data-file-path="src/app.ts"][data-diff-kind="row"]')
     .getByRole("button", { name: "Comment on line 2", exact: true })
@@ -135,6 +177,8 @@ test("compiled executable reviews changes, preserves drafts, and continues the M
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(notesPanel.getByRole("article")).toHaveCount(1);
   await expect(notesPanel.locator("article table")).toBeVisible();
+  expect((await addedCode.boundingBox())!.x).toBe(codeLeft);
+  await expect(addedCode).toHaveText("  return 'hello world';");
   let review = await (await page.request.get(`${url}/api/review`)).json();
   const reviewPath = path.join(directory, review.file);
   expect(await readFile(reviewPath, "utf8")).toContain(
@@ -206,7 +250,7 @@ test("compiled executable reviews changes, preserves drafts, and continues the M
     page.getByRole("heading", { name: "untracked.ts", exact: true }),
   ).toBeVisible();
   expect(
-    await page.getByRole("button", { name: /Select line/ }).count(),
+    await page.getByRole("button", { name: /Comment on line/ }).count(),
   ).toBeLessThan(100);
   await page.getByRole("button", { name: "Light theme" }).click();
   await expect(page.locator("html")).not.toHaveClass(/dark/);
@@ -257,7 +301,7 @@ test("line, range and character gestures keep comments inline and protect draft 
   // Shift-click extends the existing draft rather than replacing its body.
   await pane
     .locator('[data-file-path="src/app.ts"]')
-    .getByRole("button", { name: "Select line 3", exact: true })
+    .getByRole("button", { name: "Comment on line 3", exact: true })
     .click({ modifiers: ["Shift"] });
   await expect(editor).toContainText("src/app.ts:2-3");
   await expect(page.getByRole("textbox", { name: "Note text" })).toHaveValue(
@@ -335,10 +379,13 @@ test("line, range and character gestures keep comments inline and protect draft 
     .click();
   const rows = pane.locator('[data-file-path="untracked.ts"]');
   const first = rows.getByRole("button", {
-    name: "Select line 2",
+    name: "Comment on line 2",
     exact: true,
   });
-  const last = rows.getByRole("button", { name: "Select line 4", exact: true });
+  const last = rows.getByRole("button", {
+    name: "Comment on line 4",
+    exact: true,
+  });
   await expect(last).toBeInViewport();
   const end = await last.boundingBox();
   const start = await first.boundingBox();
@@ -546,10 +593,12 @@ test("bookmarks, full review search, references and context stay usable across n
   const editor = page.locator("[data-review-editor]");
   await page
     .getByRole("textbox", { name: "Note text" })
-    .fill("References and context audit");
-  const refs = editor.getByRole("combobox", { name: "Insert note reference" });
-  const reference = await refs.locator("option").nth(1).getAttribute("value");
-  await refs.selectOption(reference!);
+    .fill("References and context audit #refseed");
+  await editor
+    .getByRole("listbox", { name: "Note references" })
+    .getByRole("option")
+    .click();
+  const reference = "refseed123";
   await editor
     .getByText("Add context · file, text or JSON", { exact: true })
     .click();
@@ -951,7 +1000,7 @@ test("image-region comments, audio playback, preferences and the resume marker r
   ).toBe("audio/wav");
   await nav.locator('button[title="untracked.ts"]').click();
   await expect(
-    pane.getByRole("button", { name: "Select line 5", exact: true }),
+    pane.getByRole("button", { name: "Comment on line 5", exact: true }),
   ).toBeInViewport();
   await pane.hover();
   await page.mouse.wheel(0, 260);
@@ -977,7 +1026,8 @@ test("image-region comments, audio playback, preferences and the resume marker r
     .check();
   await settings
     .getByRole("combobox", { name: "Context expansion", exact: true })
-    .selectOption("50");
+    .click();
+  await page.getByRole("option", { name: "50 lines", exact: true }).click();
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Overall note", exact: true }).click();
   await page
@@ -1123,7 +1173,9 @@ test("Base UI focus and pane resizing preserve drafts, reading position and save
   await expect(left).toBeVisible();
   await expect.poll(() => width(files)).toBeCloseTo(desktopLeft, 0);
   await expect.poll(() => width(notes)).toBeCloseTo(desktopRight, 0);
-  const notesToggle = page.getByRole("button", { name: /^\d+ notes$/ });
+  const notesToggle = page.getByRole("button", {
+    name: /^(Hide|Show) notes panel$/,
+  });
   await notesToggle.click();
   await expect(right).toHaveCount(0);
   await expect(text).toHaveValue("Preserve this draft while resizing panels");
@@ -1182,7 +1234,7 @@ test("overall notes and formatting tools preserve the code reading position", as
   await expect.poll(position).not.toBeNull();
   const before = (await position())!;
   const scrollTop = await pane.evaluate((element) => element.scrollTop);
-  const notes = page.getByRole("complementary", { name: "Review notes" });
+  const notes = page.getByRole("region", { name: "Overall note editor" });
   const overall = page.getByRole("button", {
     name: "Overall note",
     exact: true,

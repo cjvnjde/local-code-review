@@ -78,8 +78,9 @@ export interface ServerOptions {
   hub: Hub;
   /** Optional ACP connection that queues saved reviewer feedback for managed work. */
   agent?: AgentAdapter;
-  /** File-configured defaults, reapplied for each run without writing the user's configuration. */
+  /** Effective defaults read from the user's configuration. */
   uiDefaults?: Partial<UiSettings>;
+  saveUiSettings?: (patch: Partial<UiSettings>) => Promise<void>;
 }
 
 /**
@@ -170,6 +171,7 @@ function serve(options: ServerOptions, port: number) {
   const runId = crypto.randomUUID();
   const defaults = parseUiSettings(options.uiDefaults ?? {});
   let settings: UiSettings = { ...DEFAULT_UI_SETTINGS, ...defaults };
+  let settingsWrites = Promise.resolve();
   const contextToken = crypto.randomUUID();
   options.web?.configureContext(settings);
   options.agent?.contextMode?.(settings.aiContext);
@@ -224,20 +226,27 @@ function serve(options: ServerOptions, port: number) {
               { status: 415 },
             );
           const payload = await readJson(request);
+          let patch: Partial<UiSettings>;
           try {
             if (JSON.stringify(payload).length > 32768)
               throw new Error("Settings object is too large.");
-            settings = { ...settings, ...parseUiSettings(payload) };
+            patch = parseUiSettings(payload);
           } catch {
             return Response.json(
               { error: "A valid settings object is required." },
               { status: 400 },
             );
           }
-          options.web?.configureContext(settings);
-          options.agent?.contextMode?.(settings.aiContext);
-          options.hub.emit({ type: "settings" });
-          return Response.json({ ok: true }, { headers });
+          const write = settingsWrites.then(async () => {
+            await options.saveUiSettings?.(patch);
+            settings = { ...settings, ...patch };
+            options.web?.configureContext(settings);
+            options.agent?.contextMode?.(settings.aiContext);
+            options.hub.emit({ type: "settings" });
+          });
+          settingsWrites = write.catch(() => {});
+          await write;
+          return Response.json({ ok: true, settings }, { headers });
         }
         if (url.pathname === "/api/agent/queue") {
           if (!options.agent?.control)
@@ -747,7 +756,7 @@ function serve(options: ServerOptions, port: number) {
             );
             options.hub.emit({ type: "review", file: options.session.file });
             const delivery =
-              payload.ask === false
+              !settings.aiAnswers || payload.ask === false
                 ? undefined
                 : await options.agent?.publish(review, [note]);
             return Response.json({
@@ -832,7 +841,7 @@ function serve(options: ServerOptions, port: number) {
                 )
               : [];
           const delivery =
-            payload?.ask === false
+            !settings.aiAnswers || payload?.ask === false
               ? undefined
               : await options.agent?.publish(review, notify);
           options.hub.emit({ type: "review", file: review });
@@ -892,10 +901,9 @@ function serve(options: ServerOptions, port: number) {
             );
           options.hub.emit({ type: "review", file: options.session.file });
           for (const old of removed) await options.agent?.withdraw?.(old);
-          const delivery = await options.agent?.publish(
-            path.basename(file),
-            changed,
-          );
+          const delivery = settings.aiAnswers
+            ? await options.agent?.publish(path.basename(file), changed)
+            : undefined;
           return Response.json({
             file,
             count: submission.comments.length,

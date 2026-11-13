@@ -35,9 +35,9 @@ export interface ContextSettings {
   contextFullPage: boolean;
 }
 export const DEFAULT_CONTEXT_SETTINGS: Readonly<ContextSettings> = {
-  aiContext: false,
-  contextHtml: false,
-  contextFullPage: false,
+  aiContext: true,
+  contextHtml: true,
+  contextFullPage: true,
 };
 
 export function contextId(value: unknown): string {

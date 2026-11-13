@@ -8,6 +8,7 @@ import {
   resolveAcpPath,
   resolveBrowserDataDir,
   userConfigFile,
+  saveUiSettings,
 } from "./config.ts";
 
 const roots: string[] = [];
@@ -231,4 +232,46 @@ test("existing browser directory defaults resolve beside config; explicit paths 
     path.join(homedir(), "chrome"),
   );
   expect(resolveBrowserDataDir(undefined, "/repo")).toBeUndefined();
+});
+
+test("UI writes preserve startup settings and previously saved preferences across reloads", async () => {
+  const f = await fixture();
+  await f.write({
+    acp: "agents/local.json",
+    port: 8123,
+    ui: { enterSaves: false },
+  });
+  await saveUiSettings({ aiAnswers: false, lineNumbers: false }, f.settings);
+  expect(JSON.parse(await readFile(f.settings, "utf8"))).toEqual({
+    acp: "agents/local.json",
+    port: 8123,
+    ui: { enterSaves: false, aiAnswers: false, lineNumbers: false },
+  });
+  const reloaded = await loadUserSettings({}, f.settings);
+  expect(reloaded.ui).toEqual({
+    enterSaves: false,
+    aiAnswers: false,
+    lineNumbers: false,
+  });
+  expect(reloaded.acp).toBe(path.join(f.root, "lcr/agents/local.json"));
+  await f.write({ port: 9000, ui: { editor: "code", aiAnswers: false } });
+  await saveUiSettings({ expand: 50 }, f.settings);
+  expect(JSON.parse(await readFile(f.settings, "utf8"))).toEqual({
+    port: 9000,
+    ui: { editor: "code", aiAnswers: false, expand: 50 },
+  });
+});
+
+test("UI persistence creates the configuration directory and refuses to destroy malformed config", async () => {
+  const f = await fixture();
+  const nested = path.join(f.root, "new", "lcr", "config.json");
+  await saveUiSettings({ enterSaves: false }, nested);
+  expect((await loadUserSettings({}, nested)).ui?.enterSaves).toBe(false);
+  for (const invalid of ["{broken", "[]", "null"]) {
+    await writeFile(f.settings, invalid);
+    await expect(
+      saveUiSettings({ aiAnswers: false }, f.settings),
+    ).rejects.toThrow();
+    expect(await readFile(f.settings, "utf8")).toBe(invalid);
+  }
 });

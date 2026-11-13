@@ -9,6 +9,7 @@ import {
   Reply,
   Sparkles,
   ArrowRight,
+  LoaderCircle,
 } from "lucide-react";
 import type { DiffFile, ReviewNote } from "../../../shared/review-types.ts";
 import { noteKey } from "../../../shared/note-id.ts";
@@ -20,6 +21,11 @@ import { useAction, useDiff } from "../app/api.ts";
 import type { Draft } from "./composer.tsx";
 import { WebEvidence, ConversationBody } from "../web-review/evidence.tsx";
 import { placeNote } from "../diff/model.ts";
+import {
+  NoteAgentActivity,
+  useNoteAgentActivity,
+} from "../app/agent-activity.tsx";
+import { useUi } from "../app/ui-preferences.tsx";
 
 export function NoteCard({
   note,
@@ -29,6 +35,7 @@ export function NoteCard({
   inline = false,
   onJump,
   editor,
+  editorDraft,
 }: {
   note: ReviewNote;
   file?: DiffFile;
@@ -37,16 +44,26 @@ export function NoteCard({
   inline?: boolean;
   onJump?: () => void;
   editor?: React.ReactNode;
+  editorDraft?: Draft;
 }) {
+  const { settings } = useUi();
   const state = useNoteState();
   const webEnabled = !!useDiff().data?.web;
   const action = useAction();
+  const activity = useNoteAgentActivity(note.id);
+  const asking =
+    action.isPending &&
+    action.variables?.url === "/api/note" &&
+    action.variables?.method === "POST";
   const [removing, setRemoving] = useState<string | null>(null);
   const editable =
     !note.messages.some((m) => m.role === "agent") &&
     !["applied", "answered", "skipped"].includes(note.status);
   const reference = note.id.split("|#").at(-1)!;
   const outdated = !note.scope && (!file || !placeNote(file, note));
+  const editingNote = !!editor && editorDraft?.kind === "note";
+  const editingReply =
+    editor && editorDraft?.kind === "reply" ? editorDraft.at : undefined;
   const icon = (label: string, element: React.ReactElement) => (
     <Tooltip label={label}>{element}</Tooltip>
   );
@@ -88,14 +105,19 @@ export function NoteCard({
       </header>
       <div className="space-y-3 p-4">
         {note.code && (
-          <details className="rounded-md bg-muted/50 text-xs">
-            <summary className="cursor-pointer px-3 py-2 text-muted-foreground">
-              {outdated ? "Captured code · no longer in diff" : "Captured code"}
-            </summary>
-            <pre className="max-h-48 overflow-auto p-3">
+          <>
+            {outdated && (
+              <p className="text-xs text-muted-foreground">
+                Captured code · no longer in diff
+              </p>
+            )}
+            <pre
+              aria-label="Captured code"
+              className="max-h-48 overflow-auto border-y bg-muted/30 py-3 text-xs"
+            >
               <Code value={note.code} language="diff" />
             </pre>
-          </details>
+          </>
         )}
         {webEnabled && note.web && (
           <div className="flex flex-wrap gap-2">
@@ -148,7 +170,7 @@ export function NoteCard({
         )}
         <WebEvidence
           value={note.web}
-          editable={editable}
+          editable={editable && !editingNote}
           messages={note.messages}
           onAnnotate={async (target, annotation) => {
             await action.mutateAsync({
@@ -181,93 +203,109 @@ export function NoteCard({
             />
           </div>
         )}
-        <Markdown body={note.body} file={note.file} captured={note.code} />
+        {editingNote ? (
+          editor
+        ) : (
+          <Markdown body={note.body} file={note.file} captured={note.code} />
+        )}
         {note.detail && (
           <p className="rounded-md bg-muted p-2 text-xs text-muted-foreground">
             {note.detail}
           </p>
         )}
-        <div className="flex flex-wrap items-center gap-1">
-          {onJump && (
-            <Button size="sm" variant="ghost" onClick={onJump}>
-              <ArrowRight />
-              In diff
-            </Button>
-          )}
-          {icon(
-            "Copy note reference",
-            <Button
-              size="sm"
-              variant="ghost"
-              aria-label="Copy note reference"
-              onClick={() =>
-                void navigator.clipboard
-                  .writeText(`#${reference}`)
-                  .catch(() => {})
-              }
-            >
-              <Copy />
-              <span className="max-w-24 truncate font-mono text-[10px]">
-                #{reference.slice(-8)}
-              </span>
-            </Button>,
-          )}
-          <div className="ml-auto" />
-          {(state.resolved(note) || canResolve(note)) && (
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={!!editor}
-              onClick={() => state.toggle(note)}
-            >
-              {state.resolved(note) ? "Reopen" : "Resolve"}
-            </Button>
-          )}
-          {editable &&
-            icon(
-              "Edit note",
+        {agent && <NoteAgentActivity activity={activity} />}
+        {!editingNote && (
+          <div className="flex flex-wrap items-center gap-1">
+            {onJump && (
+              <Button size="sm" variant="ghost" onClick={onJump}>
+                <ArrowRight />
+                In diff
+              </Button>
+            )}
+            {icon(
+              "Copy note reference",
+              <Button
+                size="sm"
+                variant="ghost"
+                aria-label="Copy note reference"
+                onClick={() =>
+                  void navigator.clipboard
+                    .writeText(`#${reference}`)
+                    .catch(() => {})
+                }
+              >
+                <Copy />
+                <span className="max-w-24 truncate font-mono text-[10px]">
+                  #{reference.slice(-8)}
+                </span>
+              </Button>,
+            )}
+            <div className="ml-auto" />
+            {(state.resolved(note) || canResolve(note)) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={!!editor}
+                onClick={() => state.toggle(note)}
+              >
+                {state.resolved(note) ? "Reopen" : "Resolve"}
+              </Button>
+            )}
+            {editable &&
+              icon(
+                "Edit note",
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  aria-label="Edit note"
+                  onClick={() =>
+                    onCompose({ kind: "note", comment: { ...note } })
+                  }
+                >
+                  <Pencil />
+                </Button>,
+              )}
+            {icon(
+              "Delete note",
               <Button
                 size="icon"
                 variant="ghost"
-                aria-label="Edit note"
-                onClick={() =>
-                  onCompose({ kind: "note", comment: { ...note } })
-                }
+                className="text-muted-foreground hover:text-destructive"
+                aria-label="Delete note"
+                disabled={action.isPending}
+                onClick={() => setRemoving("note")}
               >
-                <Pencil />
+                <Trash2 />
               </Button>,
             )}
-          {icon(
-            "Delete note",
-            <Button
-              size="icon"
-              variant="ghost"
-              className="text-muted-foreground hover:text-destructive"
-              aria-label="Delete note"
-              disabled={action.isPending}
-              onClick={() => setRemoving("note")}
-            >
-              <Trash2 />
-            </Button>,
-          )}
-          {agent && (
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={action.isPending}
-              onClick={() =>
-                action.mutate({
-                  url: "/api/note",
-                  method: "POST",
-                  body: { comment: note, retry: true },
-                })
-              }
-            >
-              <Sparkles />
-              Ask AI
-            </Button>
-          )}
-        </div>
+            {agent && settings.aiAnswers && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={action.isPending || !!activity?.blocksAsk}
+                aria-label="Ask AI"
+                onClick={() =>
+                  action.mutate({
+                    url: "/api/note",
+                    method: "POST",
+                    body: { comment: note, retry: true },
+                  })
+                }
+              >
+                {asking ? (
+                  <LoaderCircle className="animate-spin" />
+                ) : (
+                  <Sparkles />
+                )}
+                {asking
+                  ? "Sending…"
+                  : activity?.blocksAsk
+                    ? activity.label
+                    : "Ask AI"}
+              </Button>
+            )}
+          </div>
+        )}
       </div>
       {note.messages.map((message, i) => {
         const own =
@@ -292,7 +330,7 @@ export function NoteCard({
                 {message.at && new Date(message.at).toLocaleString()}
               </span>
               <div className="ml-auto" />
-              {own && (
+              {own && editingReply !== message.at && (
                 <>
                   {icon(
                     "Edit reply",
@@ -330,16 +368,21 @@ export function NoteCard({
                 </>
               )}
             </div>
-            <ConversationBody
-              body={message.body}
-              file={note.file}
-              captured={note.code}
-            />
+            {editingReply && editingReply === message.at ? (
+              editor
+            ) : (
+              <ConversationBody
+                body={message.body}
+                file={note.file}
+                captured={note.code}
+              />
+            )}
           </section>
         );
       })}
       {editor ? (
-        <div className="border-t p-3">{editor}</div>
+        !editingNote &&
+        !editingReply && <div className="border-t p-4">{editor}</div>
       ) : (
         <div className="border-t px-4 py-2">
           <Button

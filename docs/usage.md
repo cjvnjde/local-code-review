@@ -43,14 +43,18 @@ Notes appear inline beside their captured code as well as in the conversation
 pane. **In diff** jumps from a conversation card to that note, reopening its file.
 The pane preserves your reading position when notes or code change. Incoming diff
 updates wait until an open editor closes.
+Captured code is always visible as an integrated diff block in each note, not
+hidden behind a disclosure. Note indicators stay in a fixed gutter slot; saving
+a note never shifts or inserts content into the source line.
 
 Click code or a line number to comment immediately, drag across lines for a range,
 or drag within a line to select specific characters. Shift-click extends a range;
 Alt-drag keeps normal browser text selection for copying. Comments open directly
 below their subject. Re-aiming an overlapping selection preserves your draft text
 and caret; an unrelated click cannot replace a dirty draft. The file header offers
-a file comment; **Overall note** opens in the conversation pane and covers the
-whole review without moving your place in the diff.
+a file comment; **Overall note** opens an editor directly below its header button
+without moving your place in the diff. Panel toggles are in the same compact header;
+change counts and refresh live in the existing footer.
 
 The editor accepts Markdown, including tables, checklists, and fenced code.
 The icon toolbar offers formatting, preview, suggestions, and image attachments;
@@ -63,9 +67,15 @@ diffs also support clicking or dragging a region to capture it in a comment. Aud
 diffs have before/after players.
 
 **Save note** writes immediately. With ACP configured, **Save & ask AI** also queues
-that note; **Save only** persists without dispatch. Cmd/Ctrl+Enter performs the
-primary save action. The editor retains a failed save for retry. Drafts survive a
-reload in the same browser; incoming live updates do not replace their text.
+that note; **Save only** persists without dispatch. Enter saves by default;
+Shift+Enter inserts a newline, and Cmd/Ctrl+Enter always saves. Settings can turn
+off Enter-to-save. The editor retains failed saves and drafts across reloads;
+incoming live updates do not replace their text.
+
+AI requests show queued, running, and permission/error states on their note and
+in the footer. Running work includes the agent's current activity when available.
+**Settings → Enable AI answers** disables new dispatches while keeping manual note
+and reply saves available. Already queued or running work is not cancelled.
 
 ## Continue the conversation
 
@@ -76,13 +86,23 @@ by **All**, **Open**, or **Done**. Applied, answered, and skipped notes are done
 Reply under a note to follow up. Unanswered reviewer notes and replies can be
 edited or deleted. Agent messages remain the agent's account. Copy a note's short
 reference for use in feedback; the full stable ID is kept in the Markdown marker.
-References expand in place to show their note and conversation. The formatting
-controls can insert a reference without copying its ID manually.
+References expand in place to show their note and conversation. Type `#` in a note
+or reply to search notes by reference, file, or text. Use ↑/↓ and Enter/Tab, or click
+a suggestion, to insert its reference; Escape dismisses suggestions.
 
 Ask any coding agent to address `.review/review-<timestamp>.md`. Agent messages and
 statuses appear through live updates. With ACP, the footer opens the agent queue,
 where you can pause/resume, answer permission requests, cancel tasks, and reconcile
 interrupted work. A completed turn does not automatically mean a fix was applied.
+
+Install the optional skill from your agent's terminal (also shown in **Settings →
+Agent connection**):
+
+```sh
+npx skills add cjvnjde/local-code-review --skill apply-lcr
+```
+
+Then ask “Apply the newest lcr review” or use `/apply-lcr` if supported.
 
 ## Saved reviews and history
 
@@ -97,10 +117,11 @@ after a note is deleted; it cannot record changes while no page is listening.
 ## Attach on-demand context
 
 Existing saved context links remain compatible with the `apply-lcr` skill and
-`lcr context`. For web captures, optional settings control context bundles,
-selected HTML, and full-page screenshots. Context is local evidence; use the
-capture's context ID or `context/<id>/manifest.json` when asking an agent to inspect
-it. **Add context** in the inline editor uploads a file or labeled text/JSON and
+`lcr context`. Web capture context bundles, selected HTML, and full-page screenshots
+are enabled by default. **Settings → Capture context** can disable them; page
+evidence may include sensitive content. Context stays local; use the capture's
+context ID or `context/<id>/manifest.json` when asking an agent to inspect it.
+**Add context** in the inline editor uploads a file or labeled text/JSON and
 inserts a relative link. Its card can inspect the manifest and read text in chunks
 without navigating away.
 
@@ -116,7 +137,10 @@ Alt+J/K steps through notes, Alt+Up/Down through bookmarks, and Alt+C switches t
 all-notes view. J/K also steps while viewing all notes. Typing in an editor keeps
 these review shortcuts inactive. Settings control automatic viewed tracking,
 backtracking, file hide patterns, removed-line folding, context expansion, editor
-choice, sidebar width, Enter-to-save, and earlier-review notes.
+choice, line-number gutter visibility, Enter-to-save, and earlier-review notes.
+Preferences changed in Settings persist under `ui` in
+`$XDG_CONFIG_HOME/lcr/config.json`, or `~/.config/lcr/config.json` when XDG is unset.
+Startup options and relative ACP profile paths are retained.
 
 **Resolve** acknowledges a completed conversation locally. **Show resolved** brings
 it back, and new replies invalidate the acknowledgement automatically. It does not

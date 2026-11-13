@@ -6,6 +6,7 @@ export interface AgentState {
   agent?: string;
   connection?: { state: string; detail: string; agent: string };
   queue?: {
+    review?: string;
     paused: boolean;
     activity?: string;
     tasks: {

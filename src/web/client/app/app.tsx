@@ -29,7 +29,6 @@ import {
   Sun,
   Moon,
   History as HistoryIcon,
-  Bot,
   RefreshCw,
   Check,
   FileCode2,
@@ -47,11 +46,13 @@ import {
 import { useStored } from "./preferences.ts";
 import { Button, cn } from "../components/ui/button.tsx";
 import { Tooltip } from "../components/ui/tooltip.tsx";
+import { Select } from "../components/ui/select.tsx";
 import { Dialog, DialogContent } from "../components/ui/dialog.tsx";
 import { DiffView, type DiffViewHandle } from "../diff/diff-view.tsx";
 import { makeComment, orderFiles } from "../diff/model.ts";
 import { NoteCard } from "../notes/note-card.tsx";
 import { Composer, draftBody, type Draft } from "../notes/composer.tsx";
+import { AgentActivity } from "./agent-activity.tsx";
 import { Settings, AgentPanel } from "./settings.tsx";
 import { History, useHistoryCapture } from "../history/history.tsx";
 import { EmbeddedReview, embedToken } from "../web-review/embedded.tsx";
@@ -246,6 +247,11 @@ function Workspace({
   }
   const file = files.find((f) => f.path === selected) || files[0];
   const notes = review?.notes || [];
+  const overallDraft =
+    draft?.host === "panel" &&
+    draft.kind === "note" &&
+    draft.comment.scope === "global" &&
+    !draft.editing;
   const activeDraft =
     draft && (draft.kind === "note" ? draft.comment.id : draft.id);
   const visibleNotes = useMemo(
@@ -429,7 +435,11 @@ function Workspace({
       original,
       editing: next.kind === "note" && !!known,
     });
-    if (next.host === "panel") setNotesOpen(true);
+    if (
+      next.host === "panel" &&
+      !(next.kind === "note" && next.comment.scope === "global" && !known)
+    )
+      setNotesOpen(true);
     else if (matchMedia("(max-width: 639px)").matches) setNotesOpen(false);
     return true;
   };
@@ -481,11 +491,16 @@ function Workspace({
         }}
       >
         <div className="flex h-dvh min-w-0 flex-col bg-background text-foreground">
-          <header className="flex min-h-16 shrink-0 flex-wrap items-center gap-3 border-b bg-card px-4 md:px-5">
-            <div className="flex size-8 items-center justify-center rounded-lg bg-primary/15 text-primary">
-              <GitPullRequest className="size-5" />
+          <header className="relative z-30 flex h-12 shrink-0 items-center gap-2 border-b bg-card px-3">
+            {icon(
+              navOpen ? "Hide file sidebar" : "Show file sidebar",
+              navOpen ? <PanelLeftClose /> : <PanelLeft />,
+              () => setNavOpen(!navOpen),
+            )}
+            <div className="hidden size-7 items-center justify-center text-primary sm:flex">
+              <GitPullRequest className="size-4" />
             </div>
-            <div className="mr-2">
+            <div className="mr-2 hidden shrink-0 sm:block">
               <h1 className="text-sm font-semibold tracking-tight">
                 Local code review{" "}
                 <span className="ml-1 rounded bg-muted px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground">
@@ -502,7 +517,27 @@ function Workspace({
                 {diff.id || diff.range}
               </span>
             </div>
+            <Select
+              label="Select file"
+              className="max-w-40 flex-1 md:hidden"
+              value={file?.path || ""}
+              onValueChange={jumpToFile}
+              options={files.map((f) => ({ value: f.path, label: f.path }))}
+            />
             <div className="ml-auto flex items-center gap-1">
+              <Button
+                size="sm"
+                variant={notesOpen ? "outline" : "ghost"}
+                aria-label={notesOpen ? "Hide notes panel" : "Show notes panel"}
+                onClick={() => {
+                  if (notesOpen && draft?.host === "panel" && !overallDraft)
+                    focusEditor();
+                  else setNotesOpen(!notesOpen);
+                }}
+              >
+                <MessageSquare />
+                <span className="hidden sm:inline">{notes.length} notes</span>
+              </Button>
               {diff.web && (
                 <Button
                   size="sm"
@@ -515,21 +550,40 @@ function Workspace({
                   Open page
                 </Button>
               )}
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={!review || busy}
-                onClick={() =>
-                  compose({
-                    kind: "note",
-                    host: "panel",
-                    comment: makeComment(),
-                  })
-                }
-              >
-                <Plus />
-                Overall note
-              </Button>
+              <div className="relative">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={!review || busy}
+                  aria-label="Overall note"
+                  aria-expanded={!!overallDraft}
+                  onClick={() =>
+                    compose({
+                      kind: "note",
+                      host: "panel",
+                      comment: makeComment(),
+                    })
+                  }
+                >
+                  <Plus />
+                  <span className="hidden sm:inline">Overall note</span>
+                </Button>
+                {overallDraft && draft && (
+                  <section
+                    aria-label="Overall note editor"
+                    className="absolute right-0 top-full z-40 mt-2 max-h-[calc(100dvh-112px)] w-[min(40rem,calc(100vw-24px))] overflow-auto border bg-card p-4 shadow-xl max-sm:fixed max-sm:inset-x-3 max-sm:top-12 max-sm:mt-2 max-sm:w-auto"
+                  >
+                    <Composer
+                      draft={draft}
+                      onChange={setDraft}
+                      onClose={closeDraft}
+                      onSaved={() => setDraft(null)}
+                      agent={!!agent.agent}
+                      onBusy={setBusy}
+                    />
+                  </section>
+                )}
+              </div>
               {icon("Search review (⌘/Ctrl K)", <Search />, () =>
                 setSearchOpen(true),
               )}
@@ -565,50 +619,6 @@ function Workspace({
               Diff update waiting for the open editor to close.
             </div>
           )}
-          <div className="flex min-h-11 shrink-0 items-center gap-3 border-b px-4 text-xs text-muted-foreground">
-            {icon(
-              navOpen ? "Hide file sidebar" : "Show file sidebar",
-              navOpen ? <PanelLeftClose /> : <PanelLeft />,
-              () => setNavOpen(!navOpen),
-            )}
-            <span className="hidden sm:inline">
-              {files.length} changed files
-            </span>
-            <span className="text-emerald-500">
-              +{files.reduce((sum, f) => sum + f.added, 0)}
-            </span>
-            <span className="text-rose-500">
-              −{files.reduce((sum, f) => sum + f.removed, 0)}
-            </span>
-            <select
-              className="min-w-0 flex-1 bg-transparent md:hidden"
-              aria-label="Select file"
-              value={file?.path || ""}
-              onChange={(e) => jumpToFile(e.target.value)}
-            >
-              {files.map((f) => (
-                <option key={f.path}>{f.path}</option>
-              ))}
-            </select>
-            <div className="ml-auto flex items-center gap-2">
-              {icon(
-                "Refresh review",
-                <RefreshCw className={refreshing ? "animate-spin" : ""} />,
-                onRefresh,
-              )}
-              <Button
-                size="sm"
-                variant={notesOpen ? "outline" : "ghost"}
-                onClick={() => {
-                  if (notesOpen && draft?.host === "panel") focusEditor();
-                  else setNotesOpen(!notesOpen);
-                }}
-              >
-                <MessageSquare />
-                {notes.length} notes
-              </Button>
-            </div>
-          </div>
           <ReviewLayout
             navOpen={navOpen}
             notesOpen={notesOpen}
@@ -716,7 +726,7 @@ function Workspace({
             notes={
               notesOpen && (
                 <aside
-                  className="flex h-full min-w-0 flex-col bg-muted/15 max-sm:fixed max-sm:inset-x-0 max-sm:top-[108px] max-sm:bottom-10 max-sm:z-20 max-sm:h-auto max-sm:w-full max-sm:bg-background"
+                  className="flex h-full min-w-0 flex-col bg-muted/15 max-sm:fixed max-sm:inset-x-0 max-sm:top-12 max-sm:bottom-10 max-sm:z-20 max-sm:h-auto max-sm:w-full max-sm:bg-background"
                   aria-label="Review notes"
                 >
                   <div className="flex items-center gap-2 border-b px-4 py-3">
@@ -852,6 +862,7 @@ function Workspace({
                         note={note}
                         file={files.find((f) => f.path === note.file)}
                         agent={!!agent.agent}
+                        editorDraft={draft ?? undefined}
                         onCompose={(next) =>
                           compose({ ...next, host: "panel" })
                         }
@@ -895,21 +906,6 @@ function Workspace({
                       </div>
                     )}
                   </div>
-                  {draft?.host === "panel" &&
-                    draft.kind === "note" &&
-                    draft.comment.scope === "global" &&
-                    !draft.editing && (
-                      <div className="max-h-[70%] shrink-0 overflow-auto border-t p-3">
-                        <Composer
-                          draft={draft}
-                          onChange={setDraft}
-                          onClose={closeDraft}
-                          onSaved={() => setDraft(null)}
-                          agent={!!agent.agent}
-                          onBusy={setBusy}
-                        />
-                      </div>
-                    )}
                 </aside>
               )
             }
@@ -996,10 +992,20 @@ function Workspace({
               />
             </main>
           </ReviewLayout>
-          <footer className="flex min-h-10 shrink-0 items-center gap-3 border-t bg-card px-4 text-[11px] text-muted-foreground">
-            <span className="flex items-center gap-2">
-              <Circle className="size-2 fill-emerald-500 text-emerald-500" />
-              Local review
+          <footer className="flex h-10 shrink-0 items-center gap-3 overflow-hidden border-t bg-card px-3 text-[11px] text-muted-foreground">
+            <span className="flex shrink-0 items-center gap-2">
+              <Circle
+                aria-label="Local review"
+                className="size-2 fill-emerald-500 text-emerald-500"
+              />
+              {files.length} <span className="hidden sm:inline">changed</span>{" "}
+              files
+            </span>
+            <span className="shrink-0 text-emerald-500">
+              +{files.reduce((sum, f) => sum + f.added, 0)}
+            </span>
+            <span className="shrink-0 text-rose-500">
+              −{files.reduce((sum, f) => sum + f.removed, 0)}
             </span>
             <span className="hidden sm:inline">
               {open} open · {notes.length - open} done ·{" "}
@@ -1007,7 +1013,7 @@ function Workspace({
               unread
             </span>
             <span
-              className="ml-auto max-w-[45vw] truncate font-mono"
+              className="ml-auto min-w-0 max-w-[30vw] truncate font-mono"
               title={review?.file}
             >
               {review?.file || "First save creates a Markdown review"}
@@ -1018,12 +1024,23 @@ function Workspace({
                 size="sm"
                 onClick={() => setDialog("agent")}
               >
-                <Bot />
-                {agent.queue?.paused
-                  ? "Queue paused"
-                  : agent.connection?.state || "Agent"}
+                <AgentActivity agent={agent} />
               </Button>
             )}
+            <Tooltip label="Refresh review">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7 shrink-0"
+                aria-label="Refresh review"
+                disabled={refreshing}
+                onClick={onRefresh}
+              >
+                <RefreshCw
+                  className={refreshing ? "size-3.5 animate-spin" : "size-3.5"}
+                />
+              </Button>
+            </Tooltip>
           </footer>
           <Dialog
             open={dialog !== null}

@@ -8,9 +8,9 @@ import { ColorTools } from "../components/colors.tsx";
 import { AttachmentImage } from "../components/images.tsx";
 import { AddContext } from "../components/context.tsx";
 import { useReferences } from "./references.tsx";
-import { refOf } from "./note-ref.ts";
+import { insertRef, plainRefs, refLabel, refOf } from "./note-ref.ts";
 import { useUi } from "../app/ui-preferences.tsx";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useId, useLayoutEffect, useRef, useState } from "react";
 import {
   Bold,
   Italic,
@@ -26,7 +26,10 @@ import {
   Pencil,
   LoaderCircle,
 } from "lucide-react";
-import type { ReviewComment } from "../../../shared/review-types.ts";
+import type {
+  ReviewComment,
+  ReviewNote,
+} from "../../../shared/review-types.ts";
 import { noteKey } from "../../../shared/note-id.ts";
 import { request, useAction } from "../app/api.ts";
 import { Button } from "../components/ui/button.tsx";
@@ -85,6 +88,7 @@ export function Composer({
 }) {
   const action = useAction();
   const { settings } = useUi();
+  const askAI = agent && settings.aiAnswers;
   const { notes: referenceNotes } = useReferences();
   const [preview, setPreview] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -92,6 +96,16 @@ export function Composer({
   const [uploadError, setUploadError] = useState("");
   const textarea = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
+  const listboxId = useId();
+  const listbox = useRef<HTMLDivElement>(null);
+  const composing = useRef(false);
+  const dismissedReference = useRef<number | null>(null);
+  const [completion, setCompletion] = useState<{
+    from: number;
+    to: number;
+    query: string;
+  } | null>(null);
+  const [activeReference, setActiveReference] = useState(0);
   const body = draftBody(draft);
   const web = draft.kind === "note" ? draft.comment.web : draft.web;
   const captureDraft =
@@ -110,6 +124,17 @@ export function Composer({
   const title =
     draft.kind === "note" ? noteKey(draft.comment) : `Reply · ${draft.label}`;
   const busy = action.isPending || uploading || drawing;
+  const integrated = !embedded && (draft.editing || draft.kind === "reply");
+  const matches = completion
+    ? referenceNotes.filter((note) => {
+        if (!refOf(note.id)) return false;
+        const query = completion.query.toLocaleLowerCase();
+        return [note.id, note.file, noteKey(note), plainRefs(note.body)].some(
+          (value) => value.toLocaleLowerCase().includes(query),
+        );
+      })
+    : [];
+  const selectedReference = Math.min(activeReference, matches.length - 1);
   const subject =
     draft.kind === "note"
       ? draft.comment.id || "new"
@@ -123,6 +148,25 @@ export function Composer({
     }
   }, [subject, preview]);
   useLayoutEffect(() => {
+    setCompletion(null);
+    dismissedReference.current = null;
+  }, [subject, preview]);
+  useLayoutEffect(() => {
+    const option = listbox.current?.querySelector<HTMLElement>(
+      '[aria-selected="true"]',
+    );
+    if (option) {
+      const list = listbox.current!;
+      if (option.offsetTop < list.scrollTop) list.scrollTop = option.offsetTop;
+      else if (
+        option.offsetTop + option.offsetHeight >
+        list.scrollTop + list.clientHeight
+      )
+        list.scrollTop =
+          option.offsetTop + option.offsetHeight - list.clientHeight;
+    }
+  }, [selectedReference, completion]);
+  useLayoutEffect(() => {
     const field = textarea.current;
     if (field) {
       field.style.height = "auto";
@@ -132,38 +176,83 @@ export function Composer({
   // Upload completion reads the current draft, so text typed during an upload is kept.
   const latest = useRef(draft);
   latest.current = draft;
+  function updateCompletion(field: HTMLTextAreaElement) {
+    if (composing.current) return;
+    const { selectionStart: start, selectionEnd: end, value } = field;
+    const match =
+      start === end
+        ? /(?:^|[\s([])#([^\s#]*)$/.exec(value.slice(0, start))
+        : null;
+    if (!match) {
+      setCompletion(null);
+      dismissedReference.current = null;
+      return;
+    }
+    const from = start - match[1]!.length - 1;
+    if (dismissedReference.current === from) return;
+    if (completion?.from !== from || completion.query !== match[1])
+      setActiveReference(0);
+    setCompletion({ from, to: start, query: match[1]! });
+  }
+  function replaceText(
+    from: number,
+    to: number,
+    text: string,
+    start = from + text.length,
+    end = start,
+  ) {
+    const current = latest.current;
+    const value = draftBody(current);
+    const field = textarea.current;
+    if (field) {
+      field.focus({ preventScroll: true });
+      field.setSelectionRange(from, to);
+      // Native text insertion keeps references, formatting and uploads undoable.
+      document.execCommand("insertText", false, text);
+    }
+    onChange(withBody(current, value.slice(0, from) + text + value.slice(to)));
+    setCompletion(null);
+    caret.current = { start, end };
+    requestAnimationFrame(() => {
+      field?.focus({ preventScroll: true });
+      field?.setSelectionRange(start, end);
+    });
+  }
   function insert(text: string) {
-    const current = latest.current,
-      value = draftBody(current);
+    const value = draftBody(latest.current);
     const at = textarea.current?.selectionStart ?? value.length;
     const end = textarea.current?.selectionEnd ?? at;
-    const next = value.slice(0, at) + text + value.slice(end);
-    onChange(withBody(current, next));
-    requestAnimationFrame(() => {
-      textarea.current?.focus({ preventScroll: true });
-      textarea.current?.setSelectionRange(at + text.length, at + text.length);
-    });
+    replaceText(at, end, text);
   }
   function wrap(before: string, after = before) {
     const field = textarea.current;
     if (!field) return;
     const from = field.selectionStart,
-      to = field.selectionEnd,
-      value = draftBody(latest.current);
-    onChange(
-      withBody(
-        latest.current,
-        value.slice(0, from) +
-          before +
-          value.slice(from, to) +
-          after +
-          value.slice(to),
-      ),
+      to = field.selectionEnd;
+    replaceText(
+      from,
+      to,
+      before + draftBody(latest.current).slice(from, to) + after,
+      from + before.length,
+      to + before.length,
     );
-    requestAnimationFrame(() => {
-      field.focus({ preventScroll: true });
-      field.setSelectionRange(from + before.length, to + before.length);
-    });
+  }
+  function insertReference(note: ReviewNote) {
+    if (!completion) return;
+    const value = draftBody(latest.current);
+    const label = refLabel(note).replace(/[\\[\]]/g, "\\$&");
+    const result = insertRef(
+      value,
+      completion.from,
+      completion.to,
+      `[${label}](lcr:${refOf(note.id)})`,
+    );
+    const text = result.value.slice(
+      completion.from,
+      result.value.length - (value.length - completion.to),
+    );
+    dismissedReference.current = completion.from;
+    replaceText(completion.from, completion.to, text, result.caret);
   }
   async function attach(files: File[]) {
     if (busy || !files.length) return;
@@ -191,7 +280,7 @@ export function Composer({
       onBusy?.(false);
     }
   }
-  async function save(ask = agent) {
+  async function save(ask = askAI) {
     if (!hasContent || busy) return;
     onBusy?.(true);
     try {
@@ -281,23 +370,21 @@ export function Composer({
           embedded ? "min-h-0 flex-1 space-y-3 overflow-auto px-4" : "contents"
         }
       >
-        {draft.kind === "note" && draft.comment.image && (
+        {!integrated && draft.kind === "note" && draft.comment.image && (
           <AttachmentImage
             source={draft.comment.image.capture}
             label="Selected screenshot region"
           />
         )}
-        {code && (
-          <details className="rounded-lg border bg-muted/30 text-xs">
-            <summary className="cursor-pointer px-3 py-2 text-muted-foreground">
-              Captured code · {file}
-            </summary>
-            <pre className="max-h-40 overflow-auto p-3">
-              <Code value={code} language="diff" />
-            </pre>
-          </details>
+        {!integrated && code && (
+          <pre
+            aria-label={`Captured code · ${file}`}
+            className="max-h-48 overflow-auto border-y bg-muted/30 py-3 text-xs"
+          >
+            <Code value={code} language="diff" />
+          </pre>
         )}
-        {web && (
+        {(!integrated || draft.kind === "reply") && web && (
           <div className={embedded ? "" : "max-h-56 overflow-auto"}>
             <WebEvidence
               value={web}
@@ -441,24 +528,9 @@ export function Composer({
               e.target.value = "";
             }}
           />
-          <select
-            aria-label="Insert note reference"
-            className="h-8 min-w-0 max-w-full flex-1 basis-36 rounded border bg-background px-2 text-xs"
-            value=""
-            onChange={(event) => {
-              if (event.target.value) insert(` #${event.target.value} `);
-            }}
-          >
-            <option value="">Reference a note…</option>
-            {referenceNotes.map((note) => (
-              <option key={note.id} value={refOf(note.id)}>
-                {noteKey(note)} · {note.body.slice(0, 50)}
-              </option>
-            ))}
-          </select>
         </div>
         {preview ? (
-          <div className="max-h-80 min-h-40 overflow-auto rounded-lg border p-4">
+          <div className="max-h-80 min-h-28 overflow-auto">
             <Markdown
               body={body || "Nothing to preview yet."}
               file={file}
@@ -466,58 +538,161 @@ export function Composer({
             />
           </div>
         ) : (
-          <textarea
-            ref={textarea}
-            aria-label="Note text"
-            disabled={action.isPending}
-            onSelect={(event) => {
-              caret.current = {
-                start: event.currentTarget.selectionStart,
-                end: event.currentTarget.selectionEnd,
-              };
-            }}
-            value={body}
-            onChange={(e) => onChange(withBody(draft, e.target.value))}
-            onPaste={(event) => {
-              const images = [...event.clipboardData.files].filter((f) =>
-                f.type.startsWith("image/"),
-              );
-              if (images.length) {
-                event.preventDefault();
-                void attach(images);
+          <div className="relative">
+            <textarea
+              ref={textarea}
+              aria-label="Note text"
+              aria-autocomplete="list"
+              aria-haspopup="listbox"
+              aria-expanded={!!completion}
+              aria-controls={completion ? listboxId : undefined}
+              aria-activedescendant={
+                completion && selectedReference >= 0
+                  ? `${listboxId}-${selectedReference}`
+                  : undefined
               }
-            }}
-            onKeyDown={(event) => {
-              if (
-                (event.metaKey || event.ctrlKey) &&
-                ["KeyB", "KeyI"].includes(event.code)
-              ) {
-                event.preventDefault();
-                wrap(event.code === "KeyB" ? "**" : "_");
-                return;
-              }
-              if (
-                event.key === "Escape" &&
-                !busy &&
-                body === (draft.original || "")
-              ) {
-                event.preventDefault();
-                onClose();
-              }
-              if (
-                !event.nativeEvent.isComposing &&
-                event.key === "Enter" &&
-                (event.metaKey ||
-                  event.ctrlKey ||
-                  (settings.enterSaves ? !event.shiftKey : event.shiftKey))
-              ) {
-                event.preventDefault();
-                void save();
-              }
-            }}
-            placeholder="Write feedback, ask a question, or propose a change…"
-            className={`w-full rounded-lg border bg-background p-3 text-sm leading-relaxed outline-none focus:ring-2 focus:ring-ring ${embedded ? "min-h-20 max-h-[30dvh] resize-none" : "min-h-28 resize-y"}`}
-          />
+              disabled={action.isPending}
+              onSelect={(event) => {
+                caret.current = {
+                  start: event.currentTarget.selectionStart,
+                  end: event.currentTarget.selectionEnd,
+                };
+                updateCompletion(event.currentTarget);
+              }}
+              value={body}
+              onChange={(event) => {
+                onChange(withBody(latest.current, event.currentTarget.value));
+                updateCompletion(event.currentTarget);
+              }}
+              onFocus={(event) => updateCompletion(event.currentTarget)}
+              onBlur={() => setCompletion(null)}
+              onCompositionStart={() => {
+                composing.current = true;
+                setCompletion(null);
+              }}
+              onCompositionEnd={(event) => {
+                composing.current = false;
+                updateCompletion(event.currentTarget);
+              }}
+              onPaste={(event) => {
+                const images = [...event.clipboardData.files].filter((f) =>
+                  f.type.startsWith("image/"),
+                );
+                if (images.length) {
+                  event.preventDefault();
+                  void attach(images);
+                }
+              }}
+              onKeyDown={(event) => {
+                if (
+                  composing.current ||
+                  event.nativeEvent.isComposing ||
+                  event.nativeEvent.keyCode === 229
+                )
+                  return;
+                if (completion) {
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    dismissedReference.current = completion.from;
+                    setCompletion(null);
+                    return;
+                  }
+                  if (!event.metaKey && !event.ctrlKey && !event.altKey) {
+                    if (
+                      matches.length &&
+                      (event.key === "ArrowDown" || event.key === "ArrowUp")
+                    ) {
+                      event.preventDefault();
+                      setActiveReference(
+                        (selectedReference +
+                          (event.key === "ArrowDown" ? 1 : -1) +
+                          matches.length) %
+                          matches.length,
+                      );
+                      return;
+                    }
+                    if (
+                      matches.length &&
+                      !event.shiftKey &&
+                      (event.key === "Enter" || event.key === "Tab")
+                    ) {
+                      event.preventDefault();
+                      insertReference(matches[selectedReference]!);
+                      return;
+                    }
+                  }
+                }
+                if (
+                  (event.metaKey || event.ctrlKey) &&
+                  ["KeyB", "KeyI"].includes(event.code)
+                ) {
+                  event.preventDefault();
+                  wrap(event.code === "KeyB" ? "**" : "_");
+                  return;
+                }
+                if (
+                  event.key === "Escape" &&
+                  !busy &&
+                  body === (draft.original || "")
+                ) {
+                  event.preventDefault();
+                  onClose();
+                }
+                if (
+                  !event.nativeEvent.isComposing &&
+                  event.key === "Enter" &&
+                  (event.metaKey ||
+                    event.ctrlKey ||
+                    (settings.enterSaves ? !event.shiftKey : event.shiftKey))
+                ) {
+                  event.preventDefault();
+                  void save();
+                }
+              }}
+              placeholder="Write feedback, ask a question, or type # to reference a note…"
+              className={`w-full border-0 bg-transparent p-0 text-sm leading-relaxed outline-none focus-visible:outline-1 focus-visible:outline-offset-4 focus-visible:outline-ring ${embedded ? "min-h-20 max-h-[30dvh] resize-none" : "min-h-28 resize-y"}`}
+            />
+            {completion && (
+              <div
+                ref={listbox}
+                id={listboxId}
+                role="listbox"
+                aria-label="Note references"
+                className="absolute inset-x-0 top-full z-50 max-h-60 overflow-y-auto overscroll-contain rounded-md border bg-popover p-1 text-popover-foreground shadow-lg"
+              >
+                {matches.length ? (
+                  matches.map((note, index) => (
+                    <button
+                      key={note.id}
+                      id={`${listboxId}-${index}`}
+                      type="button"
+                      role="option"
+                      aria-selected={index === selectedReference}
+                      tabIndex={-1}
+                      className={`block w-full rounded px-3 py-2 text-left text-xs ${index === selectedReference ? "bg-accent text-accent-foreground" : ""}`}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onMouseMove={() => setActiveReference(index)}
+                      onClick={() => insertReference(note)}
+                    >
+                      <span className="block truncate font-medium">
+                        #{refOf(note.id)} · {noteKey(note)}
+                      </span>
+                      <span className="block truncate text-muted-foreground">
+                        {plainRefs(note.body)
+                          .replace(/\s+/g, " ")
+                          .slice(0, 160) || "Empty note"}
+                      </span>
+                    </button>
+                  ))
+                ) : (
+                  <div className="px-3 py-2 text-xs text-muted-foreground">
+                    No matching notes
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         )}
         {!embedded && attachments}
         {(action.error || uploadError) && (
@@ -527,13 +702,13 @@ export function Composer({
         )}
         <div className="flex flex-wrap items-center gap-2 border-t pt-3">
           <span className="mr-auto text-xs text-muted-foreground">
-            Markdown supported · ⌘/Ctrl Enter to save
+            Markdown · # references · ⌘/Ctrl Enter to save
           </span>
           <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
             <Button variant="ghost" disabled={busy} onClick={onClose}>
               Cancel
             </Button>
-            {agent && (
+            {askAI && (
               <Button
                 variant="outline"
                 disabled={busy || !hasContent}
@@ -544,7 +719,7 @@ export function Composer({
             )}
             <Button disabled={busy || !hasContent} onClick={() => void save()}>
               {busy && <LoaderCircle className="animate-spin" />}
-              {agent
+              {askAI
                 ? "Save & ask AI"
                 : draft.kind === "reply"
                   ? "Send reply"
@@ -560,17 +735,15 @@ export function Composer({
       data-review-editor
       data-editor-subject={subject}
       aria-label="Comment editor"
-      className={
-        embedded
-          ? "flex min-h-0 flex-1 flex-col"
-          : "rounded-xl border border-primary/40 bg-card p-4 shadow-sm"
-      }
+      className={embedded ? "flex min-h-0 flex-1 flex-col" : "min-w-0"}
     >
-      <h2
-        className={`mb-3 shrink-0 break-words font-mono text-xs font-medium text-primary ${embedded ? "px-4 pt-4" : ""}`}
-      >
-        {title}
-      </h2>
+      {!integrated && (
+        <h2
+          className={`mb-3 shrink-0 break-words font-mono text-xs font-medium text-primary ${embedded ? "px-4 pt-4" : ""}`}
+        >
+          {title}
+        </h2>
+      )}
       {content}
     </section>
   );

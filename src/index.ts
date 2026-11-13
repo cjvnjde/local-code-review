@@ -12,6 +12,8 @@ import {
   loadUserSettings,
   resolveAcpPath,
   resolveBrowserDataDir,
+  saveUiSettings,
+  userConfigFile,
 } from "./cli/config.ts";
 import {
   diffBase,
@@ -57,7 +59,8 @@ async function main() {
     console.log(VERSION);
     process.exit(0);
   }
-  const settings = await loadUserSettings(explicit);
+  const configFile = userConfigFile();
+  const settings = await loadUserSettings(explicit, configFile);
   const options = parseArgs(argv, settings);
   const repoRoot = await findRepoRoot();
   process.chdir(repoRoot);
@@ -163,6 +166,7 @@ async function main() {
       reviewId: options.id,
       context: options.context,
       uiDefaults: settings.ui,
+      saveUiSettings: (patch) => saveUiSettings(patch, configFile),
       getDiff: () => getDiff(diffSource),
       getContext: (file, start, end) =>
         getFileContext(diffSource, file, start, end),

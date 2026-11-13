@@ -28,6 +28,7 @@ import { saveAttachment } from "../review/attach.ts";
 import type { WebAnnotation } from "../shared/web-annotation.ts";
 import type { ReviewNote } from "../review/thread.ts";
 import { DEFAULT_UI_SETTINGS } from "../shared/settings.ts";
+import { loadUserSettings, saveUiSettings } from "../cli/config.ts";
 import type {
   DiffFile,
   NoteStatus,
@@ -261,6 +262,94 @@ describe("review settings handoff", () => {
     ).toBe(200);
     expect(configured).toEqual([true, false]);
     expect(modes).toEqual([true, false]);
+  });
+
+  test("persists concurrent settings patches and restores them in a new server", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "lcr-settings-"));
+    serverRoots.push(root);
+    const file = path.join(root, "config", "lcr", "config.json");
+    const started = await startTestServer({
+      saveUiSettings: (patch) => saveUiSettings(patch, file),
+    });
+    const responses = await Promise.all(
+      [{ aiAnswers: false }, { enterSaves: false, lineNumbers: false }].map(
+        (patch) =>
+          request(started, "/api/settings", {
+            method: "PUT",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(patch),
+          }),
+      ),
+    );
+    expect(responses.map((response) => response.status)).toEqual([200, 200]);
+    const saved = await loadUserSettings({}, file);
+    const restarted = await startTestServer({ uiDefaults: saved.ui });
+    expect(
+      (await (await request(restarted, "/api/settings")).json()).settings,
+    ).toMatchObject({
+      aiAnswers: false,
+      enterSaves: false,
+      lineNumbers: false,
+    });
+  });
+
+  test("failed persistence leaves effective preferences unchanged and reports the failure", async () => {
+    const started = await startTestServer({
+      saveUiSettings: async () => {
+        throw new Error("Configuration is read-only.");
+      },
+    });
+    const response = await request(started, "/api/settings", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ aiAnswers: false }),
+    });
+    expect(response.status).toBe(500);
+    expect(
+      (await (await request(started, "/api/settings")).json()).settings
+        .aiAnswers,
+    ).toBe(true);
+  });
+
+  test("disabled AI answers persist notes, replies and submissions without dispatching", async () => {
+    const published: string[] = [];
+    const started = await startTestServer({
+      uiDefaults: { aiAnswers: false },
+      agent: {
+        agent: "test",
+        publish: (_review, notes) => {
+          published.push(...notes.map((note) => note.id));
+          return { state: "unchanged", count: 0 };
+        },
+      },
+    });
+    const post = (route: string, body: unknown) =>
+      request(started, route, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    expect((await post("/api/note", { comment, ask: true })).status).toBe(200);
+    expect(
+      (
+        await post("/api/reply", {
+          id: comment.id,
+          body: "Manual follow-up",
+          ask: true,
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await post("/api/submit", {
+          comments: [{ ...comment, body: "Manual revision" }],
+        })
+      ).status,
+    ).toBe(200);
+    const review = await (await request(started, "/api/review")).json();
+    expect(review.notes[0].body).toBe("Manual revision");
+    expect(review.notes[0].messages[0].body).toBe("Manual follow-up");
+    expect(published).toEqual([]);
   });
 
   test("retains a run-local snapshot for new editors and announces changes to open editors", async () => {

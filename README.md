@@ -273,9 +273,10 @@ The optional `browserDataDir` setting selects the user data directory for existi
 it resolves beside `config.json`, while `--browser-data-dir` resolves from the repository root.
 Both accept `~/` paths. These browser settings apply when `--web` or a configured `web` URL is used.
 
-Capture-context defaults apply on server start. Theme, sidebar, viewed marks, and
-v2 drafts use browser-local preferences. Legacy display settings are still accepted
-by the server config parser but are not used by this branch's UI.
+Settings changes persist in `lcr/config.json` under that configuration directory,
+preserving startup options and agent profile paths. **Enable AI answers** turns
+new AI dispatches on or off without cancelling existing queued/running work.
+Theme, panel visibility, viewed marks, and drafts remain browser-local.
 
 ## Other options
 

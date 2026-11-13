@@ -47,7 +47,8 @@ the full lcr page.
 
 ## Context
 
-**Settings → Capture context** can save on-demand context bundles and opt into
-selected HTML or full-page screenshots. These settings are run-local and do not
-rewrite the user's configuration file. Saved context IDs and manifests remain
-readable by the optional `apply-lcr` skill or the `lcr context` command.
+**Settings → Capture context** controls on-demand context bundles, selected HTML,
+and full-page screenshots. All are enabled by default; turn off any evidence you
+do not want saved, especially on pages with sensitive content. Changes persist in
+the same user `lcr/config.json` used at startup. Saved context IDs and manifests
+remain readable by the optional `apply-lcr` skill or `lcr context`.

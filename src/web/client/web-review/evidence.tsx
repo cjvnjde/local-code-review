@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useAnnotator } from "../components/images.tsx";
 import { Button } from "../components/ui/button.tsx";
+import { Select } from "../components/ui/select.tsx";
 import {
   captureComparisons,
   canCompareCaptures,
@@ -295,30 +296,26 @@ function CaptureComparison({
         Compare original screenshots
       </summary>
       <div className="mt-3 space-y-3">
-        <select
-          aria-label="Before capture"
-          className="w-full rounded border bg-background p-2"
+        <Select
+          label="Before capture"
+          className="w-full"
           value={before}
-          onChange={(event) => setBefore(+event.target.value)}
-        >
-          {sources.originals.map((item, i) => (
-            <option key={i} value={i}>
-              {item.label}
-            </option>
-          ))}
-        </select>
-        <select
-          aria-label="After capture"
-          className="w-full rounded border bg-background p-2"
+          onValueChange={setBefore}
+          options={sources.originals.map((item, value) => ({
+            value,
+            label: item.label,
+          }))}
+        />
+        <Select
+          label="After capture"
+          className="w-full"
           value={after}
-          onChange={(event) => setAfter(+event.target.value)}
-        >
-          {sources.evidence.map((item, i) => (
-            <option key={i} value={i}>
-              {item.label}
-            </option>
-          ))}
-        </select>
+          onValueChange={setAfter}
+          options={sources.evidence.map((item, value) => ({
+            value,
+            label: item.label,
+          }))}
+        />
         <div className="flex gap-2">
           <Button size="sm" variant="outline" onClick={() => setWipe(false)}>
             Side by side

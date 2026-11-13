@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import type { CliOptions } from "../shared/review-types.ts";
@@ -170,6 +170,42 @@ export async function loadUserSettings(
     }
   }
   return settings;
+}
+
+/** Merge UI preferences without rewriting startup paths or dropping external edits. */
+export async function saveUiSettings(
+  patch: Partial<UiSettings>,
+  settingsFile = userConfigFile(),
+): Promise<void> {
+  const validated = parseUiSettings(patch);
+  let current: Record<string, unknown> = {};
+  try {
+    const value: unknown = JSON.parse(await readFile(settingsFile, "utf8"));
+    if (!value || typeof value !== "object" || Array.isArray(value))
+      throw new Error("Expected a settings object.");
+    current = value as Record<string, unknown>;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT")
+      throw new Error(
+        `Could not save lcr settings at ${settingsFile}: ${(error as Error).message}`,
+      );
+  }
+  const ui = { ...parseUiSettings(current.ui ?? {}), ...validated };
+  await mkdir(path.dirname(settingsFile), { recursive: true });
+  const temporary = `${settingsFile}.${crypto.randomUUID()}.tmp`;
+  try {
+    await writeFile(
+      temporary,
+      JSON.stringify({ ...current, ui }, null, 2) + "\n",
+      {
+        mode: 0o600,
+        flag: "wx",
+      },
+    );
+    await rename(temporary, settingsFile);
+  } finally {
+    await rm(temporary, { force: true });
+  }
 }
 
 /** CLI paths are repo-relative; loaded defaults are already absolute beside their settings file. */

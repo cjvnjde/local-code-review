@@ -1,9 +1,9 @@
 import { useUi } from "./ui-preferences.tsx";
 import { hidePatterns } from "../diff/filters.ts";
 import { useQuery } from "@tanstack/react-query";
-import type { UiSettings } from "../../../shared/settings.ts";
 import { request, useAction, type AgentState } from "./api.ts";
 import { Button } from "../components/ui/button.tsx";
+import { Select } from "../components/ui/select.tsx";
 
 export function Settings({
   agent,
@@ -15,10 +15,6 @@ export function Settings({
   onOpenReview: (file: string) => void;
 }) {
   const ui = useUi();
-  const settings = useQuery({
-    queryKey: ["settings"],
-    queryFn: () => request<{ settings: UiSettings }>("/api/settings"),
-  });
   const reviews = useQuery({
     queryKey: ["reviews"],
     queryFn: () =>
@@ -27,9 +23,12 @@ export function Settings({
         reviews: { file: string; id: string; range: string; notes: number }[];
       }>("/api/reviews"),
   });
-  const action = useAction();
   return (
     <div className="space-y-6 overflow-auto pr-1">
+      <p className="text-xs text-muted-foreground">
+        Preferences are saved to your lcr config.json in the user configuration
+        directory.
+      </p>
       <section className="space-y-3">
         <h3 className="text-sm font-semibold">Reading and editing</h3>
         {(
@@ -38,6 +37,7 @@ export function Settings({
             ["back", "Unmark automatically viewed files when scrolling back"],
             ["foldDel", "Fold removed lines by default"],
             ["enterSaves", "Enter saves · Shift+Enter inserts a newline"],
+            ["lineNumbers", "Show line numbers and gutter controls"],
             ["single", "Keep one pending note per selection"],
             ["ghosts", "Show notes from other reviews"],
           ] as const
@@ -51,48 +51,30 @@ export function Settings({
             {label}
           </label>
         ))}
-        <label className="block text-xs">
-          Reading speed threshold
-          <select
-            aria-label="Reading speed threshold"
-            className="ml-3 rounded border bg-background p-2"
+        <div className="flex items-center justify-between gap-3 text-xs">
+          <span>Reading speed threshold</span>
+          <Select
+            label="Reading speed threshold"
             value={ui.settings.limit}
-            onChange={(event) => ui.update({ limit: +event.target.value })}
-          >
-            {[0, 500, 900, 1800].map((value) => (
-              <option value={value} key={value}>
-                {value ? `${value} px/s` : "No speed limit"}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="block text-xs">
-          Context expansion
-          <select
-            aria-label="Context expansion"
-            className="ml-3 rounded border bg-background p-2"
-            value={ui.settings.expand}
-            onChange={(event) => ui.update({ expand: +event.target.value })}
-          >
-            {[10, 20, 50, 100].map((value) => (
-              <option value={value} key={value}>
-                {value} lines
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="block text-xs">
-          Sidebar width
-          <input
-            aria-label="Sidebar width"
-            type="range"
-            min="180"
-            max={Math.max(480, ui.settings.navWidth)}
-            value={ui.settings.navWidth || 256}
-            onChange={(event) => ui.update({ navWidth: +event.target.value })}
-            className="ml-3"
+            onValueChange={(limit) => ui.update({ limit })}
+            options={[0, 500, 900, 1800].map((value) => ({
+              value,
+              label: value ? `${value} px/s` : "No speed limit",
+            }))}
           />
-        </label>
+        </div>
+        <div className="flex items-center justify-between gap-3 text-xs">
+          <span>Context expansion</span>
+          <Select
+            label="Context expansion"
+            value={ui.settings.expand}
+            onValueChange={(expand) => ui.update({ expand })}
+            options={[10, 20, 50, 100].map((value) => ({
+              value,
+              label: `${value} lines`,
+            }))}
+          />
+        </div>
         <label className="block text-xs">
           External editor
           <input
@@ -173,7 +155,6 @@ export function Settings({
           .map((review) => (
             <button
               key={review.file}
-              disabled={action.isPending}
               className="block w-full rounded-lg border p-3 text-left text-xs hover:bg-accent"
               onClick={() => onOpenReview(review.file)}
             >
@@ -190,7 +171,8 @@ export function Settings({
       <section className="space-y-3">
         <h3 className="text-sm font-semibold">Capture context</h3>
         <p className="text-xs text-muted-foreground">
-          Optional evidence for web reviews and agent access.
+          Enabled by default. Captures may include sensitive page content; turn
+          off any evidence you do not want saved locally.
         </p>
         {(
           [
@@ -202,18 +184,8 @@ export function Settings({
           <label key={key} className="flex items-center gap-3 text-sm">
             <input
               type="checkbox"
-              checked={settings.data?.settings[key] || false}
-              disabled={!settings.data || action.isPending}
-              onChange={async (e) => {
-                await action
-                  .mutateAsync({
-                    url: "/api/settings",
-                    method: "PUT",
-                    body: { [key]: e.target.checked },
-                  })
-                  .catch(() => {});
-                void settings.refetch();
-              }}
+              checked={ui.settings[key]}
+              onChange={(event) => ui.update({ [key]: event.target.checked })}
             />
             {label}
           </label>
@@ -221,17 +193,39 @@ export function Settings({
       </section>
       <section className="space-y-2">
         <h3 className="text-sm font-semibold">Agent connection</h3>
+        <label className="flex items-center gap-3 text-sm">
+          <input
+            type="checkbox"
+            checked={ui.settings.aiAnswers}
+            onChange={(event) => ui.update({ aiAnswers: event.target.checked })}
+          />
+          Enable AI answers
+        </label>
+        <p className="text-xs text-muted-foreground">
+          When disabled, notes and replies save without asking the agent.
+          Already queued or running work is not cancelled.
+        </p>
         <p className="text-xs text-muted-foreground">
           {agent.connection
             ? `${agent.connection.agent}: ${agent.connection.state}. ${agent.connection.detail}`
             : "No ACP agent configured. Save notes and ask your coding agent to address the Markdown file."}
         </p>
+        <h4 className="pt-2 text-xs font-semibold">
+          Install the apply-lcr skill
+        </h4>
+        <p className="text-xs text-muted-foreground">
+          Run in your agent's terminal, then ask “Apply the newest lcr review”
+          or use <code>/apply-lcr</code> if supported.
+        </p>
+        <pre className="overflow-x-auto border bg-muted/40 p-3 text-xs">
+          <code>
+            npx skills add cjvnjde/local-code-review --skill apply-lcr
+          </code>
+        </pre>
       </section>
-      {(action.error || settings.error || reviews.error) && (
+      {reviews.error && (
         <p role="alert" className="text-sm text-destructive">
-          {action.error?.message ||
-            settings.error?.message ||
-            reviews.error?.message}
+          {reviews.error.message}
         </p>
       )}
     </div>

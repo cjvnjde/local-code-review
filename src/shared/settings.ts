@@ -1,6 +1,7 @@
 import { DEFAULT_CONTEXT_SETTINGS, type ContextSettings } from "./context.ts";
 
 export interface UiSettings extends ContextSettings {
+  aiAnswers: boolean;
   auto: boolean;
   back: boolean;
   limit: number;
@@ -11,6 +12,7 @@ export interface UiSettings extends ContextSettings {
   hideDeleted: boolean;
   foldDel: boolean;
   enterSaves: boolean;
+  lineNumbers: boolean;
   expand: number;
   navHidden: boolean;
   navWidth: number;
@@ -23,6 +25,7 @@ export interface UiSettings extends ContextSettings {
 
 export const DEFAULT_UI_SETTINGS: Readonly<UiSettings> = {
   ...DEFAULT_CONTEXT_SETTINGS,
+  aiAnswers: true,
   auto: true,
   back: true,
   limit: 900,
@@ -32,7 +35,8 @@ export const DEFAULT_UI_SETTINGS: Readonly<UiSettings> = {
   disabledHide: [],
   hideDeleted: false,
   foldDel: false,
-  enterSaves: false,
+  enterSaves: true,
+  lineNumbers: true,
   expand: 20,
   navHidden: false,
   navWidth: 0,
