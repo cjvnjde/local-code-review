@@ -36,8 +36,8 @@ File headers stay visible while reading their code. Collapse a file with its
 chevron, or mark it **Viewed** to collapse it and record progress. A navigation jump
 reopens it while keeping its viewed mark; a changed file becomes unviewed. Click a
 hunk control to expand omitted context upward, downward, or all at once. The
-batch size is configurable in Settings. **Fold removed lines** replaces deletions
-with expandable markers; a run containing a note stays open.
+batch size is configurable in Settings. The file header's **Fold removed lines**
+button replaces deletions with expandable markers; a run containing a note stays open.
 
 Notes appear inline beside their captured code as well as in the conversation
 pane. **In diff** jumps from a conversation card to that note, reopening its file.
@@ -50,8 +50,10 @@ a note never shifts or inserts content into the source line.
 Click code or a line number to comment immediately, drag across lines for a range,
 or drag within a line to select specific characters. Shift-click extends a range;
 Alt-drag keeps normal browser text selection for copying. Comments open directly
-below their subject. Re-aiming an overlapping selection preserves your draft text
-and caret; an unrelated click cannot replace a dirty draft. The file header offers
+below their subject in a compact inline strip without repeating the selected code.
+**Cancel** clears the selected-line highlight. Re-aiming an overlapping selection
+preserves your draft text and caret; an unrelated click cannot replace a dirty
+draft. The file header offers
 a file comment; **Overall note** opens an editor directly below its header button
 without moving your place in the diff. Panel toggles are in the same compact header;
 change counts and refresh live in the existing footer.
@@ -96,7 +98,7 @@ where you can pause/resume, answer permission requests, cancel tasks, and reconc
 interrupted work. A completed turn does not automatically mean a fix was applied.
 
 Install the optional skill from your agent's terminal (also shown in **Settings →
-Agent connection**):
+Agent connection**, with a **Copy** button for the installation command):
 
 ```sh
 npx skills add cjvnjde/local-code-review --skill apply-lcr

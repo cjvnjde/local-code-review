@@ -1,9 +1,14 @@
+import { useState } from "react";
+import { Check, Copy } from "lucide-react";
 import { useUi } from "./ui-preferences.tsx";
 import { hidePatterns } from "../diff/filters.ts";
 import { useQuery } from "@tanstack/react-query";
 import { request, useAction, type AgentState } from "./api.ts";
 import { Button } from "../components/ui/button.tsx";
 import { Select } from "../components/ui/select.tsx";
+
+const INSTALL_SKILL_COMMAND =
+  "npx skills add cjvnjde/local-code-review --skill apply-lcr";
 
 export function Settings({
   agent,
@@ -15,6 +20,9 @@ export function Settings({
   onOpenReview: (file: string) => void;
 }) {
   const ui = useUi();
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "error">(
+    "idle",
+  );
   const reviews = useQuery({
     queryKey: ["reviews"],
     queryFn: () =>
@@ -217,11 +225,33 @@ export function Settings({
           Run in your agent's terminal, then ask “Apply the newest lcr review”
           or use <code>/apply-lcr</code> if supported.
         </p>
-        <pre className="overflow-x-auto border bg-muted/40 p-3 text-xs">
-          <code>
-            npx skills add cjvnjde/local-code-review --skill apply-lcr
-          </code>
-        </pre>
+        <div className="flex items-center border bg-muted/40">
+          <pre className="min-w-0 flex-1 overflow-x-auto p-3 text-xs">
+            <code>{INSTALL_SKILL_COMMAND}</code>
+          </pre>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="mr-1 shrink-0"
+            aria-label="Copy skill installation command"
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(INSTALL_SKILL_COMMAND);
+                setCopyState("copied");
+              } catch {
+                setCopyState("error");
+              }
+            }}
+          >
+            {copyState === "copied" ? <Check /> : <Copy />}
+            {copyState === "copied" ? "Copied" : "Copy"}
+          </Button>
+        </div>
+        {copyState === "error" && (
+          <p role="alert" className="text-xs text-destructive">
+            Could not copy. Select the command and copy it manually.
+          </p>
+        )}
       </section>
       {reviews.error && (
         <p role="alert" className="text-sm text-destructive">

@@ -6,7 +6,7 @@ import type {
 import { placeNote, rowKey } from "./model.ts";
 
 export type DiffItem = { key: string; path: string } & (
-  | { kind: "header" | "tools" | "media" | "empty"; file: DiffFile }
+  | { kind: "header" | "media" | "empty"; file: DiffFile }
   | { kind: "row"; file: DiffFile; row: number }
   | {
       kind: "removed";
@@ -100,12 +100,6 @@ export function diffItems(
       }
     }
     if (options.folded(file)) continue;
-    items.push({
-      key: itemKey(file.path, "tools"),
-      path: file.path,
-      kind: "tools",
-      file,
-    });
     if (
       isImage(file.path) ||
       file.binary ||

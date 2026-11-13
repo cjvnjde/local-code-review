@@ -1,4 +1,3 @@
-import { RelatedReviews } from "../notes/related-reviews.tsx";
 import { useUi } from "../app/ui-preferences.tsx";
 import { bmKey } from "../navigation/bookmarks.ts";
 import { rowKey } from "./model.ts";
@@ -119,7 +118,7 @@ export function DiffView({
   const [expanding, setExpanding] = useState("");
   const [error, setError] = useState("");
   const scroll = useRef<HTMLDivElement>(null);
-  const { selection, pressed, select } = useCodeSelection(
+  const { selection, pressed, select, clearSelection } = useCodeSelection(
     scroll,
     prepared,
     onComment,
@@ -223,8 +222,6 @@ export function DiffView({
       switch (items[index]!.kind) {
         case "header":
           return 58;
-        case "tools":
-          return 42;
         case "media":
           return 360;
         case "note":
@@ -503,6 +500,7 @@ export function DiffView({
       ? (draft?.kind === "note" ? draft.comment.id : draft?.id) || ""
       : "";
   useLayoutEffect(() => {
+    if (!subject && previousSubject.current) clearSelection();
     if (subject && subject !== previousSubject.current && editorIndex >= 0) {
       virtual.scrollToIndex(editorIndex, { align: "auto" });
       requestAnimationFrame(() =>
@@ -512,7 +510,7 @@ export function DiffView({
       );
     }
     previousSubject.current = subject;
-  }, [subject, editorIndex, virtual]);
+  }, [subject, editorIndex, virtual, clearSelection]);
   const editor =
     draft && draft.host !== "panel" ? (
       <Composer
@@ -630,6 +628,24 @@ export function DiffView({
                       file={entry.file}
                       folded={folded(entry.file)}
                       viewed={marks[entry.path] === entry.file.hash}
+                      removed={removed[entry.path] ?? settings.foldDel}
+                      onRemoved={() => {
+                        setRemoved((current) => ({
+                          ...current,
+                          [entry.path]: !(
+                            current[entry.path] ?? settings.foldDel
+                          ),
+                        }));
+                        setOpenRuns(
+                          (current) =>
+                            new Set(
+                              [...current].filter(
+                                (key) => JSON.parse(key)[0] !== entry.path,
+                              ),
+                            ),
+                        );
+                      }}
+                      blocked={!!draft}
                       onFold={() => toggleFile(entry.file)}
                       onViewed={() => mark(entry.file)}
                       onComment={() => onComment(makeComment(entry.file))}
@@ -653,40 +669,6 @@ export function DiffView({
                   ...(entry.kind !== "row" ? { width: "100%" } : {}),
                 }}
               >
-                {entry.kind === "tools" && (
-                  <div className="flex min-h-10 flex-wrap items-center gap-3 border-b bg-muted/20 px-5 text-xs text-muted-foreground">
-                    {entry.file.from && (
-                      <span className="truncate">
-                        Renamed from {entry.file.from}
-                      </span>
-                    )}
-                    <span>
-                      Click a line or drag to comment. Alt-drag to copy.
-                    </span>
-                    <label className="ml-auto flex items-center gap-2 py-2">
-                      <input
-                        type="checkbox"
-                        checked={removed[entry.path] ?? settings.foldDel}
-                        onChange={(e) => {
-                          setRemoved((current) => ({
-                            ...current,
-                            [entry.path]: e.target.checked,
-                          }));
-                          setOpenRuns(
-                            (current) =>
-                              new Set(
-                                [...current].filter(
-                                  (key) => JSON.parse(key)[0] !== entry.path,
-                                ),
-                              ),
-                          );
-                        }}
-                      />
-                      Fold removed lines
-                    </label>
-                    <RelatedReviews file={entry.file} blocked={!!draft} />
-                  </div>
-                )}
                 {entry.kind === "media" && (
                   <FileMedia
                     file={entry.file}
@@ -725,7 +707,9 @@ export function DiffView({
                   </button>
                 )}
                 {entry.kind === "editor" && (
-                  <div className="mx-auto max-w-4xl px-5 py-3">{editor}</div>
+                  <div className="border-y border-primary/25 bg-card px-4 py-3">
+                    {editor}
+                  </div>
                 )}
                 {entry.kind === "note" && (
                   <div className="mx-auto max-w-4xl px-5 py-3">

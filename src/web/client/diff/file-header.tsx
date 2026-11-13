@@ -6,11 +6,13 @@ import {
   ExternalLink,
   FileCode2,
   MessageSquarePlus,
+  ListMinus,
 } from "lucide-react";
 import type { DiffFile } from "../../../shared/review-types.ts";
 import { Button } from "../components/ui/button.tsx";
 import { Tooltip } from "../components/ui/tooltip.tsx";
 import { useAction } from "../app/api.ts";
+import { RelatedReviews } from "../notes/related-reviews.tsx";
 
 export function FileHeader({
   file,
@@ -19,6 +21,9 @@ export function FileHeader({
   onFold,
   onViewed,
   onComment,
+  removed,
+  onRemoved,
+  blocked,
 }: {
   file: DiffFile;
   viewed: boolean;
@@ -26,6 +31,9 @@ export function FileHeader({
   onFold: () => void;
   onViewed: () => void;
   onComment: () => void;
+  removed: boolean;
+  onRemoved: () => void;
+  blocked: boolean;
 }) {
   const action = useAction();
   const { settings } = useUi();
@@ -46,7 +54,7 @@ export function FileHeader({
         <FileCode2 className="size-4 shrink-0 text-muted-foreground" />
         <h2
           className="min-w-0 flex-1 truncate font-mono text-sm"
-          title={file.path}
+          title={file.from ? `${file.from} → ${file.path}` : file.path}
         >
           {file.path}
         </h2>
@@ -62,6 +70,19 @@ export function FileHeader({
           <Check />
           <span className="hidden lg:inline">Viewed</span>
         </Button>
+        {file.removed > 0 && (
+          <Tooltip label="Fold removed lines">
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Fold removed lines"
+              aria-pressed={removed}
+              onClick={onRemoved}
+            >
+              <ListMinus className={removed ? "text-primary" : ""} />
+            </Button>
+          </Tooltip>
+        )}
         <Tooltip label="Comment on file">
           <Button
             variant="ghost"
@@ -90,6 +111,7 @@ export function FileHeader({
           </Button>
         </Tooltip>
       </div>
+      <RelatedReviews file={file} blocked={blocked} />
       {action.error && (
         <p role="alert" className="px-4 pb-2 text-sm text-destructive">
           {action.error.message}

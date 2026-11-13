@@ -125,6 +125,13 @@ export function Composer({
     draft.kind === "note" ? noteKey(draft.comment) : `Reply · ${draft.label}`;
   const busy = action.isPending || uploading || drawing;
   const integrated = !embedded && (draft.editing || draft.kind === "reply");
+  const inlineSelection =
+    !embedded &&
+    draft.kind === "note" &&
+    !draft.editing &&
+    draft.host !== "panel" &&
+    !draft.comment.scope &&
+    !!code;
   const matches = completion
     ? referenceNotes.filter((note) => {
         if (!refOf(note.id)) return false;
@@ -170,7 +177,7 @@ export function Composer({
     const field = textarea.current;
     if (field) {
       field.style.height = "auto";
-      field.style.height = `${Math.min(embedded ? 200 : 480, Math.max(112, field.scrollHeight))}px`;
+      field.style.height = `${Math.min(embedded ? 200 : 480, Math.max(embedded ? 112 : 72, field.scrollHeight))}px`;
     }
   }, [body, preview, embedded]);
   // Upload completion reads the current draft, so text typed during an upload is kept.
@@ -376,7 +383,7 @@ export function Composer({
             label="Selected screenshot region"
           />
         )}
-        {!integrated && code && (
+        {!integrated && !inlineSelection && code && (
           <pre
             aria-label={`Captured code · ${file}`}
             className="max-h-48 overflow-auto border-y bg-muted/30 py-3 text-xs"
@@ -651,7 +658,7 @@ export function Composer({
                 }
               }}
               placeholder="Write feedback, ask a question, or type # to reference a note…"
-              className={`w-full border-0 bg-transparent p-0 text-sm leading-relaxed outline-none focus-visible:outline-1 focus-visible:outline-offset-4 focus-visible:outline-ring ${embedded ? "min-h-20 max-h-[30dvh] resize-none" : "min-h-28 resize-y"}`}
+              className={`w-full border-0 bg-transparent p-0 text-sm leading-relaxed placeholder:text-muted-foreground placeholder:opacity-60 outline-none focus-visible:outline-1 focus-visible:outline-offset-4 focus-visible:outline-ring ${embedded ? "min-h-20 max-h-[30dvh] resize-none" : "min-h-18 resize-y"}`}
             />
             {completion && (
               <div
@@ -700,16 +707,17 @@ export function Composer({
             {action.error?.message || uploadError}
           </p>
         )}
-        <div className="flex flex-wrap items-center gap-2 border-t pt-3">
+        <div className="flex flex-wrap items-center gap-2 border-t pt-2">
           <span className="mr-auto text-xs text-muted-foreground">
             Markdown · # references · ⌘/Ctrl Enter to save
           </span>
           <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-            <Button variant="ghost" disabled={busy} onClick={onClose}>
+            <Button size="sm" variant="ghost" disabled={busy} onClick={onClose}>
               Cancel
             </Button>
             {askAI && (
               <Button
+                size="sm"
                 variant="outline"
                 disabled={busy || !hasContent}
                 onClick={() => void save(false)}
@@ -717,7 +725,11 @@ export function Composer({
                 Save only
               </Button>
             )}
-            <Button disabled={busy || !hasContent} onClick={() => void save()}>
+            <Button
+              size="sm"
+              disabled={busy || !hasContent}
+              onClick={() => void save()}
+            >
               {busy && <LoaderCircle className="animate-spin" />}
               {askAI
                 ? "Save & ask AI"

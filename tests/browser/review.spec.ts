@@ -291,10 +291,24 @@ test("line, range and character gestures keep comments inline and protect draft 
     .locator('[data-file-path="src/app.ts"] [data-code-cell]')
     .filter({ hasText: "hello world" });
   await expect(code).toBeVisible();
+  const lineBackground = () =>
+    code.evaluate(
+      (cell) =>
+        getComputedStyle(cell.closest("[data-row-key]")!).backgroundColor,
+    );
+  const unselectedBackground = await lineBackground();
   await code.click();
   await expect(editor).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(editor).toContainText("src/app.ts:2");
+  const placeholder = await editor
+    .getByRole("textbox", { name: "Note text" })
+    .evaluate((field) => ({
+      text: getComputedStyle(field).color,
+      placeholder: getComputedStyle(field, "::placeholder").color,
+    }));
+  expect(placeholder.placeholder).not.toBe(placeholder.text);
+  await page.screenshot({ path: "/tmp/lcr-compact-inline-comment.png" });
   await page
     .getByRole("textbox", { name: "Note text" })
     .fill("Keep my draft while changing its selection");
@@ -311,6 +325,7 @@ test("line, range and character gestures keep comments inline and protect draft 
   await page.getByRole("button", { name: "Overall note", exact: true }).click();
   await expect(editor).toContainText("src/app.ts:2-3");
   await editor.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect.poll(lineBackground).toBe(unselectedBackground);
   await page
     .getByRole("navigation")
     .locator('button[title="src/app.ts"]')
@@ -837,9 +852,9 @@ test("continuous scrolling follows files, reopens viewed files, and preserves th
   // Each collapsed deletion has an explicit way to read it again.
   await navigation.locator('button[title="src/deleted.ts"]').click();
   const removedToggle = pane
-    .locator('[data-file-path="src/deleted.ts"][data-diff-kind="tools"]')
-    .getByRole("checkbox", { name: "Fold removed lines" });
-  await removedToggle.check();
+    .locator('[data-file-path="src/deleted.ts"][data-diff-kind="header"]')
+    .getByRole("button", { name: "Fold removed lines" });
+  await removedToggle.click();
   await pane
     .getByRole("button", { name: "Show 1 removed lines", exact: true })
     .click();
@@ -1049,6 +1064,15 @@ test("Base UI focus and pane resizing preserve drafts, reading position and save
   await settings.click();
   const dialog = page.getByRole("dialog", { name: "Settings", exact: true });
   await expect(dialog).toBeVisible();
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  const copySkill = dialog.getByRole("button", {
+    name: "Copy skill installation command",
+  });
+  await copySkill.click();
+  await expect(copySkill).toHaveText("Copied");
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    "npx skills add cjvnjde/local-code-review --skill apply-lcr",
+  );
   await dialog
     .getByRole("textbox", { name: "External editor", exact: true })
     .focus();

@@ -151,7 +151,7 @@ export function AddContext({
     }
   }
   return (
-    <details className="rounded-lg border p-3 text-xs" ref={details}>
+    <details className="text-xs" ref={details}>
       <summary className="cursor-pointer text-muted-foreground">
         Add context · file, text or JSON
       </summary>

@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 import type { DiffFile, ReviewComment } from "../../../shared/review-types.ts";
 import { atStart, charRange } from "./drag.ts";
 import { makeComment } from "./model.ts";
@@ -75,6 +81,7 @@ export function useCodeSelection(
   const press = useRef<Press | null>(null);
   const latest = useRef({ files, submit, selection });
   latest.current = { files, submit, selection };
+  const clearSelection = useCallback(() => setSelection(null), []);
   useEffect(() => {
     const root = pane.current;
     if (!root) return;
@@ -245,6 +252,7 @@ export function useCodeSelection(
   return {
     selection,
     pressed,
+    clearSelection,
     select: (file: DiffFile, index: number, extend: boolean) => {
       const previous = latest.current.selection;
       const from =
