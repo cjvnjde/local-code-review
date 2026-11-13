@@ -196,16 +196,7 @@
   color: #757580;
 }
 
-::highlight(lcr-selection) {
-  background: color-mix(in srgb, var(--primary) 45%, transparent);
-  color: var(--foreground);
-}
 [data-selecting-rows="true"] {
   user-select: none;
   cursor: crosshair;
-}
-
-::highlight(lcr-notes) {
-  background-color: #f59e0b33;
-  text-decoration: underline #f59e0b;
 }

@@ -7,6 +7,17 @@
     <meta name="theme-color" content="#111114" />
     <title>lcr · Local code review</title>
     <link rel="stylesheet" href="./styles/index.css" />
+    <!-- Bun's CSS parser does not support ::highlight yet. Inline rules pass through to the browser. -->
+    <style>
+      ::highlight(lcr-selection) {
+        background: color-mix(in srgb, var(--primary) 45%, transparent);
+        color: var(--foreground);
+      }
+      ::highlight(lcr-notes) {
+        background-color: #f59e0b33;
+        text-decoration: underline #f59e0b;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>

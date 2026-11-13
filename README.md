@@ -63,6 +63,11 @@ mv lcr ~/.local/bin/lcr
 
 Keep `~/.local/bin` on your `PATH` to run it as `lcr`. Restart any running lcr instances to use the updated build.
 
+To name the executable `lcr2`, use `bun run build -- --outfile lcr2`.
+The build script compiles Tailwind CSS before embedding the browser assets. Direct
+`bun build ./src/index.ts --compile` skips the Tailwind plugin, causing CSS warnings
+and missing styles. The output remains one standalone executable.
+
 ## Review code
 
 Run inside a Git repository:

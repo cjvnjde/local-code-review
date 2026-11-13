@@ -84,6 +84,16 @@ and compiles both the server and HTML assets into one executable. Use this scrip
 instead of calling `bun build` directly, which does not register the Tailwind
 build plugin.
 
+For a custom executable name, use `bun run build -- --outfile lcr2`. The script
+already enables minification and compilation. Direct `bun build` leaves Tailwind
+directives such as `@theme` and `@apply` unprocessed; these warnings indicate
+missing styles, not harmless build noise.
+
+The two `::highlight` rules live in an inline stylesheet in `src/web/shell.html`:
+Bun currently warns about these valid selectors in bundled CSS, while inline rules
+pass through unchanged to the browser. Build diagnostics are always printed,
+including warnings on successful builds.
+
 Cross-compile through the same script:
 
 ```sh

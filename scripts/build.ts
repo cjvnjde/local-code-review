@@ -30,8 +30,8 @@ const result = await Bun.build({
         },
       }),
 });
+for (const log of result.logs) console.error(log);
 if (!result.success) {
-  for (const log of result.logs) console.error(log);
   process.exit(1);
 }
 console.log(`${bundle ? "Bundled" : "Compiled"} lcr → ${outfile}`);
