@@ -6,7 +6,7 @@ import type {
 import { placeNote, rowKey } from "./model.ts";
 
 export type DiffItem = { key: string; path: string } & (
-  | { kind: "header" | "media" | "empty"; file: DiffFile }
+  | { kind: "header" | "media" | "empty" | "scrollbar"; file: DiffFile }
   | { kind: "row"; file: DiffFile; row: number }
   | {
       kind: "removed";
@@ -35,6 +35,7 @@ export function diffItems(
     removed: Readonly<Record<string, boolean>>;
     openRuns: ReadonlySet<string>;
     editor?: ReviewComment;
+    horizontalScroll?: boolean;
   },
 ): DiffItem[] {
   const items: DiffItem[] = [];
@@ -172,6 +173,13 @@ export function diffItems(
       at.get(row)?.forEach((note) => addNote(note, file));
       if (draftPlace?.to === row) addEditor(file);
     }
+    if (options.horizontalScroll && file.rows.length)
+      items.push({
+        key: itemKey(file.path, "scrollbar"),
+        path: file.path,
+        kind: "scrollbar",
+        file,
+      });
   }
   const paths = new Set(files.map((file) => file.path));
   heldNotes

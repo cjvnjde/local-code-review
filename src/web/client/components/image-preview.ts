@@ -6,6 +6,15 @@ let current: {
   close: (record?: boolean, focus?: boolean) => void;
 } | null = null;
 
+export const imageEditorOwners = new WeakMap<HTMLDialogElement, HTMLElement>();
+
+export function imageEditorOwner(target: Element | null): HTMLElement | null {
+  const editor = target?.closest<HTMLElement>("[data-review-editor]");
+  if (editor) return editor;
+  const dialog = target?.closest("dialog");
+  return dialog ? imageEditorOwners.get(dialog) || null : null;
+}
+
 /** Drawing replaces the preview in the same history entry, without a pending Back traversal. */
 export function closeImagePreviewForDrawing() {
   if (!current) return false;
@@ -29,6 +38,7 @@ export function openImagePreview(
   ref: string,
   label = "Attached image",
   draw?: () => void,
+  owner?: HTMLElement | null,
 ): boolean {
   const src = attachSrc(ref);
   if (!src) return false;
@@ -39,6 +49,7 @@ export function openImagePreview(
       : null;
   const dialog = document.createElement("dialog");
   dialog.className = "image-viewer";
+  if (owner) imageEditorOwners.set(dialog, owner);
   dialog.setAttribute("aria-label", label);
   const tools = document.createElement("div");
   tools.className = "image-viewer-tools";
@@ -163,6 +174,8 @@ export function watchImagePreviews() {
       openImagePreview(
         link.dataset.imagePreview!,
         link.querySelector("img")?.alt,
+        undefined,
+        imageEditorOwner(link),
       )
     )
       event.preventDefault();

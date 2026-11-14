@@ -38,12 +38,13 @@ export function FileHeader({
   const action = useAction();
   const { settings } = useUi();
   return (
-    <div className="border-y bg-card">
-      <div className="flex min-h-14 flex-wrap items-center gap-2 px-3 py-2">
+    <div className="relative min-w-0 max-w-full border-y bg-card [overflow-wrap:anywhere]">
+      <div className="flex min-h-10 min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 px-2 py-1">
         <Tooltip label={folded ? "Expand file" : "Collapse file"}>
           <Button
             variant="ghost"
             size="icon"
+            className="size-8"
             aria-label={`${folded ? "Expand" : "Collapse"} ${file.path}`}
             aria-expanded={!folded}
             onClick={onFold}
@@ -53,16 +54,17 @@ export function FileHeader({
         </Tooltip>
         <FileCode2 className="size-4 shrink-0 text-muted-foreground" />
         <h2
-          className="min-w-0 flex-1 truncate font-mono text-sm"
+          className="min-w-0 flex-[1_1_8rem] truncate font-mono text-sm"
           title={file.from ? `${file.from} → ${file.path}` : file.path}
         >
           {file.path}
         </h2>
-        <span className="text-xs text-emerald-500">+{file.added}</span>
-        <span className="text-xs text-rose-500">−{file.removed}</span>
+        <span className="shrink-0 text-xs text-emerald-500">+{file.added}</span>
+        <span className="shrink-0 text-xs text-rose-500">−{file.removed}</span>
         <Button
           size="sm"
           variant={viewed ? "default" : "outline"}
+          className="px-2"
           onClick={onViewed}
           aria-pressed={viewed}
           aria-label={`${viewed ? "Mark unviewed" : "Mark viewed"}: ${file.path}`}
@@ -75,6 +77,7 @@ export function FileHeader({
             <Button
               variant="ghost"
               size="icon"
+              className="size-8"
               aria-label="Fold removed lines"
               aria-pressed={removed}
               onClick={onRemoved}
@@ -87,6 +90,7 @@ export function FileHeader({
           <Button
             variant="ghost"
             size="icon"
+            className="size-8"
             aria-label={`Comment on file ${file.path}`}
             onClick={onComment}
           >
@@ -97,6 +101,7 @@ export function FileHeader({
           <Button
             variant="ghost"
             size="icon"
+            className="size-8"
             aria-label={`Open ${file.path} in editor`}
             disabled={action.isPending}
             onClick={() =>
@@ -110,8 +115,8 @@ export function FileHeader({
             <ExternalLink />
           </Button>
         </Tooltip>
+        <RelatedReviews file={file} blocked={blocked} />
       </div>
-      <RelatedReviews file={file} blocked={blocked} />
       {action.error && (
         <p role="alert" className="px-4 pb-2 text-sm text-destructive">
           {action.error.message}

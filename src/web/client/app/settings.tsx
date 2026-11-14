@@ -46,6 +46,7 @@ export function Settings({
             ["foldDel", "Fold removed lines by default"],
             ["enterSaves", "Enter saves · Shift+Enter inserts a newline"],
             ["lineNumbers", "Show line numbers and gutter controls"],
+            ["wrapLines", "Wrap long lines"],
             ["single", "Keep one pending note per selection"],
             ["ghosts", "Show notes from other reviews"],
           ] as const

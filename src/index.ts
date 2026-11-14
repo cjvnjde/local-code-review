@@ -173,8 +173,8 @@ async function main() {
       readBlob: (side, file) =>
         readBlob(repoRoot, side === "old" ? sides.old : sides.new, file),
       // Beside the review file, because that is what a note's link to one resolves against.
-      saveAttachment: (bytes, type) =>
-        saveAttachment(repoRoot, options.outDir, bytes, type),
+      saveAttachment: (bytes, type, filename) =>
+        saveAttachment(repoRoot, options.outDir, bytes, type, filename),
       readAttachment: (name) => readAttachment(repoRoot, options.outDir, name),
       openFile: (file, editor) => openInEditor(repoRoot, file, editor),
       getStatuses: () => collectStatuses(repoRoot, options.outDir),

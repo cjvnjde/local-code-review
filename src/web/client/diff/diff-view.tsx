@@ -12,8 +12,14 @@ import {
   useRef,
   useState,
   type Ref,
+  type CSSProperties,
+  type ReactNode,
 } from "react";
-import { defaultRangeExtractor, useVirtualizer } from "@tanstack/react-virtual";
+import {
+  defaultRangeExtractor,
+  useVirtualizer,
+  type VirtualItem,
+} from "@tanstack/react-virtual";
 import { ChevronDown, ChevronRight, Plus } from "lucide-react";
 import type {
   DiffFile,
@@ -36,6 +42,7 @@ import {
   readingAnchor,
   readingIndex,
   type ReadingAnchor,
+  type DiffItem,
 } from "./reading-model.ts";
 
 export interface DiffViewHandle {
@@ -45,6 +52,9 @@ export interface DiffViewHandle {
   resumeReading: (place: ReadingAnchor) => void;
   focusEditor: () => void;
 }
+
+const isCodeItem = (item: DiffItem) =>
+  item.kind === "row" && item.file.rows[item.row]!.t !== "hunk";
 
 export function DiffView({
   files,
@@ -110,6 +120,22 @@ export function DiffView({
       ),
     [sources, expanded],
   );
+  const gutterStyles = useMemo(() => {
+    const styles = new Map<string, CSSProperties>();
+    for (const file of prepared) {
+      let oldMax = 1;
+      let newMax = 1;
+      for (const row of file.rows) {
+        oldMax = Math.max(oldMax, row.o ?? 0);
+        newMax = Math.max(newMax, row.n ?? 0);
+      }
+      styles.set(file.path, {
+        "--old-line-width": `calc(${String(oldMax).length}ch + 0.5rem)`,
+        "--new-line-width": `calc(${String(newMax).length}ch + 0.5rem)`,
+      } as CSSProperties);
+    }
+    return styles;
+  }, [prepared]);
   const [folds, setFolds] = useState<
     Record<string, { hash: string; folded: boolean }>
   >({});
@@ -118,6 +144,7 @@ export function DiffView({
   const [expanding, setExpanding] = useState("");
   const [error, setError] = useState("");
   const scroll = useRef<HTMLDivElement>(null);
+  const fileScroll = useRef(new Map<string, FileScroll>());
   const { selection, pressed, select, clearSelection } = useCodeSelection(
     scroll,
     prepared,
@@ -171,6 +198,7 @@ export function DiffView({
         ),
         openRuns,
         editor: editorSubject,
+        horizontalScroll: !settings.wrapLines,
       }),
     [
       prepared,
@@ -180,6 +208,7 @@ export function DiffView({
       openRuns,
       editorSubject,
       settings.foldDel,
+      settings.wrapLines,
     ],
   );
   const editorIndex = items.findIndex(
@@ -222,6 +251,8 @@ export function DiffView({
       switch (items[index]!.kind) {
         case "header":
           return 58;
+        case "scrollbar":
+          return fileScroll.current.get(items[index]!.path)?.scrollbar ?? 0;
         case "media":
           return 360;
         case "note":
@@ -538,6 +569,214 @@ export function DiffView({
       }
     return map;
   }, [prepared, notes]);
+  const headerByPath = useMemo(
+    () => new Map(headers.map((index) => [items[index]!.path, index])),
+    [headers, items],
+  );
+  const codeFiles = new Map<string, VirtualItem[]>();
+  for (const item of rendered) {
+    const entry = items[item.index]!;
+    if (
+      entry.kind === "header" &&
+      entry.file.rows.length &&
+      !folded(entry.file)
+    )
+      codeFiles.set(entry.path, []);
+    if (entry.kind === "row" || entry.kind === "scrollbar") {
+      if (!codeFiles.has(entry.path)) codeFiles.set(entry.path, []);
+      if (isCodeItem(entry)) codeFiles.get(entry.path)!.push(item);
+    }
+  }
+  const renderItem = (item: VirtualItem, offset = 0) => {
+    const entry = items[item.index]!;
+    if (entry.kind === "header") {
+      const end =
+        virtual.measurementsCache[headerEnds.get(item.index)!]?.start ??
+        virtual.getTotalSize();
+      return (
+        <div
+          key={item.key}
+          className="pointer-events-none absolute left-0 top-0 w-full"
+          style={{
+            top: item.start,
+            height: Math.max(item.size, end - item.start),
+          }}
+        >
+          {/* The file's full virtual extent bounds native sticky positioning. */}
+          <div
+            ref={virtual.measureElement}
+            data-index={item.index}
+            data-file-path={entry.path}
+            data-diff-kind={entry.kind}
+            data-item-key={entry.key}
+            data-sticky={item.index === activeHeader || undefined}
+            className="pointer-events-auto sticky top-0 z-20 w-full"
+          >
+            <FileHeader
+              file={entry.file}
+              folded={folded(entry.file)}
+              viewed={marks[entry.path] === entry.file.hash}
+              removed={removed[entry.path] ?? settings.foldDel}
+              onRemoved={() => {
+                setRemoved((current) => ({
+                  ...current,
+                  [entry.path]: !(current[entry.path] ?? settings.foldDel),
+                }));
+                setOpenRuns(
+                  (current) =>
+                    new Set(
+                      [...current].filter(
+                        (key) => JSON.parse(key)[0] !== entry.path,
+                      ),
+                    ),
+                );
+              }}
+              blocked={!!draft}
+              onFold={() => toggleFile(entry.file)}
+              onViewed={() => mark(entry.file)}
+              onComment={() => onComment(makeComment(entry.file))}
+            />
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div
+        key={item.key}
+        ref={entry.kind === "scrollbar" ? undefined : virtual.measureElement}
+        data-index={item.index}
+        data-file-path={entry.path}
+        data-diff-kind={entry.kind}
+        data-row-index={entry.kind === "row" ? entry.row : undefined}
+        data-item-key={entry.key}
+        className={`absolute top-0 left-0 w-full min-w-0 ${isCodeItem(entry) || entry.kind === "scrollbar" ? "" : "z-10"}`}
+        style={{
+          transform: `translateY(${item.start - offset}px)`,
+          ...(entry.kind === "scrollbar"
+            ? { height: fileScroll.current.get(entry.path)?.scrollbar ?? 0 }
+            : {}),
+        }}
+      >
+        {entry.kind === "media" && (
+          <FileMedia
+            file={entry.file}
+            notes={notes}
+            onComment={onComment}
+            onRead={(note) => jump(note.file, note)}
+            blocked={!!draft}
+          />
+        )}
+        {entry.kind === "empty" && (
+          <p className="p-8 text-center text-sm text-muted-foreground">
+            No text changes in this file.
+          </p>
+        )}
+        {entry.kind === "removed" && (
+          <button
+            className="flex h-[26px] w-full items-center gap-2 bg-muted/30 px-5 text-left text-xs text-muted-foreground hover:bg-accent"
+            disabled={entry.hasNotes}
+            onClick={() =>
+              setOpenRuns((current) => {
+                const next = new Set(current);
+                next.has(entry.key)
+                  ? next.delete(entry.key)
+                  : next.add(entry.key);
+                return next;
+              })
+            }
+          >
+            {entry.open ? (
+              <ChevronDown className="size-3" />
+            ) : (
+              <ChevronRight className="size-3" />
+            )}
+            {entry.open ? "Hide" : "Show"} {entry.to - entry.from + 1} removed
+            lines{entry.hasNotes && " · contains notes"}
+          </button>
+        )}
+        {entry.kind === "editor" && (
+          <div className="border-y border-primary/25 bg-card px-4 py-3">
+            {editor}
+          </div>
+        )}
+        {entry.kind === "note" && (
+          <div className="mx-auto max-w-4xl px-5 py-3">
+            <NoteCard
+              note={entry.note}
+              file={entry.file}
+              agent={agent}
+              onCompose={onCompose}
+              inline
+              editorDraft={draft ?? undefined}
+              editor={
+                (draft?.kind === "note" ? draft.comment.id : draft?.id) ===
+                entry.note.id
+                  ? editor
+                  : undefined
+              }
+            />
+          </div>
+        )}
+        {entry.kind === "row" && (
+          <CodeRow
+            file={entry.file}
+            index={entry.row}
+            gutterStyle={gutterStyles.get(entry.path)!}
+            selected={
+              !!selection &&
+              selection.path === entry.path &&
+              selection.hash === entry.file.hash &&
+              entry.row >= Math.min(selection.from, selection.to) &&
+              entry.row <= Math.max(selection.from, selection.to)
+            }
+            expanding={expanding === entry.path}
+            notes={
+              notesAt.get(itemKey(entry.path, String(entry.row)))?.length || 0
+            }
+            noteCharacters={notesAt
+              .get(itemKey(entry.path, String(entry.row)))
+              ?.flatMap((note) => {
+                if (note.ca == null || note.cb == null || !note.snippet)
+                  return [];
+                const text = entry.file.rows[entry.row]!.text;
+                if (text.slice(note.ca, note.cb) === note.snippet)
+                  return [{ ca: note.ca, cb: note.cb }];
+                const at = text.indexOf(note.snippet);
+                return at >= 0 && text.indexOf(note.snippet, at + 1) < 0
+                  ? [{ ca: at, cb: at + note.snippet.length }]
+                  : [];
+              })}
+            characters={
+              selection?.path === entry.path &&
+              selection.from === entry.row &&
+              selection.to === entry.row &&
+              selection.ca != null
+                ? { ca: selection.ca, cb: selection.cb! }
+                : undefined
+            }
+            pressing={pressed === itemKey(entry.path, String(entry.row))}
+            onSelect={(extend) => select(entry.file, entry.row, extend)}
+            bookmarked={bookmarks.includes(
+              bmKey(entry.path, rowKey(entry.file.rows[entry.row]!)),
+            )}
+            onBookmark={() =>
+              onBookmark(entry.file, entry.file.rows[entry.row]!)
+            }
+            changes={wordChanges.get(entry.path)?.get(entry.row)}
+            onExpand={(direction) =>
+              void expand(entry.file, entry.row, direction)
+            }
+            onRead={() =>
+              jump(
+                entry.path,
+                notesAt.get(itemKey(entry.path, String(entry.row)))?.[0],
+              )
+            }
+          />
+        )}
+      </div>
+    );
+  };
   return (
     <>
       {error && (
@@ -552,16 +791,10 @@ export function DiffView({
       )}
       <div
         ref={scroll}
-        className="relative min-h-0 flex-1 overflow-auto [overflow-anchor:none]"
+        className="relative min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto [overflow-anchor:none]"
         tabIndex={0}
         role="region"
         aria-label="Code diff"
-        onScroll={(event) => {
-          event.currentTarget.style.setProperty(
-            "--diff-scroll-left",
-            `${event.currentTarget.scrollLeft}px`,
-          );
-        }}
         onWheel={() => {
           manualUntil.current = Date.now() + 500;
         }}
@@ -593,209 +826,143 @@ export function DiffView({
         }}
       >
         <div
-          className="relative min-w-full"
+          className="relative w-full min-w-0"
           style={{ height: virtual.getTotalSize() }}
         >
-          {rendered.map((item) => {
-            const entry = items[item.index]!;
-            if (entry.kind === "header") {
-              const end =
-                virtual.measurementsCache[headerEnds.get(item.index)!]?.start ??
-                virtual.getTotalSize();
-              return (
-                <div
-                  key={item.key}
-                  className="pointer-events-none absolute left-0 top-0 w-full"
-                  style={{
-                    top: item.start,
-                    height: Math.max(item.size, end - item.start),
-                  }}
-                >
-                  {/* The file's full virtual extent bounds native sticky positioning. */}
-                  <div
-                    ref={virtual.measureElement}
-                    data-index={item.index}
-                    data-file-path={entry.path}
-                    data-diff-kind={entry.kind}
-                    data-item-key={entry.key}
-                    data-sticky={item.index === activeHeader || undefined}
-                    className="pointer-events-auto sticky top-0 z-20 w-full"
-                    style={{
-                      transform: "translateX(var(--diff-scroll-left, 0px))",
-                    }}
-                  >
-                    <FileHeader
-                      file={entry.file}
-                      folded={folded(entry.file)}
-                      viewed={marks[entry.path] === entry.file.hash}
-                      removed={removed[entry.path] ?? settings.foldDel}
-                      onRemoved={() => {
-                        setRemoved((current) => ({
-                          ...current,
-                          [entry.path]: !(
-                            current[entry.path] ?? settings.foldDel
-                          ),
-                        }));
-                        setOpenRuns(
-                          (current) =>
-                            new Set(
-                              [...current].filter(
-                                (key) => JSON.parse(key)[0] !== entry.path,
-                              ),
-                            ),
-                        );
-                      }}
-                      blocked={!!draft}
-                      onFold={() => toggleFile(entry.file)}
-                      onViewed={() => mark(entry.file)}
-                      onComment={() => onComment(makeComment(entry.file))}
-                    />
-                  </div>
-                </div>
-              );
+          {rendered
+            .filter((item) => !isCodeItem(items[item.index]!))
+            .map((item) => renderItem(item))}
+          {[...codeFiles].map(([path, code]) => {
+            const header = headerByPath.get(path)!;
+            const file = items[header]!;
+            if (file.kind !== "header") return null;
+            const start = virtual.measurementsCache[header]!.end;
+            const end =
+              virtual.measurementsCache[headerEnds.get(header)!]?.start ??
+              virtual.getTotalSize();
+            let memory = fileScroll.current.get(path);
+            if (!memory || memory.hash !== file.file.hash) {
+              memory = {
+                hash: file.file.hash,
+                width: 0,
+                left: 0,
+                scrollbar: 0,
+              };
+              fileScroll.current.set(path, memory);
             }
             return (
-              <div
-                key={item.key}
-                ref={virtual.measureElement}
-                data-index={item.index}
-                data-file-path={entry.path}
-                data-diff-kind={entry.kind}
-                data-row-index={entry.kind === "row" ? entry.row : undefined}
-                data-item-key={entry.key}
-                className="absolute top-0 left-0 min-w-full"
-                style={{
-                  transform: `translateY(${item.start}px)`,
-                  ...(entry.kind !== "row" ? { width: "100%" } : {}),
+              <FileCodeViewport
+                key={path}
+                path={path}
+                start={start}
+                end={end}
+                wrap={settings.wrapLines}
+                memory={memory}
+                onScrollbar={(size) => {
+                  const index = indexByKey.get(itemKey(path, "scrollbar"));
+                  if (index != null) virtual.resizeItem(index, size);
                 }}
               >
-                {entry.kind === "media" && (
-                  <FileMedia
-                    file={entry.file}
-                    notes={notes}
-                    onComment={onComment}
-                    onRead={(note) => jump(note.file, note)}
-                    blocked={!!draft}
-                  />
-                )}
-                {entry.kind === "empty" && (
-                  <p className="p-8 text-center text-sm text-muted-foreground">
-                    No text changes in this file.
-                  </p>
-                )}
-                {entry.kind === "removed" && (
-                  <button
-                    className="flex h-[26px] w-full items-center gap-2 bg-muted/30 px-5 text-left text-xs text-muted-foreground hover:bg-accent"
-                    disabled={entry.hasNotes}
-                    onClick={() =>
-                      setOpenRuns((current) => {
-                        const next = new Set(current);
-                        next.has(entry.key)
-                          ? next.delete(entry.key)
-                          : next.add(entry.key);
-                        return next;
-                      })
-                    }
-                  >
-                    {entry.open ? (
-                      <ChevronDown className="size-3" />
-                    ) : (
-                      <ChevronRight className="size-3" />
-                    )}
-                    {entry.open ? "Hide" : "Show"} {entry.to - entry.from + 1}{" "}
-                    removed lines{entry.hasNotes && " · contains notes"}
-                  </button>
-                )}
-                {entry.kind === "editor" && (
-                  <div className="border-y border-primary/25 bg-card px-4 py-3">
-                    {editor}
-                  </div>
-                )}
-                {entry.kind === "note" && (
-                  <div className="mx-auto max-w-4xl px-5 py-3">
-                    <NoteCard
-                      note={entry.note}
-                      file={entry.file}
-                      agent={agent}
-                      onCompose={onCompose}
-                      inline
-                      editorDraft={draft ?? undefined}
-                      editor={
-                        (draft?.kind === "note"
-                          ? draft.comment.id
-                          : draft?.id) === entry.note.id
-                          ? editor
-                          : undefined
-                      }
-                    />
-                  </div>
-                )}
-                {entry.kind === "row" && (
-                  <CodeRow
-                    file={entry.file}
-                    index={entry.row}
-                    selected={
-                      !!selection &&
-                      selection.path === entry.path &&
-                      selection.hash === entry.file.hash &&
-                      entry.row >= Math.min(selection.from, selection.to) &&
-                      entry.row <= Math.max(selection.from, selection.to)
-                    }
-                    expanding={expanding === entry.path}
-                    notes={
-                      notesAt.get(itemKey(entry.path, String(entry.row)))
-                        ?.length || 0
-                    }
-                    noteCharacters={notesAt
-                      .get(itemKey(entry.path, String(entry.row)))
-                      ?.flatMap((note) => {
-                        if (note.ca == null || note.cb == null || !note.snippet)
-                          return [];
-                        const text = entry.file.rows[entry.row]!.text;
-                        if (text.slice(note.ca, note.cb) === note.snippet)
-                          return [{ ca: note.ca, cb: note.cb }];
-                        const at = text.indexOf(note.snippet);
-                        return at >= 0 && text.indexOf(note.snippet, at + 1) < 0
-                          ? [{ ca: at, cb: at + note.snippet.length }]
-                          : [];
-                      })}
-                    characters={
-                      selection?.path === entry.path &&
-                      selection.from === entry.row &&
-                      selection.to === entry.row &&
-                      selection.ca != null
-                        ? { ca: selection.ca, cb: selection.cb! }
-                        : undefined
-                    }
-                    pressing={
-                      pressed === itemKey(entry.path, String(entry.row))
-                    }
-                    onSelect={(extend) => select(entry.file, entry.row, extend)}
-                    bookmarked={bookmarks.includes(
-                      bmKey(entry.path, rowKey(entry.file.rows[entry.row]!)),
-                    )}
-                    onBookmark={() =>
-                      onBookmark(entry.file, entry.file.rows[entry.row]!)
-                    }
-                    changes={wordChanges.get(entry.path)?.get(entry.row)}
-                    onExpand={(direction) =>
-                      void expand(entry.file, entry.row, direction)
-                    }
-                    onRead={() =>
-                      jump(
-                        entry.path,
-                        notesAt.get(
-                          itemKey(entry.path, String(entry.row)),
-                        )?.[0],
-                      )
-                    }
-                  />
-                )}
-              </div>
+                {code.map((item) => renderItem(item, start))}
+              </FileCodeViewport>
             );
           })}
         </div>
       </div>
     </>
+  );
+}
+
+interface FileScroll {
+  hash: string;
+  width: number;
+  left: number;
+  scrollbar: number;
+}
+
+/** Only code participates in horizontal scrolling; the review owns all vertical scrolling. */
+function FileCodeViewport({
+  path,
+  start,
+  end,
+  wrap,
+  memory,
+  onScrollbar,
+  children,
+}: {
+  path: string;
+  start: number;
+  end: number;
+  wrap: boolean;
+  memory: FileScroll;
+  onScrollbar: (size: number) => void;
+  children: ReactNode;
+}) {
+  const viewport = useRef<HTMLDivElement>(null);
+  const content = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const element = viewport.current!;
+    element.scrollLeft = wrap ? 0 : memory.left;
+  }, [memory, wrap]);
+  useLayoutEffect(() => {
+    const element = viewport.current!;
+    const inner = content.current!;
+    const measure = () => {
+      if (!wrap) {
+        // Retain real DOM widths when their rows leave the virtual window.
+        // This keeps the file's native scroll range stable without guessing text widths.
+        for (const row of inner.children) {
+          const code = row.firstElementChild as HTMLElement | null;
+          if (code)
+            memory.width = Math.max(
+              memory.width,
+              code.scrollWidth,
+              code.offsetWidth,
+            );
+        }
+        inner.style.minWidth = `${memory.width}px`;
+      }
+      const size = wrap ? 0 : element.offsetHeight - element.clientHeight;
+      if (size !== memory.scrollbar) {
+        memory.scrollbar = size;
+        onScrollbar(size);
+      }
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    for (const row of inner.children)
+      if (row.firstElementChild) observer.observe(row.firstElementChild);
+    return () => observer.disconnect();
+  });
+  return (
+    <div
+      ref={viewport}
+      role="region"
+      aria-label={`Code for ${path}`}
+      data-file-code-scroll={path}
+      className="absolute left-0 w-full min-w-0"
+      style={{
+        top: start,
+        height: Math.max(0, end - start),
+        overflowX: wrap ? "hidden" : "auto",
+        overflowY: "hidden",
+      }}
+      tabIndex={wrap ? undefined : 0}
+      onScroll={(event) => {
+        if (!wrap) memory.left = event.currentTarget.scrollLeft;
+      }}
+    >
+      <div
+        ref={content}
+        className="relative w-full"
+        style={{
+          height: Math.max(0, end - start - (wrap ? 0 : memory.scrollbar)),
+          minWidth: wrap ? undefined : memory.width,
+        }}
+      >
+        {children}
+      </div>
+    </div>
   );
 }

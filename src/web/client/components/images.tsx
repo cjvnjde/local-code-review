@@ -10,7 +10,7 @@ import { Pencil, ZoomIn } from "lucide-react";
 import { decodeImageDrawing } from "../../../shared/image-drawing.ts";
 import type { WebAnnotation } from "../../../shared/web-annotation.ts";
 import { openAnnotation } from "./annotation-editor.ts";
-import { openImagePreview } from "./image-preview.ts";
+import { imageEditorOwner, openImagePreview } from "./image-preview.ts";
 import { attachmentSrc, imageTokens } from "./attachments.ts";
 import { Button } from "./ui/button.tsx";
 
@@ -47,7 +47,12 @@ export function AttachmentImage({
         if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
           return;
         event.preventDefault();
-        openImagePreview(source, label, onDraw);
+        openImagePreview(
+          source,
+          label,
+          onDraw,
+          imageEditorOwner(event.currentTarget),
+        );
       }}
     >
       <img
@@ -73,6 +78,7 @@ export function useAnnotator() {
       { image: source, annotation, cssWidth: width },
       apply,
       scope,
+      imageEditorOwner(document.activeElement),
     );
 }
 export function useDrawing() {
@@ -84,6 +90,7 @@ export function useDrawing() {
     annotation?: WebAnnotation,
     cssWidth?: number,
   ) => {
+    const owner = imageEditorOwner(document.activeElement);
     const response = await fetch(attachmentSrc(source));
     if (!response.ok)
       throw new Error("Could not load this attachment for editing.");
@@ -103,6 +110,7 @@ export function useDrawing() {
       },
       async (next) => apply(next?.image || original),
       scope,
+      owner,
     );
   };
 }
@@ -173,11 +181,12 @@ export function ComposerImages({
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() =>
+                  onClick={(event) =>
                     openImagePreview(
                       token.ref,
                       token.label,
                       () => void edit(token, index),
+                      imageEditorOwner(event.currentTarget),
                     )
                   }
                 >

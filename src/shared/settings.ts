@@ -13,6 +13,7 @@ export interface UiSettings extends ContextSettings {
   foldDel: boolean;
   enterSaves: boolean;
   lineNumbers: boolean;
+  wrapLines: boolean;
   expand: number;
   navHidden: boolean;
   navWidth: number;
@@ -37,6 +38,7 @@ export const DEFAULT_UI_SETTINGS: Readonly<UiSettings> = {
   foldDel: false,
   enterSaves: true,
   lineNumbers: true,
+  wrapLines: true,
   expand: 20,
   navHidden: false,
   navWidth: 0,

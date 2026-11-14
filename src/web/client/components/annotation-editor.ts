@@ -30,7 +30,10 @@ import {
   setView,
   setViews,
 } from "../navigation/ui-navigation.ts";
-import { closeImagePreviewForDrawing } from "./image-preview.ts";
+import {
+  closeImagePreviewForDrawing,
+  imageEditorOwners,
+} from "./image-preview.ts";
 import {
   createAnnotationDraftStore,
   type AnnotationDraft,
@@ -103,6 +106,7 @@ export function openAnnotation(
   capture: AnnotationSource,
   apply: (annotation: WebAnnotation | null) => Promise<void>,
   scope: { repo: string; read: string } = { repo: location.origin, read: "" },
+  owner?: HTMLElement | null,
 ): Promise<void> {
   if (active) {
     document
@@ -111,7 +115,7 @@ export function openAnnotation(
     return active;
   }
   const replacePreview = closeImagePreviewForDrawing();
-  active = editAnnotation(route, capture, apply, scope);
+  active = editAnnotation(route, capture, apply, scope, owner);
   setViews({ annotation: route, image: null }, { replace: replacePreview });
   return active;
 }
@@ -121,6 +125,7 @@ function editAnnotation(
   capture: AnnotationSource,
   apply: (annotation: WebAnnotation | null) => Promise<void>,
   scope: { repo: string; read: string } = { repo: location.origin, read: "" },
+  owner?: HTMLElement | null,
 ): Promise<void> {
   const { promise, resolve } = Promise.withResolvers<void>();
   const previous =
@@ -207,6 +212,7 @@ function editAnnotation(
   let lastState = "",
     sourceScale = 1;
   const dialog = document.createElement("dialog");
+  if (owner) imageEditorOwners.set(dialog, owner);
   dialog.dataset.annotationEditor = "";
   dialog.setAttribute("aria-label", "Draw on screenshot");
   dialog.setAttribute("aria-describedby", "annotation-help");

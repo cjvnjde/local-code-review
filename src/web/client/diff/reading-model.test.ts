@@ -62,6 +62,45 @@ describe("continuous review reading", () => {
     });
     expect(new Set(items.map((item) => item.key)).size).toBe(items.length);
   });
+  test("reserves each unwrapped file's native scrollbar without changing reading keys", () => {
+    const a = file("a.ts");
+    const b = file("b.ts");
+    const wrapped = diffItems([a, b], [], options);
+    const unwrapped = diffItems([a, b], [], {
+      ...options,
+      horizontalScroll: true,
+    });
+    expect(
+      unwrapped
+        .filter((item) => item.kind === "scrollbar")
+        .map((item) => item.path),
+    ).toEqual(["a.ts", "b.ts"]);
+    expect(unwrapped.filter((item) => item.kind !== "scrollbar")).toEqual(
+      wrapped,
+    );
+    const boundary = unwrapped.findIndex(
+      (item) => item.kind === "header" && item.path === b.path,
+    );
+    expect(unwrapped[boundary - 1]).toMatchObject({
+      kind: "scrollbar",
+      path: a.path,
+    });
+    expect(
+      diffItems([a], [], {
+        ...options,
+        horizontalScroll: true,
+        folded: () => true,
+      }).map((item) => item.kind),
+    ).toEqual(["header"]);
+    const row = wrapped.find(
+      (item) => item.kind === "row" && item.path === b.path,
+    )!;
+    const anchor = readingAnchor(row, 72);
+    expect(unwrapped[readingIndex(unwrapped, anchor)!.index]!.key).toBe(
+      row.key,
+    );
+    expect(readingIndex(wrapped, anchor)!.offset).toBe(72);
+  });
   test("folding a file keeps its header and file notes without deleting code or conversations", () => {
     const a = file("a.ts");
     const own = noteFromComment({ ...makeComment(a), body: "File" });

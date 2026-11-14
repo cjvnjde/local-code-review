@@ -6,22 +6,22 @@ change; reading, commenting, evidence, and saved conversations must keep working
 
 | Original capability          | React implementation                                                                                                                                      |
 | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Continuous diff reading      | One virtualized surface, sticky file headers, sidebar following and jumps                                                                                 |
+| Continuous diff reading      | One virtualized surface, compact sticky headers, wrapped lines or file-local horizontal scrolling, sidebar following and jumps                            |
 | Pane sizing                  | Drag/keyboard resizing, double-click reset, persisted sidebar and conversation widths, draft/scroll retention and mobile drawer                           |
-| Progress and file controls   | Viewed marks, automatic reading tracking, backtracking, folding, folder controls, visibility overrides and glob filters                                   |
+| Progress and file controls   | Viewed marks, automatic reading tracking, backtracking, folding, folder controls, hover/focus visibility controls and glob filters                        |
 | Hidden code                  | Up/down/all context expansion, configurable batch size, expandable deleted runs with note protection                                                      |
 | Comment gestures             | Whole-line clicks, Shift extension, forward/reverse drag ranges, character selections across syntax tokens, Alt-drag copying, edge auto-scroll            |
-| Editing without losing place | Inline note/reply editors, overlapping selection re-aiming, protected dirty drafts, caret retention, deferred diff refreshes, recovery after reload       |
+| Editing without losing place | Compact inline editors, retained toggleable overall-note popup, protected drafts/carets, deferred diff refreshes and reload recovery                      |
 | Markdown authoring           | GFM, syntax highlighting, suggestions, formatting shortcuts and toolbar, preview, safe local images                                                       |
 | Images in notes/replies      | Paste/drop/pick, thumbnails, zoom/fit/actual-size viewer, editable drawings stored with immutable PNG attachments                                         |
 | Drawing tools                | Pen, highlighter, arrows, shapes, paths and points, text, callouts, magnifier, selection/resize, styling, undo/redo, draft recovery                       |
 | Diff media                   | Before/after images, pixel-region captures and comment markers, before/after audio players                                                                |
 | Navigation                   | Session bookmarks, previous/next stepping, persistent reading resume, keyboard shortcuts, narrow-screen navigation                                        |
-| Review search                | Files, rename sources, both code sides, notes, captured code, metadata, statuses and replies, including hidden/unmounted content                          |
-| Note references              | Stable tokens, insertion picker, inline previews including replies, navigation and unavailable/ambiguous handling                                         |
+| Review search                | Centered global fuzzy search across files, both code sides, notes, captured code, metadata, statuses and replies, including hidden/unmounted content      |
+| Note references              | Stable tokens, `#` suggestions, inline previews including replies, navigation and unavailable/ambiguous handling                                          |
 | Conversation state           | Live replies/statuses, inline reply edits, unread markers, local resolve/reopen invalidated by later conversation changes                                 |
 | Earlier conversations        | Saved-review switching and continuing demonstrably anchored notes from other reviews with their threads retained                                          |
-| Context                      | File/text/JSON uploads, local reference cards, manifest inspection, chunked text reads, image parts and copyable IDs                                      |
+| File attachments and context | Arbitrary-file paste/drop/pick, portable local download links, saved context cards, manifest inspection and chunked text reads                            |
 | Color literals               | Safe hex/RGB/HSL inspection, alpha, saved palette, copy and source-preserving edits                                                                       |
 | History                      | Append-only snapshots, search, removed conversations, captured evidence, copy changes/snapshots and JSON export                                           |
 | Web review                   | Existing page selection/freeze modes, embedded inline editor, multiple selections/removal, drawing proposals, capture-after and original-only comparisons |

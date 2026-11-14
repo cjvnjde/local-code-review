@@ -1,11 +1,7 @@
 import type { Server } from "bun";
 import path from "node:path";
 import page from "../web/shell.html";
-import {
-  ATTACH_MAX_BYTES,
-  attachExtension,
-  attachRef,
-} from "../review/attach.ts";
+import { ATTACH_MAX_BYTES, attachRef } from "../review/attach.ts";
 import { mediaType } from "../git/blob.ts";
 import { fingerprint } from "../git/diff.ts";
 import { currentBranch } from "../git/commands.ts";
@@ -52,9 +48,13 @@ export interface ServerOptions {
   getContext: (path: string, start: number, end: number) => Promise<DiffRow[]>;
   /** One side of one file as bytes, for media content a binary diff prints no lines of. */
   readBlob: (side: "old" | "new", path: string) => Promise<Uint8Array | null>;
-  /** Keeps one picture the reviewer attached to a note; answers the name it is kept under. */
-  saveAttachment: (bytes: Uint8Array, type: string) => Promise<string>;
-  /** One of those pictures back, for the page drawing the note that points at it. */
+  /** Keeps exact attachment bytes beside the review and returns their immutable filename. */
+  saveAttachment: (
+    bytes: Uint8Array,
+    type: string,
+    filename?: string,
+  ) => Promise<string>;
+  /** Reads a bounded file from the review's attachment locations. */
   readAttachment: (
     name: string,
   ) => Promise<{ bytes: Uint8Array; type: string } | null>;
@@ -597,7 +597,14 @@ function serve(options: ServerOptions, port: number) {
           });
         }
         if (url.pathname === "/api/blob") return blob(options, request, url);
-        if (url.pathname === "/api/attach") return attach(options, request);
+        if (url.pathname === "/api/attach") {
+          if (!contextRequestAllowed(request, server.port!))
+            return Response.json(
+              { error: "Attach files from the review origin." },
+              { status: 403 },
+            );
+          return attach(options, request);
+        }
         if (url.pathname === "/api/attachment")
           return attachment(options, request, url);
         if (url.pathname === "/api/open-file") {
@@ -1085,12 +1092,7 @@ async function blob(
   });
 }
 
-/**
- * Takes one picture into the review: the bytes come up as the body, the type as the header, and what
- * goes back is the name the note is to point at. Nothing about the note is known here — a picture is
- * kept the moment it is pasted, before the note it belongs to is written, let alone saved — so what
- * this answers is a name and the reviewer's prose is what makes anything of it.
- */
+/** Uploads raw attachment bytes before the note itself is saved. */
 async function attach(
   options: ServerOptions,
   request: Request,
@@ -1102,27 +1104,54 @@ async function attach(
     });
   }
   const type = request.headers.get("content-type") ?? "";
-  if (!attachExtension(type)) {
+  let filename: string;
+  try {
+    filename = decodeURIComponent(
+      request.headers.get("x-attachment-name") ?? "attachment",
+    );
+  } catch {
     return Response.json(
-      { error: "That is not an image lcr can keep." },
-      { status: 415 },
+      { error: "Invalid attachment filename." },
+      { status: 400 },
     );
   }
-  const bytes = new Uint8Array(await request.arrayBuffer());
-  if (!bytes.byteLength)
-    return Response.json({ error: "That image is empty." }, { status: 400 });
-  if (bytes.byteLength > ATTACH_MAX_BYTES) {
+  if (Number(request.headers.get("content-length")) > ATTACH_MAX_BYTES)
     return Response.json(
-      {
-        error: `That image is ${Math.round(bytes.byteLength / 1e6)}MB; the limit is ${Math.round(ATTACH_MAX_BYTES / 1e6)}MB.`,
-      },
+      { error: "That file exceeds the 12 MiB attachment limit." },
       { status: 413 },
     );
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  const reader = request.body?.getReader();
+  if (reader) {
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        size += value.byteLength;
+        if (size > ATTACH_MAX_BYTES) {
+          await reader.cancel();
+          return Response.json(
+            { error: "That file exceeds the 12 MiB attachment limit." },
+            { status: 413 },
+          );
+        }
+        chunks.push(value);
+      }
+    } finally {
+      reader.releaseLock();
+    }
   }
-  const name = await options.saveAttachment(bytes, type);
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  const name = await options.saveAttachment(bytes, type, filename);
   if (!name)
     return Response.json(
-      { error: "That image could not be kept." },
+      { error: "That file could not be kept." },
       { status: 415 },
     );
   console.log(`\n  attached ${attachRef(name)} in ${options.outDir}/\n`);
@@ -1170,15 +1199,35 @@ async function attachment(
       headers: { etag: tag, "cache-control": "no-cache" },
     });
   }
+  const download =
+    url.searchParams.has("download") ||
+    !/^image\/(?:png|jpeg|gif|webp|avif|bmp|apng|x-icon|vnd\.microsoft\.icon)$/i.test(
+      found.type,
+    );
+  const filename =
+    name
+      .split("/")
+      .pop()!
+      .replace(/^[a-f0-9]{16}-/, "")
+      .replace(/[^A-Za-z0-9._-]/g, "_") || "attachment";
   return new Response(request.method === "HEAD" ? null : found.bytes, {
     headers: {
-      "content-type": found.type,
+      // SVG decoding needs its image MIME; attachment disposition still prevents active navigation.
+      "content-type":
+        found.type === "image/svg+xml"
+          ? found.type
+          : download
+            ? "application/octet-stream"
+            : found.type,
+      ...(download
+        ? { "content-disposition": `attachment; filename="${filename}"` }
+        : {}),
       "content-length": String(found.bytes.byteLength),
       etag: tag,
       "cache-control": immutable
         ? "public, max-age=31536000, immutable"
         : "no-cache",
-      // Only ever drawn into an <img>, where nothing runs; this is for the tab that opens one directly.
+      // Uploads never receive script execution, including SVG images opened directly.
       "content-security-policy": "default-src 'none'; sandbox",
       "x-content-type-options": "nosniff",
     },

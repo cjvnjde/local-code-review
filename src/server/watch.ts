@@ -59,6 +59,8 @@ export function watchTree(
 /**
  * Watches one directory that may not exist yet — the output directory is only created by the first
  * save — and keeps trying until it does.
+ * An empty filename announces a catch-up after attachment: changes made while the directory was
+ * unwatched have no native event to replay, so consumers must read their current state once.
  */
 export function watchDir(
   dir: string,
@@ -88,6 +90,7 @@ export function watchDir(
       if (attach() && retry) {
         clearInterval(retry);
         retry = null;
+        fire("");
       }
     }, 1000);
   };

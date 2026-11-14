@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useRef,
@@ -35,10 +36,6 @@ export function UiPreferences({ children }: { children: ReactNode }) {
     scope: { id: "ui-settings" },
     mutationFn: (patch: Partial<UiSettings>) =>
       request<{ settings: UiSettings }>("/api/settings", "PUT", patch),
-    onMutate: (patch) => {
-      pending.current++;
-      setSettings((current) => ({ ...current, ...patch }));
-    },
     onSettled: async () => {
       pending.current--;
       if (!pending.current) {
@@ -50,8 +47,18 @@ export function UiPreferences({ children }: { children: ReactNode }) {
       }
     },
   });
+  const update = useCallback(
+    (patch: Partial<UiSettings>) => {
+      // Claim local intent synchronously, before an initial GET/refetch can commit.
+      pending.current++;
+      setSettings((current) => ({ ...current, ...patch }));
+      void client.cancelQueries({ queryKey: ["settings"] });
+      save.mutate(patch);
+    },
+    [client, save.mutate],
+  );
   return (
-    <UI value={{ settings, update: (patch) => save.mutate(patch) }}>
+    <UI value={{ settings, update }}>
       {children}
       {save.error && (
         <p

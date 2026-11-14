@@ -3,7 +3,7 @@ import { ContextReference } from "./context.tsx";
 import { contextId } from "../../../shared/context.ts";
 import { NoteReference, remarkReferences } from "../notes/references.tsx";
 import { refIn } from "../notes/note-ref.ts";
-import { attachmentSrc } from "./attachments.ts";
+import { attachmentSrc, attachmentDownloadSrc } from "./attachments.ts";
 import { AttachmentImage } from "./images.tsx";
 import { memo } from "react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
@@ -80,6 +80,13 @@ export const Markdown = memo(function Markdown({
                   <Markdown body={body} file={file} captured={captured} />
                 )}
               />
+            ) : attachmentDownloadSrc(href || "") ? (
+              <a
+                href={attachmentDownloadSrc(href!)}
+                download={String(children)}
+              >
+                {children}
+              </a>
             ) : (
               <a href={href} target="_blank" rel="noreferrer noopener">
                 {children}

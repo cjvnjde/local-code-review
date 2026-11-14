@@ -88,7 +88,7 @@ export function FileTree({
           const closed = folded.includes(directory.path);
           return (
             <div key={directory.path}>
-              <div className="flex items-center gap-1 rounded hover:bg-accent">
+              <div className="group/tree-row relative flex items-center gap-1 rounded hover:bg-accent">
                 <button
                   className="flex min-w-0 flex-1 items-center gap-2 px-2 py-2 text-left text-xs text-muted-foreground"
                   aria-expanded={!closed}
@@ -102,13 +102,15 @@ export function FileTree({
                   }
                 >
                   {closed ? (
-                    <ChevronRight className="size-3" />
+                    <ChevronRight className="size-3 shrink-0" />
                   ) : (
-                    <ChevronDown className="size-3" />
+                    <ChevronDown className="size-3 shrink-0" />
                   )}
-                  <Folder className="size-3" />
-                  <span className="truncate">{directory.name}</span>
-                  <span className="ml-auto text-[10px]">
+                  <Folder className="size-3 shrink-0" />
+                  <span className="min-w-0 flex-1 truncate">
+                    {directory.name}
+                  </span>
+                  <span className="shrink-0 text-[10px]">
                     {descendants.length}
                   </span>
                 </button>
@@ -116,6 +118,7 @@ export function FileTree({
                   size="icon"
                   variant="ghost"
                   aria-label={`Mark folder viewed ${directory.path}`}
+                  className="size-8"
                   onClick={() =>
                     onViewed(
                       descendants.map((file) => file.path),
@@ -131,6 +134,7 @@ export function FileTree({
                   size="icon"
                   variant="ghost"
                   aria-label={`Toggle folder visibility ${directory.path}`}
+                  className="pointer-events-none absolute right-9 top-1/2 size-7 -translate-y-1/2 bg-card opacity-0 transition-opacity group-hover/tree-row:pointer-events-auto group-hover/tree-row:opacity-100 group-focus-within/tree-row:pointer-events-auto group-focus-within/tree-row:opacity-100"
                   onClick={() =>
                     onHide(
                       descendants.map((file) => file.path),
@@ -148,12 +152,15 @@ export function FileTree({
           );
         })}
         {node.files.map((file) => (
-          <div key={file.path} className="flex items-center">
+          <div
+            key={file.path}
+            className="group/tree-row relative mb-1 flex items-center"
+          >
             <button
               title={file.path}
               aria-current={selected === file.path ? "true" : undefined}
               className={cn(
-                "mb-1 flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-2 text-left text-xs hover:bg-accent",
+                "flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-2 text-left text-xs hover:bg-accent",
                 selected === file.path && "bg-primary/10 text-primary",
                 hidden(file) && "opacity-50",
               )}
@@ -169,7 +176,7 @@ export function FileTree({
               </span>
               <span
                 className={cn(
-                  "font-mono text-[10px]",
+                  "shrink-0 font-mono text-[10px]",
                   file.status === "added"
                     ? "text-emerald-500"
                     : file.status === "deleted"
@@ -183,6 +190,7 @@ export function FileTree({
             <Button
               variant="ghost"
               size="icon"
+              className="pointer-events-none absolute right-5 top-1/2 size-7 -translate-y-1/2 bg-card opacity-0 transition-opacity group-hover/tree-row:pointer-events-auto group-hover/tree-row:opacity-100 group-focus-within/tree-row:pointer-events-auto group-focus-within/tree-row:opacity-100"
               aria-label={`${hidden(file) ? "Show" : "Hide"} file ${file.path}`}
               onClick={() => onHide([file.path], !hidden(file))}
             >

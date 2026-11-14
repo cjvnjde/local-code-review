@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Markdown } from "./markdown.tsx";
 import { attachmentSrc } from "./attachments.ts";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 const render = (body: string, captured?: string) =>
   renderToStaticMarkup(
@@ -52,5 +53,40 @@ describe("library Markdown rendering", () => {
     expect(html).toContain("diff-add");
     expect(html).toContain("diff-del");
     expect(render("```suggestion\nreplacement\n```")).not.toContain("diff-del");
+  });
+  test("arbitrary attachments render as downloads with useful original labels, not image or context widgets", () => {
+    const html = render(
+      "[report with spaces.bin](images/0123456789abcdef-report_with_spaces.bin)",
+    );
+    expect(html).toContain(
+      'href="/api/attachment?ref=images%2F0123456789abcdef-report_with_spaces.bin&amp;download=1"',
+    );
+    expect(html).toContain('download="report with spaces.bin"');
+    expect(html).toContain(">report with spaces.bin</a>");
+    expect(html).not.toContain("<img");
+    expect(html).not.toContain("Inspect context");
+    expect(render("[active.html](assets/active.html)")).toContain(
+      "&amp;download=1",
+    );
+    expect(render("[image.svg](images/image.svg)")).toContain(
+      "&amp;download=1",
+    );
+    expect(render("![image.svg](images/image.svg)")).toContain("<img");
+    const escaped = render(
+      "[report \\[final\\] \\_draft\\_ &amp;.bin](images/0123456789abcdef-report.bin)",
+    );
+    expect(escaped).toContain('download="report [final] _draft_ &amp;.bin"');
+  });
+  test("previously saved context references still render their inspection control", () => {
+    const html = renderToStaticMarkup(
+      <QueryClientProvider client={new QueryClient()}>
+        <Markdown
+          body={`[Additional context: old details](context/${"a".repeat(64)}/manifest.json)`}
+        />
+      </QueryClientProvider>,
+    );
+    expect(html).toContain("old details");
+    expect(html).toContain("Inspect context");
+    expect(html).not.toContain("download=");
   });
 });

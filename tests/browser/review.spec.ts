@@ -297,10 +297,23 @@ test("line, range and character gestures keep comments inline and protect draft 
         getComputedStyle(cell.closest("[data-row-key]")!).backgroundColor,
     );
   const unselectedBackground = await lineBackground();
+  const smallNumbers = await pane
+    .locator('[data-file-path="src/app.ts"]')
+    .getByRole("button", { name: "Comment on line 2", exact: true })
+    .last()
+    .evaluate((button) => {
+      const column = button.querySelectorAll("span")[1]!;
+      const text = document.createRange();
+      text.selectNodeContents(column);
+      return {
+        width: column.getBoundingClientRect().width,
+        digit: text.getBoundingClientRect().width,
+      };
+    });
+  expect(smallNumbers.width).toBeLessThan(smallNumbers.digit * 3);
   await code.click();
   await expect(editor).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect(editor).toContainText("src/app.ts:2");
   const placeholder = await editor
     .getByRole("textbox", { name: "Note text" })
     .evaluate((field) => ({
@@ -317,13 +330,11 @@ test("line, range and character gestures keep comments inline and protect draft 
     .locator('[data-file-path="src/app.ts"]')
     .getByRole("button", { name: "Comment on line 3", exact: true })
     .click({ modifiers: ["Shift"] });
-  await expect(editor).toContainText("src/app.ts:2-3");
   await expect(page.getByRole("textbox", { name: "Note text" })).toHaveValue(
     "Keep my draft while changing its selection",
   );
   // An unrelated file cannot steal a dirty draft.
   await page.getByRole("button", { name: "Overall note", exact: true }).click();
-  await expect(editor).toContainText("src/app.ts:2-3");
   await editor.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect.poll(lineBackground).toBe(unselectedBackground);
   await page
@@ -355,7 +366,6 @@ test("line, range and character gestures keep comments inline and protect draft 
   await page.mouse.move(to.x, to.y, { steps: 8 });
   await page.mouse.up();
 
-  await expect(editor).toContainText("src/app.ts:2:11-15");
   await page
     .getByRole("textbox", { name: "Note text" })
     .fill("Character selection round trip");
@@ -408,8 +418,32 @@ test("line, range and character gestures keep comments inline and protect draft 
   await page.mouse.down();
   await page.mouse.move(start!.x + 10, start!.y + 10, { steps: 10 });
   await page.mouse.up();
-  await expect(editor).toContainText("untracked.ts:2-4");
-  await editor.getByRole("button", { name: "Cancel", exact: true }).click();
+  const numberMetrics = await last.evaluate((button) => {
+    const column = button.querySelectorAll("span")[1]!;
+    const text = document.createRange();
+    text.selectNodeContents(column);
+    return {
+      width: column.getBoundingClientRect().width,
+      digit: text.getBoundingClientRect().width,
+    };
+  });
+  expect(numberMetrics.width).toBeGreaterThanOrEqual(numberMetrics.digit * 4);
+  await page
+    .getByRole("textbox", { name: "Note text" })
+    .fill("Reverse multiline selection");
+  await editor.getByRole("button", { name: "Save note", exact: true }).click();
+  const rangedReview = await (
+    await page.request.get(`${url}/api/review`)
+  ).json();
+  expect(
+    rangedReview.notes.find(
+      (note: any) => note.body === "Reverse multiline selection",
+    ),
+  ).toMatchObject({
+    file: "untracked.ts",
+    start: 2,
+    end: 4,
+  });
 });
 
 test("image attachments preview, retain editable drawings and survive note and reply saves", async ({
@@ -434,7 +468,7 @@ test("image attachments preview, retain editable drawings and survive note and r
     ctx.fillText("Original evidence", 20, 40);
     return c.toDataURL().split(",")[1]!;
   });
-  await editor.locator('input[accept="image/*"]').setInputFiles({
+  await editor.locator('input[type="file"]').setInputFiles({
     name: "evidence.png",
     mimeType: "image/png",
     buffer: Buffer.from(png, "base64"),
@@ -584,6 +618,7 @@ test("bookmarks, full review search, references and context stay usable across n
   await expect(nav.getByText("Bookmarks · 1")).toBeVisible();
   await page.reload();
   await expect(nav.getByText("Bookmarks · 1")).toBeVisible();
+  await nav.locator('button[title="src/app.ts"]').hover();
   await nav
     .getByRole("button", { name: "Hide file src/app.ts", exact: true })
     .click();
@@ -592,7 +627,7 @@ test("bookmarks, full review search, references and context stay usable across n
   ).toHaveCount(0);
   await page.keyboard.press("Control+k");
   await page
-    .getByRole("textbox", { name: "Search review", exact: true })
+    .getByRole("searchbox", { name: "Search review", exact: true })
     .fill("hello world");
   await page
     .getByRole("region", { name: "Search this review" })
@@ -614,26 +649,59 @@ test("bookmarks, full review search, references and context stay usable across n
     .getByRole("option")
     .click();
   const reference = "refseed123";
-  await editor
-    .getByText("Add context · file, text or JSON", { exact: true })
-    .click();
-  await editor
-    .getByRole("textbox", { name: "Context label", exact: true })
-    .fill("Debug details");
-  await editor
-    .getByRole("textbox", { name: "Additional context", exact: true })
-    .fill("Some independently readable context");
-  await editor
-    .getByRole("button", { name: "Attach context", exact: true })
-    .click();
-  await expect(page.getByRole("textbox", { name: "Note text" })).toHaveValue(
-    /context\/.*\/manifest.json/,
+  // Seed an existing-style context link; new files attach directly instead.
+  const configuration = await (
+    await page.request.get(`${url}/api/settings`)
+  ).json();
+  const contextResponse = await page.request.post(`${url}/api/ai-context`, {
+    headers: { authorization: `Bearer ${configuration.contextToken}` },
+    data: {
+      label: "Debug details",
+      text: "Some independently readable context",
+    },
+  });
+  expect(contextResponse.ok()).toBe(true);
+  const context = (await contextResponse.json()).context;
+  const text = editor.getByRole("textbox", { name: "Note text" });
+  await text.fill(
+    `${await text.inputValue()}\n[Additional context: Debug details](context/${context.id}/manifest.json)`,
   );
+  const droppedFiles = await page.evaluateHandle(() => {
+    const transfer = new DataTransfer();
+    transfer.items.add(
+      new File([new Uint8Array([0, 255, 1, 42, 0])], "evidence.bin"),
+    );
+    transfer.items.add(
+      new File(["Exact text attachment"], "debug details.txt", {
+        type: "text/plain",
+      }),
+    );
+    return transfer;
+  });
+  await editor.dispatchEvent("drop", { dataTransfer: droppedFiles });
+  await expect(text).toHaveValue(/evidence\.bin/);
+  await expect(text).toHaveValue(/debug details\.txt/);
+  await droppedFiles.dispose();
   await editor.getByRole("button", { name: "Save note", exact: true }).click();
   const card = page
     .getByRole("complementary", { name: "Review notes" })
     .getByRole("article")
     .filter({ hasText: "References and context audit" });
+  await expect(editor).toHaveCount(0);
+  await expect(card).toBeVisible();
+  await page.reload();
+  const binaryDownload = page.waitForEvent("download");
+  await card.getByRole("link", { name: "evidence.bin", exact: true }).click();
+  expect(await readFile((await (await binaryDownload).path())!)).toEqual(
+    Buffer.from([0, 255, 1, 42, 0]),
+  );
+  const textDownload = page.waitForEvent("download");
+  await card
+    .getByRole("link", { name: "debug details.txt", exact: true })
+    .click();
+  expect(await readFile((await (await textDownload).path())!, "utf8")).toBe(
+    "Exact text attachment",
+  );
   await card
     .getByRole("button")
     .filter({ hasText: `#${reference!.slice(-8)}` })
@@ -721,6 +789,10 @@ test("folder controls, color edits and local resolution preserve the underlying 
       "First answer.",
       "First answer.\n\n**Agent** <!-- lcr:m 2026-11-11T11:00:00.000Z -->\n\nA new answer needs your attention.",
     ),
+  );
+  review = await (await page.request.get(`${url}/api/review`)).json();
+  expect(review.notes[0].messages.at(-1).body).toBe(
+    "A new answer needs your attention.",
   );
   await expect(
     card.getByRole("button", { name: "Resolve", exact: true }),
@@ -1052,6 +1124,61 @@ test("image-region comments, audio playback, preferences and the resume marker r
   await expect(editor).toHaveCount(0);
 });
 
+test("sidebar dragging survives a delayed initial preference response", async ({
+  page,
+}) => {
+  await page.request.put(`${url}/api/settings`, { data: { navWidth: 400 } });
+  let releaseSettings!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    releaseSettings = resolve;
+  });
+  let held = false;
+  await page.route("**/api/settings", async (route) => {
+    if (route.request().method() === "GET" && !held) {
+      held = true;
+      const response = await route.fetch();
+      await gate;
+      await route.fulfill({ response });
+    } else await route.continue();
+  });
+  await page.goto(url);
+  const sidebar = page.getByRole("complementary", { name: "Changed files" });
+  const divider = page.getByRole("separator", {
+    name: "Resize file sidebar",
+    exact: true,
+  });
+  await expect(divider).toBeVisible();
+  const initialWidth = await sidebar.evaluate(
+    (element) => element.getBoundingClientRect().width,
+  );
+  const box = (await divider.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 60, box.y + box.height / 2, {
+    steps: 12,
+  });
+  await page.mouse.up();
+  await expect
+    .poll(() =>
+      sidebar.evaluate((element) => element.getBoundingClientRect().width),
+    )
+    .toBeCloseTo(initialWidth + 60, 0);
+  releaseSettings();
+  await expect
+    .poll(
+      async () =>
+        (await (await page.request.get(`${url}/api/settings`)).json()).settings
+          .navWidth,
+    )
+    .toBe(Math.round(initialWidth + 60));
+  await page.unroute("**/api/settings");
+  await expect
+    .poll(() =>
+      sidebar.evaluate((element) => element.getBoundingClientRect().width),
+    )
+    .toBeCloseTo(initialWidth + 60, 0);
+});
+
 test("Base UI focus and pane resizing preserve drafts, reading position and saved widths", async ({
   page,
 }) => {
@@ -1060,7 +1187,9 @@ test("Base UI focus and pane resizing preserve drafts, reading position and save
   await page.goto(url);
   const settings = page.getByRole("button", { name: "Settings", exact: true });
   await settings.hover();
-  await expect(page.getByText("Settings", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Settings", { exact: true }).filter({ visible: true }),
+  ).toBeVisible();
   await settings.click();
   const dialog = page.getByRole("dialog", { name: "Settings", exact: true });
   await expect(dialog).toBeVisible();
@@ -1115,7 +1244,43 @@ test("Base UI focus and pane resizing preserve drafts, reading position and save
     );
     await page.mouse.up();
   }
-  await drag(left, 100);
+  // A slow preference write must not freeze the next drag or restore an old width.
+  let releaseSettings!: () => void;
+  let sawSettings!: () => void;
+  const settingsGate = new Promise<void>((resolve) => {
+    releaseSettings = resolve;
+  });
+  const settingsStarted = new Promise<void>((resolve) => {
+    sawSettings = resolve;
+  });
+  let heldSettings = false;
+  await page.route("**/api/settings", async (route) => {
+    const request = route.request();
+    if (
+      request.method() === "PUT" &&
+      request.postDataJSON()?.navWidth !== undefined &&
+      !heldSettings
+    ) {
+      heldSettings = true;
+      sawSettings();
+      await settingsGate;
+    }
+    await route.continue();
+  });
+  await drag(left, 40);
+  await settingsStarted;
+  await expect.poll(() => width(files)).toBeCloseTo(initialLeft + 40, 0);
+  await drag(left, 60);
+  await expect.poll(() => width(files)).toBeCloseTo(initialLeft + 100, 0);
+  releaseSettings();
+  await expect
+    .poll(
+      async () =>
+        (await (await page.request.get(`${url}/api/settings`)).json()).settings
+          .navWidth,
+    )
+    .toBe(Math.round(initialLeft + 100));
+  await page.unroute("**/api/settings");
   await expect.poll(() => width(files)).toBeCloseTo(initialLeft + 100, 0);
   await expect.poll(() => width(notes)).toBeCloseTo(initialRight, 0);
   await drag(right, -100);
@@ -1228,6 +1393,138 @@ test("Base UI focus and pane resizing preserve drafts, reading position and save
   expect(errors).toEqual([]);
 });
 
+test("compact header search and hover-only tree controls remain keyboard accessible", async ({
+  page,
+}) => {
+  await page.request.post(`${url}/api/note`, {
+    data: {
+      comment: {
+        id: "src/app.ts|n2|n2|#headerhistory123",
+        file: "src/app.ts",
+        start: 2,
+        end: 2,
+        side: "new",
+        label: "2",
+        code: "+  return 'hello world';",
+        body: "Earlier compact header feedback",
+      },
+      ask: false,
+    },
+  });
+  await page.request.delete(`${url}/api/review`);
+  await page.request.post(`${url}/api/note`, {
+    data: {
+      comment: {
+        id: "|@|@|#fuzzyreview123",
+        scope: "global",
+        file: "",
+        start: 0,
+        end: 0,
+        body: "Fuzzily searchable reviewer annotation",
+      },
+      ask: false,
+    },
+  });
+  await page.goto(url);
+  const header = page.getByRole("banner");
+  const search = header.getByRole("searchbox", {
+    name: "Search review",
+    exact: true,
+  });
+  const navigation = page.getByRole("complementary", { name: "Changed files" });
+  await expect(search).toBeVisible();
+  await expect(navigation.getByRole("textbox")).toHaveCount(0);
+  const headerBox = (await header.boundingBox())!;
+  expect(headerBox.height).toBeLessThanOrEqual(56);
+  const searchBox = (await search.boundingBox())!;
+  expect(
+    Math.abs(
+      searchBox.x + searchBox.width / 2 - headerBox.x - headerBox.width / 2,
+    ),
+  ).toBeLessThan(headerBox.width / 10);
+  const notesToggle = header.getByRole("button", {
+    name: "Hide notes panel",
+    exact: true,
+  });
+  const notesBox = (await notesToggle.boundingBox())!;
+  expect(
+    await header
+      .getByRole("button")
+      .evaluateAll(
+        (buttons, right) =>
+          buttons.every(
+            (button) =>
+              !button.getBoundingClientRect().width ||
+              button.getBoundingClientRect().right <= right + 0.5,
+          ),
+        notesBox.x + notesBox.width,
+      ),
+  ).toBe(true);
+  const pane = page.getByRole("region", { name: "Code diff" });
+  const fileHeader = pane.locator(
+    '[data-diff-kind="header"][data-file-path="src/app.ts"]',
+  );
+  expect((await fileHeader.boundingBox())!.height).toBeLessThanOrEqual(46);
+  const earlier = fileHeader.getByLabel(/notes from other reviews/);
+  await earlier.click();
+  await expect(
+    fileHeader.getByText("Earlier compact header feedback", { exact: true }),
+  ).toBeVisible();
+  expect((await fileHeader.boundingBox())!.height).toBeLessThanOrEqual(46);
+  await earlier.click();
+  const filename = navigation.locator('button[title="src/app.ts"]');
+  const eye = navigation.getByRole("button", {
+    name: "Hide file src/app.ts",
+    exact: true,
+  });
+  await search.focus();
+  await page.mouse.move(searchBox.x + 8, searchBox.y + 8);
+  await expect(eye).toHaveCSS("opacity", "0");
+  const before = await filename.boundingBox();
+  await filename.hover();
+  await expect(eye).toHaveCSS("opacity", "1");
+  expect(await filename.boundingBox()).toEqual(before);
+  await page.mouse.move(searchBox.x + 8, searchBox.y + 8);
+  await eye.focus();
+  await expect(eye).toHaveCSS("opacity", "1");
+  await search.focus();
+  await expect(eye).toHaveCSS("opacity", "0");
+  await search.fill("helo world");
+  const results = page.getByRole("region", { name: "Search this review" });
+  await results
+    .getByRole("button")
+    .filter({ hasText: "Added · new 2" })
+    .click();
+  await expect(
+    pane
+      .locator('[data-file-path="src/app.ts"] [data-code-cell]')
+      .filter({ hasText: "hello world" }),
+  ).toBeInViewport();
+  await page.keyboard.press("Control+k");
+  await expect(search).toBeFocused();
+  await search.fill("searchble reviewer");
+  await results
+    .getByRole("button")
+    .filter({ hasText: "Fuzzily searchable reviewer annotation" })
+    .click();
+  await expect(
+    page
+      .getByRole("complementary", { name: "Review notes" })
+      .getByRole("article")
+      .filter({ hasText: "Fuzzily searchable reviewer annotation" }),
+  ).toBeVisible();
+  await search.fill("item2999");
+  await results
+    .getByRole("button")
+    .filter({ hasText: "Added · new 3000" })
+    .click();
+  await expect(
+    pane
+      .locator('[data-file-path="untracked.ts"] [data-code-cell]')
+      .filter({ hasText: "export const item2999 = 2999;" }),
+  ).toBeInViewport();
+});
+
 test("overall notes and formatting tools preserve the code reading position", async ({
   page,
 }) => {
@@ -1286,11 +1583,32 @@ test("overall notes and formatting tools preserve the code reading position", as
   await expect(editor.locator("strong")).toHaveText("Overall");
   await toolbar.getByRole("button", { name: "Write", exact: true }).click();
   await expect(text).toBeFocused();
+  await overall.click();
+  await expect(notes).toBeHidden();
+  await overall.click();
+  await expect(text).toHaveValue(
+    "**Overall** feedback without losing my place",
+  );
+  await page
+    .getByRole("searchbox", { name: "Search review", exact: true })
+    .focus();
+  await expect(notes).toBeHidden();
+  await overall.click();
+  await expect(text).toHaveValue(
+    "**Overall** feedback without losing my place",
+  );
+  await page.getByRole("heading", { name: "Local code review" }).click();
+  await expect(notes).toBeHidden();
+  await overall.click();
+  await expect(text).toHaveValue(
+    "**Overall** feedback without losing my place",
+  );
   await page.screenshot({ path: "/tmp/lcr-overall-composer.png" });
   await expect.poll(position).toEqual(before);
   await editor.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect.poll(position).toEqual(before);
   await overall.click();
+  await expect(text).toHaveValue("");
   await text.fill("Save overall feedback without jumping");
   await editor.getByRole("button", { name: "Save note", exact: true }).click();
   await expect(editor).toHaveCount(0);
@@ -1302,6 +1620,7 @@ test("overall notes and formatting tools preserve the code reading position", as
   const mobileTop = await pane.evaluate((element) => element.scrollTop);
   await overall.click();
   await expect(text).toBeVisible();
+  await expect(text).toHaveValue("");
   await page.screenshot({ path: "/tmp/lcr-overall-composer-mobile.png" });
   await expect
     .poll(() => pane.evaluate((element) => element.scrollTop))
@@ -1312,6 +1631,121 @@ test("overall notes and formatting tools preserve the code reading position", as
     ),
   ).toBe(true);
   await editor.getByRole("button", { name: "Cancel", exact: true }).click();
+});
+
+test("long lines wrap by default and nowrap scrolling stays inside each file", async ({
+  page,
+}) => {
+  const firstPath = path.join(directory, "wrap-one.ts");
+  const secondPath = path.join(directory, "wrap-two.ts");
+  const firstLine = `export const first = "${"abcdefgh".repeat(160)}";`;
+  const secondLine = `export const second = "${"ijklmnop".repeat(140)}";`;
+  try {
+    await writeFile(firstPath, `${firstLine}\nexport const next = 1;\n`);
+    await writeFile(secondPath, `${secondLine}\nexport const next = 2;\n`);
+    await page.goto(url);
+    const pane = page.getByRole("region", { name: "Code diff", exact: true });
+    const navigation = page.getByRole("navigation");
+    await navigation.locator('button[title="wrap-one.ts"]').click();
+    const firstCode = pane
+      .locator(
+        '[data-file-path="wrap-one.ts"][data-diff-kind="row"] [data-code-cell]',
+      )
+      .filter({ hasText: "export const first =" });
+    await expect(firstCode).toHaveText(firstLine);
+    await expect
+      .poll(() =>
+        firstCode.evaluate((cell) => cell.getBoundingClientRect().height),
+      )
+      .toBeGreaterThan(52);
+    expect(
+      await pane.evaluate(
+        (element) => element.scrollWidth <= element.clientWidth,
+      ),
+    ).toBe(true);
+    await pane
+      .locator('[data-file-path="wrap-one.ts"][data-diff-kind="row"]')
+      .getByRole("button", { name: "Comment on line 1", exact: true })
+      .click();
+    const editor = page.locator("[data-review-editor]");
+    const text = editor.getByRole("textbox", { name: "Note text" });
+    await text.fill("Keep this draft fixed while code scrolls.");
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    const wrap = page.getByRole("checkbox", {
+      name: "Wrap long lines",
+      exact: true,
+    });
+    await expect(wrap).toBeChecked();
+    await wrap.uncheck();
+    await page.keyboard.press("Escape");
+    const firstScroll = page.getByRole("region", {
+      name: "Code for wrap-one.ts",
+      exact: true,
+    });
+    const secondScroll = page.getByRole("region", {
+      name: "Code for wrap-two.ts",
+      exact: true,
+    });
+    await expect
+      .poll(() =>
+        firstCode.evaluate((cell) => cell.getBoundingClientRect().height),
+      )
+      .toBe(26);
+    await expect
+      .poll(() =>
+        firstScroll.evaluate(
+          (element) => element.scrollWidth - element.clientWidth,
+        ),
+      )
+      .toBeGreaterThan(120);
+    const header = pane.locator(
+      '[data-file-path="wrap-one.ts"][data-diff-kind="header"]',
+    );
+    const headerX = (await header.boundingBox())!.x;
+    const editorX = (await text.boundingBox())!.x;
+    const codeX = (await firstCode.boundingBox())!.x;
+    await firstScroll.evaluate((element) => {
+      element.scrollLeft = 120;
+    });
+    await expect
+      .poll(() => firstScroll.evaluate((element) => element.scrollLeft))
+      .toBe(120);
+    expect((await header.boundingBox())!.x).toBe(headerX);
+    expect((await text.boundingBox())!.x).toBe(editorX);
+    expect((await firstCode.boundingBox())!.x).toBeCloseTo(codeX - 120, 0);
+    expect(
+      await pane.evaluate((element) => ({
+        left: element.scrollLeft,
+        overflow: element.scrollWidth > element.clientWidth,
+      })),
+    ).toEqual({ left: 0, overflow: false });
+    await navigation.locator('button[title="wrap-two.ts"]').click();
+    expect(await secondScroll.evaluate((element) => element.scrollLeft)).toBe(
+      0,
+    );
+    await secondScroll.evaluate((element) => {
+      element.scrollLeft = 80;
+    });
+    await expect
+      .poll(() => secondScroll.evaluate((element) => element.scrollLeft))
+      .toBe(80);
+    expect(await firstScroll.evaluate((element) => element.scrollLeft)).toBe(
+      120,
+    );
+    await expect(text).toHaveValue("Keep this draft fixed while code scrolls.");
+    await editor.getByRole("button", { name: "Cancel", exact: true }).click();
+    await page.reload();
+    await navigation.locator('button[title="wrap-one.ts"]').click();
+    await expect(firstScroll).toBeVisible();
+    expect(
+      (await (await page.request.get(`${url}/api/settings`)).json()).settings
+        .wrapLines,
+    ).toBe(false);
+    await page.screenshot({ path: "/tmp/lcr-file-local-horizontal.png" });
+  } finally {
+    await rm(firstPath, { force: true });
+    await rm(secondPath, { force: true });
+  }
 });
 
 test("live page capture keeps its editor at the bottom and previews images across the viewport", async ({

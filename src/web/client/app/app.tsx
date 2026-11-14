@@ -9,13 +9,14 @@ import {
   type ReviewBookmark,
 } from "../navigation/review-navigation.tsx";
 import { stepAt } from "../navigation/bookmarks.ts";
-import { SearchResults } from "../search/results.tsx";
+import { SearchResults, type SearchResultsHandle } from "../search/results.tsx";
 import { fileHidden } from "../diff/filters.ts";
 import { rowKey } from "../diff/model.ts";
 import { Eye, EyeOff, ArrowUp, ArrowDown } from "lucide-react";
 import { ReviewReferences } from "../notes/references.tsx";
 import { UiPreferences, useUi } from "./ui-preferences.tsx";
 import { ImageScope } from "../components/images.tsx";
+import { imageEditorOwner } from "../components/image-preview.ts";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   GitBranch,
@@ -24,6 +25,8 @@ import {
   Settings2,
   PanelLeftClose,
   PanelLeft,
+  PanelRightClose,
+  PanelRight,
   MessageSquare,
   Plus,
   Sun,
@@ -127,6 +130,12 @@ function Workspace({
 }) {
   const { settings, update } = useUi();
   const [searchOpen, setSearchOpen] = useState(false);
+  const searchInput = useRef<HTMLInputElement>(null);
+  const searchResults = useRef<SearchResultsHandle>(null);
+  const [overallOpen, setOverallOpen] = useState(true);
+  const overallContainer = useRef<HTMLDivElement>(null);
+  const overallEditor = useRef<HTMLElement>(null);
+  const pickingAttachment = useRef(false);
   const [diff, setDiff] = useState(incomingDiff);
   const diffView = useRef<DiffViewHandle>(null);
   const navigation = useRef<HTMLElement>(null);
@@ -212,11 +221,6 @@ function Workspace({
     return () => window.removeEventListener("beforeunload", guard);
   }, [draft, busy]);
   const files = useMemo(() => orderFiles(diff.files), [diff.files]);
-  const shownFiles = useMemo(
-    () =>
-      files.filter((f) => f.path.toLowerCase().includes(search.toLowerCase())),
-    [files, search],
-  );
   const visibleFiles = useMemo(
     () => files.filter((file) => !fileHidden(file, settings, visibility)),
     [
@@ -252,6 +256,52 @@ function Workspace({
     draft.kind === "note" &&
     draft.comment.scope === "global" &&
     !draft.editing;
+  useEffect(() => {
+    if (!overallDraft || !overallOpen) return;
+    const outside = (event: PointerEvent | FocusEvent) => {
+      const target = event.target;
+      const owner = target instanceof Element ? imageEditorOwner(target) : null;
+      if (
+        target instanceof Node &&
+        !overallContainer.current?.contains(target) &&
+        !(owner && overallEditor.current?.contains(owner)) &&
+        !(
+          target instanceof Element &&
+          target.closest("[role=listbox], [role=tooltip]")
+        )
+      )
+        setOverallOpen(false);
+    };
+    const blur = () => {
+      // Native file dialogs do not expose a DOM focus target.
+      if (!pickingAttachment.current) setOverallOpen(false);
+    };
+    const focus = () => {
+      pickingAttachment.current = false;
+    };
+    const pickerDone = (event: Event) => {
+      if (
+        event.target instanceof HTMLInputElement &&
+        event.target.type === "file" &&
+        overallEditor.current?.contains(event.target)
+      )
+        pickingAttachment.current = false;
+    };
+    document.addEventListener("pointerdown", outside);
+    document.addEventListener("focusin", outside);
+    window.addEventListener("blur", blur);
+    window.addEventListener("focus", focus);
+    document.addEventListener("change", pickerDone, true);
+    document.addEventListener("cancel", pickerDone, true);
+    return () => {
+      document.removeEventListener("pointerdown", outside);
+      document.removeEventListener("focusin", outside);
+      window.removeEventListener("blur", blur);
+      window.removeEventListener("focus", focus);
+      document.removeEventListener("change", pickerDone, true);
+      document.removeEventListener("cancel", pickerDone, true);
+    };
+  }, [overallDraft, overallOpen]);
   const activeDraft =
     draft && (draft.kind === "note" ? draft.comment.id : draft.id);
   const visibleNotes = useMemo(
@@ -302,11 +352,7 @@ function Workspace({
         ((allNotes || note.file === file?.path || note.scope === "global") &&
           (filter === "all" ||
             (filter === "done") ===
-              ["applied", "answered", "skipped"].includes(note.status)) &&
-          (!search ||
-            `${note.file} ${note.body} ${note.messages.map((m) => m.body).join(" ")}`
-              .toLowerCase()
-              .includes(search.toLowerCase()))),
+              ["applied", "answered", "skipped"].includes(note.status))),
     )
     .sort(
       (a, b) =>
@@ -342,7 +388,9 @@ function Workspace({
       );
       if ((event.metaKey || event.ctrlKey) && event.code === "KeyK") {
         event.preventDefault();
-        setSearchOpen((open) => !open);
+        setSearchOpen(true);
+        searchInput.current?.focus();
+        searchInput.current?.select();
         return;
       }
       if (typing || document.querySelector("dialog[open],[role=dialog]"))
@@ -365,7 +413,15 @@ function Workspace({
     return () => window.removeEventListener("keydown", keys);
   });
   function focusEditor() {
-    if (draft?.host === "panel") {
+    setSearchOpen(false);
+    if (overallDraft) {
+      setOverallOpen(true);
+      requestAnimationFrame(() =>
+        overallEditor.current
+          ?.querySelector<HTMLTextAreaElement>("textarea")
+          ?.focus({ preventScroll: true }),
+      );
+    } else if (draft?.host === "panel") {
       const editor = document.querySelector<HTMLElement>(
         "[data-review-editor]",
       );
@@ -429,6 +485,7 @@ function Workspace({
           ? known?.messages.find((message) => message.at === next.at)?.body ||
             ""
           : "";
+    setSearchOpen(false);
     setDraft({
       ...next,
       host: next.host || "diff",
@@ -491,7 +548,7 @@ function Workspace({
         }}
       >
         <div className="flex h-dvh min-w-0 flex-col bg-background text-foreground">
-          <header className="relative z-30 flex h-12 shrink-0 items-center gap-2 border-b bg-card px-3">
+          <header className="relative z-30 flex h-12 shrink-0 items-center gap-1 border-b bg-card px-2 sm:gap-2 sm:px-3">
             {icon(
               navOpen ? "Hide file sidebar" : "Show file sidebar",
               navOpen ? <PanelLeftClose /> : <PanelLeft />,
@@ -500,7 +557,7 @@ function Workspace({
             <div className="hidden size-7 items-center justify-center text-primary sm:flex">
               <GitPullRequest className="size-4" />
             </div>
-            <div className="mr-2 hidden shrink-0 sm:block">
+            <div className="mr-2 hidden shrink-0 xl:block">
               <h1 className="text-sm font-semibold tracking-tight">
                 Local code review{" "}
                 <span className="ml-1 rounded bg-muted px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground">
@@ -509,7 +566,7 @@ function Workspace({
               </h1>
               <p className="text-[10px] text-muted-foreground">{VERSION}</p>
             </div>
-            <div className="hidden min-w-0 items-center gap-2 text-xs text-muted-foreground lg:flex">
+            <div className="hidden min-w-0 items-center gap-2 text-xs text-muted-foreground 2xl:flex">
               <GitBranch className="size-3.5" />
               <span className="max-w-36 truncate">{diff.branch}</span>
               <span className="opacity-40">/</span>
@@ -519,57 +576,94 @@ function Workspace({
             </div>
             <Select
               label="Select file"
-              className="max-w-40 flex-1 md:hidden"
+              className="h-8 w-9 shrink-0 gap-0 px-2 [&>span:first-child]:hidden md:hidden"
               value={file?.path || ""}
               onValueChange={jumpToFile}
               options={files.map((f) => ({ value: f.path, label: f.path }))}
             />
-            <div className="ml-auto flex items-center gap-1">
-              <Button
-                size="sm"
-                variant={notesOpen ? "outline" : "ghost"}
-                aria-label={notesOpen ? "Hide notes panel" : "Show notes panel"}
-                onClick={() => {
-                  if (notesOpen && draft?.host === "panel" && !overallDraft)
-                    focusEditor();
-                  else setNotesOpen(!notesOpen);
+            <label className="mx-auto flex h-8 min-w-0 max-w-xl flex-1 items-center gap-2 rounded-md border bg-background px-2 sm:px-3">
+              <Search className="size-3.5 shrink-0 text-muted-foreground" />
+              <input
+                ref={searchInput}
+                type="search"
+                aria-label="Search review"
+                aria-expanded={searchOpen}
+                aria-controls={searchOpen ? "review-search-results" : undefined}
+                value={search}
+                onFocus={() => setSearchOpen(true)}
+                onChange={(event) => {
+                  setSearch(event.target.value);
+                  setSearchOpen(true);
                 }}
-              >
-                <MessageSquare />
-                <span className="hidden sm:inline">{notes.length} notes</span>
-              </Button>
+                onKeyDown={(event) => {
+                  if (event.nativeEvent.isComposing) return;
+                  if (searchOpen && searchResults.current?.key(event.key)) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                  } else if (
+                    !searchOpen &&
+                    ["ArrowDown", "Enter"].includes(event.key)
+                  ) {
+                    event.preventDefault();
+                    setSearchOpen(true);
+                  }
+                }}
+                placeholder="Search review…"
+                className="h-full w-full min-w-0 bg-transparent text-xs outline-none"
+              />
+              <kbd className="hidden shrink-0 text-[10px] text-muted-foreground lg:inline">
+                ⌘/Ctrl K
+              </kbd>
+            </label>
+            <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
               {diff.web && (
                 <Button
                   size="sm"
                   variant="outline"
+                  aria-label="Open page"
                   disabled={action.isPending}
                   onClick={() =>
                     action.mutate({ url: "/api/web", method: "POST", body: {} })
                   }
                 >
-                  Open page
+                  <FileCode2 />
+                  <span className="hidden sm:inline">Open page</span>
                 </Button>
               )}
-              <div className="relative">
+              <div ref={overallContainer} className="relative">
                 <Button
                   size="sm"
                   variant="outline"
                   disabled={!review || busy}
                   aria-label="Overall note"
-                  aria-expanded={!!overallDraft}
-                  onClick={() =>
-                    compose({
-                      kind: "note",
-                      host: "panel",
-                      comment: makeComment(),
-                    })
-                  }
+                  aria-expanded={!!overallDraft && overallOpen}
+                  onClick={() => {
+                    if (overallDraft) {
+                      if (overallOpen) setOverallOpen(false);
+                      else focusEditor();
+                    } else if (
+                      compose({
+                        kind: "note",
+                        host: "panel",
+                        comment: makeComment(),
+                      })
+                    )
+                      setOverallOpen(true);
+                  }}
                 >
                   <Plus />
                   <span className="hidden sm:inline">Overall note</span>
                 </Button>
                 {overallDraft && draft && (
                   <section
+                    ref={overallEditor}
+                    hidden={!overallOpen}
+                    onClickCapture={(event) => {
+                      const target = event.target as Element;
+                      pickingAttachment.current = !!target.closest(
+                        '[aria-label="Attach file"], input[type=file]',
+                      );
+                    }}
                     aria-label="Overall note editor"
                     className="absolute right-0 top-full z-40 mt-2 max-h-[calc(100dvh-112px)] w-[min(40rem,calc(100vw-24px))] overflow-auto border bg-card p-4 shadow-xl max-sm:fixed max-sm:inset-x-3 max-sm:top-12 max-sm:mt-2 max-sm:w-auto"
                   >
@@ -584,18 +678,67 @@ function Workspace({
                   </section>
                 )}
               </div>
-              {icon("Search review (⌘/Ctrl K)", <Search />, () =>
-                setSearchOpen(true),
-              )}
-              {icon("Review history", <HistoryIcon />, () =>
-                setDialog("history"),
-              )}
+              <div className="hidden sm:contents">
+                {icon("Review history", <HistoryIcon />, () =>
+                  setDialog("history"),
+                )}
+                {icon(
+                  dark ? "Light theme" : "Dark theme",
+                  dark ? <Sun /> : <Moon />,
+                  () => setDark(!dark),
+                )}
+                {icon("Settings", <Settings2 />, () => setDialog("settings"))}
+              </div>
+              <details
+                className="relative sm:hidden"
+                onClick={(event) => {
+                  if ((event.target as Element).closest("button"))
+                    event.currentTarget.open = false;
+                }}
+              >
+                <summary
+                  aria-label="Review actions"
+                  className="flex size-9 cursor-pointer list-none items-center justify-center rounded-md hover:bg-accent [&::-webkit-details-marker]:hidden"
+                >
+                  <Settings2 className="size-4" />
+                </summary>
+                <div className="absolute right-0 top-full z-40 mt-2 flex w-44 flex-col rounded-md border bg-card p-1 shadow-xl">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="justify-start"
+                    onClick={() => setDialog("history")}
+                  >
+                    <HistoryIcon /> Review history
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="justify-start"
+                    onClick={() => setDark(!dark)}
+                  >
+                    {dark ? <Sun /> : <Moon />}
+                    {dark ? "Light theme" : "Dark theme"}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="justify-start"
+                    onClick={() => setDialog("settings")}
+                  >
+                    <Settings2 /> Settings
+                  </Button>
+                </div>
+              </details>
               {icon(
-                dark ? "Light theme" : "Dark theme",
-                dark ? <Sun /> : <Moon />,
-                () => setDark(!dark),
+                notesOpen ? "Hide notes panel" : "Show notes panel",
+                notesOpen ? <PanelRightClose /> : <PanelRight />,
+                () => {
+                  if (notesOpen && draft?.host === "panel" && !overallDraft)
+                    focusEditor();
+                  else setNotesOpen(!notesOpen);
+                },
               )}
-              {icon("Settings", <Settings2 />, () => setDialog("settings"))}
             </div>
           </header>
           {(error || storageError || action.error) && (
@@ -627,19 +770,7 @@ function Workspace({
                 className="flex h-full min-w-0 flex-col bg-card/50"
                 aria-label="Changed files"
               >
-                <div className="p-3">
-                  <label className="flex items-center gap-2 rounded-lg border bg-background px-3">
-                    <Search className="size-3.5 text-muted-foreground" />
-                    <input
-                      aria-label="Filter files and notes"
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
-                      placeholder="Filter files and notes…"
-                      className="h-9 min-w-0 flex-1 bg-transparent text-xs outline-none"
-                    />
-                  </label>
-                </div>
-                <div className="flex items-center justify-between px-4 pb-3 text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
+                <div className="flex items-center justify-between px-4 py-3 text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
                   <span>Changes</span>
                   <span>
                     {viewed}/{files.length} viewed
@@ -650,7 +781,7 @@ function Workspace({
                   className="min-h-0 flex-1 overflow-auto px-2 pb-3"
                 >
                   <FileTree
-                    files={shownFiles}
+                    files={files}
                     selected={file?.path || ""}
                     scope={scope}
                     marks={marks}
@@ -689,7 +820,7 @@ function Workspace({
                       }))
                     }
                   />
-                  {!shownFiles.length && (
+                  {!files.length && (
                     <p className="p-3 text-xs text-muted-foreground">
                       No matching files.
                     </p>
@@ -911,29 +1042,28 @@ function Workspace({
             }
           >
             <main className="relative flex h-full min-w-0 flex-col">
-              {searchOpen && (
-                <SearchResults
-                  files={files}
-                  notes={notes}
-                  onClose={() => setSearchOpen(false)}
-                  onSelect={(result) => {
-                    setSearchOpen(false);
-                    const note = notes.find(
-                      (note) => note.id === result.noteId,
+              <SearchResults
+                ref={searchResults}
+                query={search}
+                open={searchOpen}
+                files={files}
+                notes={notes}
+                onClose={() => setSearchOpen(false)}
+                onSelect={(result) => {
+                  setSearchOpen(false);
+                  const note = notes.find((note) => note.id === result.noteId);
+                  if (note) {
+                    jumpToNote(note);
+                    setAllNotes(true);
+                    setNotesOpen(true);
+                    setFilter("all");
+                  } else if (result.row)
+                    reveal(result.path, () =>
+                      diffView.current?.scrollToRow(result.path, result.row!),
                     );
-                    if (note) {
-                      jumpToNote(note);
-                      setAllNotes(true);
-                      setNotesOpen(true);
-                      setFilter("all");
-                    } else if (result.row)
-                      reveal(result.path, () =>
-                        diffView.current?.scrollToRow(result.path, result.row!),
-                      );
-                    else jumpToFile(result.path);
-                  }}
-                />
-              )}
+                  else jumpToFile(result.path);
+                }}
+              />
               <DiffView
                 ref={diffView}
                 files={visibleFiles}

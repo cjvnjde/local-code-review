@@ -27,6 +27,60 @@ function useMedia(query: string) {
   return useSyncExternalStore(subscribe, snapshot, () => false);
 }
 
+/** Persisted sizes hydrate a pane; after input, its live size owns the session. */
+function usePanelWidth(storedWidth: number, visible: boolean) {
+  const panel = useRef<PanelImperativeHandle>(null);
+  const defaultWidth = useRef(storedWidth);
+  const width = useRef(storedWidth);
+  const userSized = useRef(false);
+  const previousVisible = useRef<boolean | undefined>(undefined);
+  const measureFrame = useRef(0);
+  const restoreFrame = useRef(0);
+  const cancelRestore = useCallback(() => {
+    cancelAnimationFrame(measureFrame.current);
+    cancelAnimationFrame(restoreFrame.current);
+  }, []);
+  useEffect(() => cancelRestore, [cancelRestore]);
+  useEffect(() => {
+    const visibilityChanged = previousVisible.current !== visible;
+    previousVisible.current = visible;
+    if (!userSized.current) width.current = storedWidth;
+    else if (!visibilityChanged) return;
+    cancelRestore();
+    // Wait for the Group's ResizeObserver after a visibility/breakpoint change.
+    measureFrame.current = requestAnimationFrame(() => {
+      restoreFrame.current = requestAnimationFrame(() => {
+        panel.current?.resize(visible ? `${width.current}px` : "0px");
+      });
+    });
+  }, [storedWidth, visible, cancelRestore]);
+  const readWidth = () => {
+    if (visible) {
+      const next = Math.round(panel.current?.getSize().inPixels || 0);
+      if (next) width.current = next;
+    }
+    return width.current;
+  };
+  return {
+    panel,
+    defaultSize: `${defaultWidth.current}px`,
+    readWidth,
+    beginResize: () => {
+      cancelRestore();
+      if (visible) {
+        userSized.current = true;
+        readWidth();
+      }
+    },
+    reset: (next: number) => {
+      cancelRestore();
+      userSized.current = true;
+      width.current = next;
+      panel.current?.resize(`${next}px`);
+    },
+  };
+}
+
 /** Keep every pane mounted across resizing, hiding and mobile drawer transitions. */
 export function ReviewLayout({
   files,
@@ -47,60 +101,60 @@ export function ReviewLayout({
   const inlineNotes = useMedia("(min-width: 640px)");
   const showFiles = wide && navOpen;
   const showNotes = inlineNotes && notesOpen;
-  const filesPanel = useRef<PanelImperativeHandle>(null);
-  const notesPanel = useRef<PanelImperativeHandle>(null);
-  const defaultFiles = useRef(settings.navWidth || 256);
-  const defaultNotes = useRef(notesWidth);
+  const filesSize = usePanelWidth(settings.navWidth || 256, showFiles);
+  const notesSize = usePanelWidth(notesWidth, showNotes);
   const persistFrame = useRef(0);
   useEffect(() => () => cancelAnimationFrame(persistFrame.current), []);
-  useEffect(() => {
-    // Let the Group's ResizeObserver measure a new viewport before restoring pixel sizes.
-    let restore = 0;
-    const measure = requestAnimationFrame(() => {
-      restore = requestAnimationFrame(() => {
-        filesPanel.current?.resize(
-          showFiles ? `${settings.navWidth || 256}px` : "0px",
-        );
-        notesPanel.current?.resize(showNotes ? `${notesWidth}px` : "0px");
-      });
-    });
-    return () => {
-      cancelAnimationFrame(measure);
-      cancelAnimationFrame(restore);
-    };
-  }, [showFiles, showNotes, settings.navWidth, notesWidth]);
+  const persistWidths = () => {
+    persistFrame.current = 0;
+    if (showFiles) {
+      const width = filesSize.readWidth();
+      if (width !== (settings.navWidth || 256)) update({ navWidth: width });
+    }
+    if (showNotes) {
+      const width = notesSize.readWidth();
+      if (width !== notesWidth) setNotesWidth(width);
+    }
+  };
+  const beginResize = () => {
+    filesSize.beginResize();
+    notesSize.beginResize();
+    // Flush a preceding keyboard resize before the next gesture can change its pixels.
+    if (persistFrame.current) {
+      cancelAnimationFrame(persistFrame.current);
+      persistWidths();
+    }
+  };
   return (
     <ResizablePanelGroup
       orientation="horizontal"
       id="review-panes"
       className="min-h-0 flex-1"
+      onPointerDownCapture={(event) => {
+        // The library handles expanded divider hit targets on document capture.
+        if (event.defaultPrevented) beginResize();
+      }}
+      onKeyDownCapture={(event) => {
+        if (
+          event.target instanceof Element &&
+          event.target.closest("[data-separator]") &&
+          ["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)
+        )
+          beginResize();
+      }}
       onLayoutChanged={(_layout, meta) => {
         if (!meta.isUserInteraction) return;
         // Keyboard layout callbacks can precede React's DOM update. Read committed pixels.
         cancelAnimationFrame(persistFrame.current);
-        persistFrame.current = requestAnimationFrame(() => {
-          if (showFiles) {
-            const width = Math.round(
-              filesPanel.current?.getSize().inPixels || 0,
-            );
-            if (width && width !== (settings.navWidth || 256))
-              update({ navWidth: width });
-          }
-          if (showNotes) {
-            const width = Math.round(
-              notesPanel.current?.getSize().inPixels || 0,
-            );
-            if (width && width !== notesWidth) setNotesWidth(width);
-          }
-        });
+        persistFrame.current = requestAnimationFrame(persistWidths);
       }}
     >
       <ResizablePanel
         id="files-pane"
         aria-hidden={!showFiles}
         inert={!showFiles}
-        panelRef={filesPanel}
-        defaultSize={`${defaultFiles.current}px`}
+        panelRef={filesSize.panel}
+        defaultSize={filesSize.defaultSize}
         minSize={showFiles ? "180px" : "0px"}
         maxSize={showFiles ? "60%" : "0px"}
         groupResizeBehavior="preserve-pixel-size"
@@ -118,7 +172,8 @@ export function ReviewLayout({
         title="Drag or use arrow keys to resize; double-click to reset"
         onDoubleClick={() => {
           cancelAnimationFrame(persistFrame.current);
-          filesPanel.current?.resize("256px");
+          persistFrame.current = 0;
+          filesSize.reset(256);
           update({ navWidth: 0 });
         }}
       />
@@ -139,7 +194,8 @@ export function ReviewLayout({
         title="Drag or use arrow keys to resize; double-click to reset"
         onDoubleClick={() => {
           cancelAnimationFrame(persistFrame.current);
-          notesPanel.current?.resize("390px");
+          persistFrame.current = 0;
+          notesSize.reset(390);
           setNotesWidth(390);
         }}
       />
@@ -147,8 +203,8 @@ export function ReviewLayout({
         id="notes-pane"
         aria-hidden={!notesOpen}
         inert={!notesOpen}
-        panelRef={notesPanel}
-        defaultSize={`${defaultNotes.current}px`}
+        panelRef={notesSize.panel}
+        defaultSize={notesSize.defaultSize}
         minSize={showNotes ? "280px" : "0px"}
         maxSize={showNotes ? "65%" : "0px"}
         groupResizeBehavior="preserve-pixel-size"

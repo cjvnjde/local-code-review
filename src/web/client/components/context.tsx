@@ -1,18 +1,9 @@
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import {
-  contextId,
-  contextLink,
-  contextIsText,
-} from "../../../shared/context.ts";
-import {
-  uploadContext,
-  fetchContextManifest,
-  fetchContextText,
-} from "./context-api.ts";
+import { contextId, contextIsText } from "../../../shared/context.ts";
+import { fetchContextManifest, fetchContextText } from "./context-api.ts";
 import { AttachmentImage } from "./images.tsx";
 import { Button } from "./ui/button.tsx";
-import { Select } from "./ui/select.tsx";
 
 export function ContextReference({
   source,
@@ -112,96 +103,5 @@ function ContextText({ id, name }: { id: string; name: string }) {
       )}
       {error && <span role="alert">{error}</span>}
     </span>
-  );
-}
-export function AddContext({
-  onInsert,
-  onBusy,
-}: {
-  onInsert: (value: string) => void;
-  onBusy: (busy: boolean) => void;
-}) {
-  const [text, setText] = useState("");
-  const [label, setLabel] = useState("Additional details");
-  const [type, setType] = useState<"text/plain" | "application/json">(
-    "text/plain",
-  );
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const file = useRef<HTMLInputElement>(null);
-  const details = useRef<HTMLDetailsElement>(null);
-  async function attach() {
-    if (busy) return;
-    setBusy(true);
-    onBusy(true);
-    setError("");
-    try {
-      const ref = await uploadContext(
-        file.current?.files?.[0] || { text, label, type },
-      );
-      onInsert(`\n${contextLink(ref)}\n`);
-      setText("");
-      if (file.current) file.current.value = "";
-      if (details.current) details.current.open = false;
-    } catch (error) {
-      setError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setBusy(false);
-      onBusy(false);
-    }
-  }
-  return (
-    <details className="text-xs" ref={details}>
-      <summary className="cursor-pointer text-muted-foreground">
-        Add context · file, text or JSON
-      </summary>
-      <div className="mt-3 space-y-3">
-        <input
-          ref={file}
-          type="file"
-          aria-label="Context file"
-          disabled={busy}
-        />
-        <label className="block">
-          Label
-          <input
-            className="mt-1 block w-full rounded border bg-background p-2"
-            aria-label="Context label"
-            value={label}
-            onChange={(event) => setLabel(event.target.value)}
-          />
-        </label>
-        <Select
-          label="Context format"
-          value={type}
-          onValueChange={setType}
-          disabled={busy}
-          options={[
-            { value: "text/plain", label: "Plain text" },
-            { value: "application/json", label: "JSON" },
-          ]}
-        />
-        <textarea
-          aria-label="Additional context"
-          className="block h-32 w-full rounded border bg-background p-3 font-mono"
-          value={text}
-          onChange={(event) => setText(event.target.value)}
-          disabled={busy}
-        />
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={busy}
-          onClick={() => void attach()}
-        >
-          {busy ? "Attaching…" : "Attach context"}
-        </Button>
-        {error && (
-          <p role="alert" className="text-destructive">
-            {error}
-          </p>
-        )}
-      </div>
-    </details>
   );
 }

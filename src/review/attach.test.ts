@@ -42,7 +42,7 @@ describe("attachExtension", () => {
     expect(attachExtension("image/svg+xml")).toBe("svg");
   });
 
-  test("answers nothing for what lcr does not keep", () => {
+  test("leaves non-image types to the generic attachment path", () => {
     expect(attachExtension("application/pdf")).toBe("");
     expect(attachExtension("text/plain")).toBe("");
     expect(attachExtension("")).toBe("");
@@ -150,14 +150,8 @@ describe("saveAttachment", () => {
     expect((await kept(root)).sort()).toEqual([png, webp].sort());
   });
 
-  test("nothing is kept for a type lcr cannot draw, an empty body, or one over the limit", async () => {
+  test("nothing is kept above the attachment size limit", async () => {
     const root = await dir();
-    expect(
-      await saveAttachment(root, ".review", bytes("x"), "application/pdf"),
-    ).toBe("");
-    expect(
-      await saveAttachment(root, ".review", new Uint8Array(0), "image/png"),
-    ).toBe("");
     expect(
       await saveAttachment(
         root,
@@ -441,4 +435,94 @@ test("invalid attachment paths cannot alias an existing valid image by discardin
     " secret.png",
   ])
     expect(await readAttachment(root, ".review", name)).toBeNull();
+});
+
+test.each([
+  "",
+  "application/octet-stream",
+  "application/x-unrecognized",
+  "text/plain",
+  "application/pdf",
+])(
+  "arbitrary %s attachments retain exact binary bytes and a safe portable filename",
+  async (type) => {
+    const root = await dir();
+    const raw = new Uint8Array([0, 255, 254, 128, 13, 10, 0, 42]);
+    const name = await saveAttachment(
+      root,
+      ".review",
+      raw,
+      type,
+      "../../report with spaces.bin",
+    );
+    expect(name).toMatch(/^[a-f0-9]{16}-report_with_spaces\.bin$/);
+    expect(
+      new Uint8Array(
+        await readFile(path.join(root, ".review", attachRef(name))),
+      ),
+    ).toEqual(raw);
+    expect(await readAttachment(root, ".review", attachRef(name))).toEqual({
+      bytes: raw,
+      type: "application/octet-stream",
+    });
+    expect((await readAttachment(root, ".review", name))!.bytes).toEqual(raw);
+    expect(
+      await saveAttachment(
+        root,
+        ".review",
+        raw,
+        type,
+        "../../report with spaces.bin",
+      ),
+    ).toBe(name);
+    expect(await kept(root)).toEqual([name]);
+  },
+);
+
+test("empty files and path-like or very long names remain bounded attachments", async () => {
+  const root = await dir();
+  for (const filename of [
+    "",
+    "../..",
+    "C:\\private\\file.dat",
+    "x".repeat(1000),
+  ]) {
+    const name = await saveAttachment(
+      root,
+      ".review",
+      new Uint8Array(),
+      "",
+      filename,
+    );
+    expect(name.length).toBeLessThanOrEqual(137);
+    expect(name).toMatch(/^[a-f0-9]{16}-[A-Za-z0-9][A-Za-z0-9._-]*$/);
+    expect(
+      (await readAttachment(root, ".review", attachRef(name)))!.bytes,
+    ).toEqual(new Uint8Array());
+  }
+});
+
+test("generic attachment reads and writes cannot follow escaping symlinks", async () => {
+  const root = await dir();
+  const outside = await dir();
+  const raw = bytes("original binary");
+  const name = await saveAttachment(root, ".review", raw, "", "data.bin");
+  await rm(path.join(root, ".review", attachRef(name)));
+  await writeFile(path.join(outside, "secret"), "private");
+  await symlink(
+    path.join(outside, "secret"),
+    path.join(root, ".review", attachRef(name)),
+  );
+  expect(await readAttachment(root, ".review", attachRef(name))).toBeNull();
+  await expect(
+    saveAttachment(root, ".review", raw, "", "data.bin"),
+  ).rejects.toThrow();
+  expect(await readFile(path.join(outside, "secret"), "utf8")).toBe("private");
+  for (const ref of [
+    "../secret",
+    "images/../../secret",
+    "./review.md",
+    "images%2fdata.bin",
+  ])
+    expect(await readAttachment(root, ".review", ref)).toBeNull();
 });

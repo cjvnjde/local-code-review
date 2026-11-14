@@ -6,7 +6,7 @@ import {
 } from "../../../shared/web-review.ts";
 import { ColorTools } from "../components/colors.tsx";
 import { AttachmentImage } from "../components/images.tsx";
-import { AddContext } from "../components/context.tsx";
+import { attachmentSrc, uploadAttachment } from "../components/attachments.ts";
 import { useReferences } from "./references.tsx";
 import { insertRef, plainRefs, refLabel, refOf } from "./note-ref.ts";
 import { useUi } from "../app/ui-preferences.tsx";
@@ -20,7 +20,7 @@ import {
   List,
   ListTodo,
   Link,
-  ImagePlus,
+  Paperclip,
   Code2,
   Eye,
   Pencil,
@@ -267,18 +267,14 @@ export function Composer({
     onBusy?.(true);
     setUploadError("");
     try {
-      for (const file of files.filter((f) => f.type.startsWith("image/"))) {
-        const response = await fetch("/api/attach", {
-          method: "POST",
-          headers: { "content-type": file.type },
-          body: file,
-        });
-        const result = await response.json();
-        if (!response.ok)
-          throw new Error(result.error || "Image upload failed.");
-        insert(
-          `\n![${file.name.replace(/[\[\]\\\r\n]/g, " ")}](${result.ref})\n`,
-        );
+      for (const file of files) {
+        const ref = await uploadAttachment(file, file.name);
+        const label = (file.name || "Attachment")
+          .replace(/[\r\n]/g, " ")
+          .replace(/[\\`*_[\]{}()<>!#|~&]/g, "\\$&");
+        const image =
+          file.type.toLowerCase().startsWith("image/") && attachmentSrc(ref);
+        insert(`\n${image ? "!" : ""}[${label}](${ref})\n`);
       }
     } catch (error) {
       setUploadError(error instanceof Error ? error.message : String(error));
@@ -328,13 +324,6 @@ export function Composer({
         body={body}
         onChange={(body) => onChange(withBody(latest.current, body))}
       />
-      <AddContext
-        onInsert={insert}
-        onBusy={(value) => {
-          setUploading(value);
-          onBusy?.(value);
-        }}
-      />
       <ComposerImages
         body={body}
         subject={subject}
@@ -358,18 +347,7 @@ export function Composer({
     </>
   );
   const content = (
-    <div
-      className={`flex min-h-0 flex-col gap-3 ${embedded ? "flex-1" : ""}`}
-      onDragOver={(event) => {
-        if (event.dataTransfer.types.includes("Files")) event.preventDefault();
-      }}
-      onDrop={(event) => {
-        if (event.dataTransfer.files.length) {
-          event.preventDefault();
-          void attach([...event.dataTransfer.files]);
-        }
-      }}
-    >
+    <div className={`flex min-h-0 flex-col gap-3 ${embedded ? "flex-1" : ""}`}>
       <div
         role={embedded ? "region" : undefined}
         aria-label={embedded ? "Evidence and attachments" : undefined}
@@ -512,22 +490,21 @@ export function Composer({
               </Button>
             </Tooltip>
           )}
-          <Tooltip label="Attach image">
+          <Tooltip label="Attach file">
             <Button
               variant="ghost"
               size="icon"
               className="size-8"
-              aria-label="Attach image"
+              aria-label="Attach file"
               disabled={busy}
               onClick={() => picker.current?.click()}
             >
-              <ImagePlus />
+              <Paperclip />
             </Button>
           </Tooltip>
           <input
             ref={picker}
             type="file"
-            accept="image/*"
             multiple
             className="hidden"
             onChange={(e) => {
@@ -582,12 +559,10 @@ export function Composer({
                 updateCompletion(event.currentTarget);
               }}
               onPaste={(event) => {
-                const images = [...event.clipboardData.files].filter((f) =>
-                  f.type.startsWith("image/"),
-                );
-                if (images.length) {
+                const files = [...event.clipboardData.files];
+                if (files.length) {
                   event.preventDefault();
-                  void attach(images);
+                  void attach(files);
                 }
               }}
               onKeyDown={(event) => {
@@ -658,7 +633,7 @@ export function Composer({
                 }
               }}
               placeholder="Write feedback, ask a question, or type # to reference a note…"
-              className={`w-full border-0 bg-transparent p-0 text-sm leading-relaxed placeholder:text-muted-foreground placeholder:opacity-60 outline-none focus-visible:outline-1 focus-visible:outline-offset-4 focus-visible:outline-ring ${embedded ? "min-h-20 max-h-[30dvh] resize-none" : "min-h-18 resize-y"}`}
+              className={`w-full border-0 bg-muted/50 px-3 py-2 text-sm leading-relaxed placeholder:text-muted-foreground placeholder:opacity-60 outline-none focus-visible:outline-1 focus-visible:outline-ring ${embedded ? "min-h-20 max-h-[30dvh] resize-none" : "min-h-18 resize-y"}`}
             />
             {completion && (
               <div
@@ -708,9 +683,6 @@ export function Composer({
           </p>
         )}
         <div className="flex flex-wrap items-center gap-2 border-t pt-2">
-          <span className="mr-auto text-xs text-muted-foreground">
-            Markdown · # references · ⌘/Ctrl Enter to save
-          </span>
           <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
             <Button size="sm" variant="ghost" disabled={busy} onClick={onClose}>
               Cancel
@@ -748,8 +720,17 @@ export function Composer({
       data-editor-subject={subject}
       aria-label="Comment editor"
       className={embedded ? "flex min-h-0 flex-1 flex-col" : "min-w-0"}
+      onDragOver={(event) => {
+        if (event.dataTransfer.types.includes("Files")) event.preventDefault();
+      }}
+      onDrop={(event) => {
+        if (event.dataTransfer.files.length) {
+          event.preventDefault();
+          void attach([...event.dataTransfer.files]);
+        }
+      }}
     >
-      {!integrated && (
+      {!integrated && (embedded || draft.host === "panel") && (
         <h2
           className={`mb-3 shrink-0 break-words font-mono text-xs font-medium text-primary ${embedded ? "px-4 pt-4" : ""}`}
         >

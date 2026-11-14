@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, watch, writeFileSync } from "node:fs";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdirSync, mkdtempSync, rmSync, watch, writeFileSync } from "node:fs";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -209,23 +216,19 @@ describe("watchDir lifecycle", () => {
     expect(files).toEqual(before);
   });
 
-  test("attaches after a previously missing output directory is created", async () => {
+  test("catches up with the latest review written before the output directory was watched", async () => {
     const root = await directory();
     const output = path.join(root, ".review");
+    const file = path.join(output, "review.md");
     const changed = Promise.withResolvers<string>();
-    watchers.push(watchDir(output, (file) => changed.resolve(file), 5));
-    await mkdir(output);
-    // A writer keeps producing real notifications until watchDir's one-second retry attaches.
-    const writer = setInterval(
-      () => writeFileSync(path.join(output, "review.md"), "saved"),
-      250,
+    watchers.push(
+      watchDir(output, () => changed.resolve(readFile(file, "utf8")), 5),
     );
-    writers.push(writer);
-    try {
-      expect(await changed.promise).toBe("review.md");
-    } finally {
-      clearInterval(writer);
-    }
+    // Both saves finish before the first attachment attempt; there is no later write to rescue it.
+    mkdirSync(output);
+    writeFileSync(file, "first answer");
+    writeFileSync(file, "new answer");
+    expect(await changed.promise).toBe("new answer");
   }, 5000);
 
   test("re-arms when the output directory disappears during a change callback", async () => {
@@ -234,19 +237,20 @@ describe("watchDir lifecycle", () => {
     await mkdir(output);
     await writeFile(path.join(output, "old.md"), "old");
     const deleted = Promise.withResolvers<void>();
-    const replaced = Promise.withResolvers<void>();
+    const replaced = Promise.withResolvers<string>();
     let phase: "delete" | "replace" = "delete";
     watchers.push(
       watchDir(
         output,
-        (file) => {
+        () => {
           if (phase === "delete") {
             // Remove synchronously inside the real change signal: watchDir checks existence
             // immediately after this callback, without relying on OS deletion-event ordering.
             rmSync(output, { recursive: true });
             phase = "replace";
             deleted.resolve();
-          } else if (file === "new.md") replaced.resolve();
+          } else
+            replaced.resolve(readFile(path.join(output, "new.md"), "utf8"));
         },
         5,
       ),
@@ -261,18 +265,42 @@ describe("watchDir lifecycle", () => {
     } finally {
       clearInterval(trigger);
     }
-    await mkdir(output);
-    const writer = setInterval(
-      () => writeFileSync(path.join(output, "new.md"), "new"),
-      250,
-    );
-    writers.push(writer);
-    try {
-      await replaced.promise;
-    } finally {
-      clearInterval(writer);
-    }
+    mkdirSync(output);
+    writeFileSync(path.join(output, "new.md"), "new");
+    expect(await replaced.promise).toBe("new");
   }, 5000);
+
+  test("follows existing and new review files through atomic saves", async () => {
+    const root = await directory();
+    const current = path.join(root, "review-1.md");
+    const next = path.join(root, "review-2.md");
+    const temporary = path.join(root, ".saving");
+    let expected = path.basename(current);
+    let changed = Promise.withResolvers<void>();
+    watchers.push(
+      watchDir(
+        root,
+        (file) => {
+          if (file === expected) changed.resolve();
+        },
+        5,
+      ),
+    );
+    // Establish the native subscription before testing one-shot edits.
+    await writeUntil(current, "initial", changed.promise);
+    for (const [file, contents] of [
+      [current, "current atomic save"],
+      [next, "new review atomic save"],
+      [next, "later atomic save"],
+    ] as const) {
+      expected = path.basename(file);
+      changed = Promise.withResolvers<void>();
+      await writeFile(temporary, contents);
+      await rename(temporary, file);
+      await changed.promise;
+      expect(await readFile(file, "utf8")).toBe(contents);
+    }
+  });
 
   test("closing before the directory exists also cancels the attachment retry", async () => {
     const root = await directory();

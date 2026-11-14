@@ -2,6 +2,7 @@ import type { Server } from "bun";
 import {
   mkdir,
   mkdtemp,
+  readFile,
   readdir,
   rm,
   symlink,
@@ -24,7 +25,11 @@ import { repoId, startServer } from "./http.ts";
 import type { ServerOptions } from "./http.ts";
 import { webSelectionKey, type WebCapture } from "../shared/web-review.ts";
 import { createWebReview } from "../web-review/controller.ts";
-import { saveAttachment } from "../review/attach.ts";
+import {
+  ATTACH_MAX_BYTES,
+  readAttachment,
+  saveAttachment,
+} from "../review/attach.ts";
 import type { WebAnnotation } from "../shared/web-annotation.ts";
 import type { ReviewNote } from "../review/thread.ts";
 import { DEFAULT_UI_SETTINGS } from "../shared/settings.ts";
@@ -1587,7 +1592,7 @@ describe("blob API", () => {
 });
 
 describe("attachment APIs", () => {
-  test("attach accepts only POST requests with a supported image type", async () => {
+  test("attach accepts arbitrary file types and rejects non-POST requests", async () => {
     const started = await startTestServer();
 
     const wrongMethod = await request(started, "/api/attach");
@@ -1599,10 +1604,10 @@ describe("attachment APIs", () => {
 
     expect(wrongMethod.status).toBe(405);
     expect(wrongMethod.headers.get("allow")).toBe("POST");
-    expect(wrongType.status).toBe(415);
+    expect(wrongType.status).toBe(200);
   });
 
-  test("attach rejects an empty image", async () => {
+  test("attach accepts an empty file without inventing text content", async () => {
     const started = await startTestServer();
 
     const response = await request(started, "/api/attach", {
@@ -1611,8 +1616,8 @@ describe("attachment APIs", () => {
       body: new Uint8Array(),
     });
 
-    expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: "That image is empty." });
+    expect(response.status).toBe(200);
+    expect((await response.json()).ref).toBe("images/image-hash.png");
   });
 
   test("attach stores the exact bytes and returns the Markdown-relative ref", async () => {
@@ -1656,7 +1661,7 @@ describe("attachment APIs", () => {
 
     expect(response.status).toBe(415);
     expect(await response.json()).toEqual({
-      error: "That image could not be kept.",
+      error: "That file could not be kept.",
     });
   });
 
@@ -1746,6 +1751,171 @@ describe("attachment APIs", () => {
     expect(mutation.status).toBe(405);
     expect(mutation.headers.get("allow")).toBe("GET, HEAD");
   });
+});
+
+test.each([
+  "",
+  "application/octet-stream",
+  "application/x-unrecognized",
+  "application/pdf",
+])(
+  "binary %s attachments survive note/reply save and session reload",
+  async (type) => {
+    const started = await startTestServer();
+    const { repoRoot, outDir } = started.options;
+    started.options.saveAttachment = (bytes, media, filename) =>
+      saveAttachment(repoRoot, outDir, bytes, media, filename);
+    started.options.readAttachment = (name) =>
+      readAttachment(repoRoot, outDir, name);
+    const raw = new Uint8Array([0, 255, 254, 128, 13, 10, 0]);
+    const uploaded = await request(started, "/api/attach", {
+      method: "POST",
+      headers: {
+        "content-type": type,
+        "x-attachment-name": encodeURIComponent("report with spaces.bin"),
+      },
+      body: raw,
+    });
+    expect(uploaded.status).toBe(200);
+    const { ref } = await uploaded.json();
+    expect(ref).toMatch(/^images\/[a-f0-9]{16}-report_with_spaces\.bin$/);
+    const body = `[report with spaces.bin](${ref})`;
+    for (const [route, payload] of [
+      ["/api/note", { comment: { ...comment, body }, ask: false }],
+      ["/api/reply", { id: comment.id, body, ask: false }],
+    ] as const) {
+      const response = await request(started, route, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      expect(response.status).toBe(200);
+    }
+    const restored = createSession(repoRoot, outDir, "HEAD");
+    await restored.adoptMatching();
+    const note = await restored.readNote(restored.file, comment.id!);
+    expect(note!.body).toBe(body);
+    expect(note!.messages.at(-1)!.body).toBe(body);
+    expect(
+      new Uint8Array(await readFile(path.join(repoRoot, outDir, ref))),
+    ).toEqual(raw);
+    const download = await request(
+      started,
+      `/api/attachment?ref=${encodeURIComponent(ref)}`,
+    );
+    expect(download.status).toBe(200);
+    expect(download.headers.get("content-type")).toBe(
+      "application/octet-stream",
+    );
+    expect(download.headers.get("content-disposition")).toBe(
+      'attachment; filename="report_with_spaces.bin"',
+    );
+    expect(download.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(download.headers.get("content-security-policy")).toBe(
+      "default-src 'none'; sandbox",
+    );
+    expect(await download.bytes()).toEqual(raw);
+  },
+);
+
+test("attachment upload enforces 12 MiB before calling the store", async () => {
+  let writes = 0;
+  const started = await startTestServer({
+    saveAttachment: async () => {
+      writes++;
+      return "should-not-exist";
+    },
+  });
+  const response = await request(started, "/api/attach", {
+    method: "POST",
+    body: new Uint8Array(ATTACH_MAX_BYTES + 1),
+  });
+  expect(response.status).toBe(413);
+  expect((await response.json()).error).toContain("12 MiB");
+  expect(writes).toBe(0);
+});
+
+test.each(["text/html", "image/svg+xml", "application/xhtml+xml"])(
+  "%s uploads are attachment-only downloads even without an explicit download flag",
+  async (type) => {
+    const started = await startTestServer();
+    const { repoRoot, outDir } = started.options;
+    started.options.saveAttachment = (bytes, media, filename) =>
+      saveAttachment(repoRoot, outDir, bytes, media, filename);
+    started.options.readAttachment = (name) =>
+      readAttachment(repoRoot, outDir, name);
+    const source =
+      "<svg xmlns='http://www.w3.org/2000/svg'><script>alert(1)</script></svg>";
+    const upload = await request(started, "/api/attach", {
+      method: "POST",
+      headers: { "content-type": type, "x-attachment-name": "active.html" },
+      body: source,
+    });
+    const { ref } = await upload.json();
+    for (const method of ["GET", "HEAD"]) {
+      const response = await request(
+        started,
+        `/api/attachment?ref=${encodeURIComponent(ref)}`,
+        { method },
+      );
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toBe(
+        type === "image/svg+xml" ? type : "application/octet-stream",
+      );
+      expect(response.headers.get("content-disposition")).toStartWith(
+        "attachment;",
+      );
+      expect(response.headers.get("content-security-policy")).toBe(
+        "default-src 'none'; sandbox",
+      );
+      expect(await response.text()).toBe(method === "HEAD" ? "" : source);
+    }
+    for (const ref of [
+      "../active.html",
+      "images/../../active.html",
+      "./review.md",
+    ]) {
+      expect(
+        (
+          await request(
+            started,
+            `/api/attachment?ref=${encodeURIComponent(ref)}`,
+          )
+        ).status,
+      ).toBe(404);
+    }
+  },
+);
+
+test("ordinary image attachment links explicitly download instead of navigating to media", async () => {
+  const started = await startTestServer();
+  const response = await request(
+    started,
+    "/api/attachment?ref=images%2Fpicture.png&download=1",
+  );
+  expect(response.headers.get("content-disposition")).toBe(
+    'attachment; filename="picture.png"',
+  );
+  expect(response.headers.get("content-type")).toBe("application/octet-stream");
+});
+
+test("simple text and empty-type uploads cannot be written by another browser origin", async () => {
+  let writes = 0;
+  const started = await startTestServer({
+    saveAttachment: async () => {
+      writes++;
+      return "should-not-exist";
+    },
+  });
+  for (const type of ["", "text/plain", "application/octet-stream"]) {
+    const response = await request(started, "/api/attach", {
+      method: "POST",
+      headers: { origin: "https://attacker.example", "content-type": type },
+      body: new Uint8Array([0, 255]),
+    });
+    expect(response.status).toBe(403);
+  }
+  expect(writes).toBe(0);
 });
 
 describe("review conversation APIs", () => {

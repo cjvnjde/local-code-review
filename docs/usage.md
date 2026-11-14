@@ -25,6 +25,8 @@ Scroll through the entire review in one pane; files follow one another in sideba
 order. The sidebar highlights the file under the top of the pane. Its links and
 the mobile file picker jump within that continuous review instead of replacing it.
 Only a small window of code and notes is mounted, even for very large diffs.
+File visibility controls appear on row hover or keyboard focus without reserving
+a separate column.
 
 Drag the vertical dividers to resize the file sidebar and conversation pane.
 Focused dividers also accept arrow keys and Home/End; double-click resets that
@@ -32,7 +34,8 @@ pane's width. Widths survive reloads and hide/show toggles. Resizing keeps the
 current code position and open draft; narrow screens retain the file picker and
 conversation drawer.
 
-File headers stay visible while reading their code. Collapse a file with its
+File headers stay visible while reading their code. Their history badge opens
+earlier-review notes without adding another header row. Collapse a file with its
 chevron, or mark it **Viewed** to collapse it and record progress. A navigation jump
 reopens it while keeping its viewed mark; a changed file becomes unviewed. Click a
 hunk control to expand omitted context upward, downward, or all at once. The
@@ -46,23 +49,32 @@ updates wait until an open editor closes.
 Captured code is always visible as an integrated diff block in each note, not
 hidden behind a disclosure. Note indicators stay in a fixed gutter slot; saving
 a note never shifts or inserts content into the source line.
+Line-number columns fit the largest old/new line numbers in each file, including
+rows outside the virtualized viewport. They grow when expanded context needs more digits.
+Long code lines wrap by default. Disable **Settings → Wrap long lines** for
+single-line reading; horizontal scrolling then belongs to each file's code only.
+File headers, comments, and the rest of the review stay fixed horizontally.
 
 Click code or a line number to comment immediately, drag across lines for a range,
 or drag within a line to select specific characters. Shift-click extends a range;
 Alt-drag keeps normal browser text selection for copying. Comments open directly
-below their subject in a compact inline strip without repeating the selected code.
+below their subject in a compact inline strip with a distinct input background,
+without a duplicate file/line title or repeated selected code. The conversation
+panel retains titles for orientation.
 **Cancel** clears the selected-line highlight. Re-aiming an overlapping selection
 preserves your draft text and caret; an unrelated click cannot replace a dirty
 draft. The file header offers
-a file comment; **Overall note** opens an editor directly below its header button
-without moving your place in the diff. Panel toggles are in the same compact header;
-change counts and refresh live in the existing footer.
+a file comment; **Overall note** toggles an editor directly below its header button
+without moving your place in the diff. Clicking or focusing elsewhere dismisses it;
+reopening restores the unsaved draft. Panel toggles sit at the two ends of the same
+compact header; change counts and refresh live in the existing footer.
 
 The editor accepts Markdown, including tables, checklists, and fenced code.
-The icon toolbar offers formatting, preview, suggestions, and image attachments;
+The icon toolbar offers formatting, preview, suggestions, and file attachments;
 hover or focus an icon to see its label. **Suggest change** inserts a fenced replacement
-for the captured lines. Use **Attach image**, paste, or drop to attach screenshots. Images
-are stored beside the review and linked relatively; external images are not loaded.
+for the captured lines. Drop or paste files, or use **Attach file**, to attach them
+directly to a note or reply (up to 12 MiB each). Files are kept beside the review
+and linked relatively; external images are not loaded.
 Attached images have inline thumbnails, a zoom viewer, and **Draw / edit**. Drawings
 retain editable shapes, text, paths, callouts and other tools when reopened. Image
 diffs also support clicking or dragging a region to capture it in a comment. Audio
@@ -93,7 +105,8 @@ or reply to search notes by reference, file, or text. Use ↑/↓ and Enter/Tab,
 a suggestion, to insert its reference; Escape dismisses suggestions.
 
 Ask any coding agent to address `.review/review-<timestamp>.md`. Agent messages and
-statuses appear through live updates. With ACP, the footer opens the agent queue,
+statuses appear through live updates, including replies written before a newly
+created review directory is watched. With ACP, the footer opens the agent queue,
 where you can pause/resume, answer permission requests, cancel tasks, and reconcile
 interrupted work. A completed turn does not automatically mean a fix was applied.
 
@@ -123,17 +136,18 @@ Existing saved context links remain compatible with the `apply-lcr` skill and
 are enabled by default. **Settings → Capture context** can disable them; page
 evidence may include sensitive content. Context stays local; use the capture's
 context ID or `context/<id>/manifest.json` when asking an agent to inspect it.
-**Add context** in the inline editor uploads a file or labeled text/JSON and
-inserts a relative link. Its card can inspect the manifest and read text in chunks
-without navigating away.
+Previously saved context cards can still inspect their manifests and read text in
+chunks. New arbitrary-file attachments use ordinary relative links instead of a
+separate context form.
 
 ## Navigate a large review
 
 Bookmark lines to revisit them in the sidebar. Bookmarks survive a reload within
 that tab and are isolated to the current repository/read. **Resume reading** keeps
 a settled manual reading position across reloads; programmatic file jumps do not
-replace it. Search with Cmd/Ctrl+K across the complete review, including hidden
-files and virtualized code. Results reveal their file and jump to their subject.
+replace it. The centered header search (Cmd/Ctrl+K) fuzzy-searches the complete
+review: filenames, hidden and virtualized code, notes, replies, and captured context.
+Results reveal their file and jump to their subject; there is no separate sidebar search.
 
 Alt+J/K steps through notes, Alt+Up/Down through bookmarks, and Alt+C switches the
 all-notes view. J/K also steps while viewing all notes. Typing in an editor keeps

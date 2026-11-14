@@ -24,6 +24,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "diff": "^9.0.0",
+    "fuse.js": "^7.5.0",
     "highlight.js": "^11.12.0",
     "konva": "^10.9.1",
     "lucide-react": "^1.72.0",

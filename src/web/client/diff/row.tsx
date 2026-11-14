@@ -1,5 +1,5 @@
 import { useUi } from "../app/ui-preferences.tsx";
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, type CSSProperties } from "react";
 import { highlightCharacters } from "./selection.ts";
 import { Bookmark, BookmarkCheck, MessageSquare } from "lucide-react";
 import type { DiffFile } from "../../../shared/review-types.ts";
@@ -10,6 +10,7 @@ import { gapOf } from "./gaps.ts";
 export function CodeRow({
   file,
   index,
+  gutterStyle,
   selected,
   expanding,
   notes,
@@ -25,6 +26,7 @@ export function CodeRow({
 }: {
   file: DiffFile;
   index: number;
+  gutterStyle: CSSProperties;
   selected: boolean;
   expanding: boolean;
   notes: number;
@@ -42,9 +44,23 @@ export function CodeRow({
   const { settings } = useUi();
   const cell = useRef<HTMLSpanElement>(null);
   useLayoutEffect(() => {
+    const element = cell.current;
+    if (!element || !changes) return;
+    const group = row.t === "del" ? "lcr-word-del" : "lcr-word-add";
+    const paint = (from?: number, to?: number) => {
+      highlightCharacters(element, from, to, group);
+      if (typeof CSS !== "undefined" && "highlights" in CSS) {
+        const highlight = CSS.highlights.get(group);
+        if (highlight) highlight.priority = -1;
+      }
+    };
+    paint(changes[0], changes[1]);
+    return () => paint();
+  }, [changes?.[0], changes?.[1], row.t, row.text]);
+  useLayoutEffect(() => {
     if (cell.current && !pressing)
       highlightCharacters(cell.current, characters?.ca, characters?.cb);
-  }, [characters?.ca, characters?.cb, pressing]);
+  }, [characters?.ca, characters?.cb, pressing, row.text]);
   useLayoutEffect(() => {
     if (cell.current)
       highlightCharacters(
@@ -54,7 +70,7 @@ export function CodeRow({
         "lcr-notes",
         noteCharacters,
       );
-  }, [noteCharacters]);
+  }, [noteCharacters, row.text]);
   useEffect(() => {
     const element = cell.current;
     return () => {
@@ -67,7 +83,10 @@ export function CodeRow({
   return (
     <div
       className={cn(
-        "group relative flex h-[26px] min-w-full w-max items-center font-mono text-xs",
+        "group relative flex min-h-[26px] items-start font-mono text-xs",
+        settings.wrapLines || row.t === "hunk"
+          ? "w-full min-w-0"
+          : "min-w-full w-max",
         row.t === "add" && "diff-add",
         row.t === "del" && "diff-del",
         row.t === "hunk" && "bg-muted/50 text-muted-foreground",
@@ -76,7 +95,7 @@ export function CodeRow({
       data-row-key={row.n != null ? `n${row.n}` : `o${row.o}`}
     >
       {row.t === "hunk" ? (
-        <div className="flex h-full w-full items-center gap-3 px-5">
+        <div className="flex min-h-[26px] w-full min-w-0 items-center gap-3 px-5">
           <span className="truncate">{row.text || "More context"}</span>
           {gapOf(file, index) && (
             <div className="ml-auto flex shrink-0 gap-3 font-sans text-primary">
@@ -97,8 +116,9 @@ export function CodeRow({
       ) : (
         <>
           <div
+            style={gutterStyle}
             className={cn(
-              "flex h-full shrink-0 items-center",
+              "flex shrink-0 self-stretch items-start",
               !settings.lineNumbers &&
                 "sticky right-0 z-10 order-last -ml-16 w-16 rounded bg-popover shadow-sm opacity-0 group-hover:opacity-100 focus-within:opacity-100",
             )}
@@ -106,7 +126,7 @@ export function CodeRow({
             <button
               data-row-action={!settings.lineNumbers || undefined}
               className={cn(
-                "flex h-full shrink-0 select-none items-center text-muted-foreground hover:bg-primary/15 hover:text-primary",
+                "flex h-[26px] shrink-0 select-none items-center text-muted-foreground hover:bg-primary/15 hover:text-primary",
                 !settings.lineNumbers && "w-6 justify-center",
               )}
               aria-label={`Comment on line ${row.n ?? row.o}${row.t === "del" ? " before change" : ""}`}
@@ -118,8 +138,12 @@ export function CodeRow({
             >
               {settings.lineNumbers ? (
                 <>
-                  <span className="w-10 pr-1 text-right">{row.o}</span>
-                  <span className="w-10 pr-1 text-right">{row.n}</span>
+                  <span className="w-[var(--old-line-width)] shrink-0 pr-1 text-right">
+                    {row.o}
+                  </span>
+                  <span className="w-[var(--new-line-width)] shrink-0 pr-1 text-right">
+                    {row.n}
+                  </span>
                 </>
               ) : (
                 <MessageSquare className="size-3.5" />
@@ -130,7 +154,7 @@ export function CodeRow({
               aria-label={`Bookmark line ${row.n ?? row.o}`}
               aria-pressed={bookmarked}
               title={`${bookmarked ? "Remove bookmark from" : "Bookmark"} line ${row.n ?? row.o}`}
-              className="flex h-full w-5 shrink-0 items-center justify-center text-muted-foreground hover:text-primary"
+              className="flex h-[26px] w-5 shrink-0 items-center justify-center text-muted-foreground hover:text-primary"
               onClick={onBookmark}
             >
               {bookmarked ? (
@@ -139,7 +163,7 @@ export function CodeRow({
                 <Bookmark className="size-3 opacity-35" />
               )}
             </button>
-            <span className="flex h-full w-5 shrink-0 items-center justify-center">
+            <span className="flex h-[26px] w-5 shrink-0 items-center justify-center">
               {notes > 0 && (
                 <button
                   data-row-action
@@ -155,26 +179,26 @@ export function CodeRow({
           </div>
           <span
             aria-hidden="true"
-            className="w-4 shrink-0 select-none text-center opacity-60"
+            className="w-4 shrink-0 select-none text-center leading-[26px] opacity-60"
           >
             {row.t === "add" ? "+" : row.t === "del" ? "−" : ""}
           </span>
           <span
             ref={cell}
             data-code-cell
-            style={
-              changes
-                ? {
-                    backgroundImage: `linear-gradient(to right, transparent ${changes[0]}ch, ${row.t === "del" ? "#f43f5e33" : "#22c55e33"} ${changes[0]}ch, ${row.t === "del" ? "#f43f5e33" : "#22c55e33"} ${changes[1]}ch, transparent ${changes[1]}ch)`,
-                  }
-                : undefined
-            }
-            className="inline-block min-w-4 flex-1 self-stretch pr-6 leading-[26px]"
+            className={cn(
+              "min-h-[26px] flex-1 self-stretch pr-6 leading-[26px]",
+              settings.wrapLines ? "min-w-0" : "min-w-4",
+            )}
           >
             <Code
-              value={row.text || " "}
+              value={row.text}
               language={languageFor(file.path)}
-              className="whitespace-pre"
+              className={
+                settings.wrapLines
+                  ? "whitespace-break-spaces [overflow-wrap:anywhere]"
+                  : "whitespace-pre"
+              }
             />
           </span>
         </>

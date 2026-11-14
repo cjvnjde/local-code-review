@@ -1,15 +1,8 @@
 import {
-  CONTEXT_MAX_BYTES,
   CONTEXT_TEXT_LIMIT,
-  CONTEXT_TEXT_MAX,
   contextId,
-  contextIsText,
-  contextLink,
-  contextPath,
-  contextRef,
   type ContextManifest,
   type ContextPart,
-  type ContextRef,
 } from "../../../shared/context.ts";
 let token = "";
 /** The run token is kept only in memory, never in links or browser storage. */
@@ -41,50 +34,6 @@ async function contextFetch(path: string, init: RequestInit = {}) {
     );
   }
   return response;
-}
-export async function uploadContext(
-  input:
-    | File
-    | { label: string; text: string; type: "text/plain" | "application/json" },
-  signal?: AbortSignal,
-): Promise<ContextRef> {
-  let body: BodyInit;
-  let headers: HeadersInit | undefined;
-  if (input instanceof File) {
-    if (!input.size || input.size > CONTEXT_MAX_BYTES)
-      throw new Error("Choose a nonempty file up to 12 MiB.");
-    const form = new FormData();
-    form.append("file", input);
-    form.append("label", input.name.slice(0, 200));
-    // Carry the declared type separately: multipart readers can lose File.type.
-    form.append("type", input.type);
-    body = form;
-  } else {
-    if (!input.text.trim()) throw new Error("Enter some context first.");
-    if (new TextEncoder().encode(input.text).length > CONTEXT_MAX_BYTES)
-      throw new Error("Context must be no larger than 12 MiB.");
-    if (input.type === "application/json") {
-      try {
-        JSON.parse(input.text);
-      } catch {
-        throw new Error(
-          "The context is not valid JSON. Correct it or choose Plain text.",
-        );
-      }
-    }
-    headers = { "content-type": "application/json" };
-    body = JSON.stringify(input);
-  }
-  const response = await contextFetch("", {
-    method: "POST",
-    body,
-    headers,
-    signal,
-  });
-  const ref = contextRef((await response.json()).context);
-  if (!ref)
-    throw new Error("The server did not return a saved context reference.");
-  return ref;
 }
 export async function fetchContextManifest(
   id: string,

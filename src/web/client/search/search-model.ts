@@ -1,3 +1,4 @@
+import Fuse, { type Expression } from "fuse.js";
 import { rowKey } from "../diff/model.ts";
 const esc = (text: string) =>
   text.replace(
@@ -79,13 +80,7 @@ export function searchDocuments(
       docs.push({
         ...base,
         kind: "note",
-        text: JSON.stringify([
-          n.web.before.url,
-          n.web.before.title,
-          n.web.before.selector,
-          n.web.before.components,
-          n.web.before.element,
-        ]),
+        text: JSON.stringify(n.web),
         label: "UI metadata",
       });
     if (n.code)
@@ -132,23 +127,79 @@ export function matchRanges(text: string, query: string): [number, number][] {
   );
   return [...text.matchAll(re)].map((m) => [m.index!, m.index! + m[0].length]);
 }
+// Document arrays are immutable snapshots. Reuse Fuse's index across queries and
+// release it with the snapshot when live review data changes.
+const indexes = new WeakMap<SearchDocument[], Fuse<SearchDocument>>();
+
 export function searchReview(
   docs: SearchDocument[],
   query: string,
 ): SearchResult[] {
   const terms = words(query);
   if (!terms.length) return [];
-  return (
-    docs
-      .filter((d) =>
-        terms.every(
-          (term) => matchRanges(d.text + "\n" + d.path, term).length > 0,
-        ),
-      )
-      // Filename-only matches belong to the file result, rather than repeating every row in that file.
-      .filter((d) => d.kind === "file" || matchRanges(d.text, query).length > 0)
-      .map((d) => ({ ...d, ranges: matchRanges(d.text, query) }))
+  const exact = docs.filter(
+    (document) =>
+      terms.every(
+        (term) =>
+          matchRanges(document.text + "\n" + document.path, term).length > 0,
+      ) &&
+      (document.kind === "file" ||
+        matchRanges(document.text, query).length > 0),
   );
+  let index = indexes.get(docs);
+  if (!index) {
+    index = new Fuse(docs, {
+      keys: ["text", "path"],
+      threshold: 0.25,
+      ignoreLocation: true,
+      ignoreFieldNorm: true,
+      includeMatches: true,
+      includeScore: true,
+    });
+    indexes.set(docs, index);
+  }
+  const exactSet = new Set(exact);
+  const fuzzy = index.search({
+    $and: terms.map((term): Expression => ({
+      $or: [{ text: term }, { path: term }],
+    })),
+  });
+  return [
+    ...exact.map((document) => ({
+      ...document,
+      ranges: matchRanges(document.text, query),
+    })),
+    ...fuzzy
+      .filter(({ item, matches }) => {
+        if (exactSet.has(item)) return false;
+        // Short queries remain literal rather than matching nearly every row.
+        if (
+          terms.some(
+            (term) =>
+              term.length < 4 &&
+              !matchRanges(item.text + "\n" + item.path, term).length,
+          )
+        )
+          return false;
+        if (item.kind === "file") return true;
+        // Filename-only hits must never expand into every code row or reply.
+        if (terms.every((term) => matchRanges(item.path, term).length))
+          return false;
+        return matches?.some((match) => match.key === "text");
+      })
+      .map(({ item, matches }) => ({
+        ...item,
+        ranges: (matches || [])
+          .filter((match) => match.key === "text")
+          .flatMap((match) =>
+            match.indices.map(([start, end]): [number, number] => [
+              start,
+              end + 1,
+            ]),
+          )
+          .sort((a, b) => a[0] - b[0]),
+      })),
+  ];
 }
 /** Offsets in text joined from syntax/Markdown spans, mapped back to those spans for highlighting. */
 export function searchSegments(parts: string[], query: string) {
@@ -186,8 +237,13 @@ export function searchHtml(text: string, query: string) {
   return html + esc(text.slice(from));
 }
 /** Keep the first match in view even when it is far into a long answer. */
-export function searchExcerpt(text: string, query: string, size = 180) {
-  const at = matchRanges(text, query)[0]?.[0] || 0;
+export function searchExcerpt(
+  text: string,
+  query: string,
+  size = 180,
+  ranges = matchRanges(text, query),
+) {
+  const at = ranges[0]?.[0] || 0;
   const from = Math.max(0, at - Math.floor(size / 3)),
     to = Math.min(text.length, from + size);
   return (

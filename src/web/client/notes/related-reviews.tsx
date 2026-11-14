@@ -1,3 +1,4 @@
+import { History } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { DiffFile, ReviewNote } from "../../../shared/review-types.ts";
 import { request, useAction } from "../app/api.ts";
@@ -34,11 +35,16 @@ export function RelatedReviews({
     ) || [];
   if (!notes.length) return null;
   return (
-    <details className="w-full rounded-lg border bg-card p-3">
-      <summary className="cursor-pointer text-xs text-muted-foreground">
-        {notes.length} notes from other reviews
+    <details className="shrink-0">
+      <summary
+        aria-label={`${notes.length} notes from other reviews`}
+        title="Notes from other reviews"
+        className="flex h-8 cursor-pointer list-none items-center gap-1 rounded px-2 text-xs text-muted-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden"
+      >
+        <History className="size-3.5" />
+        <span>{notes.length}</span>
       </summary>
-      <div className="mt-3 space-y-3">
+      <div className="absolute right-2 top-full z-30 mt-1 max-h-[min(32rem,70dvh)] w-112 max-w-[calc(100%_-_1rem)] space-y-3 overflow-auto rounded-md border bg-card p-3 shadow-xl">
         {notes.map(({ note, place, source }) => (
           <div key={`${source}:${note.id}`} className="space-y-3 border-t pt-3">
             <p className="text-[10px] text-muted-foreground">
