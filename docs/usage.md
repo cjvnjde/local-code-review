@@ -33,6 +33,8 @@ and conversation pane. Focused dividers also accept arrow keys and Home/End;
 double-click resets that pane's width. Widths and panel visibility survive reloads
 and hide/show toggles. Resizing keeps the current code position and open draft;
 narrow screens retain the file picker and conversation drawer.
+The diff yields space to either divider instead of locking sidebar growth behind
+a fixed minimum diff width.
 
 The right sidebar has **Notes** and **Bookmarks** tabs. Bookmark a code line from
 its gutter; use the Bookmarks tab or Alt ↑/↓ to return to saved places. Switching
@@ -68,8 +70,8 @@ Click code or a line number to comment immediately, drag across lines for a rang
 or drag within a line to select specific characters. Shift-click extends a range;
 Alt-drag keeps normal browser text selection for copying. Comments open directly
 below their subject in a compact bordered card with a distinct input background.
-New, editing, and saved notes share the same card width and rounded edges, with
-the path and captured code available for orientation in either state.
+New, editing, and saved notes share the same card, identity header, and captured-code
+spacing. File-level draft cards keep those same bounds while pinned below a header.
 **Cancel** clears the selected-line highlight. Re-aiming an overlapping selection
 preserves your draft text and caret; an unrelated click cannot replace a dirty
 draft. The file header offers a file comment; while creating it, the editor stays
@@ -104,10 +106,10 @@ in the footer. Running work includes the agent's current activity when available
 **Settings → Enable AI answers** disables new dispatches while keeping manual note
 and reply saves available. Already queued or running work is not cancelled.
 
-Bottom-right notifications announce new agent replies and saved notes/replies.
-Reply notifications offer **View** to jump to the note; existing replies are not
-announced when opening a review. Disable routine notifications with **Settings →
-Show reply and save notifications**. Failed actions still report errors.
+Bottom-right notifications announce new agent replies and offer **View** to jump
+to the note; existing replies are not announced when opening a review. Successful
+note/reply saves stay silent. Disable reply notifications with **Settings → Show
+new agent reply notifications**. Failed actions still report errors.
 
 ## Continue the conversation
 

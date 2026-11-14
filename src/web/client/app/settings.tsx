@@ -49,7 +49,7 @@ export function Settings({
             ["wrapLines", "Wrap long lines"],
             ["single", "Keep one pending note per selection"],
             ["ghosts", "Show notes from other reviews"],
-            ["toast", "Show reply and save notifications"],
+            ["toast", "Show new agent reply notifications"],
           ] as const
         ).map(([key, label]) => (
           <label className="flex items-center gap-3 text-sm" key={key}>

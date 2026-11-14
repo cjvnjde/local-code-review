@@ -101,10 +101,7 @@ export function useAction() {
           : "The action could not be completed. Try again.",
       });
     },
-    onSuccess: async (_data, variables) => {
-      const saved = savedItem(variables);
-      if (settings.toast && saved)
-        toast.success(saved === "note" ? "Note saved" : "Reply saved");
+    onSuccess: async () => {
       await Promise.all([
         client.invalidateQueries({ queryKey: ["review"] }),
         client.invalidateQueries({ queryKey: ["reviews"] }),

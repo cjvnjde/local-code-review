@@ -255,9 +255,10 @@ export function ReviewLayout({
           update({ navWidth: 0 });
         }}
       />
+      {/* The diff yields to both sidebars, even when a compact window leaves <240px. */}
       <ResizablePanel
         id="diff-pane"
-        minSize={inlineNotes ? "240px" : "0px"}
+        minSize="0px"
         className="h-full"
         style={{ overflow: "hidden" }}
       >

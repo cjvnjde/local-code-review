@@ -687,7 +687,7 @@ export function DiffView({
               data-diff-kind={entry.kind}
               data-item-key={entry.key}
               data-sticky-editor={header === activeHeader || undefined}
-              className="pointer-events-auto sticky z-[15] w-full overflow-y-auto border-y border-primary/25 bg-card px-4 py-3 shadow-sm"
+              className="pointer-events-auto sticky z-[15] w-full overflow-y-auto bg-background"
               style={{
                 top: headerHeight,
                 // Keep code visible while a growing draft scrolls within its own editor.
@@ -697,7 +697,7 @@ export function DiffView({
                 ),
               }}
             >
-              {editor}
+              <div className="mx-auto max-w-4xl px-5 py-3">{editor}</div>
             </div>
           </div>
         );

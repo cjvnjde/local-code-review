@@ -187,12 +187,27 @@ test("compiled executable reviews changes, preserves drafts, and continues the M
     .last()
     .click();
   const draftSurface = page.locator("[data-review-editor][data-note-surface]");
-  const surfaceStyle = (surface: HTMLElement) => ({
-    width: surface.getBoundingClientRect().width,
-    radius: getComputedStyle(surface).borderRadius,
-    border: getComputedStyle(surface).borderWidth,
-    background: getComputedStyle(surface).backgroundColor,
-  });
+  const surfaceStyle = (surface: HTMLElement) => {
+    const bounds = surface.getBoundingClientRect();
+    const relative = (element: Element | null) => {
+      if (!element) return null;
+      const box = element.getBoundingClientRect();
+      return {
+        left: box.left - bounds.left,
+        top: box.top - bounds.top,
+        width: box.width,
+        height: box.height,
+      };
+    };
+    return {
+      width: bounds.width,
+      radius: getComputedStyle(surface).borderRadius,
+      border: getComputedStyle(surface).borderWidth,
+      background: getComputedStyle(surface).backgroundColor,
+      header: relative(surface.querySelector("header")),
+      code: relative(surface.querySelector("pre")),
+    };
+  };
   const draftStyle = await draftSurface.evaluate(surfaceStyle);
   await page
     .getByRole("textbox", { name: "Note text" })
@@ -203,6 +218,9 @@ test("compiled executable reviews changes, preserves drafts, and continues the M
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(notesPanel.getByRole("article")).toHaveCount(1);
   await expect(notesPanel.locator("article table")).toBeVisible();
+  await expect(
+    page.locator('[data-sonner-toast][data-type="success"]'),
+  ).toHaveCount(0);
   const savedCard = notesPanel.getByRole("article");
   expect(
     await savedCard
@@ -259,6 +277,9 @@ test("compiled executable reviews changes, preserves drafts, and continues the M
   );
   await page.getByRole("button", { name: "Send reply", exact: true }).click();
   await expect(page.locator("[data-review-editor]")).toHaveCount(0);
+  await expect(
+    page.locator('[data-sonner-toast][data-type="success"]'),
+  ).toHaveCount(0);
   await expect(
     notesPanel
       .locator("article")
@@ -1350,6 +1371,56 @@ test("sidebar dragging survives a delayed initial preference response", async ({
       sidebar.evaluate((element) => element.getBoundingClientRect().width),
     )
     .toBeCloseTo(initialWidth + 60, 0);
+});
+
+test("left sidebar grows and shrinks in a compact window without moving the notes pane", async ({
+  page,
+}) => {
+  await page.request.put(`${url}/api/settings`, { data: { navWidth: 268 } });
+  await page.addInitScript(() => {
+    localStorage.setItem("lcr:v2:notes-width", "390");
+  });
+  await page.setViewportSize({ width: 794, height: 848 });
+  await page.goto(url);
+  const files = page.getByRole("complementary", { name: "Changed files" });
+  const notes = page.getByRole("complementary", { name: "Review notes" });
+  const divider = page.getByRole("separator", {
+    name: "Resize file sidebar",
+    exact: true,
+  });
+  const width = (locator: typeof files) =>
+    locator.evaluate((element) => element.getBoundingClientRect().width);
+  await expect.poll(() => width(files)).toBeCloseTo(268, 0);
+  const notesWidth = await width(notes);
+  expect(
+    await page
+      .locator("#diff-pane")
+      .evaluate((el) => el.getBoundingClientRect().width),
+  ).toBeLessThan(240);
+  for (const [delta, yRatio] of [
+    [60, 0.15],
+    [-60, 0.85],
+  ]) {
+    const initial = await width(files);
+    const box = (await divider.boundingBox())!;
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height * yRatio!;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x + delta!, y, { steps: 12 });
+    await expect.poll(() => width(files)).toBeCloseTo(initial + delta!, 0);
+    await page.mouse.up();
+    await expect.poll(() => width(notes)).toBeCloseTo(notesWidth, 0);
+  }
+  await expect
+    .poll(
+      async () =>
+        (await (await page.request.get(`${url}/api/settings`)).json()).settings
+          .navWidth,
+    )
+    .toBe(268);
+  await page.reload();
+  await expect.poll(() => width(files)).toBeCloseTo(268, 0);
 });
 
 test("Base UI focus and pane resizing preserve drafts, reading position and saved widths", async ({

@@ -45,6 +45,7 @@ import { Markdown } from "../components/markdown.tsx";
 import { Code } from "../components/code.tsx";
 import { suggestionBlock } from "../diff/model.ts";
 import { WebEvidence } from "../web-review/evidence.tsx";
+import { NoteHeader } from "./note-header.tsx";
 
 export type Draft = {
   host?: "diff" | "panel";
@@ -760,17 +761,14 @@ export function Composer({
         }
       }}
     >
-      {!integrated && (
-        <h2
-          className={
-            embedded
-              ? "mb-3 shrink-0 break-words px-4 pt-4 font-mono text-xs font-medium text-primary"
-              : "shrink-0 truncate border-b px-4 py-3 text-xs font-medium"
-          }
-        >
-          {title}
-        </h2>
-      )}
+      {!integrated &&
+        (embedded ? (
+          <h2 className="mb-3 shrink-0 break-words px-4 pt-4 font-mono text-xs font-medium text-primary">
+            {title}
+          </h2>
+        ) : draft.kind === "note" ? (
+          <NoteHeader note={draft.comment} status="Draft" />
+        ) : null)}
       {content}
     </section>
   );

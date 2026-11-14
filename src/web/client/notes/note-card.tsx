@@ -3,7 +3,6 @@ import { useState } from "react";
 import { useNoteState, canResolve } from "./review-state.tsx";
 import { AttachmentImage } from "../components/images.tsx";
 import {
-  Copy,
   Pencil,
   Trash2,
   Reply,
@@ -27,6 +26,7 @@ import {
 } from "../app/agent-activity.tsx";
 import { useUi } from "../app/ui-preferences.tsx";
 import { useNoteEntrance } from "./note-motion.tsx";
+import { NoteHeader } from "./note-header.tsx";
 
 export function NoteCard({
   note,
@@ -79,34 +79,7 @@ export function NoteCard({
       onFocus={() => state.read(note)}
       id={`${inline ? "diff-note" : "note"}-${reference}`}
     >
-      <header className="flex items-center gap-2 border-b px-4 py-3">
-        <span
-          className="min-w-0 truncate text-xs font-medium"
-          title={noteKey(note)}
-        >
-          {noteKey(note)}
-        </span>
-        <div className="shrink-0">
-          {icon(
-            "Copy note reference",
-            <Button
-              size="sm"
-              variant="ghost"
-              aria-label="Copy note reference"
-              onClick={() =>
-                void navigator.clipboard
-                  .writeText(`#${reference}`)
-                  .catch(() => {})
-              }
-            >
-              <Copy />
-              <span className="max-w-24 truncate font-mono text-[10px]">
-                #{reference.slice(-8)}
-              </span>
-            </Button>,
-          )}
-        </div>
-        <div className="ml-auto" />
+      <NoteHeader note={note} status={note.status}>
         {state.unread(note) > 0 && (
           <span className="rounded bg-primary/15 px-2 py-1 text-[10px] text-primary">
             {state.unread(note)} new
@@ -115,19 +88,7 @@ export function NoteCard({
         {state.resolved(note) && (
           <span className="text-[10px] text-emerald-500">Resolved</span>
         )}
-        <span
-          className={cn(
-            "rounded-full border px-2 py-0.5 text-[10px] font-medium",
-            ["applied", "answered"].includes(note.status)
-              ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-500"
-              : note.status === "needs-input"
-                ? "border-amber-500/25 bg-amber-500/10 text-amber-500"
-                : "text-muted-foreground",
-          )}
-        >
-          {note.status}
-        </span>
-      </header>
+      </NoteHeader>
       <div className="space-y-3 p-4">
         {note.code && (
           <>
