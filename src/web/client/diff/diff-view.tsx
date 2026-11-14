@@ -56,6 +56,20 @@ export interface DiffViewHandle {
 const isCodeItem = (item: DiffItem) =>
   item.kind === "row" && item.file.rows[item.row]!.t !== "hunk";
 
+/** Include the pinned draft when recording the first unobscured reading position. */
+function readingInset(element: HTMLElement) {
+  const top = element.getBoundingClientRect().top;
+  let inset = 0;
+  for (const pinned of element.querySelectorAll<HTMLElement>(
+    '[data-sticky="true"], [data-sticky-editor="true"]',
+  )) {
+    const bounds = pinned.getBoundingClientRect();
+    if (bounds.top <= top + inset + 1)
+      inset = Math.max(inset, bounds.bottom - top);
+  }
+  return inset;
+}
+
 export function DiffView({
   files,
   notes,
@@ -219,6 +233,13 @@ export function DiffView({
         (draft?.kind === "note" ? draft.comment.id : draft?.id) ===
           item.note.id),
   );
+  const stickyEditor =
+    editorIndex >= 0 &&
+    draft?.kind === "note" &&
+    draft.host !== "panel" &&
+    !draft.editing &&
+    draft.comment.scope === "file" &&
+    !draft.comment.image;
   const appliedItems = useRef(items);
   const headers = useMemo(
     () =>
@@ -301,16 +322,7 @@ export function DiffView({
       frame.current = requestAnimationFrame(() => {
         frame.current = 0;
         if (appliedItems.current !== items || !scroll.current) return;
-        const header = scroll.current.querySelector<HTMLElement>(
-          '[data-sticky="true"]',
-        );
-        const sticky = header
-          ? Math.max(
-              0,
-              header.getBoundingClientRect().bottom -
-                scroll.current.getBoundingClientRect().top,
-            )
-          : 0;
+        const sticky = readingInset(scroll.current);
         const visible = instance.getVirtualItemForOffset(
           scroll.current.scrollTop + sticky + 1,
         );
@@ -439,7 +451,20 @@ export function DiffView({
     resumeReading: (place) => jump(place.path, undefined, undefined, place),
     focusEditor: () => {
       if (editorIndex >= 0) {
-        virtual.scrollToIndex(editorIndex, { align: "auto" });
+        const viewport = scroll.current?.getBoundingClientRect();
+        const pinned = scroll.current
+          ?.querySelector<HTMLElement>('[data-sticky-editor="true"]')
+          ?.getBoundingClientRect();
+        const headerHeight =
+          virtual.measurementsCache[activeHeader]?.size ?? 58;
+        if (
+          !stickyEditor ||
+          !viewport ||
+          !pinned ||
+          pinned.top < viewport.top + headerHeight - 1 ||
+          pinned.bottom > viewport.bottom
+        )
+          virtual.scrollToIndex(editorIndex, { align: "auto" });
         requestAnimationFrame(() =>
           scroll.current
             ?.querySelector<HTMLTextAreaElement>(
@@ -466,9 +491,7 @@ export function DiffView({
         anchor.current = null;
         const measurement = virtual.measurementsCache[index];
         if (resumed && measurement && scroll.current) {
-          const header =
-            scroll.current.querySelector<HTMLElement>('[data-sticky="true"]')
-              ?.offsetHeight || 58;
+          const header = readingInset(scroll.current) || 58;
           const offset = Math.max(
             header,
             Math.min(resumed.offset, scroll.current.clientHeight - header),
@@ -639,6 +662,46 @@ export function DiffView({
           </div>
         </div>
       );
+    }
+    if (entry.kind === "editor" && stickyEditor) {
+      const header = headerByPath.get(entry.path);
+      if (header != null) {
+        const end =
+          virtual.measurementsCache[headerEnds.get(header)!]?.start ??
+          virtual.getTotalSize();
+        const headerHeight = virtual.measurementsCache[header]?.size ?? 58;
+        return (
+          <div
+            key={item.key}
+            className="pointer-events-none absolute left-0 w-full"
+            style={{
+              top: item.start,
+              height: Math.max(item.size, end - item.start),
+            }}
+          >
+            {/* Measure only the single editor, not its file-bounded sticky track. */}
+            <div
+              ref={virtual.measureElement}
+              data-index={item.index}
+              data-file-path={entry.path}
+              data-diff-kind={entry.kind}
+              data-item-key={entry.key}
+              data-sticky-editor={header === activeHeader || undefined}
+              className="pointer-events-auto sticky z-[15] w-full overflow-y-auto border-y border-primary/25 bg-card px-4 py-3 shadow-sm"
+              style={{
+                top: headerHeight,
+                // Keep code visible while a growing draft scrolls within its own editor.
+                maxHeight: Math.max(
+                  120,
+                  (virtual.scrollRect?.height ?? 800) - headerHeight - 104,
+                ),
+              }}
+            >
+              {editor}
+            </div>
+          </div>
+        );
+      }
     }
     return (
       <div

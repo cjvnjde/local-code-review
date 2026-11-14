@@ -1,7 +1,7 @@
 import { useUi } from "../app/ui-preferences.tsx";
 import { useEffect, useLayoutEffect, useRef, type CSSProperties } from "react";
 import { highlightCharacters } from "./selection.ts";
-import { Bookmark, BookmarkCheck, MessageSquare } from "lucide-react";
+import { Bookmark, BookmarkCheck, MessageSquare, Plus } from "lucide-react";
 import type { DiffFile } from "../../../shared/review-types.ts";
 import { Code, languageFor } from "../components/code.tsx";
 import { cn } from "../components/ui/button.tsx";
@@ -90,6 +90,9 @@ export function CodeRow({
         row.t === "add" && "diff-add",
         row.t === "del" && "diff-del",
         row.t === "hunk" && "bg-muted/50 text-muted-foreground",
+        row.t !== "hunk" &&
+          !selected &&
+          "hover:outline hover:outline-1 hover:-outline-offset-1 hover:outline-primary/35",
         selected && !characters && "!bg-primary/15",
       )}
       data-row-key={row.n != null ? `n${row.n}` : `o${row.o}`}
@@ -126,7 +129,7 @@ export function CodeRow({
             <button
               data-row-action={!settings.lineNumbers || undefined}
               className={cn(
-                "flex h-[26px] shrink-0 select-none items-center text-muted-foreground hover:bg-primary/15 hover:text-primary",
+                "flex h-[26px] shrink-0 cursor-pointer select-none items-center text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary hover:bg-primary/15 hover:text-primary focus-visible:bg-primary/15 focus-visible:text-primary",
                 !settings.lineNumbers && "w-6 justify-center",
               )}
               aria-label={`Comment on line ${row.n ?? row.o}${row.t === "del" ? " before change" : ""}`}
@@ -164,7 +167,7 @@ export function CodeRow({
               )}
             </button>
             <span className="flex h-[26px] w-5 shrink-0 items-center justify-center">
-              {notes > 0 && (
+              {notes > 0 ? (
                 <button
                   data-row-action
                   className="flex size-5 items-center justify-center text-primary"
@@ -174,6 +177,11 @@ export function CodeRow({
                 >
                   <MessageSquare className="size-3.5" />
                 </button>
+              ) : (
+                <Plus
+                  aria-hidden="true"
+                  className="pointer-events-none size-3.5 text-primary opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+                />
               )}
             </span>
           </div>

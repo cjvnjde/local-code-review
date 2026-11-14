@@ -637,8 +637,8 @@ test("bookmarks, full review search, references and context stay usable across n
     .getByRole("searchbox", { name: "Search review", exact: true })
     .fill("hello world");
   await page
-    .getByRole("region", { name: "Search this review" })
-    .getByRole("button")
+    .getByRole("listbox", { name: "Search suggestions" })
+    .getByRole("option")
     .filter({ hasText: "Added · new 2" })
     .click();
   await expect(
@@ -656,6 +656,17 @@ test("bookmarks, full review search, references and context stay usable across n
     .getByRole("option")
     .click();
   const reference = "refseed123";
+  const referenceText = editor.getByRole("textbox", { name: "Note text" });
+  await referenceText.fill(`${await referenceText.inputValue()} @ap.ts`);
+  const fileReferences = editor.getByRole("listbox", {
+    name: "File references",
+  });
+  await expect(fileReferences.getByRole("option").first()).toContainText(
+    "src/app.ts",
+  );
+  await referenceText.press("Enter");
+  await expect(referenceText).toHaveValue(/lcr-file:src%2Fapp\.ts/);
+  await expect(editor).toBeVisible();
   // Seed an existing-style context link; new files attach directly instead.
   const configuration = await (
     await page.request.get(`${url}/api/settings`)
@@ -709,6 +720,12 @@ test("bookmarks, full review search, references and context stay usable across n
   expect(await readFile((await (await textDownload).path())!, "utf8")).toBe(
     "Exact text attachment",
   );
+  await card
+    .getByRole("button", { name: "Go to file src/app.ts", exact: true })
+    .click();
+  await expect(
+    pane.getByRole("heading", { name: "src/app.ts", exact: true }),
+  ).toBeInViewport();
   await card
     .getByRole("button")
     .filter({ hasText: `#${reference!.slice(-8)}` })
@@ -764,13 +781,10 @@ test("folder controls, color edits and local resolution preserve the underlying 
   );
   await page.goto(url);
   const nav = page.getByRole("navigation");
-  await nav
-    .getByRole("button", { name: "Collapse folders", exact: true })
-    .click();
+  const folder = nav.getByRole("button", { name: "Folder src", exact: true });
+  await folder.click();
   await expect(nav.locator('button[title="src/app.ts"]')).toHaveCount(0);
-  await nav
-    .getByRole("button", { name: "Reveal current file", exact: true })
-    .click();
+  await folder.click();
   await expect(nav.locator('button[title="src/app.ts"]')).toBeVisible();
   const panel = page.getByRole("complementary", { name: "Review notes" });
   const card = panel
@@ -1452,6 +1466,12 @@ test("compact header search and hover-only tree controls remain keyboard accessi
   const navigation = page.getByRole("complementary", { name: "Changed files" });
   await expect(search).toBeVisible();
   await expect(navigation.getByRole("textbox")).toHaveCount(0);
+  await expect(navigation.getByText("Changes", { exact: true })).toHaveCount(0);
+  await expect(
+    navigation.getByRole("button", {
+      name: /Expand folders|Collapse folders|Reveal current file/,
+    }),
+  ).toHaveCount(0);
   const headerBox = (await header.boundingBox())!;
   expect(headerBox.height).toBeLessThanOrEqual(56);
   const searchBox = (await search.boundingBox())!;
@@ -1508,9 +1528,11 @@ test("compact header search and hover-only tree controls remain keyboard accessi
   await search.focus();
   await expect(eye).toHaveCSS("opacity", "0");
   await search.fill("helo world");
-  const results = page.getByRole("region", { name: "Search this review" });
+  const results = page.getByRole("listbox", { name: "Search suggestions" });
+  const advanced = page.getByRole("region", { name: "Search this review" });
+  await expect(advanced).toHaveCount(0);
   await results
-    .getByRole("button")
+    .getByRole("option")
     .filter({ hasText: "Added · new 2" })
     .click();
   await expect(
@@ -1522,7 +1544,7 @@ test("compact header search and hover-only tree controls remain keyboard accessi
   await expect(search).toBeFocused();
   await search.fill("searchble reviewer");
   await results
-    .getByRole("button")
+    .getByRole("option")
     .filter({ hasText: "Fuzzily searchable reviewer annotation" })
     .click();
   await expect(
@@ -1533,7 +1555,7 @@ test("compact header search and hover-only tree controls remain keyboard accessi
   ).toBeVisible();
   await search.fill("item2999");
   await results
-    .getByRole("button")
+    .getByRole("option")
     .filter({ hasText: "Added · new 3000" })
     .click();
   await expect(
@@ -1541,6 +1563,31 @@ test("compact header search and hover-only tree controls remain keyboard accessi
       .locator('[data-file-path="untracked.ts"] [data-code-cell]')
       .filter({ hasText: "export const item2999 = 2999;" }),
   ).toBeInViewport();
+  await search.fill("hello world");
+  await expect(results).toBeVisible();
+  await search.press("ArrowDown");
+  await expect(search).toHaveAttribute(
+    "aria-activedescendant",
+    /review-search-option-/,
+  );
+  await search.press("Enter");
+  await expect(results).toHaveCount(0);
+  await expect(advanced).toBeVisible();
+  await expect(
+    advanced.getByRole("heading", { name: "Search this review" }),
+  ).toHaveCount(0);
+  await advanced.getByRole("button", { name: "code", exact: true }).click();
+  await expect(
+    advanced.getByRole("button").filter({ hasText: "Added · new 2" }),
+  ).toBeVisible();
+  await advanced
+    .getByRole("button", { name: "Close search", exact: true })
+    .click();
+  await expect(advanced).toHaveCount(0);
+  await search.focus();
+  await expect(results).toBeVisible();
+  await search.press("Escape");
+  await expect(results).toHaveCount(0);
 });
 
 test("overall notes and formatting tools preserve the code reading position", async ({
@@ -1938,4 +1985,58 @@ test("live page capture keeps its editor at the bottom and previews images acros
     await context.close();
     await new Promise<void>((resolve) => app.close(() => resolve()));
   }
+});
+
+test("new file comments stay editable while scrolling and saved comments scroll with the file", async ({
+  page,
+}) => {
+  await page.goto(url);
+  const pane = page.getByRole("region", { name: "Code diff" });
+  await page
+    .getByRole("navigation")
+    .locator('button[title="untracked.ts"]')
+    .click();
+  await pane
+    .getByRole("button", { name: "Comment on file untracked.ts", exact: true })
+    .click();
+  const text = pane.getByRole("textbox", { name: "Note text", exact: true });
+  await text.fill("File feedback kept visible while finding the relevant code");
+  await pane.evaluate((element) => (element.scrollTop += 80));
+  await expect
+    .poll(() =>
+      text.evaluate((field) => {
+        const editor = field.closest('[data-diff-kind="editor"]')!;
+        const bounds = editor.getBoundingClientRect();
+        for (let y = bounds.top + 5; y < bounds.bottom - 5; y += 13)
+          if (
+            !editor.contains(
+              document.elementFromPoint(bounds.x + bounds.width / 2, y),
+            )
+          )
+            return false;
+        return true;
+      }),
+    )
+    .toBe(true);
+  await pane.evaluate((element) => (element.scrollTop += 26 * 900));
+  await expect(text).toBeInViewport();
+  await expect(text).toBeFocused();
+  await expect(text).toHaveValue(
+    "File feedback kept visible while finding the relevant code",
+  );
+  const editorBox = (await text.boundingBox())!;
+  const headerBox = (await pane.locator('[data-sticky="true"]').boundingBox())!;
+  expect(editorBox.y).toBeGreaterThanOrEqual(
+    headerBox.y + headerBox.height - 1,
+  );
+  await page.screenshot({ path: "/tmp/lcr-sticky-file-draft.png" });
+  await pane.getByRole("button", { name: "Save note", exact: true }).click();
+  await expect(text).toHaveCount(0);
+  await pane.evaluate((element) => (element.scrollTop += 26 * 200));
+  await expect(
+    pane.getByText(
+      "File feedback kept visible while finding the relevant code",
+      { exact: true },
+    ),
+  ).not.toBeInViewport();
 });

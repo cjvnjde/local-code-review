@@ -153,6 +153,8 @@ describe("CSS color literals", () => {
             messages: [],
           },
         ],
+        files: [],
+        followFile: () => {},
         follow: () => {},
         children: createElement(Markdown, { body: "See #aabbccdd" }),
       }),

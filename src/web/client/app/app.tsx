@@ -130,6 +130,9 @@ function Workspace({
 }) {
   const { settings, update } = useUi();
   const [searchOpen, setSearchOpen] = useState(false);
+  const [advancedSearch, setAdvancedSearch] = useState(false);
+  const [activeSearchResult, setActiveSearchResult] = useState<string>();
+  const searchContainer = useRef<HTMLDivElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const searchResults = useRef<SearchResultsHandle>(null);
   const [overallOpen, setOverallOpen] = useState(false);
@@ -413,6 +416,20 @@ function Workspace({
     window.addEventListener("keydown", keys);
     return () => window.removeEventListener("keydown", keys);
   });
+  useEffect(() => {
+    if (!searchOpen || advancedSearch) return;
+    const dismiss = (event: Event) => {
+      const target = event.target as Node | null;
+      if (target && !searchContainer.current?.contains(target))
+        setSearchOpen(false);
+    };
+    document.addEventListener("pointerdown", dismiss);
+    document.addEventListener("focusin", dismiss);
+    return () => {
+      document.removeEventListener("pointerdown", dismiss);
+      document.removeEventListener("focusin", dismiss);
+    };
+  }, [searchOpen, advancedSearch]);
   function focusEditor() {
     setSearchOpen(false);
     if (draft?.host === "panel" && !overallDraft) setNotesOpen(true);
@@ -544,6 +561,8 @@ function Workspace({
     <NoteState value={noteState}>
       <ReviewReferences
         notes={notes}
+        files={files}
+        followFile={jumpToFile}
         follow={(note) => {
           jumpToNote(note);
           setAllNotes(true);
@@ -584,40 +603,59 @@ function Workspace({
               onValueChange={jumpToFile}
               options={files.map((f) => ({ value: f.path, label: f.path }))}
             />
-            <label className="mx-auto flex h-8 min-w-0 max-w-xl flex-1 items-center gap-2 rounded-md border bg-background px-2 sm:px-3">
-              <Search className="size-3.5 shrink-0 text-muted-foreground" />
-              <input
-                ref={searchInput}
-                type="search"
-                aria-label="Search review"
-                aria-expanded={searchOpen}
-                aria-controls={searchOpen ? "review-search-results" : undefined}
-                value={search}
-                onFocus={() => setSearchOpen(true)}
-                onChange={(event) => {
-                  setSearch(event.target.value);
-                  setSearchOpen(true);
-                }}
-                onKeyDown={(event) => {
-                  if (event.nativeEvent.isComposing) return;
-                  if (searchOpen && searchResults.current?.key(event.key)) {
-                    event.preventDefault();
-                    event.stopPropagation();
-                  } else if (
-                    !searchOpen &&
-                    ["ArrowDown", "Enter"].includes(event.key)
-                  ) {
-                    event.preventDefault();
-                    setSearchOpen(true);
+            <div
+              ref={searchContainer}
+              className="relative mx-auto min-w-0 max-w-xl flex-1"
+            >
+              <label className="flex h-8 min-w-0 items-center gap-2 rounded-md border bg-background px-2 sm:px-3">
+                <Search className="size-3.5 shrink-0 text-muted-foreground" />
+                <input
+                  ref={searchInput}
+                  type="search"
+                  aria-label="Search review"
+                  aria-expanded={searchOpen}
+                  aria-controls={
+                    searchOpen
+                      ? advancedSearch
+                        ? "review-search-results"
+                        : "review-search-suggestions"
+                      : undefined
                   }
-                }}
-                placeholder="Search review…"
-                className="h-full w-full min-w-0 bg-transparent text-xs outline-none"
-              />
-              <kbd className="hidden shrink-0 text-[10px] text-muted-foreground lg:inline">
-                ⌘/Ctrl K
-              </kbd>
-            </label>
+                  aria-haspopup="listbox"
+                  aria-autocomplete="list"
+                  aria-activedescendant={activeSearchResult}
+                  value={search}
+                  onFocus={() => {
+                    if (!searchOpen) setAdvancedSearch(false);
+                    setSearchOpen(true);
+                  }}
+                  onChange={(event) => {
+                    setSearch(event.target.value);
+                    setSearchOpen(true);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.nativeEvent.isComposing) return;
+                    if (searchOpen && searchResults.current?.key(event.key)) {
+                      event.preventDefault();
+                      event.stopPropagation();
+                    } else if (event.key === "Enter") {
+                      event.preventDefault();
+                      setAdvancedSearch(true);
+                      setSearchOpen(true);
+                    } else if (event.key === "ArrowDown") {
+                      event.preventDefault();
+                      setAdvancedSearch(false);
+                      setSearchOpen(true);
+                    }
+                  }}
+                  placeholder="Search review…"
+                  className="h-full w-full min-w-0 bg-transparent text-xs outline-none"
+                />
+                <kbd className="hidden shrink-0 text-[10px] text-muted-foreground lg:inline">
+                  ⌘/Ctrl K
+                </kbd>
+              </label>
+            </div>
             <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
               {diff.web && (
                 <Button
@@ -780,15 +818,9 @@ function Workspace({
                 className="flex h-full min-w-0 flex-col bg-card/50"
                 aria-label="Changed files"
               >
-                <div className="flex items-center justify-between px-4 py-3 text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
-                  <span>Changes</span>
-                  <span>
-                    {viewed}/{files.length} viewed
-                  </span>
-                </div>
                 <nav
                   ref={navigation}
-                  className="min-h-0 flex-1 overflow-auto px-2 pb-3"
+                  className="min-h-0 flex-1 overflow-auto px-2 py-3"
                 >
                   <FileTree
                     files={files}
@@ -1062,6 +1094,10 @@ function Workspace({
                 ref={searchResults}
                 query={search}
                 open={searchOpen}
+                advanced={advancedSearch}
+                anchor={searchContainer}
+                onActiveChange={setActiveSearchResult}
+                onAdvanced={() => setAdvancedSearch(true)}
                 files={files}
                 notes={notes}
                 onClose={() => setSearchOpen(false)}

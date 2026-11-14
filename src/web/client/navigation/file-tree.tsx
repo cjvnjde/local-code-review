@@ -69,14 +69,6 @@ export function FileTree({
     }
     return root;
   }, [files]);
-  const directories: string[] = [];
-  function collect(node: FolderNode) {
-    for (const child of node.directories.values()) {
-      directories.push(child.path);
-      collect(child);
-    }
-  }
-  collect(tree);
   const hidden = (file: DiffFile) => fileHidden(file, settings, visibility);
   function children(node: FolderNode): React.ReactNode {
     return (
@@ -201,22 +193,5 @@ export function FileTree({
       </>
     );
   }
-  return (
-    <>
-      <div className="mb-2 flex flex-wrap gap-2 px-2 text-[10px] text-muted-foreground">
-        <button onClick={() => setFolded([])}>Expand folders</button>
-        <button onClick={() => setFolded(directories)}>Collapse folders</button>
-        <button
-          onClick={() =>
-            setFolded((current) =>
-              current.filter((path) => !selected.startsWith(path + "/")),
-            )
-          }
-        >
-          Reveal current file
-        </button>
-      </div>
-      {children(tree)}
-    </>
-  );
+  return children(tree);
 }

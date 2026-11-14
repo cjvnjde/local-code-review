@@ -5,7 +5,10 @@ import {
   useRef,
   useState,
   type Ref,
+  type RefObject,
 } from "react";
+import { createPortal } from "react-dom";
+import { X } from "lucide-react";
 import type { DiffFile, ReviewNote } from "../../../shared/review-types.ts";
 import {
   searchDocuments,
@@ -24,6 +27,10 @@ export function SearchResults({
   notes,
   query,
   open,
+  advanced,
+  anchor,
+  onAdvanced,
+  onActiveChange,
   ref,
   onSelect,
   onClose,
@@ -32,6 +39,10 @@ export function SearchResults({
   notes: ReviewNote[];
   query: string;
   open: boolean;
+  advanced: boolean;
+  anchor: RefObject<HTMLDivElement | null>;
+  onAdvanced: () => void;
+  onActiveChange: (id: string | undefined) => void;
   ref?: Ref<SearchResultsHandle>;
   onSelect: (result: SearchResult) => void;
   onClose: () => void;
@@ -58,34 +69,38 @@ export function SearchResults({
   const results = useMemo(
     () =>
       searchReview(documents, query).filter(
-        (result) => kind === "all" || result.kind === kind,
+        (result) => !advanced || kind === "all" || result.kind === kind,
       ),
-    [documents, query, kind],
+    [documents, query, kind, advanced],
   );
   useEffect(() => {
     setLimit(100);
     setSelected(0);
-  }, [query, kind]);
+  }, [query, kind, advanced]);
   useEffect(() => {
+    onActiveChange(
+      open && !advanced && results[selected]
+        ? `review-search-option-${selected}`
+        : undefined,
+    );
     if (open) active.current?.scrollIntoView({ block: "nearest" });
-  }, [open, selected, query, kind]);
+  }, [open, advanced, selected, query, kind, results, onActiveChange]);
   useImperativeHandle(ref, () => ({
     key(key) {
       if (key === "Escape") {
         onClose();
         return true;
       }
-      if (key === "Enter" && results[selected]) {
-        onSelect(results[selected]);
+      if (key === "Enter") {
+        onAdvanced();
         return true;
       }
       if (key === "ArrowDown" || key === "ArrowUp") {
-        const next = results.length
-          ? (selected + (key === "ArrowDown" ? 1 : -1) + results.length) %
-            results.length
+        const count = Math.min(results.length, advanced ? limit : 8);
+        const next = count
+          ? (selected + (key === "ArrowDown" ? 1 : -1) + count) % count
           : 0;
         setSelected(next);
-        setLimit((current) => Math.max(current, next + 1));
         return true;
       }
       return false;
@@ -93,6 +108,64 @@ export function SearchResults({
   }));
   // Stay mounted so dismissing results never rebuilds the document index.
   if (!open) return null;
+  const resultContent = (result: SearchResult) => (
+    <>
+      <span className="block text-xs text-primary">
+        {result.path || "Overall"} · {result.label}
+        {result.location && ` · ${result.location}`}
+      </span>
+      <span className="block whitespace-pre-wrap break-words font-mono text-xs text-muted-foreground">
+        {searchExcerpt(result.text, query, advanced ? 240 : 140, result.ranges)}
+      </span>
+    </>
+  );
+  if (!advanced) {
+    if (!anchor.current) return null;
+    return createPortal(
+      <div className="absolute inset-x-0 top-full z-40 mt-2 overflow-hidden rounded-lg border bg-popover shadow-xl">
+        <div
+          id="review-search-suggestions"
+          role="listbox"
+          aria-label="Search suggestions"
+          className="max-h-[min(60vh,32rem)] overflow-auto p-1"
+        >
+          {results.slice(0, 8).map((result, i) => (
+            <button
+              key={`${result.kind}:${i}`}
+              id={`review-search-option-${i}`}
+              role="option"
+              aria-selected={selected === i}
+              ref={i === selected ? active : undefined}
+              className={`block w-full space-y-1 rounded-md p-3 text-left hover:bg-accent ${i === selected ? "bg-accent" : ""}`}
+              onFocus={() => setSelected(i)}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => onSelect(result)}
+            >
+              {resultContent(result)}
+            </button>
+          ))}
+          <p
+            role="presentation"
+            className="px-3 py-2 text-xs text-muted-foreground"
+          >
+            {!query.trim()
+              ? "Search files, code, notes, and replies."
+              : !results.length
+                ? "No matching results."
+                : `${results.length} results`}
+          </p>
+        </div>
+        <Button
+          variant="ghost"
+          className="w-full justify-between rounded-none border-t px-3 text-xs"
+          onClick={onAdvanced}
+        >
+          Advanced search <kbd>Enter ↵</kbd>
+        </Button>
+      </div>,
+      anchor.current,
+    );
+  }
   return (
     <section
       id="review-search-results"
@@ -106,13 +179,7 @@ export function SearchResults({
         }
       }}
     >
-      <div className="flex items-center justify-between gap-3 border-b p-3">
-        <h2 className="text-sm font-medium">Search this review</h2>
-        <Button variant="ghost" onClick={onClose}>
-          Close search
-        </Button>
-      </div>
-      <div className="flex flex-wrap gap-2 border-b p-3">
+      <div className="flex flex-wrap items-center gap-2 border-b p-3">
         {["all", "file", "code", "note", "reply"].map((item) => (
           <Button
             key={item}
@@ -126,6 +193,14 @@ export function SearchResults({
         <span className="ml-auto self-center text-xs text-muted-foreground">
           {results.length} results
         </span>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Close search"
+          onClick={onClose}
+        >
+          <X />
+        </Button>
       </div>
       <div className="min-h-0 flex-1 space-y-2 overflow-auto p-4">
         {results.slice(0, limit).map((result, i) => (
@@ -137,13 +212,7 @@ export function SearchResults({
             onFocus={() => setSelected(i)}
             onClick={() => onSelect(result)}
           >
-            <span className="block text-xs text-primary">
-              {result.path || "Overall"} · {result.label}
-              {result.location && ` · ${result.location}`}
-            </span>
-            <span className="block whitespace-pre-wrap break-words font-mono text-xs text-muted-foreground">
-              {searchExcerpt(result.text, query, 240, result.ranges)}
-            </span>
+            {resultContent(result)}
           </button>
         ))}
         {results.length > limit && (

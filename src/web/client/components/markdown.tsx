@@ -1,8 +1,12 @@
 import { ColorTools } from "./colors.tsx";
 import { ContextReference } from "./context.tsx";
 import { contextId } from "../../../shared/context.ts";
-import { NoteReference, remarkReferences } from "../notes/references.tsx";
-import { refIn } from "../notes/note-ref.ts";
+import {
+  FileReference,
+  NoteReference,
+  remarkReferences,
+} from "../notes/references.tsx";
+import { filePathIn, refIn } from "../notes/note-ref.ts";
 import { attachmentSrc, attachmentDownloadSrc } from "./attachments.ts";
 import { AttachmentImage } from "./images.tsx";
 import { memo } from "react";
@@ -66,7 +70,9 @@ export const Markdown = memo(function Markdown({
               ? url
               : refIn(url)
                 ? `lcr:${refIn(url)}`
-                : defaultUrlTransform(url)
+                : filePathIn(url)
+                  ? url
+                  : defaultUrlTransform(url)
         }
         components={{
           p: ({ children }) => <div className="my-2">{children}</div>,
@@ -80,6 +86,10 @@ export const Markdown = memo(function Markdown({
                   <Markdown body={body} file={file} captured={captured} />
                 )}
               />
+            ) : filePathIn(href || "") ? (
+              <FileReference path={filePathIn(href || "")}>
+                {children}
+              </FileReference>
             ) : attachmentDownloadSrc(href || "") ? (
               <a
                 href={attachmentDownloadSrc(href!)}

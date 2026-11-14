@@ -1,3 +1,5 @@
+import Fuse from "fuse.js";
+import type { DiffFile } from "../../../shared/review-types.ts";
 import { noteKey } from "../../../shared/note-id.ts";
 const isFileNote = (note: any) => note.scope === "file" || note.a === "*";
 const isGlobalNote = (note: any) => note.scope === "global" || note.a === "@";
@@ -101,8 +103,72 @@ export function insertRef(
     caret: head.length + lead.length + token.length,
   };
 }
+
+/** File links retain the complete repository path without treating it as a browser URL. */
+const FILE_SCHEME = "lcr-file:";
+export function fileRef(path: string) {
+  const label = path.replace(/[\\`*_[\]{}()<>!#|~&]/g, "\\$&");
+  const destination = encodeURIComponent(path).replace(
+    /[!'()*]/g,
+    (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+  return `[${label}](${FILE_SCHEME}${destination})`;
+}
+
+export function filePathIn(url: string) {
+  if (!url.toLowerCase().startsWith(FILE_SCHEME)) return "";
+  try {
+    const path = decodeURIComponent(url.slice(FILE_SCHEME.length));
+    return path && !/[\u0000-\u001f\u007f]/.test(path) ? path : "";
+  } catch {
+    return "";
+  }
+}
+
+/** Only paths are indexed: a word found in file contents must not suggest that file. */
+const fileIndexes = new WeakMap<DiffFile[], Fuse<DiffFile>>();
+export function matchingFiles(files: DiffFile[], query: string) {
+  if (!query) return files;
+  let index = fileIndexes.get(files);
+  if (!index) {
+    index = new Fuse(files, {
+      keys: ["path"],
+      threshold: 0.25,
+      ignoreLocation: true,
+      ignoreFieldNorm: true,
+    });
+    fileIndexes.set(files, index);
+  }
+  return index.search(query).map(({ item }) => item);
+}
+
+export type ReferenceCompletion = {
+  kind: "file" | "note";
+  from: number;
+  to: number;
+  query: string;
+};
+
+/** Replacing a token while editing its middle consumes its old suffix, not the next word. */
+export function referenceAt(
+  text: string,
+  start: number,
+  end = start,
+): ReferenceCompletion | null {
+  if (start !== end) return null;
+  const match = /(?:^|[\s([])([#@])([^\s#@]*)$/.exec(text.slice(0, start));
+  if (!match) return null;
+  const query = match[2]!;
+  return {
+    kind: match[1] === "@" ? ("file" as const) : ("note" as const),
+    from: start - query.length - 1,
+    to: start + /^[^\s#@)\],;!?]*/.exec(text.slice(start))![0].length,
+    query,
+  };
+}
 /** The same link, as the parser reads it back. */
-const LINK = /\[((?:[^[\]\\]|\\.)*)\]\([ \t]*<?lcr:([0-9a-z]*)>?[ \t]*\)/gi;
+const LINK =
+  /\[((?:[^[\]\\]|\\.)*)\]\([ \t]*<?(?:lcr:[0-9a-z]*|lcr-file:[^<>\s)]*)>?[ \t]*\)/gi;
 /**
  * A body with its references read as the words they are, for the places that show a line of a note
  * as text rather than as Markdown: a one-line summary has no room to be a link, and the heading the

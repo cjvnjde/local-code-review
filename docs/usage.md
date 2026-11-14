@@ -55,6 +55,7 @@ Long code lines wrap by default. Disable **Settings → Wrap long lines** for
 single-line reading; horizontal scrolling then belongs to each file's code only.
 File headers, comments, and the rest of the review stay fixed horizontally.
 
+Hover over code to highlight a commentable row and show its gutter affordance.
 Click code or a line number to comment immediately, drag across lines for a range,
 or drag within a line to select specific characters. Shift-click extends a range;
 Alt-drag keeps normal browser text selection for copying. Comments open directly
@@ -63,9 +64,11 @@ without a duplicate file/line title or repeated selected code. The conversation
 panel retains titles for orientation.
 **Cancel** clears the selected-line highlight. Re-aiming an overlapping selection
 preserves your draft text and caret; an unrelated click cannot replace a dirty
-draft. The file header offers
-a file comment; **Overall note** toggles an editor directly below its header button
-without moving your place in the diff. Clicking or focusing elsewhere dismisses it;
+draft. The file header offers a file comment; while creating it, the editor stays
+below that file's pinned header as you scroll. Saved file notes, edits, replies,
+and line comments scroll normally. **Overall note** toggles an editor directly
+below its header button without moving your place in the diff.
+Clicking or focusing elsewhere dismisses it;
 reopening restores the unsaved draft. Reloading retains that draft but leaves the
 popup closed until you click **Overall note**. Panel toggles sit at the two ends of
 the same compact header; change counts and refresh live in the existing footer.
@@ -104,7 +107,9 @@ edited or deleted. Agent messages remain the agent's account. Copy a note's shor
 reference for use in feedback; the full stable ID is kept in the Markdown marker.
 References expand in place to show their note and conversation. Type `#` in a note
 or reply to search notes by reference, file, or text. Use ↑/↓ and Enter/Tab, or click
-a suggestion, to insert its reference; Escape dismisses suggestions.
+a suggestion, to insert its reference; Escape dismisses suggestions. Type `@` to
+fuzzy-search reviewed files by path or filename, never their contents. Selecting
+a file inserts a Markdown reference that navigates to it, including hidden files.
 
 Ask any coding agent to address `.review/review-<timestamp>.md`. Agent messages and
 statuses appear through live updates, including replies written before a newly
@@ -151,7 +156,9 @@ or focus it to see the viewed percentage and full file path. The settled manual
 reading position stays in this browser across reloads; programmatic file jumps do
 not replace it. The centered header search (Cmd/Ctrl+K) fuzzy-searches the complete
 review: filenames, hidden and virtualized code, notes, replies, and captured context.
-Results reveal their file and jump to their subject; there is no separate sidebar search.
+Typing shows inline suggestions without replacing the diff. Click a suggestion
+to reveal its file and jump to its subject. Enter opens advanced search with
+result-type filters; its top-right × or Escape closes it.
 
 Alt+J/K steps through notes, Alt+Up/Down through bookmarks, and Alt+C switches the
 all-notes view. J/K also steps while viewing all notes. Typing in an editor keeps

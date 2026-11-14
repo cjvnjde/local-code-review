@@ -1,27 +1,66 @@
 import { parseColor } from "../components/color-literals.ts";
 import { createContext, useContext, useState, type ReactNode } from "react";
-import type { ReviewNote } from "../../../shared/review-types.ts";
+import type { DiffFile, ReviewNote } from "../../../shared/review-types.ts";
 import { noteKey } from "../../../shared/note-id.ts";
 import { noteByRef, refOf } from "./note-ref.ts";
 import { Button } from "../components/ui/button.tsx";
 
 const References = createContext<{
   notes: ReviewNote[];
+  files: DiffFile[];
+  followFile: (path: string) => void;
   follow: (note: ReviewNote) => void;
-}>({ notes: [], follow: () => {} });
+}>({ notes: [], files: [], follow: () => {}, followFile: () => {} });
 const Nested = createContext(false);
 export function ReviewReferences({
   notes,
   follow,
+  files,
+  followFile,
   children,
 }: {
   notes: ReviewNote[];
   follow: (note: ReviewNote) => void;
+  files: DiffFile[];
+  followFile: (path: string) => void;
   children: ReactNode;
 }) {
-  return <References value={{ notes, follow }}>{children}</References>;
+  return (
+    <References value={{ notes, follow, files, followFile }}>
+      {children}
+    </References>
+  );
 }
 export const useReferences = () => useContext(References);
+export function FileReference({
+  path,
+  children,
+}: {
+  path: string;
+  children: ReactNode;
+}) {
+  const { files, followFile } = useReferences();
+  if (!files.some((file) => file.path === path))
+    return (
+      <span
+        className="text-muted-foreground"
+        title="This file is no longer in the review"
+      >
+        {children} (unavailable)
+      </span>
+    );
+  return (
+    <button
+      type="button"
+      aria-label={`Go to file ${path}`}
+      className="text-primary underline"
+      title={`Go to ${path}`}
+      onClick={() => followFile(path)}
+    >
+      {children}
+    </button>
+  );
+}
 export function NoteReference({
   reference,
   render,

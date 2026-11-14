@@ -8,9 +8,18 @@ import { ColorTools } from "../components/colors.tsx";
 import { AttachmentImage } from "../components/images.tsx";
 import { attachmentSrc, uploadAttachment } from "../components/attachments.ts";
 import { useReferences } from "./references.tsx";
-import { insertRef, plainRefs, refLabel, refOf } from "./note-ref.ts";
+import {
+  fileRef,
+  insertRef,
+  matchingFiles,
+  plainRefs,
+  referenceAt,
+  refLabel,
+  refOf,
+  type ReferenceCompletion,
+} from "./note-ref.ts";
 import { useUi } from "../app/ui-preferences.tsx";
-import { useId, useLayoutEffect, useRef, useState } from "react";
+import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Bold,
   Italic,
@@ -26,10 +35,7 @@ import {
   Pencil,
   LoaderCircle,
 } from "lucide-react";
-import type {
-  ReviewComment,
-  ReviewNote,
-} from "../../../shared/review-types.ts";
+import type { ReviewComment } from "../../../shared/review-types.ts";
 import { noteKey } from "../../../shared/note-id.ts";
 import { request, useAction } from "../app/api.ts";
 import { Button } from "../components/ui/button.tsx";
@@ -89,7 +95,7 @@ export function Composer({
   const action = useAction();
   const { settings } = useUi();
   const askAI = agent && settings.aiAnswers;
-  const { notes: referenceNotes } = useReferences();
+  const { notes: referenceNotes, files: referenceFiles } = useReferences();
   const [preview, setPreview] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [drawing, setDrawing] = useState(false);
@@ -99,12 +105,10 @@ export function Composer({
   const listboxId = useId();
   const listbox = useRef<HTMLDivElement>(null);
   const composing = useRef(false);
-  const dismissedReference = useRef<number | null>(null);
-  const [completion, setCompletion] = useState<{
-    from: number;
-    to: number;
-    query: string;
-  } | null>(null);
+  const dismissedReference = useRef<string | null>(null);
+  const [completion, setCompletion] = useState<ReferenceCompletion | null>(
+    null,
+  );
   const [activeReference, setActiveReference] = useState(0);
   const body = draftBody(draft);
   const web = draft.kind === "note" ? draft.comment.web : draft.web;
@@ -132,15 +136,29 @@ export function Composer({
     draft.host !== "panel" &&
     !draft.comment.scope &&
     !!code;
-  const matches = completion
-    ? referenceNotes.filter((note) => {
-        if (!refOf(note.id)) return false;
-        const query = completion.query.toLocaleLowerCase();
-        return [note.id, note.file, noteKey(note), plainRefs(note.body)].some(
-          (value) => value.toLocaleLowerCase().includes(query),
-        );
-      })
-    : [];
+  const matches = useMemo(
+    () =>
+      completion?.kind === "file"
+        ? matchingFiles(referenceFiles, completion.query).map((file) => ({
+            kind: "file" as const,
+            path: file.path,
+          }))
+        : completion
+          ? referenceNotes
+              .filter((note) => {
+                if (!refOf(note.id)) return false;
+                const query = completion.query.toLocaleLowerCase();
+                return [
+                  note.id,
+                  note.file,
+                  noteKey(note),
+                  plainRefs(note.body),
+                ].some((value) => value.toLocaleLowerCase().includes(query));
+              })
+              .map((note) => ({ kind: "note" as const, note }))
+          : [],
+    [completion, referenceFiles, referenceNotes],
+  );
   const selectedReference = Math.min(activeReference, matches.length - 1);
   const subject =
     draft.kind === "note"
@@ -186,20 +204,20 @@ export function Composer({
   function updateCompletion(field: HTMLTextAreaElement) {
     if (composing.current) return;
     const { selectionStart: start, selectionEnd: end, value } = field;
-    const match =
-      start === end
-        ? /(?:^|[\s([])#([^\s#]*)$/.exec(value.slice(0, start))
-        : null;
+    const match = referenceAt(value, start, end);
     if (!match) {
       setCompletion(null);
       dismissedReference.current = null;
       return;
     }
-    const from = start - match[1]!.length - 1;
-    if (dismissedReference.current === from) return;
-    if (completion?.from !== from || completion.query !== match[1])
+    if (dismissedReference.current === `${match.kind}:${match.from}`) return;
+    if (
+      completion?.from !== match.from ||
+      completion.kind !== match.kind ||
+      completion.query !== match.query
+    )
       setActiveReference(0);
-    setCompletion({ from, to: start, query: match[1]! });
+    setCompletion(match);
   }
   function replaceText(
     from: number,
@@ -244,21 +262,19 @@ export function Composer({
       to + before.length,
     );
   }
-  function insertReference(note: ReviewNote) {
+  function insertReference(reference: (typeof matches)[number]) {
     if (!completion) return;
     const value = draftBody(latest.current);
-    const label = refLabel(note).replace(/[\\[\]]/g, "\\$&");
-    const result = insertRef(
-      value,
-      completion.from,
-      completion.to,
-      `[${label}](lcr:${refOf(note.id)})`,
-    );
+    const token =
+      reference.kind === "file"
+        ? fileRef(reference.path)
+        : `[${refLabel(reference.note).replace(/[\\[\]]/g, "\\$&")}](lcr:${refOf(reference.note.id)})`;
+    const result = insertRef(value, completion.from, completion.to, token);
     const text = result.value.slice(
       completion.from,
       result.value.length - (value.length - completion.to),
     );
-    dismissedReference.current = completion.from;
+    dismissedReference.current = `${completion.kind}:${completion.from}`;
     replaceText(completion.from, completion.to, text, result.caret);
   }
   async function attach(files: File[]) {
@@ -576,7 +592,7 @@ export function Composer({
                   if (event.key === "Escape") {
                     event.preventDefault();
                     event.stopPropagation();
-                    dismissedReference.current = completion.from;
+                    dismissedReference.current = `${completion.kind}:${completion.from}`;
                     setCompletion(null);
                     return;
                   }
@@ -632,7 +648,7 @@ export function Composer({
                   void save();
                 }
               }}
-              placeholder="Write feedback, ask a question, or type # to reference a note…"
+              placeholder="Write feedback, ask a question, or type # for a note or @ for a file…"
               className={`w-full border-0 bg-muted/50 px-3 py-2 text-sm leading-relaxed placeholder:text-muted-foreground placeholder:opacity-60 outline-none focus-visible:outline-1 focus-visible:outline-ring ${embedded ? "min-h-20 max-h-[30dvh] resize-none" : "min-h-18 resize-y"}`}
             />
             {completion && (
@@ -640,13 +656,21 @@ export function Composer({
                 ref={listbox}
                 id={listboxId}
                 role="listbox"
-                aria-label="Note references"
+                aria-label={
+                  completion.kind === "file"
+                    ? "File references"
+                    : "Note references"
+                }
                 className="absolute inset-x-0 top-full z-50 max-h-60 overflow-y-auto overscroll-contain rounded-md border bg-popover p-1 text-popover-foreground shadow-lg"
               >
                 {matches.length ? (
-                  matches.map((note, index) => (
+                  matches.map((reference, index) => (
                     <button
-                      key={note.id}
+                      key={
+                        reference.kind === "file"
+                          ? reference.path
+                          : reference.note.id
+                      }
                       id={`${listboxId}-${index}`}
                       type="button"
                       role="option"
@@ -655,21 +679,25 @@ export function Composer({
                       className={`block w-full rounded px-3 py-2 text-left text-xs ${index === selectedReference ? "bg-accent text-accent-foreground" : ""}`}
                       onMouseDown={(event) => event.preventDefault()}
                       onMouseMove={() => setActiveReference(index)}
-                      onClick={() => insertReference(note)}
+                      onClick={() => insertReference(reference)}
                     >
                       <span className="block truncate font-medium">
-                        #{refOf(note.id)} · {noteKey(note)}
+                        {reference.kind === "file"
+                          ? reference.path
+                          : `#${refOf(reference.note.id)} · ${noteKey(reference.note)}`}
                       </span>
-                      <span className="block truncate text-muted-foreground">
-                        {plainRefs(note.body)
-                          .replace(/\s+/g, " ")
-                          .slice(0, 160) || "Empty note"}
-                      </span>
+                      {reference.kind === "note" && (
+                        <span className="block truncate text-muted-foreground">
+                          {plainRefs(reference.note.body)
+                            .replace(/\s+/g, " ")
+                            .slice(0, 160) || "Empty note"}
+                        </span>
+                      )}
                     </button>
                   ))
                 ) : (
                   <div className="px-3 py-2 text-xs text-muted-foreground">
-                    No matching notes
+                    No matching {completion.kind === "file" ? "files" : "notes"}
                   </div>
                 )}
               </div>
