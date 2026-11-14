@@ -132,7 +132,7 @@ function Workspace({
   const [searchOpen, setSearchOpen] = useState(false);
   const searchInput = useRef<HTMLInputElement>(null);
   const searchResults = useRef<SearchResultsHandle>(null);
-  const [overallOpen, setOverallOpen] = useState(true);
+  const [overallOpen, setOverallOpen] = useState(false);
   const overallContainer = useRef<HTMLDivElement>(null);
   const overallEditor = useRef<HTMLElement>(null);
   const pickingAttachment = useRef(false);
@@ -155,9 +155,9 @@ function Workspace({
   const [navOpen, setNavOpen] = useStored("lcr:v2:sidebar", true);
   const [selected, setSelected] = useState("");
   const [search, setSearch] = useState("");
-  const [notesOpen, setNotesOpen] = useState(true);
-  const [allNotes, setAllNotes] = useState(false);
-  const [filter, setFilter] = useState("all");
+  const [notesOpen, setNotesOpen] = useStored("lcr:v2:notes-panel", true);
+  const [allNotes, setAllNotes] = useStored("lcr:v2:all-notes", false);
+  const [filter, setFilter] = useStored("lcr:v2:note-filter", "all");
   const [dialog, setDialog] = useState<"settings" | "history" | "agent" | null>(
     null,
   );
@@ -362,6 +362,7 @@ function Workspace({
           (b.scope === "file" ? -1 : b.start),
     );
   const viewed = files.filter((f) => marks[f.path] === f.hash).length;
+  const progress = files.length ? Math.round((viewed / files.length) * 100) : 0;
   const open = notes.filter(
     (n) => !["applied", "answered", "skipped"].includes(n.status),
   ).length;
@@ -414,13 +415,15 @@ function Workspace({
   });
   function focusEditor() {
     setSearchOpen(false);
+    if (draft?.host === "panel" && !overallDraft) setNotesOpen(true);
     if (overallDraft) {
-      setOverallOpen(true);
-      requestAnimationFrame(() =>
-        overallEditor.current
-          ?.querySelector<HTMLTextAreaElement>("textarea")
-          ?.focus({ preventScroll: true }),
-      );
+      requestAnimationFrame(() => {
+        if (overallOpen)
+          overallEditor.current
+            ?.querySelector<HTMLTextAreaElement>("textarea")
+            ?.focus({ preventScroll: true });
+        else overallContainer.current?.querySelector("button")?.focus();
+      });
     } else if (draft?.host === "panel") {
       const editor = document.querySelector<HTMLElement>(
         "[data-review-editor]",
@@ -640,7 +643,14 @@ function Workspace({
                   onClick={() => {
                     if (overallDraft) {
                       if (overallOpen) setOverallOpen(false);
-                      else focusEditor();
+                      else {
+                        setOverallOpen(true);
+                        requestAnimationFrame(() =>
+                          overallEditor.current
+                            ?.querySelector<HTMLTextAreaElement>("textarea")
+                            ?.focus({ preventScroll: true }),
+                        );
+                      }
                     } else if (
                       compose({
                         kind: "note",
@@ -830,28 +840,34 @@ function Workspace({
                   navigation={reading}
                   onJump={jumpBookmark}
                   onStep={stepBookmark}
-                  onResume={() => {
-                    if (reading.reading) {
-                      const place = reading.reading;
-                      reveal(place.path, () =>
-                        diffView.current?.resumeReading(place),
-                      );
-                    }
-                  }}
                 />
-                <div className="border-t p-3">
-                  <div className="h-1 overflow-hidden rounded-full bg-muted">
-                    <div
-                      className="h-full bg-primary transition-all"
-                      style={{
-                        width: `${files.length ? (viewed / files.length) * 100 : 0}%`,
-                      }}
-                    />
-                  </div>
-                  <p className="mt-2 text-[10px] text-muted-foreground">
-                    Your reading progress stays in this browser.
-                  </p>
-                </div>
+                <Tooltip
+                  label={`${progress}% viewed · ${reading.reading?.path || "No reading position yet"}`}
+                >
+                  <button
+                    type="button"
+                    aria-label="Resume reading"
+                    disabled={!reading.reading}
+                    className="shrink-0 border-t p-3 text-left hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-default disabled:hover:bg-transparent"
+                    onClick={() => {
+                      const place = reading.reading;
+                      if (place)
+                        reveal(place.path, () =>
+                          diffView.current?.resumeReading(place),
+                        );
+                    }}
+                  >
+                    <div className="h-1 overflow-hidden rounded-full bg-muted">
+                      <div
+                        className="h-full bg-primary transition-all"
+                        style={{ width: `${progress}%` }}
+                      />
+                    </div>
+                    <p className="mt-2 truncate text-[10px] text-muted-foreground">
+                      {reading.reading?.path || "No reading position yet"}
+                    </p>
+                  </button>
+                </Tooltip>
               </aside>
             }
             notes={

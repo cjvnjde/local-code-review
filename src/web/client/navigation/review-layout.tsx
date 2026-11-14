@@ -28,12 +28,17 @@ function useMedia(query: string) {
 }
 
 /** Persisted sizes hydrate a pane; after input, its live size owns the session. */
-function usePanelWidth(storedWidth: number, visible: boolean) {
+function usePanelWidth(
+  storedWidth: number,
+  visible: boolean,
+  peerVisible: boolean,
+) {
   const panel = useRef<PanelImperativeHandle>(null);
   const defaultWidth = useRef(storedWidth);
   const width = useRef(storedWidth);
   const userSized = useRef(false);
   const previousVisible = useRef<boolean | undefined>(undefined);
+  const previousPeerVisible = useRef<boolean | undefined>(undefined);
   const measureFrame = useRef(0);
   const restoreFrame = useRef(0);
   const cancelRestore = useCallback(() => {
@@ -42,8 +47,11 @@ function usePanelWidth(storedWidth: number, visible: boolean) {
   }, []);
   useEffect(() => cancelRestore, [cancelRestore]);
   useEffect(() => {
-    const visibilityChanged = previousVisible.current !== visible;
+    const visibilityChanged =
+      previousVisible.current !== visible ||
+      previousPeerVisible.current !== peerVisible;
     previousVisible.current = visible;
+    previousPeerVisible.current = peerVisible;
     if (!userSized.current) width.current = storedWidth;
     else if (!visibilityChanged) return;
     cancelRestore();
@@ -53,7 +61,7 @@ function usePanelWidth(storedWidth: number, visible: boolean) {
         panel.current?.resize(visible ? `${width.current}px` : "0px");
       });
     });
-  }, [storedWidth, visible, cancelRestore]);
+  }, [storedWidth, visible, peerVisible, cancelRestore]);
   const readWidth = () => {
     if (visible) {
       const next = Math.round(panel.current?.getSize().inPixels || 0);
@@ -101,8 +109,12 @@ export function ReviewLayout({
   const inlineNotes = useMedia("(min-width: 640px)");
   const showFiles = wide && navOpen;
   const showNotes = inlineNotes && notesOpen;
-  const filesSize = usePanelWidth(settings.navWidth || 256, showFiles);
-  const notesSize = usePanelWidth(notesWidth, showNotes);
+  const filesSize = usePanelWidth(
+    settings.navWidth || 256,
+    showFiles,
+    showNotes,
+  );
+  const notesSize = usePanelWidth(notesWidth, showNotes, showFiles);
   const persistFrame = useRef(0);
   useEffect(() => () => cancelAnimationFrame(persistFrame.current), []);
   const persistWidths = () => {
@@ -130,6 +142,7 @@ export function ReviewLayout({
       orientation="horizontal"
       id="review-panes"
       className="min-h-0 flex-1"
+      resizeTargetMinimumSize={{ fine: 20, coarse: 28 }}
       onPointerDownCapture={(event) => {
         // The library handles expanded divider hit targets on document capture.
         if (event.defaultPrevented) beginResize();

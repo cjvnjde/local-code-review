@@ -28,11 +28,11 @@ Only a small window of code and notes is mounted, even for very large diffs.
 File visibility controls appear on row hover or keyboard focus without reserving
 a separate column.
 
-Drag the vertical dividers to resize the file sidebar and conversation pane.
-Focused dividers also accept arrow keys and Home/End; double-click resets that
-pane's width. Widths survive reloads and hide/show toggles. Resizing keeps the
-current code position and open draft; narrow screens retain the file picker and
-conversation drawer.
+Drag the vertical dividers or their full grip handles to resize the file sidebar
+and conversation pane. Focused dividers also accept arrow keys and Home/End;
+double-click resets that pane's width. Widths and panel visibility survive reloads
+and hide/show toggles. Resizing keeps the current code position and open draft;
+narrow screens retain the file picker and conversation drawer.
 
 File headers stay visible while reading their code. Their history badge opens
 earlier-review notes without adding another header row. Collapse a file with its
@@ -66,8 +66,9 @@ preserves your draft text and caret; an unrelated click cannot replace a dirty
 draft. The file header offers
 a file comment; **Overall note** toggles an editor directly below its header button
 without moving your place in the diff. Clicking or focusing elsewhere dismisses it;
-reopening restores the unsaved draft. Panel toggles sit at the two ends of the same
-compact header; change counts and refresh live in the existing footer.
+reopening restores the unsaved draft. Reloading retains that draft but leaves the
+popup closed until you click **Overall note**. Panel toggles sit at the two ends of
+the same compact header; change counts and refresh live in the existing footer.
 
 The editor accepts Markdown, including tables, checklists, and fenced code.
 The icon toolbar offers formatting, preview, suggestions, and file attachments;
@@ -95,7 +96,8 @@ and reply saves available. Already queued or running work is not cancelled.
 
 The conversation pane shows notes for the selected file plus overall notes.
 **All notes** includes every file, including notes whose file left the diff. Filter
-by **All**, **Open**, or **Done**. Applied, answered, and skipped notes are done.
+by **All**, **Open**, or **Done**. The view and filter survive reloads. Applied,
+answered, and skipped notes are done.
 
 Reply under a note to follow up. Unanswered reviewer notes and replies can be
 edited or deleted. Agent messages remain the agent's account. Copy a note's short
@@ -143,9 +145,11 @@ separate context form.
 ## Navigate a large review
 
 Bookmark lines to revisit them in the sidebar. Bookmarks survive a reload within
-that tab and are isolated to the current repository/read. **Resume reading** keeps
-a settled manual reading position across reloads; programmatic file jumps do not
-replace it. The centered header search (Cmd/Ctrl+K) fuzzy-searches the complete
+that tab and are isolated to the current repository/read. The sidebar's progress
+block shows the saved reading file; click it to return to that position, or hover
+or focus it to see the viewed percentage and full file path. The settled manual
+reading position stays in this browser across reloads; programmatic file jumps do
+not replace it. The centered header search (Cmd/Ctrl+K) fuzzy-searches the complete
 review: filenames, hidden and virtualized code, notes, replies, and captured context.
 Results reveal their file and jump to their subject; there is no separate sidebar search.
 

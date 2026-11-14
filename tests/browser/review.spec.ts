@@ -237,6 +237,13 @@ test("compiled executable reviews changes, preserves drafts, and continues the M
     .getByRole("textbox", { name: "Note text" })
     .fill("Recovered draft");
   await page.reload();
+  await expect(
+    page.getByRole("region", { name: "Overall note editor" }),
+  ).toBeHidden();
+  await expect(
+    page.getByRole("button", { name: "Overall note", exact: true }),
+  ).toHaveAttribute("aria-expanded", "false");
+  await page.getByRole("button", { name: "Overall note", exact: true }).click();
   await expect(page.getByRole("textbox", { name: "Note text" })).toHaveValue(
     "Recovered draft",
   );
@@ -829,8 +836,7 @@ test("continuous scrolling follows files, reopens viewed files, and preserves th
   const saved = await (await page.request.get(`${url}/api/review`)).json();
   if (
     !saved.notes.some(
-      (note: { body: string }) =>
-        note.body === "Please **rename** this greeting.",
+      (note: { body: string }) => note.body === "Continuous-scroll anchor.",
     )
   ) {
     await page.request.post(`${url}/api/note`, {
@@ -842,7 +848,7 @@ test("continuous scrolling follows files, reopens viewed files, and preserves th
           end: 2,
           side: "new",
           code: "+  return 'hello world';",
-          body: "Please **rename** this greeting.",
+          body: "Continuous-scroll anchor.",
         },
         ask: false,
       },
@@ -911,12 +917,10 @@ test("continuous scrolling follows files, reopens viewed files, and preserves th
     .click();
   const codeNote = notesPanel
     .getByRole("article")
-    .filter({ hasText: "Please rename this greeting." });
+    .filter({ hasText: "Continuous-scroll anchor." });
   await codeNote.getByRole("button", { name: "In diff", exact: true }).click();
   await expect(
-    pane
-      .getByRole("article")
-      .filter({ hasText: "Please rename this greeting." }),
+    pane.getByRole("article").filter({ hasText: "Continuous-scroll anchor." }),
   ).toBeVisible();
   await expect(
     pane.getByRole("button", { name: "Collapse src/app.ts", exact: true }),
@@ -1096,8 +1100,14 @@ test("image-region comments, audio playback, preferences and the resume marker r
     exact: true,
   });
   await expect(resume).toBeVisible();
+  await expect(resume).toHaveText("untracked.ts");
+  await resume.hover();
+  await expect(
+    page.getByText(/^\d+% viewed · untracked\.ts$/, { exact: true }),
+  ).toBeVisible();
   await page.reload();
   await expect(resume).toBeVisible();
+  await expect(resume).toHaveText("untracked.ts");
   await resume.click();
   await expect(nav.locator('button[title="untracked.ts"]')).toHaveAttribute(
     "aria-current",
@@ -1234,14 +1244,13 @@ test("Base UI focus and pane resizing preserve drafts, reading position and save
   const initialLeft = await width(files),
     initialRight = await width(notes);
   async function drag(handle: typeof left, delta: number) {
-    const box = await handle.boundingBox();
-    await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+    const box = (await handle.locator("span").boundingBox())!;
+    // The full visible grip, including its edge outside the 4px divider, must drag.
+    const x = box.x + 0.5,
+      y = box.y + box.height / 2;
+    await page.mouse.move(x, y);
     await page.mouse.down();
-    await page.mouse.move(
-      box!.x + box!.width / 2 + delta,
-      box!.y + box!.height / 2,
-      { steps: 12 },
-    );
+    await page.mouse.move(x + delta, y, { steps: 12 });
     await page.mouse.up();
   }
   // A slow preference write must not freeze the next drag or restore an old width.
@@ -1288,6 +1297,15 @@ test("Base UI focus and pane resizing preserve drafts, reading position and save
   const savedLeft = await width(files),
     savedRight = await width(notes);
   await page.reload();
+  await expect.poll(() => width(files)).toBeCloseTo(savedLeft, 0);
+  await expect.poll(() => width(notes)).toBeCloseTo(savedRight, 0);
+  await page.getByRole("button", { name: "Hide file sidebar" }).click();
+  await page.getByRole("button", { name: "Hide notes panel" }).click();
+  await page.reload();
+  await expect(files).toBeHidden();
+  await expect(notes).toBeHidden();
+  await page.getByRole("button", { name: "Show file sidebar" }).click();
+  await page.getByRole("button", { name: "Show notes panel" }).click();
   await expect.poll(() => width(files)).toBeCloseTo(savedLeft, 0);
   await expect.poll(() => width(notes)).toBeCloseTo(savedRight, 0);
   await left.focus();

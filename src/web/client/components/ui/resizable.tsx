@@ -17,7 +17,7 @@ export function ResizableHandle({
   return (
     <Separator
       className={cn(
-        "group relative z-20 flex w-1 shrink-0 items-center justify-center bg-border outline-none transition-colors hover:bg-primary/60 focus-visible:bg-primary data-[separator=active]:bg-primary",
+        "group relative z-20 flex w-1 shrink-0 cursor-col-resize items-center justify-center bg-border outline-none transition-colors hover:bg-primary/60 focus-visible:bg-primary data-[separator=active]:bg-primary",
         className,
       )}
       {...props}
