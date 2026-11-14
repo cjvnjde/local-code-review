@@ -9,6 +9,16 @@ const render = (body: string, captured?: string) =>
     <Markdown body={body} captured={captured} file="code.ts" />,
   );
 describe("library Markdown rendering", () => {
+  test("preserves typed line breaks without changing Markdown blocks or code", () => {
+    const html = render(
+      "First **line**\nSecond line\n\nNext paragraph\n\n- Item\n  continued\n\n```text\ncode one\ncode two\n```",
+    );
+    expect(html).toContain("First <strong>line</strong><br/>\nSecond line");
+    expect(html).toContain('<div class="my-2">Next paragraph</div>');
+    expect(html).toContain("Item<br/>\ncontinued");
+    expect(html).toContain("code one\ncode two\n");
+    expect(html).not.toContain("code one<br");
+  });
   test("renders GFM tables, checklists, links and highlighted fences", () => {
     const html = render(
       "# Heading\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n- [x] Done\n\n[Docs](https://example.com)\n\n```ts\nconst x = 1;\n```",

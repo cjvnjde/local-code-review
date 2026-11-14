@@ -49,6 +49,7 @@ export function Settings({
             ["wrapLines", "Wrap long lines"],
             ["single", "Keep one pending note per selection"],
             ["ghosts", "Show notes from other reviews"],
+            ["toast", "Show reply and save notifications"],
           ] as const
         ).map(([key, label]) => (
           <label className="flex items-center gap-3 text-sm" key={key}>
@@ -219,6 +220,8 @@ export function Settings({
             ? `${agent.connection.agent}: ${agent.connection.state}. ${agent.connection.detail}`
             : "No ACP agent configured. Save notes and ask your coding agent to address the Markdown file."}
         </p>
+        <AgentLaunch agent={agent} />
+        <AgentSetup manual={!agent.connection} />
         <h4 className="pt-2 text-xs font-semibold">
           Install the apply-lcr skill
         </h4>
@@ -263,6 +266,145 @@ export function Settings({
   );
 }
 
+function AgentLaunch({ agent }: { agent: AgentState }) {
+  if (!agent.connection) return null;
+  const launch = agent.connection.launch;
+  return (
+    <section className="space-y-2 rounded-lg border p-3 text-xs">
+      <h3 className="font-semibold">Configured launch options</h3>
+      <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
+        <dt>Model</dt>
+        <dd className="break-words">
+          {launch?.model || "Agent default / not reported"}
+        </dd>
+        <dt>Thinking / reasoning</dt>
+        <dd className="break-words">
+          {launch?.thinking || "Agent default / not reported"}
+        </dd>
+        <dt>Permissions</dt>
+        <dd className="break-words">
+          {launch?.permissions || "Agent policy / not reported"}
+        </dd>
+      </dl>
+      <p className="text-muted-foreground">
+        Explicit profile values only, not verified active-session settings.
+        Inherited environment, agent defaults and restored sessions may differ.
+        lcr does not read agent credentials or change models or permissions.
+      </p>
+    </section>
+  );
+}
+
+function AgentSetup({ manual }: { manual: boolean }) {
+  return (
+    <details open={manual} className="rounded-lg border p-3 text-xs">
+      <summary className="cursor-pointer font-semibold">
+        Set up OMP or Codex · model, thinking and permissions
+      </summary>
+      <div className="mt-3 space-y-3">
+        <p>
+          Install and authenticate the agent in your terminal. Save an ACP JSON
+          profile outside your review, then restart from the repository root:
+        </p>
+        <pre className="overflow-x-auto rounded bg-muted p-2">
+          <code>lcr --acp /path/to/agent.json</code>
+        </pre>
+        <h4 className="font-semibold">OMP profile</h4>
+        <pre className="overflow-x-auto rounded bg-muted p-2">
+          <code>
+            {JSON.stringify(
+              {
+                name: "OMP",
+                command: "omp",
+                args: [
+                  "--model",
+                  "<provider>/<model-id>",
+                  "--thinking",
+                  "high",
+                  "acp",
+                ],
+              },
+              null,
+              2,
+            )}
+          </code>
+        </pre>
+        <p>
+          Replace the model placeholder with an ID from <code>omp models</code>.
+          Put launch flags before <code>acp</code>. Thinking levels depend on
+          the model; check <code>omp --help</code> for your installed version.
+        </p>
+        <h4 className="font-semibold">Codex ACP profile</h4>
+        <pre className="overflow-x-auto rounded bg-muted p-2">
+          <code>
+            {JSON.stringify(
+              {
+                name: "Codex ACP",
+                command: "bunx",
+                args: ["@agentclientprotocol/codex-acp@2.5.0"],
+                env: {
+                  CODEX_PATH: "codex",
+                  CODEX_CONFIG: JSON.stringify({
+                    model: "<model-id>",
+                    model_reasoning_effort: "high",
+                  }),
+                },
+              },
+              null,
+              2,
+            )}
+          </code>
+        </pre>
+        <p>
+          Install Bun and Codex, authenticate with <code>codex login</code>, and
+          replace the model placeholder with an available model.{" "}
+          <code>CODEX_CONFIG</code> is a JSON-encoded string. Do not put login
+          secrets in the profile.
+        </p>
+        <details className="space-y-2">
+          <summary className="cursor-pointer font-semibold">
+            Optional full permissions (dangerous)
+          </summary>
+          <p className="mt-2">
+            Only opt in for a trusted task in an externally isolated
+            environment. Untrusted repository content can influence an agent.
+            These options remove approval protection; lcr never adds them
+            automatically.
+          </p>
+          <p>
+            OMP: add <code>--auto-approve</code> before <code>acp</code> in{" "}
+            <code>args</code> (for example{" "}
+            <code>{'["--auto-approve", "acp"]'}</code>). This skips tool
+            approval prompts; it does not grant OS permissions.
+          </p>
+          <p>
+            Codex ACP 2.5.0: add{" "}
+            <code>{'"INITIAL_AGENT_MODE": "agent-full-access"'}</code> to{" "}
+            <code>env</code>. This requests no approvals and the{" "}
+            <code>danger-full-access</code> sandbox policy. Do not pass Codex
+            CLI bypass flags to the adapter.
+          </p>
+        </details>
+        <p>
+          Finish or cancel queued work before changing profiles, then restart
+          lcr. Saved sessions may retain their own settings. To use this profile
+          by default, set <code>acp</code> in{" "}
+          <code>~/.config/lcr/config.json</code>. Use{" "}
+          <code>lcr --no-agent</code> for manual Markdown review.
+        </p>
+        <a
+          className="underline underline-offset-2"
+          href="https://github.com/cjvnjde/local-code-review/blob/v2/docs/agent-connections.md"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Agent connection guide and permission references
+        </a>
+      </div>
+    </details>
+  );
+}
+
 export function AgentPanel({ agent }: { agent: AgentState }) {
   const action = useAction();
   const control = (name: string, id?: string, option?: string) =>
@@ -276,6 +418,8 @@ export function AgentPanel({ agent }: { agent: AgentState }) {
       <p className="text-sm text-muted-foreground">
         {agent.connection?.detail || "No ACP connection configured."}
       </p>
+      <AgentLaunch agent={agent} />
+      <AgentSetup manual={!agent.connection} />
       {agent.queue && (
         <>
           <Button

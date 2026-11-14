@@ -12,6 +12,7 @@ import { AttachmentImage } from "./images.tsx";
 import { memo } from "react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkBreaks from "remark-breaks";
 import { diffLines } from "diff";
 import { Code, languageFor } from "./code.tsx";
 
@@ -60,7 +61,7 @@ export const Markdown = memo(function Markdown({
   return (
     <div className="markdown">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkReferences]}
+        remarkPlugins={[remarkGfm, remarkBreaks, remarkReferences]}
         urlTransform={(url, key) =>
           key === "src"
             ? attachmentSrc(url)

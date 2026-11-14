@@ -129,6 +129,24 @@ test("compiled executable reviews changes, preserves drafts, and continues the M
       .evaluate((body) => getComputedStyle(body).backgroundColor),
   ).not.toBe("rgba(0, 0, 0, 0)");
   // The next file pushes the pinned header away instead of overlapping it.
+  await page.getByRole("button", { name: "Set up agent", exact: true }).click();
+  const setup = page.getByRole("dialog", { name: "Agent setup", exact: true });
+  await expect(
+    setup.getByRole("heading", { name: "OMP profile", exact: true }),
+  ).toBeVisible();
+  await expect(
+    setup.getByRole("heading", { name: "Codex ACP profile", exact: true }),
+  ).toBeVisible();
+  await setup
+    .getByText("Optional full permissions (dangerous)", { exact: true })
+    .click();
+  await expect(
+    setup.getByText('"INITIAL_AGENT_MODE": "agent-full-access"', {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(setup).toBeHidden();
   const readingPane = page.getByRole("region", { name: "Code diff" });
   const firstHeader = readingPane.locator(
     '[data-diff-kind="header"][data-file-path="src/app.ts"]',
@@ -168,17 +186,42 @@ test("compiled executable reviews changes, preserves drafts, and continues the M
     .getByRole("button", { name: "Comment on line 2", exact: true })
     .last()
     .click();
+  const draftSurface = page.locator("[data-review-editor][data-note-surface]");
+  const surfaceStyle = (surface: HTMLElement) => ({
+    width: surface.getBoundingClientRect().width,
+    radius: getComputedStyle(surface).borderRadius,
+    border: getComputedStyle(surface).borderWidth,
+    background: getComputedStyle(surface).backgroundColor,
+  });
+  const draftStyle = await draftSurface.evaluate(surfaceStyle);
   await page
     .getByRole("textbox", { name: "Note text" })
     .fill(
-      "Please **rename** this greeting.\n\n| Why | Value |\n|---|---|\n| Scope | Local |",
+      "Please **rename** this greeting.\nKeep the scope local.\n\n| Why | Value |\n|---|---|\n| Scope | Local |",
     );
   await page.getByRole("button", { name: "Save note", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(notesPanel.getByRole("article")).toHaveCount(1);
   await expect(notesPanel.locator("article table")).toBeVisible();
+  const savedCard = notesPanel.getByRole("article");
+  expect(
+    await savedCard
+      .locator(".markdown")
+      .first()
+      .evaluate((body: HTMLElement) => body.innerText),
+  ).toContain("Please rename this greeting.\nKeep the scope local.");
+  await expect(
+    savedCard
+      .locator("header")
+      .getByRole("button", { name: "Copy note reference" }),
+  ).toBeVisible();
   expect((await addedCode.boundingBox())!.x).toBe(codeLeft);
   await expect(addedCode).toHaveText("  return 'hello world';");
+  const inlineCard = readingPane.getByRole("article");
+  expect(await inlineCard.evaluate(surfaceStyle)).toEqual(draftStyle);
+  await inlineCard.getByRole("button", { name: "Edit note" }).click();
+  expect(await inlineCard.evaluate(surfaceStyle)).toEqual(draftStyle);
+  await inlineCard.getByRole("button", { name: "Cancel", exact: true }).click();
   let review = await (await page.request.get(`${url}/api/review`)).json();
   const reviewPath = path.join(directory, review.file);
   expect(await readFile(reviewPath, "utf8")).toContain(
@@ -189,7 +232,7 @@ test("compiled executable reviews changes, preserves drafts, and continues the M
   await notesPanel.getByRole("button", { name: "Reply", exact: true }).click();
   await page
     .getByRole("textbox", { name: "Note text" })
-    .fill("Keep this **unsaved** follow-up.");
+    .fill("Keep this **unsaved** follow-up.\nAnd this second line.");
   await writeFile(
     reviewPath,
     (await readFile(reviewPath, "utf8")).replace(
@@ -204,10 +247,18 @@ test("compiled executable reviews changes, preserves drafts, and continues the M
           .messages.length,
     )
     .toBe(1);
+  const replyToast = page
+    .locator("[data-sonner-toast]")
+    .filter({ hasText: "New agent reply" });
+  await expect(replyToast).toBeVisible();
+  const toastBox = (await replyToast.boundingBox())!;
+  expect(toastBox.x + toastBox.width).toBeGreaterThan(1400);
+  expect(toastBox.y + toastBox.height).toBeGreaterThan(900);
   await expect(page.getByRole("textbox", { name: "Note text" })).toHaveValue(
-    "Keep this **unsaved** follow-up.",
+    "Keep this **unsaved** follow-up.\nAnd this second line.",
   );
   await page.getByRole("button", { name: "Send reply", exact: true }).click();
+  await expect(page.locator("[data-review-editor]")).toHaveCount(0);
   await expect(
     notesPanel
       .locator("article")
@@ -216,6 +267,37 @@ test("compiled executable reviews changes, preserves drafts, and continues the M
   await expect(
     notesPanel.locator("article").getByText("Keep this"),
   ).toBeVisible();
+  expect(
+    await savedCard
+      .locator(".markdown")
+      .last()
+      .evaluate((body: HTMLElement) => body.innerText),
+  ).toContain("Keep this unsaved follow-up.\nAnd this second line.");
+  const footerReply = savedCard.getByRole("button", {
+    name: "Reply",
+    exact: true,
+  });
+  const footerDelete = savedCard.getByRole("button", { name: "Delete note" });
+  const footerResolve = savedCard.getByRole("button", {
+    name: "Resolve",
+    exact: true,
+  });
+  const lastMessage = savedCard.locator(".markdown").last();
+  const replyBox = (await footerReply.boundingBox())!;
+  const deleteBox = (await footerDelete.boundingBox())!;
+  const resolveBox = (await footerResolve.boundingBox())!;
+  const messageBox = (await lastMessage.boundingBox())!;
+  expect(replyBox.y).toBeGreaterThanOrEqual(messageBox.y + messageBox.height);
+  expect(
+    Math.abs(
+      replyBox.y + replyBox.height / 2 - deleteBox.y - deleteBox.height / 2,
+    ),
+  ).toBeLessThan(2);
+  expect(
+    Math.abs(
+      replyBox.y + replyBox.height / 2 - resolveBox.y - resolveBox.height / 2,
+    ),
+  ).toBeLessThan(2);
   // Markdown and library highlights cannot turn source or note HTML into active markup.
   await page.getByRole("button", { name: "Overall note", exact: true }).click();
   await page
@@ -259,6 +341,35 @@ test("compiled executable reviews changes, preserves drafts, and continues the M
   expect(
     await page.getByRole("button", { name: /Comment on line/ }).count(),
   ).toBeLessThan(100);
+  await notesPanel
+    .getByRole("button", { name: "All notes", exact: true })
+    .click();
+  const compactToggle = notesPanel.getByRole("button", {
+    name: "Compact conversation list",
+  });
+  await compactToggle.click();
+  const compactList = notesPanel.getByRole("list", {
+    name: "Compact conversation notes",
+  });
+  await expect(
+    compactList.getByRole("button", { name: /^In diff: src\/app\.ts/ }),
+  ).toContainText("Please **rename** this greeting.");
+  await expect(notesPanel.getByRole("article")).toHaveCount(0);
+  await compactList
+    .getByRole("button", { name: /^In diff: src\/app\.ts/ })
+    .click();
+  await expect(
+    page.getByRole("navigation").locator('button[title="src/app.ts"]'),
+  ).toHaveAttribute("aria-current", "true");
+  await expect(
+    readingPane
+      .getByRole("article")
+      .filter({ hasText: "Please rename this greeting." }),
+  ).toBeInViewport();
+  await page.reload();
+  await expect(compactToggle).toHaveAttribute("aria-pressed", "true");
+  await compactToggle.click();
+  await expect(notesPanel.getByRole("article")).toHaveCount(2);
   await page.getByRole("button", { name: "Light theme" }).click();
   await expect(page.locator("html")).not.toHaveClass(/dark/);
   await page.getByRole("button", { name: "Dark theme" }).click();

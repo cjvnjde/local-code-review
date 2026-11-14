@@ -1,10 +1,18 @@
 import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { DiffFile, ReviewNote } from "../../../shared/review-types.ts";
+import type { AgentLaunchSummary } from "../../../shared/agent-types.ts";
+import { toast } from "sonner";
+import { useUi } from "./ui-preferences.tsx";
 
 export interface AgentState {
   agent?: string;
-  connection?: { state: string; detail: string; agent: string };
+  connection?: {
+    state: string;
+    detail: string;
+    agent: string;
+    launch?: AgentLaunchSummary;
+  };
   queue?: {
     review?: string;
     paused: boolean;
@@ -73,6 +81,7 @@ export function useReview() {
 }
 export function useAction() {
   const client = useQueryClient();
+  const { settings } = useUi();
   return useMutation({
     mutationFn: ({
       url,
@@ -83,7 +92,19 @@ export function useAction() {
       method?: string;
       body?: unknown;
     }) => request<unknown>(url, method, body),
-    onSuccess: async () => {
+    onError: (_error, variables) => {
+      if (!settings.toast) return;
+      const saved = savedItem(variables);
+      toast.error(saved ? `Could not save ${saved}` : "Action failed", {
+        description: saved
+          ? "Your changes have not been saved. Try again."
+          : "The action could not be completed. Try again.",
+      });
+    },
+    onSuccess: async (_data, variables) => {
+      const saved = savedItem(variables);
+      if (settings.toast && saved)
+        toast.success(saved === "note" ? "Note saved" : "Reply saved");
       await Promise.all([
         client.invalidateQueries({ queryKey: ["review"] }),
         client.invalidateQueries({ queryKey: ["reviews"] }),
@@ -91,6 +112,25 @@ export function useAction() {
       ]);
     },
   });
+}
+
+function savedItem({
+  url,
+  method = "GET",
+  body,
+}: {
+  url: string;
+  method?: string;
+  body?: unknown;
+}): "note" | "reply" | undefined {
+  if (
+    url === "/api/note" &&
+    method === "POST" &&
+    !(body && typeof body === "object" && "retry" in body && body.retry)
+  )
+    return "note";
+  if (url === "/api/reply" && (method === "POST" || method === "PUT"))
+    return "reply";
 }
 
 export function useLive() {

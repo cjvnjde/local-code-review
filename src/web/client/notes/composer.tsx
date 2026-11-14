@@ -129,13 +129,6 @@ export function Composer({
     draft.kind === "note" ? noteKey(draft.comment) : `Reply · ${draft.label}`;
   const busy = action.isPending || uploading || drawing;
   const integrated = !embedded && (draft.editing || draft.kind === "reply");
-  const inlineSelection =
-    !embedded &&
-    draft.kind === "note" &&
-    !draft.editing &&
-    draft.host !== "panel" &&
-    !draft.comment.scope &&
-    !!code;
   const matches = useMemo(
     () =>
       completion?.kind === "file"
@@ -363,7 +356,9 @@ export function Composer({
     </>
   );
   const content = (
-    <div className={`flex min-h-0 flex-col gap-3 ${embedded ? "flex-1" : ""}`}>
+    <div
+      className={`flex min-h-0 flex-col gap-3 ${embedded ? "flex-1" : integrated ? "" : "p-4"}`}
+    >
       <div
         role={embedded ? "region" : undefined}
         aria-label={embedded ? "Evidence and attachments" : undefined}
@@ -377,7 +372,7 @@ export function Composer({
             label="Selected screenshot region"
           />
         )}
-        {!integrated && !inlineSelection && code && (
+        {!integrated && code && (
           <pre
             aria-label={`Captured code · ${file}`}
             className="max-h-48 overflow-auto border-y bg-muted/30 py-3 text-xs"
@@ -746,8 +741,15 @@ export function Composer({
     <section
       data-review-editor
       data-editor-subject={subject}
+      data-note-surface={!embedded && !integrated ? "" : undefined}
       aria-label="Comment editor"
-      className={embedded ? "flex min-h-0 flex-1 flex-col" : "min-w-0"}
+      className={
+        embedded
+          ? "flex min-h-0 flex-1 flex-col"
+          : integrated
+            ? "min-w-0 w-full"
+            : "min-w-0 w-full rounded-xl border bg-card shadow-sm"
+      }
       onDragOver={(event) => {
         if (event.dataTransfer.types.includes("Files")) event.preventDefault();
       }}
@@ -758,9 +760,13 @@ export function Composer({
         }
       }}
     >
-      {!integrated && (embedded || draft.host === "panel") && (
+      {!integrated && (
         <h2
-          className={`mb-3 shrink-0 break-words font-mono text-xs font-medium text-primary ${embedded ? "px-4 pt-4" : ""}`}
+          className={
+            embedded
+              ? "mb-3 shrink-0 break-words px-4 pt-4 font-mono text-xs font-medium text-primary"
+              : "shrink-0 truncate border-b px-4 py-3 text-xs font-medium"
+          }
         >
           {title}
         </h2>

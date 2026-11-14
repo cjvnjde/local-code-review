@@ -17,6 +17,7 @@ import type { ReviewNote } from "../review/thread.ts";
 import type { NoteStatusKind } from "../shared/review-types.ts";
 import { compactWebReview } from "../shared/web-review.ts";
 import { contextIds, contextPath } from "../shared/context.ts";
+import { agentLaunchSummary } from "./launch-summary.ts";
 
 interface Options {
   repoRoot: string;
@@ -115,6 +116,7 @@ export interface ManagedAgent extends AgentAdapter {
 export function createManagedAgent(options: Options): ManagedAgent {
   const queue = new AgentQueue(options.directory);
   const target = acpTarget(options.config);
+  const launch = agentLaunchSummary(options.config);
   let client: AcpClient | undefined;
   let connected = false;
   let checking: Promise<void> | undefined;
@@ -361,6 +363,7 @@ export function createManagedAgent(options: Options): ManagedAgent {
     agent: options.config.name,
     status: () => ({
       agent: options.config.name,
+      launch,
       state: connected ? "ready" : checking ? "checking" : "unavailable",
       detail: !queue.healthy
         ? "Managed queue storage failed; dispatch is stopped. Repair storage and restart lcr."

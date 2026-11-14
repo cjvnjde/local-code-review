@@ -69,19 +69,41 @@ export function NoteCard({
   );
   return (
     <article
-      className="rounded-xl border bg-card shadow-sm"
+      className="min-w-0 w-full rounded-xl border bg-card shadow-sm"
       data-note-id={note.id}
+      data-note-surface
       onPointerEnter={() => state.read(note)}
       onFocus={() => state.read(note)}
       id={`${inline ? "diff-note" : "note"}-${reference}`}
     >
       <header className="flex items-center gap-2 border-b px-4 py-3">
         <span
-          className="min-w-0 flex-1 truncate text-xs font-medium"
+          className="min-w-0 truncate text-xs font-medium"
           title={noteKey(note)}
         >
           {noteKey(note)}
         </span>
+        <div className="shrink-0">
+          {icon(
+            "Copy note reference",
+            <Button
+              size="sm"
+              variant="ghost"
+              aria-label="Copy note reference"
+              onClick={() =>
+                void navigator.clipboard
+                  .writeText(`#${reference}`)
+                  .catch(() => {})
+              }
+            >
+              <Copy />
+              <span className="max-w-24 truncate font-mono text-[10px]">
+                #{reference.slice(-8)}
+              </span>
+            </Button>,
+          )}
+        </div>
+        <div className="ml-auto" />
         {state.unread(note) > 0 && (
           <span className="rounded bg-primary/15 px-2 py-1 text-[10px] text-primary">
             {state.unread(note)} new
@@ -213,99 +235,14 @@ export function NoteCard({
             {note.detail}
           </p>
         )}
-        {agent && <NoteAgentActivity activity={activity} />}
-        {!editingNote && (
-          <div className="flex flex-wrap items-center gap-1">
-            {onJump && (
-              <Button size="sm" variant="ghost" onClick={onJump}>
-                <ArrowRight />
-                In diff
-              </Button>
-            )}
-            {icon(
-              "Copy note reference",
-              <Button
-                size="sm"
-                variant="ghost"
-                aria-label="Copy note reference"
-                onClick={() =>
-                  void navigator.clipboard
-                    .writeText(`#${reference}`)
-                    .catch(() => {})
-                }
-              >
-                <Copy />
-                <span className="max-w-24 truncate font-mono text-[10px]">
-                  #{reference.slice(-8)}
-                </span>
-              </Button>,
-            )}
-            <div className="ml-auto" />
-            {(state.resolved(note) || canResolve(note)) && (
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={!!editor}
-                onClick={() => state.toggle(note)}
-              >
-                {state.resolved(note) ? "Reopen" : "Resolve"}
-              </Button>
-            )}
-            {editable &&
-              icon(
-                "Edit note",
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  aria-label="Edit note"
-                  onClick={() =>
-                    onCompose({ kind: "note", comment: { ...note } })
-                  }
-                >
-                  <Pencil />
-                </Button>,
-              )}
-            {icon(
-              "Delete note",
-              <Button
-                size="icon"
-                variant="ghost"
-                className="text-muted-foreground hover:text-destructive"
-                aria-label="Delete note"
-                disabled={action.isPending}
-                onClick={() => setRemoving("note")}
-              >
-                <Trash2 />
-              </Button>,
-            )}
-            {agent && settings.aiAnswers && (
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={action.isPending || !!activity?.blocksAsk}
-                aria-label="Ask AI"
-                onClick={() =>
-                  action.mutate({
-                    url: "/api/note",
-                    method: "POST",
-                    body: { comment: note, retry: true },
-                  })
-                }
-              >
-                {asking ? (
-                  <LoaderCircle className="animate-spin" />
-                ) : (
-                  <Sparkles />
-                )}
-                {asking
-                  ? "Sending…"
-                  : activity?.blocksAsk
-                    ? activity.label
-                    : "Ask AI"}
-              </Button>
-            )}
-          </div>
-        )}
+        {agent &&
+          !(
+            settings.aiAnswers &&
+            !editingNote &&
+            !asking &&
+            activity?.blocksAsk &&
+            ["queued", "paused"].includes(activity.state)
+          ) && <NoteAgentActivity activity={activity} />}
       </div>
       {note.messages.map((message, i) => {
         const own =
@@ -380,29 +317,102 @@ export function NoteCard({
           </section>
         );
       })}
-      {editor ? (
-        !editingNote &&
-        !editingReply && <div className="border-t p-4">{editor}</div>
-      ) : (
-        <div className="border-t px-4 py-2">
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() =>
-              onCompose({
-                kind: "reply",
-                id: note.id,
-                body: "",
-                label: noteKey(note),
-                file: note.file,
-                code: note.code,
-              })
-            }
-          >
-            <Reply />
-            Reply
-          </Button>
-        </div>
+      {editor && !editingNote && !editingReply && (
+        <div className="border-t p-4">{editor}</div>
+      )}
+      {!editingNote && (
+        <footer className="flex flex-wrap items-center gap-1 border-t px-4 py-2">
+          {!editor && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() =>
+                onCompose({
+                  kind: "reply",
+                  id: note.id,
+                  body: "",
+                  label: noteKey(note),
+                  file: note.file,
+                  code: note.code,
+                })
+              }
+            >
+              <Reply />
+              Reply
+            </Button>
+          )}
+          {onJump && (
+            <Button size="sm" variant="ghost" onClick={onJump}>
+              <ArrowRight />
+              In diff
+            </Button>
+          )}
+          <div className="ml-auto" />
+          {(state.resolved(note) || canResolve(note)) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={!!editor}
+              onClick={() => state.toggle(note)}
+            >
+              {state.resolved(note) ? "Reopen" : "Resolve"}
+            </Button>
+          )}
+          {editable &&
+            icon(
+              "Edit note",
+              <Button
+                size="icon"
+                variant="ghost"
+                aria-label="Edit note"
+                onClick={() =>
+                  onCompose({ kind: "note", comment: { ...note } })
+                }
+              >
+                <Pencil />
+              </Button>,
+            )}
+          {icon(
+            "Delete note",
+            <Button
+              size="icon"
+              variant="ghost"
+              className="text-muted-foreground hover:text-destructive"
+              aria-label="Delete note"
+              disabled={action.isPending}
+              onClick={() => setRemoving("note")}
+            >
+              <Trash2 />
+            </Button>,
+          )}
+          {agent && settings.aiAnswers && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={action.isPending || !!activity?.blocksAsk}
+              aria-label="Ask AI"
+              title={activity?.detail}
+              onClick={() =>
+                action.mutate({
+                  url: "/api/note",
+                  method: "POST",
+                  body: { comment: note, retry: true },
+                })
+              }
+            >
+              {asking ? (
+                <LoaderCircle className="animate-spin" />
+              ) : (
+                <Sparkles />
+              )}
+              {asking
+                ? "Sending…"
+                : activity?.blocksAsk
+                  ? activity.label
+                  : "Ask AI"}
+            </Button>
+          )}
+        </footer>
       )}
       {removing && (
         <div className="flex items-center gap-3 border-t p-3 text-xs">

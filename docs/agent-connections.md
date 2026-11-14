@@ -47,9 +47,19 @@ been removed. An agent operating manually can still read and answer the Markdown
 
 ### Model and thinking level
 
-lcr has no model or reasoning picker. Set these in the selected agent profile's
-`args` or `env`, or in the agent's own settings. The syntax belongs to the adapter,
-not to ACP generally; do not add `model` or `thinking` fields to lcr's `config.json`.
+lcr shows **Configured launch options** in the agent panel and **Settings → Agent
+connection**. Model, thinking/reasoning and permission values come only from
+recognized explicit profile options; they are **not verified effective session
+settings**. Agent defaults, inherited environment and restored sessions may
+differ. Unknown profiles/options show “not reported” rather than a guessed model.
+Only allowlisted fields are sent to the browser, never raw arguments,
+`CODEX_CONFIG`, credentials or arbitrary environment variables.
+
+The same panels include expandable **Set up OMP or Codex** instructions, including
+in manual mode via **Set up agent**. There is no in-browser model or reasoning
+picker. Set these in the selected agent profile's `args` or `env`, or in the
+agent's own settings. The syntax belongs to the adapter, not to ACP generally;
+do not add `model` or `thinking` fields to lcr's `config.json`.
 
 For OMP, use leading launch flags before `acp`:
 
@@ -82,6 +92,56 @@ other environment entries, such as `CODEX_PATH`. See the adapter's
 Restart lcr after changing a profile. Finish or cancel its queued tasks first:
 changing arguments or environment changes the target fingerprint, and existing
 tasks are never silently transferred to the new configuration.
+
+### Optional full permissions
+
+Keep normal approval protection unless you deliberately need unattended access.
+Repository content and tool output are untrusted and can influence agents.
+Use an externally isolated environment for unrestricted execution; these options
+can let an agent modify files and run commands without another confirmation.
+lcr never adds them or automatically answers an ACP permission request.
+
+**OMP:** installed OMP 18.20.0 advertises `--auto-approve` (“Auto-approve all tool
+calls”) and `--approval-mode` in `omp --help`. Put the flag before `acp`:
+
+```json
+{
+  "name": "OMP (auto-approve tools)",
+  "command": "omp",
+  "args": ["--auto-approve", "acp"]
+}
+```
+
+You can combine it with the preceding `--model` and `--thinking` flags, all before
+`acp`. This skips tool approval prompts; it does not grant OS permissions or
+promise access beyond the process's environment. `--approval-mode` also accepts
+`always-ask`, `always-ask-cached`, `write`, and `yolo`. Check your installed version's
+help rather than assuming older releases support these flags. See the
+[OMP CLI reference](https://github.com/can1357/oh-my-pi/blob/main/docs/cli-reference.md)
+and [launch handling](https://github.com/can1357/oh-my-pi/blob/main/packages/coding-agent/src/main.ts).
+The explicit opt-in profile is [omp-full-access.json](../examples/agents/omp-full-access.json).
+
+**Codex ACP 2.5.0:** add this entry to the profile's existing `env` object:
+
+```json
+{
+  "INITIAL_AGENT_MODE": "agent-full-access"
+}
+```
+
+Keep `CODEX_PATH` and `CODEX_CONFIG` if already present. The pinned adapter's
+[runtime options](https://github.com/agentclientprotocol/codex-acp/blob/v2.5.0/README.md#runtime-options)
+support this initial mode; its [mode definition](https://github.com/agentclientprotocol/codex-acp/blob/v2.5.0/src/AgentMode.ts)
+sets approval policy `never` and sandbox mode `danger-full-access`. The explicit
+opt-in profile is [codex-full-access.json](../examples/agents/codex-full-access.json).
+The safer `read-only` and `workspace-write` initial modes are also supported.
+
+Do not pass the standalone Codex CLI's
+`--dangerously-bypass-approvals-and-sandbox` flag to `codex-acp`: adapter configuration
+is separate from `codex` launch arguments. An initial mode is a launch request,
+not proof of a restored session's effective policy. Finish/cancel queued work
+before editing a profile and restart lcr. Review saved sessions and any
+administrator restrictions in the agent itself.
 
 ### Default agent for all repositories
 

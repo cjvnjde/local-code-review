@@ -3,6 +3,7 @@ import { FileTree } from "../navigation/file-tree.tsx";
 import { NoteState, useReviewState } from "../notes/review-state.tsx";
 import { setView } from "../navigation/ui-navigation.ts";
 import { refOf } from "../notes/note-ref.ts";
+import { noteKey } from "../../../shared/note-id.ts";
 import {
   useReadingNavigation,
   NavigationLists,
@@ -56,6 +57,7 @@ import { makeComment, orderFiles } from "../diff/model.ts";
 import { NoteCard } from "../notes/note-card.tsx";
 import { Composer, draftBody, type Draft } from "../notes/composer.tsx";
 import { AgentActivity } from "./agent-activity.tsx";
+import { useReplyNotifications } from "./notifications.tsx";
 import { Settings, AgentPanel } from "./settings.tsx";
 import { History, useHistoryCapture } from "../history/history.tsx";
 import { EmbeddedReview, embedToken } from "../web-review/embedded.tsx";
@@ -144,6 +146,10 @@ function Workspace({
   const navigation = useRef<HTMLElement>(null);
   const scope = `${diff.repo}:${diff.id ? `#${diff.id}` : diff.range}`;
   const noteState = useReviewState(scope);
+  useReplyNotifications(review, scope, (note) => {
+    jumpToNote(note);
+    if (matchMedia("(max-width: 639px)").matches) setNotesOpen(false);
+  });
   const [bulkDelete, setBulkDelete] = useState<string[]>([]);
   const [draft, setDraft, storageError] = useStored<Draft | null>(
     `lcr:v2:draft:${scope}`,
@@ -161,6 +167,10 @@ function Workspace({
   const [notesOpen, setNotesOpen] = useStored("lcr:v2:notes-panel", true);
   const [allNotes, setAllNotes] = useStored("lcr:v2:all-notes", false);
   const [filter, setFilter] = useStored("lcr:v2:note-filter", "all");
+  const [compactNotes, setCompactNotes] = useStored(
+    "lcr:v2:compact-notes",
+    false,
+  );
   const [dialog, setDialog] = useState<"settings" | "history" | "agent" | null>(
     null,
   );
@@ -713,7 +723,7 @@ function Workspace({
                       );
                     }}
                     aria-label="Overall note editor"
-                    className="absolute right-0 top-full z-40 mt-2 max-h-[calc(100dvh-112px)] w-[min(40rem,calc(100vw-24px))] overflow-auto border bg-card p-4 shadow-xl max-sm:fixed max-sm:inset-x-3 max-sm:top-12 max-sm:mt-2 max-sm:w-auto"
+                    className="absolute right-0 top-full z-40 mt-2 max-h-[calc(100dvh-112px)] w-[min(40rem,calc(100vw-24px))] overflow-auto rounded-xl shadow-xl max-sm:fixed max-sm:inset-x-3 max-sm:top-12 max-sm:mt-2 max-sm:w-auto"
                   >
                     <Composer
                       draft={draft}
@@ -1033,45 +1043,146 @@ function Workspace({
                         {kind}
                       </Button>
                     ))}
+                    <Button
+                      variant={compactNotes ? "outline" : "ghost"}
+                      size="sm"
+                      className="ml-auto"
+                      aria-label="Compact conversation list"
+                      aria-pressed={compactNotes}
+                      disabled={draft?.host === "panel"}
+                      title={
+                        draft?.host === "panel"
+                          ? "Finish the conversation editor before changing view"
+                          : "Toggle between note cards and a compact list"
+                      }
+                      onClick={() => setCompactNotes(!compactNotes)}
+                    >
+                      {compactNotes ? "List" : "Cards"}
+                    </Button>
                   </div>
-                  <div className="min-h-0 flex-1 space-y-4 overflow-auto p-3">
-                    {listed.map((note) => (
-                      <NoteCard
-                        key={note.id}
-                        note={note}
-                        file={files.find((f) => f.path === note.file)}
-                        agent={!!agent.agent}
-                        editorDraft={draft ?? undefined}
-                        onCompose={(next) =>
-                          compose({ ...next, host: "panel" })
-                        }
-                        editor={
-                          draft?.host === "panel" &&
-                          (draft.kind === "note"
-                            ? draft.comment.id
-                            : draft.id) === note.id ? (
-                            <Composer
-                              draft={draft}
-                              onChange={setDraft}
-                              onClose={closeDraft}
-                              onSaved={() => setDraft(null)}
-                              agent={!!agent.agent}
-                              onBusy={setBusy}
-                            />
-                          ) : undefined
-                        }
-                        onJump={
-                          note.scope === "global" ||
-                          files.some((file) => file.path === note.file)
-                            ? () => {
-                                jumpToNote(note);
-                                if (matchMedia("(max-width: 639px)").matches)
-                                  setNotesOpen(false);
+                  <div
+                    className={cn(
+                      "min-h-0 flex-1 overflow-auto p-3",
+                      compactNotes ? "space-y-2" : "space-y-4",
+                    )}
+                    role={compactNotes ? "list" : undefined}
+                    aria-label={
+                      compactNotes ? "Compact conversation notes" : undefined
+                    }
+                  >
+                    {listed.map((note) => {
+                      const noteFile = files.find(
+                        (file) => file.path === note.file,
+                      );
+                      const inDiff = note.scope !== "global" && !!noteFile;
+                      const label = noteKey(note);
+                      return (
+                        <div
+                          key={note.id}
+                          role={compactNotes ? "listitem" : undefined}
+                        >
+                          {compactNotes &&
+                          !(
+                            draft?.host === "panel" && activeDraft === note.id
+                          ) ? (
+                            <button
+                              type="button"
+                              className="w-full min-w-0 rounded-lg border bg-card px-3 py-2 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              id={`note-${note.id.split("|#").at(-1)}`}
+                              data-note-id={note.id}
+                              aria-label={
+                                inDiff
+                                  ? `In diff: ${label}`
+                                  : `Open conversation: ${label}`
                               }
-                            : undefined
-                        }
-                      />
-                    ))}
+                              onClick={() => {
+                                if (inDiff) {
+                                  jumpToNote(note);
+                                  if (matchMedia("(max-width: 639px)").matches)
+                                    setNotesOpen(false);
+                                } else {
+                                  noteState.read(note);
+                                  setCompactNotes(false);
+                                  requestAnimationFrame(() =>
+                                    document
+                                      .getElementById(
+                                        `note-${note.id.split("|#").at(-1)}`,
+                                      )
+                                      ?.scrollIntoView({ block: "center" }),
+                                  );
+                                }
+                              }}
+                            >
+                              <span className="flex min-w-0 items-center gap-2">
+                                <span
+                                  className="min-w-0 flex-1 truncate text-xs font-medium"
+                                  title={label}
+                                >
+                                  {label}
+                                </span>
+                                {noteState.unread(note) > 0 && (
+                                  <span className="shrink-0 text-[10px] text-primary">
+                                    {noteState.unread(note)} new
+                                  </span>
+                                )}
+                                <span className="shrink-0 text-[10px] text-muted-foreground">
+                                  {noteState.resolved(note)
+                                    ? "Resolved"
+                                    : note.status}
+                                </span>
+                              </span>
+                              <span className="mt-1 line-clamp-2 whitespace-normal break-words text-xs text-muted-foreground">
+                                {note.body}
+                              </span>
+                              {!inDiff && (
+                                <span className="mt-1 block text-[10px] text-muted-foreground">
+                                  {note.scope === "global"
+                                    ? "Open conversation"
+                                    : "File no longer in diff · Open conversation"}
+                                </span>
+                              )}
+                            </button>
+                          ) : (
+                            <NoteCard
+                              note={note}
+                              file={noteFile}
+                              agent={!!agent.agent}
+                              editorDraft={draft ?? undefined}
+                              onCompose={(next) =>
+                                compose({ ...next, host: "panel" })
+                              }
+                              editor={
+                                draft?.host === "panel" &&
+                                (draft.kind === "note"
+                                  ? draft.comment.id
+                                  : draft.id) === note.id ? (
+                                  <Composer
+                                    draft={draft}
+                                    onChange={setDraft}
+                                    onClose={closeDraft}
+                                    onSaved={() => setDraft(null)}
+                                    agent={!!agent.agent}
+                                    onBusy={setBusy}
+                                  />
+                                ) : undefined
+                              }
+                              onJump={
+                                note.scope === "global" ||
+                                files.some((file) => file.path === note.file)
+                                  ? () => {
+                                      jumpToNote(note);
+                                      if (
+                                        matchMedia("(max-width: 639px)").matches
+                                      )
+                                        setNotesOpen(false);
+                                    }
+                                  : undefined
+                              }
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
                     {!listed.length && (
                       <div className="px-4 py-12 text-center">
                         <MessageSquare className="mx-auto mb-4 size-6 text-muted-foreground/50" />
@@ -1200,15 +1311,14 @@ function Workspace({
             >
               {review?.file || "First save creates a Markdown review"}
             </span>
-            {agent.agent && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setDialog("agent")}
-              >
-                <AgentActivity agent={agent} />
-              </Button>
-            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="shrink-0"
+              onClick={() => setDialog("agent")}
+            >
+              {agent.agent ? <AgentActivity agent={agent} /> : "Set up agent"}
+            </Button>
             <Tooltip label="Refresh review">
               <Button
                 variant="ghost"
@@ -1236,7 +1346,9 @@ function Workspace({
                   ? "Settings"
                   : dialog === "history"
                     ? "Review history"
-                    : "Agent queue"
+                    : agent.agent
+                      ? "Agent queue"
+                      : "Agent setup"
               }
               description={
                 dialog === "history"

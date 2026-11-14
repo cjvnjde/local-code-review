@@ -59,9 +59,9 @@ Hover over code to highlight a commentable row and show its gutter affordance.
 Click code or a line number to comment immediately, drag across lines for a range,
 or drag within a line to select specific characters. Shift-click extends a range;
 Alt-drag keeps normal browser text selection for copying. Comments open directly
-below their subject in a compact inline strip with a distinct input background,
-without a duplicate file/line title or repeated selected code. The conversation
-panel retains titles for orientation.
+below their subject in a compact bordered card with a distinct input background.
+New, editing, and saved notes share the same card width and rounded edges, with
+the path and captured code available for orientation in either state.
 **Cancel** clears the selected-line highlight. Re-aiming an overlapping selection
 preserves your draft text and caret; an unrelated click cannot replace a dirty
 draft. The file header offers a file comment; while creating it, the editor stays
@@ -74,6 +74,7 @@ popup closed until you click **Overall note**. Panel toggles sit at the two ends
 the same compact header; change counts and refresh live in the existing footer.
 
 The editor accepts Markdown, including tables, checklists, and fenced code.
+Typed line breaks remain visible in previews, saved notes, and replies.
 The icon toolbar offers formatting, preview, suggestions, and file attachments;
 hover or focus an icon to see its label. **Suggest change** inserts a fenced replacement
 for the captured lines. Drop or paste files, or use **Attach file**, to attach them
@@ -95,6 +96,11 @@ in the footer. Running work includes the agent's current activity when available
 **Settings → Enable AI answers** disables new dispatches while keeping manual note
 and reply saves available. Already queued or running work is not cancelled.
 
+Bottom-right notifications announce new agent replies and saved notes/replies.
+Reply notifications offer **View** to jump to the note; existing replies are not
+announced when opening a review. Disable routine notifications with **Settings →
+Show reply and save notifications**. Failed actions still report errors.
+
 ## Continue the conversation
 
 The conversation pane shows notes for the selected file plus overall notes.
@@ -102,9 +108,17 @@ The conversation pane shows notes for the selected file plus overall notes.
 by **All**, **Open**, or **Done**. The view and filter survive reloads. Applied,
 answered, and skipped notes are done.
 
-Reply under a note to follow up. Unanswered reviewer notes and replies can be
-edited or deleted. Agent messages remain the agent's account. Copy a note's short
-reference for use in feedback; the full stable ID is kept in the Markdown marker.
+Use **Cards / List** to toggle a compact Conversation list of paths and note
+previews. Clicking a listed file note jumps to its diff location, reopening hidden
+or viewed files. Overall notes and notes whose files left the diff open their
+conversation instead. The view survives reloads; finish an open conversation editor
+before switching views.
+
+Reply under a note to follow up. Note actions share a footer below the entire
+conversation, so replies never leave Resolve, Remove, or Ask AI in the middle.
+Unanswered reviewer notes and replies can be edited or deleted. Agent messages
+remain the agent's account. Copy a note's short reference beside its path in the
+header for use in feedback; the full stable ID is kept in the Markdown marker.
 References expand in place to show their note and conversation. Type `#` in a note
 or reply to search notes by reference, file, or text. Use ↑/↓ and Enter/Tab, or click
 a suggestion, to insert its reference; Escape dismisses suggestions. Type `@` to
@@ -116,6 +130,11 @@ statuses appear through live updates, including replies written before a newly
 created review directory is watched. With ACP, the footer opens the agent queue,
 where you can pause/resume, answer permission requests, cancel tasks, and reconcile
 interrupted work. A completed turn does not automatically mean a fix was applied.
+
+Without an agent, **Set up agent** in the footer opens launch instructions.
+**Settings → Agent connection** also explains OMP/Codex profiles, permissions,
+model, and thinking settings. See [agent connections](agent-connections.md) for
+profile examples and restart requirements.
 
 Install the optional skill from your agent's terminal (also shown in **Settings →
 Agent connection**, with a **Copy** button for the installation command):

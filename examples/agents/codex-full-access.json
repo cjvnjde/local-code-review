@@ -1,0 +1,9 @@
+{
+  "name": "Codex ACP (full access)",
+  "command": "bunx",
+  "args": ["@agentclientprotocol/codex-acp@2.5.0"],
+  "env": {
+    "CODEX_PATH": "codex",
+    "INITIAL_AGENT_MODE": "agent-full-access"
+  }
+}

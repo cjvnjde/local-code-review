@@ -758,9 +758,7 @@ export function DiffView({
           </button>
         )}
         {entry.kind === "editor" && (
-          <div className="border-y border-primary/25 bg-card px-4 py-3">
-            {editor}
-          </div>
+          <div className="mx-auto max-w-4xl px-5 py-3">{editor}</div>
         )}
         {entry.kind === "note" && (
           <div className="mx-auto max-w-4xl px-5 py-3">

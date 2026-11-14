@@ -536,3 +536,38 @@ test("queued work for a different ACP profile blocks dispatch until explicitly c
     changed.snapshot().tasks.map((task: { state: string }) => task.state),
   ).toEqual(["cancelled", "completed"]);
 });
+
+test("connection status exposes only safe configured launch fields before connecting", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "lcr-launch-status-"));
+  roots.push(root);
+  const agent = createManagedAgent({
+    repoRoot: root,
+    outDir: ".review",
+    directory: path.join(root, "git-state"),
+    session: createSession(root, ".review", "HEAD"),
+    config: {
+      name: "Codex",
+      command: "codex-acp",
+      args: [],
+      env: {
+        CODEX_CONFIG: JSON.stringify({
+          model: "gpt-5.2-codex",
+          model_reasoning_effort: "high",
+          api_key: "private-token",
+        }),
+        INITIAL_AGENT_MODE: "workspace-write",
+        CODEX_API_KEY: "private-token",
+      },
+    },
+    notify() {},
+  });
+  agents.push(agent);
+  expect(agent.status!().launch).toEqual({
+    adapter: "codex",
+    model: "gpt-5.2-codex",
+    thinking: "high",
+    permissions: "Initial mode: workspace-write",
+  });
+  expect(JSON.stringify(agent.status!())).not.toContain("private-token");
+  expect(agent.status!().state).toBe("unavailable");
+});
