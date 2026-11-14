@@ -26,6 +26,7 @@ import {
   useNoteAgentActivity,
 } from "../app/agent-activity.tsx";
 import { useUi } from "../app/ui-preferences.tsx";
+import { useNoteEntrance } from "./note-motion.tsx";
 
 export function NoteCard({
   note,
@@ -48,6 +49,7 @@ export function NoteCard({
 }) {
   const { settings } = useUi();
   const state = useNoteState();
+  const entrance = useNoteEntrance(note.id);
   const webEnabled = !!useDiff().data?.web;
   const action = useAction();
   const activity = useNoteAgentActivity(note.id);
@@ -69,6 +71,7 @@ export function NoteCard({
   );
   return (
     <article
+      ref={entrance}
       className="min-w-0 w-full rounded-xl border bg-card shadow-sm"
       data-note-id={note.id}
       data-note-surface
@@ -252,6 +255,7 @@ export function NoteCard({
         return (
           <section
             key={message.at || i}
+            data-note-message={i}
             className="space-y-3 border-t bg-muted/15 p-4"
           >
             <div className="flex items-center gap-2 text-xs">

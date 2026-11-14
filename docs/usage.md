@@ -34,12 +34,20 @@ double-click resets that pane's width. Widths and panel visibility survive reloa
 and hide/show toggles. Resizing keeps the current code position and open draft;
 narrow screens retain the file picker and conversation drawer.
 
+The right sidebar has **Notes** and **Bookmarks** tabs. Bookmark a code line from
+its gutter; use the Bookmarks tab or Alt ↑/↓ to return to saved places. Switching
+tabs keeps conversation drafts and list positions intact.
+
+Panel toggles and newly arriving notes/replies use brief, subtle animations.
+Dragging stays immediate; reduced-motion preferences disable these animations.
+
 File headers stay visible while reading their code. Their history badge opens
 earlier-review notes without adding another header row. Collapse a file with its
 chevron, or mark it **Viewed** to collapse it and record progress. A navigation jump
-reopens it while keeping its viewed mark; a changed file becomes unviewed. Click a
-hunk control to expand omitted context upward, downward, or all at once. The
-batch size is configurable in Settings. The file header's **Fold removed lines**
+reopens it while keeping its viewed mark; a changed file becomes unviewed. Gutter
+arrows reveal omitted context above or below. Middle gaps offer both directions,
+or one unfold control when the batches would meet. The batch size is configurable
+in Settings. The file header's **Fold removed lines**
 button replaces deletions with expandable markers; a run containing a note stays open.
 
 Notes appear inline beside their captured code as well as in the conversation

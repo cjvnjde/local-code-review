@@ -733,9 +733,25 @@ test("bookmarks, full review search, references and context stay usable across n
     .getByRole("button", { name: "Bookmark line 2", exact: true })
     .last()
     .click();
-  await expect(nav.getByText("Bookmarks · 1")).toBeVisible();
+  const sidebar = page.getByRole("complementary", { name: "Review notes" });
+  const bookmarksTab = sidebar.getByRole("tab", {
+    name: "Bookmarks · 1",
+    exact: true,
+  });
+  await expect(nav.getByText("Bookmarks · 1")).toHaveCount(0);
+  await bookmarksTab.click();
+  const bookmarks = sidebar.getByRole("tabpanel", {
+    name: "Bookmarks · 1",
+    exact: true,
+  });
+  await expect(
+    bookmarks.getByRole("button", { name: "app.ts:2", exact: true }),
+  ).toBeVisible();
   await page.reload();
-  await expect(nav.getByText("Bookmarks · 1")).toBeVisible();
+  await expect(bookmarksTab).toHaveAttribute("aria-selected", "true");
+  await expect(
+    bookmarks.getByRole("button", { name: "app.ts:2", exact: true }),
+  ).toBeVisible();
   await nav.locator('button[title="src/app.ts"]').hover();
   await nav
     .getByRole("button", { name: "Hide file src/app.ts", exact: true })
@@ -743,6 +759,28 @@ test("bookmarks, full review search, references and context stay usable across n
   await expect(
     pane.getByRole("heading", { name: "src/app.ts", exact: true }),
   ).toHaveCount(0);
+  await bookmarks
+    .getByRole("button", { name: "Next bookmark", exact: true })
+    .click();
+  await expect(
+    pane.getByRole("heading", { name: "src/app.ts", exact: true }),
+  ).toBeInViewport();
+  await nav.locator('button[title="src/app.ts"]').hover();
+  await nav
+    .getByRole("button", { name: "Hide file src/app.ts", exact: true })
+    .click();
+  await sidebar.getByRole("tab", { name: "Notes", exact: true }).click();
+  const seed = sidebar
+    .getByRole("article")
+    .filter({ hasText: "Reference target" });
+  await seed.getByRole("button", { name: "Reply", exact: true }).click();
+  const reply = seed.getByRole("textbox", { name: "Note text", exact: true });
+  await reply.fill("Keep this draft across sidebar tabs");
+  await bookmarksTab.click();
+  await expect(reply).toBeHidden();
+  await sidebar.getByRole("tab", { name: "Notes", exact: true }).click();
+  await expect(reply).toHaveValue("Keep this draft across sidebar tabs");
+  await seed.getByRole("button", { name: "Cancel", exact: true }).click();
   await page.keyboard.press("Control+k");
   await page
     .getByRole("searchbox", { name: "Search review", exact: true })
@@ -1369,6 +1407,8 @@ test("Base UI focus and pane resizing preserve drafts, reading position and save
   const initialLeft = await width(files),
     initialRight = await width(notes);
   async function drag(handle: typeof left, delta: number) {
+    const panel = handle === left ? files : notes;
+    const before = await width(panel);
     const box = (await handle.locator("span").boundingBox())!;
     // The full visible grip, including its edge outside the 4px divider, must drag.
     const x = box.x + 0.5,
@@ -1376,6 +1416,9 @@ test("Base UI focus and pane resizing preserve drafts, reading position and save
     await page.mouse.move(x, y);
     await page.mouse.down();
     await page.mouse.move(x + delta, y, { steps: 12 });
+    await expect
+      .poll(() => width(panel))
+      .toBeCloseTo(before + (handle === left ? delta : -delta), 0);
     await page.mouse.up();
   }
   // A slow preference write must not freeze the next drag or restore an old width.

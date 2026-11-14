@@ -79,9 +79,8 @@ export function NavigationLists({
   onStep: (direction: number) => void;
 }) {
   const { settings, update } = useUi();
-  if (!navigation.ordered.length) return null;
   return (
-    <div className="shrink-0 border-t text-xs">
+    <div className="flex min-h-0 flex-1 flex-col text-xs">
       <div className="flex items-center gap-1 p-2">
         <button
           className="flex flex-1 items-center gap-2 px-2 py-1 text-left"
@@ -93,12 +92,13 @@ export function NavigationLists({
           ) : (
             <ChevronDown className="size-3" />
           )}
-          Bookmarks · {navigation.ordered.length}
+          Saved places
         </button>
         <Button
           size="icon"
           variant="ghost"
           aria-label="Previous bookmark"
+          disabled={!navigation.ordered.length}
           onClick={() => onStep(-1)}
         >
           <ArrowUp />
@@ -107,13 +107,14 @@ export function NavigationLists({
           size="icon"
           variant="ghost"
           aria-label="Next bookmark"
+          disabled={!navigation.ordered.length}
           onClick={() => onStep(1)}
         >
           <ArrowDown />
         </Button>
       </div>
       {!settings.bmFold && (
-        <div className="max-h-48 overflow-auto px-2 pb-2">
+        <div className="min-h-0 flex-1 overflow-auto px-2 pb-2">
           {navigation.ordered.map(({ b, gone }) => (
             <div key={b.key} className="flex items-center gap-1">
               <button
@@ -135,6 +136,12 @@ export function NavigationLists({
               </Button>
             </div>
           ))}
+          {!navigation.ordered.length && (
+            <p className="px-4 py-10 text-center leading-relaxed text-muted-foreground">
+              Bookmark a code line to find it here. Use Alt ↑/↓ to step through
+              saved places.
+            </p>
+          )}
         </div>
       )}
     </div>

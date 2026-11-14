@@ -1,11 +1,20 @@
 import { useUi } from "../app/ui-preferences.tsx";
 import { useEffect, useLayoutEffect, useRef, type CSSProperties } from "react";
 import { highlightCharacters } from "./selection.ts";
-import { Bookmark, BookmarkCheck, MessageSquare, Plus } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  Bookmark,
+  BookmarkCheck,
+  ChevronsUpDown,
+  LoaderCircle,
+  MessageSquare,
+  Plus,
+} from "lucide-react";
 import type { DiffFile } from "../../../shared/review-types.ts";
 import { Code, languageFor } from "../components/code.tsx";
 import { cn } from "../components/ui/button.tsx";
-import { gapOf } from "./gaps.ts";
+import { gapOf, gapSize } from "./gaps.ts";
 
 export function CodeRow({
   file,
@@ -80,6 +89,17 @@ export function CodeRow({
       }
     };
   }, []);
+  const gap = row.t === "hunk" ? gapOf(file, index) : null;
+  const hiddenLines = gapSize(gap);
+  const directions = !gap
+    ? []
+    : gap.to == null
+      ? ["down"]
+      : index === 0
+        ? ["up"]
+        : hiddenLines! <= settings.expand * 2
+          ? ["all"]
+          : ["down", "up"];
   return (
     <div
       className={cn(
@@ -98,23 +118,65 @@ export function CodeRow({
       data-row-key={row.n != null ? `n${row.n}` : `o${row.o}`}
     >
       {row.t === "hunk" ? (
-        <div className="flex min-h-[26px] w-full min-w-0 items-center gap-3 px-5">
-          <span className="truncate">{row.text || "More context"}</span>
-          {gapOf(file, index) && (
-            <div className="ml-auto flex shrink-0 gap-3 font-sans text-primary">
-              {!(row as typeof row & { tail?: boolean }).tail && (
-                <button disabled={expanding} onClick={() => onExpand("up")}>
-                  ↑ {settings.expand}
+        <div className="flex min-h-[26px] w-full min-w-0 items-stretch">
+          <div
+            style={{
+              ...gutterStyle,
+              width: settings.lineNumbers
+                ? "calc(var(--old-line-width) + var(--new-line-width) + 2.5rem)"
+                : "2.5rem",
+            }}
+            className="flex min-w-10 shrink-0 flex-col bg-muted/70"
+          >
+            {directions.map((direction) => {
+              const label =
+                direction === "all"
+                  ? `Expand all ${hiddenLines} hidden lines`
+                  : `Expand ${settings.expand} lines ${direction === "up" ? "above" : "below"}`;
+              const Icon =
+                direction === "all"
+                  ? ChevronsUpDown
+                  : direction === "up"
+                    ? ArrowUp
+                    : ArrowDown;
+              return (
+                <button
+                  key={direction}
+                  type="button"
+                  aria-label={label}
+                  title={label}
+                  aria-busy={expanding}
+                  disabled={expanding}
+                  onClick={() => onExpand(direction)}
+                  className="flex min-h-[26px] flex-1 flex-col items-center justify-center text-muted-foreground transition-colors hover:bg-primary/15 hover:text-primary focus-visible:bg-primary/15 focus-visible:text-primary disabled:cursor-wait motion-reduce:transition-none"
+                >
+                  {direction === "down" && (
+                    <span
+                      aria-hidden="true"
+                      className="w-4 border-t-2 border-dotted"
+                    />
+                  )}
+                  {expanding ? (
+                    <LoaderCircle
+                      aria-hidden="true"
+                      className="size-3.5 animate-spin motion-reduce:animate-none"
+                    />
+                  ) : (
+                    <Icon aria-hidden="true" className="size-3.5" />
+                  )}
+                  {direction === "up" && (
+                    <span
+                      aria-hidden="true"
+                      className="w-4 border-t-2 border-dotted"
+                    />
+                  )}
                 </button>
-              )}
-              <button disabled={expanding} onClick={() => onExpand("down")}>
-                {expanding ? "Loading…" : `Expand ${settings.expand} lines`}
-              </button>
-              <button disabled={expanding} onClick={() => onExpand("all")}>
-                All
-              </button>
-            </div>
-          )}
+              );
+            })}
+          </div>
+          <span className="min-w-0 self-center truncate px-4 py-1">
+            {row.text || "More context"}
+          </span>
         </div>
       ) : (
         <>

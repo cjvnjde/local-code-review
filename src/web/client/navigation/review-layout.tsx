@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useRef,
+  useState,
   useSyncExternalStore,
   type ReactNode,
 } from "react";
@@ -25,6 +26,32 @@ function useMedia(query: string) {
   );
   const snapshot = useCallback(() => matchMedia(query).matches, [query]);
   return useSyncExternalStore(subscribe, snapshot, () => false);
+}
+
+/** Animate only pane content; changing flex widths every frame disturbs diff anchors. */
+function usePanelMotion(visible: boolean, reducedMotion: boolean) {
+  const [retained, setRetained] = useState(visible);
+  const content = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (visible) {
+      setRetained(true);
+      return;
+    }
+    if (reducedMotion) {
+      setRetained(false);
+      return;
+    }
+    const timer = setTimeout(() => setRetained(false), 140);
+    return () => clearTimeout(timer);
+  }, [visible, reducedMotion]);
+  return {
+    content,
+    present: visible || retained,
+    finish: () => {
+      for (const animation of content.current?.getAnimations() || [])
+        animation.finish();
+    },
+  };
 }
 
 /** Persisted sizes hydrate a pane; after input, its live size owns the session. */
@@ -107,8 +134,12 @@ export function ReviewLayout({
   const [notesWidth, setNotesWidth] = useStored("lcr:v2:notes-width", 390);
   const wide = useMedia("(min-width: 768px)");
   const inlineNotes = useMedia("(min-width: 640px)");
-  const showFiles = wide && navOpen;
-  const showNotes = inlineNotes && notesOpen;
+  const reducedMotion = useMedia("(prefers-reduced-motion: reduce)");
+  const filesVisible = wide && navOpen;
+  const filesMotion = usePanelMotion(filesVisible, reducedMotion);
+  const notesMotion = usePanelMotion(notesOpen, reducedMotion);
+  const showFiles = wide && filesMotion.present;
+  const showNotes = inlineNotes && notesMotion.present;
   const filesSize = usePanelWidth(
     settings.navWidth || 256,
     showFiles,
@@ -129,6 +160,8 @@ export function ReviewLayout({
     }
   };
   const beginResize = () => {
+    filesMotion.finish();
+    notesMotion.finish();
     filesSize.beginResize();
     notesSize.beginResize();
     // Flush a preceding keyboard resize before the next gesture can change its pixels.
@@ -144,8 +177,26 @@ export function ReviewLayout({
       className="min-h-0 flex-1"
       resizeTargetMinimumSize={{ fine: 20, coarse: 28 }}
       onPointerDownCapture={(event) => {
-        // The library handles expanded divider hit targets on document capture.
-        if (event.defaultPrevented) beginResize();
+        if (event.button !== 0) return;
+        // Expanded library hit targets can start on pane content, not the separator.
+        // Claim local width intent directly instead of relying on native cancellation.
+        const minimum = matchMedia("(pointer: coarse)").matches ? 28 : 20;
+        const hitsHandle = [
+          ...event.currentTarget.querySelectorAll<HTMLElement>(
+            '[data-separator]:not([aria-disabled="true"])',
+          ),
+        ].some((handle) => {
+          const rect = handle.getBoundingClientRect();
+          const halfWidth = Math.max(rect.width, minimum) / 2;
+          return (
+            rect.height > 0 &&
+            Math.abs(event.clientX - (rect.left + rect.width / 2)) <=
+              halfWidth &&
+            event.clientY >= rect.top &&
+            event.clientY <= rect.bottom
+          );
+        });
+        if (hitsHandle) beginResize();
       }}
       onKeyDownCapture={(event) => {
         if (
@@ -157,6 +208,9 @@ export function ReviewLayout({
       }}
       onLayoutChanged={(_layout, meta) => {
         if (!meta.isUserInteraction) return;
+        // The library is also authoritative when a gesture began outside the divider.
+        filesSize.beginResize();
+        notesSize.beginResize();
         // Keyboard layout callbacks can precede React's DOM update. Read committed pixels.
         cancelAnimationFrame(persistFrame.current);
         persistFrame.current = requestAnimationFrame(persistWidths);
@@ -164,8 +218,8 @@ export function ReviewLayout({
     >
       <ResizablePanel
         id="files-pane"
-        aria-hidden={!showFiles}
-        inert={!showFiles}
+        aria-hidden={!filesVisible}
+        inert={!filesVisible}
         panelRef={filesSize.panel}
         defaultSize={filesSize.defaultSize}
         minSize={showFiles ? "180px" : "0px"}
@@ -174,13 +228,24 @@ export function ReviewLayout({
         className="h-full"
         style={{ overflow: "hidden" }}
       >
-        {files}
+        <div
+          ref={filesMotion.content}
+          className="h-full min-w-0 transition-[opacity,transform] duration-[140ms] ease-out motion-reduce:transition-none"
+          style={{
+            opacity: filesVisible ? 1 : 0,
+            transform: filesVisible ? "none" : "translateX(-8px)",
+            visibility: showFiles ? "visible" : "hidden",
+          }}
+        >
+          {files}
+        </div>
       </ResizablePanel>
       <ResizableHandle
         id="files-resize"
         aria-label="Resize file sidebar"
         hidden={!showFiles}
-        disabled={!showFiles}
+        aria-hidden={!filesVisible}
+        disabled={!filesVisible}
         disableDoubleClick
         title="Drag or use arrow keys to resize; double-click to reset"
         onDoubleClick={() => {
@@ -202,7 +267,8 @@ export function ReviewLayout({
         id="notes-resize"
         aria-label="Resize conversation pane"
         hidden={!showNotes}
-        disabled={!showNotes}
+        aria-hidden={!notesOpen}
+        disabled={!notesOpen}
         disableDoubleClick
         title="Drag or use arrow keys to resize; double-click to reset"
         onDoubleClick={() => {
@@ -224,7 +290,18 @@ export function ReviewLayout({
         className="h-full"
         style={{ overflow: inlineNotes ? "hidden" : "visible" }}
       >
-        {notes}
+        <div
+          ref={notesMotion.content}
+          className="h-full min-w-0 transition-opacity duration-[140ms] ease-out sm:transition-[opacity,transform] motion-reduce:transition-none"
+          style={{
+            opacity: notesOpen ? 1 : 0,
+            // A transform would make the compact aside's fixed position pane-relative.
+            transform: inlineNotes && !notesOpen ? "translateX(8px)" : "none",
+            visibility: notesMotion.present ? "visible" : "hidden",
+          }}
+        >
+          {notes}
+        </div>
       </ResizablePanel>
     </ResizablePanelGroup>
   );
