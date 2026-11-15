@@ -1560,6 +1560,86 @@ test("either divider still drags after the other sidebar is hidden, including af
   await expect.poll(() => width(notes)).toBeCloseTo(notesWidth + 48, 0);
 });
 
+test("closed notes panel survives note-link reloads while new links still reveal it", async ({
+  page,
+}) => {
+  const targets = [
+    {
+      ref: "panelinline123",
+      comment: {
+        id: "src/app.ts|n2|n2|#panelinline123",
+        file: "src/app.ts",
+        start: 2,
+        end: 2,
+        side: "new",
+        code: "+  return 'hello world';",
+        body: "Panel visibility for an inline note",
+      },
+    },
+    {
+      ref: "panelremoved123",
+      comment: {
+        id: "src/removed.ts|*|*|#panelremoved123",
+        file: "src/removed.ts",
+        scope: "file",
+        start: 0,
+        end: 0,
+        body: "Panel visibility for a file no longer in the diff",
+      },
+    },
+  ];
+  try {
+    for (const { comment } of targets) {
+      const response = await page.request.post(`${url}/api/note`, {
+        data: { comment, ask: false },
+      });
+      expect(response.ok()).toBe(true);
+    }
+    await page.goto(url);
+    const panel = page.getByRole("complementary", {
+      name: "Review notes",
+      includeHidden: true,
+    });
+    for (const width of [1440, 794]) {
+      await page.setViewportSize({ width, height: 960 });
+      for (const { ref, comment } of targets) {
+        await page.evaluate((ref) => {
+          location.hash = `note=${ref}`;
+        }, ref);
+        const target = panel.locator(`[data-note-id="${comment.id}"]`);
+        await expect(target).toBeVisible();
+        await page
+          .getByRole("button", { name: "Hide notes panel", exact: true })
+          .click();
+        await expect(panel).toBeHidden();
+        await page.reload();
+        await expect(target).toHaveCount(1);
+        await expect(panel).toBeHidden();
+        const show = page.getByRole("button", {
+          name: "Show notes panel",
+          exact: true,
+        });
+        await expect(show).toBeVisible();
+        await page.screenshot({
+          path: `/tmp/lcr-hidden-notes-panel-${width}.png`,
+        });
+        await show.click();
+        await expect(target).toBeVisible();
+        await page.reload();
+        await expect(target).toBeVisible();
+        await page
+          .getByRole("button", { name: "Hide notes panel", exact: true })
+          .click();
+      }
+    }
+  } finally {
+    for (const { comment } of targets)
+      await page.request.delete(
+        `${url}/api/note?${new URLSearchParams({ id: comment.id })}`,
+      );
+  }
+});
+
 test("sidebar toggles interpolate pane geometry without reflowing sidebar content", async ({
   page,
 }) => {

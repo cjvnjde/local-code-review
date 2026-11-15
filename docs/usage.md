@@ -31,7 +31,9 @@ a separate column.
 Drag the vertical dividers or their full grip handles to resize the file sidebar
 and conversation pane. Focused dividers also accept arrow keys and Home/End;
 double-click resets that pane's width. Widths and panel visibility survive reloads
-and hide/show toggles. Resizing keeps the current code position and open draft;
+and hide/show toggles, including when the URL points to a note. Restoring that
+location does not reopen a hidden conversation pane; actively following another
+note link can still reveal it. Resizing keeps the current code position and open draft;
 narrow screens retain the file picker and conversation drawer. Below 1280px the
 file sidebar opens as a drawer; below 960px the notes pane also becomes a drawer.
 Inline panes keep at least 480px for the diff instead of squeezing code behind

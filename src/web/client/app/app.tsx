@@ -235,6 +235,7 @@ function Workspace({
   }
   function jumpToNote(
     note: import("../../../shared/review-types.ts").ReviewNote,
+    revealPanel = true,
   ) {
     noteState.read(note);
     setRightTab("notes");
@@ -248,7 +249,7 @@ function Workspace({
       setExpandedNote(note.id);
       setAllNotes(true);
       setFilter("all");
-      setNotesOpen(true);
+      if (revealPanel) setNotesOpen(true);
     }
     const reference = refOf(note.id);
     if (reference) {
@@ -407,7 +408,7 @@ function Workspace({
   );
   const followed = useRef("");
   useEffect(() => {
-    const follow = () => {
+    const follow = (event?: HashChangeEvent) => {
       const ref = new URLSearchParams(location.hash.slice(1)).get("note");
       if (!ref) {
         followed.current = "";
@@ -417,9 +418,10 @@ function Workspace({
       const matches = notes.filter((note) => note.id.endsWith(`|#${ref}`));
       if (matches.length !== 1) return;
       followed.current = ref;
-      jumpToNote(matches[0]!);
+      // Restore the URL target without overriding saved panel visibility.
+      jumpToNote(matches[0]!, !!event);
       setAllNotes(true);
-      setNotesOpen(true);
+      if (event) setNotesOpen(true);
       setFilter("all");
       setSearch("");
       requestAnimationFrame(() =>
