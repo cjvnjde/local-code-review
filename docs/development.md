@@ -88,8 +88,10 @@ These internal paths are excluded before review-event debouncing. External edito
 that do not participate in the lock protocol must not write concurrently with lcr.
 
 The diff viewer is one continuous scroll pane, virtualized across every file,
-code row, and inline conversation. Sticky file headers retain their controls;
-the sidebar follows the current file and its links scroll within the same pane.
+code row, and inline conversation. File headers use native CSS sticky positioning
+inside file-height tracks, so pinning and next-file push-off do not wait for scroll
+handlers or React renders. Only each header is measured, not its track. The sidebar
+follows the current file and its links scroll within the same pane.
 Viewed files collapse and navigation reopens them without erasing their marks.
 Stable item keys and captured row anchors preserve the reading position through
 context expansion, note updates, and diff refreshes. Diff refreshes wait while an

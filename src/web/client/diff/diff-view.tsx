@@ -660,14 +660,13 @@ export function DiffView({
       return (
         <div
           key={item.key}
-          className="pointer-events-none absolute left-0 top-0 w-full"
+          className="pointer-events-none absolute left-0 w-full"
           style={{
-            top: Math.max(item.start, Math.min(top, end - item.size)),
+            top: item.start,
+            height: Math.max(item.size, end - item.start),
           }}
         >
-          {/* Position the measured header, not a file-height native sticky track:
-              browser focus/reveal scrolling must use its visible position while
-              earlier media measurements reconcile an explicit file jump. */}
+          {/* The file bounds sticky travel; measure only the header itself. */}
           <div
             ref={virtual.measureElement}
             data-index={item.index}
@@ -675,7 +674,7 @@ export function DiffView({
             data-diff-kind={entry.kind}
             data-item-key={entry.key}
             data-sticky={item.index === activeHeader || undefined}
-            className="pointer-events-auto relative z-20 w-full"
+            className="pointer-events-auto sticky top-0 z-20 w-full"
           >
             <FileHeader
               file={entry.file}

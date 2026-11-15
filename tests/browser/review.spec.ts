@@ -878,6 +878,48 @@ test("inline note geometry and visible-note tracking follow gutters without movi
   await expect(panel.locator('[aria-current="location"]')).toHaveCount(0);
 });
 
+test("file headers stay pinned before scroll handlers run and retain focus without jumping", async ({
+  page,
+}) => {
+  await page.goto(url);
+  const pane = page.getByRole("region", { name: "Code diff", exact: true });
+  await page
+    .getByRole("navigation")
+    .locator('button[title="untracked.ts"]')
+    .click();
+  const header = pane.locator(
+    '[data-diff-kind="header"][data-file-path="untracked.ts"]',
+  );
+  await expect(header).toBeInViewport();
+
+  // Read geometry in the same task as each scroll: no React render or scroll
+  // listener can reposition the header before these assertions.
+  const offsets = await pane.evaluate((element) => {
+    const header = element.querySelector<HTMLElement>(
+      '[data-diff-kind="header"][data-file-path="untracked.ts"]',
+    )!;
+    const top = element.getBoundingClientRect().top;
+    return [260, 400, -300, 1000, -500].map((delta) => {
+      element.scrollTop += delta;
+      return header.getBoundingClientRect().top - top;
+    });
+  });
+  for (const offset of offsets) expect(Math.abs(offset)).toBeLessThan(1);
+
+  const actions = header.getByRole("button", {
+    name: "File actions for untracked.ts",
+    exact: true,
+  });
+  const top = await pane.evaluate((element) => element.scrollTop);
+  await actions.click();
+  await expect(
+    page.getByRole("menuitem", { name: "Open in editor", exact: true }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(actions).toBeFocused();
+  expect(await pane.evaluate((element) => element.scrollTop)).toBe(top);
+});
+
 test("adding an offscreen editor and saving a note never navigates away from the reader", async ({
   page,
 }) => {
