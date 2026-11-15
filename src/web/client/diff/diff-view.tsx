@@ -583,17 +583,23 @@ export function DiffView({
     () => new Map(prepared.map((file) => [file.path, wordDiff(file)])),
     [prepared],
   );
-  const notesAt = useMemo(() => {
-    const map = new Map<string, ReviewNote[]>();
+  const { notesAt, commentedRows } = useMemo(() => {
+    const notesAt = new Map<string, ReviewNote[]>();
+    const commentedRows = new Set<string>();
     for (const file of prepared)
       for (const note of notes.filter((n) => n.file === file.path)) {
         const place = placeNote(file, note);
         if (place) {
           const key = itemKey(file.path, String(place.to));
-          map.set(key, [...(map.get(key) || []), note]);
+          const at = notesAt.get(key);
+          if (at) at.push(note);
+          else notesAt.set(key, [note]);
+          for (let row = place.from; row <= place.to; row++)
+            if (file.rows[row]!.t !== "hunk")
+              commentedRows.add(itemKey(file.path, String(row)));
         }
       }
-    return map;
+    return { notesAt, commentedRows };
   }, [prepared, notes]);
   const headerByPath = useMemo(
     () => new Map(headers.map((index) => [items[index]!.path, index])),
@@ -700,7 +706,7 @@ export function DiffView({
                 ),
               }}
             >
-              <div className="mx-auto max-w-4xl px-5 py-3">{editor}</div>
+              <div className="max-w-4xl px-2 py-2">{editor}</div>
             </div>
           </div>
         );
@@ -761,10 +767,10 @@ export function DiffView({
           </button>
         )}
         {entry.kind === "editor" && (
-          <div className="mx-auto max-w-4xl px-5 py-3">{editor}</div>
+          <div className="max-w-4xl px-2 py-2">{editor}</div>
         )}
         {entry.kind === "note" && (
-          <div className="mx-auto max-w-4xl px-5 py-3">
+          <div className="max-w-4xl px-2 py-2">
             <NoteCard
               note={entry.note}
               file={entry.file}
@@ -797,6 +803,9 @@ export function DiffView({
             notes={
               notesAt.get(itemKey(entry.path, String(entry.row)))?.length || 0
             }
+            commented={commentedRows.has(
+              itemKey(entry.path, String(entry.row)),
+            )}
             noteCharacters={notesAt
               .get(itemKey(entry.path, String(entry.row)))
               ?.flatMap((note) => {

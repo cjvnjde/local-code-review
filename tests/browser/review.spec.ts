@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { createServer } from "node:http";
 import { DEFAULT_UI_SETTINGS } from "../../src/shared/settings.ts";
+import { PNG } from "pngjs";
 
 let root: string,
   directory: string,
@@ -239,6 +240,31 @@ test("compiled executable reviews changes, preserves drafts, and continues the M
   expect((await addedCode.boundingBox())!.x).toBe(codeLeft);
   await expect(addedCode).toHaveText("  return 'hello world';");
   const inlineCard = readingPane.getByRole("article");
+  const sidebarCode = savedCard.getByLabel("Captured code", { exact: true });
+  const inlineCode = inlineCard.getByLabel("Captured code", { exact: true });
+  await expect(sidebarCode).toBeHidden();
+  await expect(inlineCode).toBeHidden();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const capturedCodeSetting = page.getByRole("checkbox", {
+    name: "Expand captured code in notes by default",
+    exact: true,
+  });
+  await capturedCodeSetting.check();
+  await page.keyboard.press("Escape");
+  await expect(sidebarCode).toBeVisible();
+  await expect(inlineCode).toBeVisible();
+  await savedCard
+    .locator("summary")
+    .filter({ hasText: "Captured code" })
+    .click();
+  await expect(sidebarCode).toBeHidden();
+  await page.reload();
+  await expect(sidebarCode).toBeVisible();
+  await expect(inlineCode).toBeVisible();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await capturedCodeSetting.uncheck();
+  await page.keyboard.press("Escape");
+  await expect(sidebarCode).toBeHidden();
   await expect(
     inlineCard.getByLabel("Captured code", { exact: true }),
   ).toBeHidden();
@@ -547,6 +573,9 @@ test("line, range and character gestures keep comments inline and protect draft 
     name: "Comment on line 4",
     exact: true,
   });
+  const rangeBackground = await rows
+    .locator('[data-row-key="n3"]')
+    .evaluate((row) => getComputedStyle(row).backgroundColor);
   await expect(last).toBeInViewport();
   const end = await last.boundingBox();
   const start = await first.boundingBox();
@@ -580,6 +609,35 @@ test("line, range and character gestures keep comments inline and protect draft 
     start: 2,
     end: 4,
   });
+  for (const line of [2, 3, 4])
+    await expect(rows.locator(`[data-row-key="n${line}"]`)).toHaveCSS(
+      "box-shadow",
+      /inset/,
+    );
+  for (const line of [1, 5])
+    await expect(rows.locator(`[data-row-key="n${line}"]`)).toHaveCSS(
+      "box-shadow",
+      "none",
+    );
+  expect(
+    await rows
+      .locator('[data-row-key="n3"]')
+      .evaluate((row) => getComputedStyle(row).backgroundColor),
+  ).toBe(rangeBackground);
+  // Check painted pixels too: a gradient can obscure the diff while leaving its
+  // computed background-color unchanged.
+  const backgroundPixel = async (line: number) => {
+    const image = PNG.sync.read(
+      await rows.locator(`[data-row-key="n${line}"]`).screenshot(),
+    );
+    const offset =
+      (Math.floor(image.height / 2) * image.width + image.width - 8) * 4;
+    return [...image.data.subarray(offset, offset + 3)];
+  };
+  const plain = await backgroundPixel(5);
+  const commented = await backgroundPixel(3);
+  for (let channel = 0; channel < 3; channel++)
+    expect(Math.abs(commented[channel]! - plain[channel]!)).toBeLessThan(20);
 });
 
 test("image attachments preview, retain editable drawings and survive note and reply saves", async ({
@@ -2019,9 +2077,6 @@ test("overall notes and formatting tools preserve the code reading position", as
   await expect(text).toHaveValue(
     "**Overall** feedback without losing my place",
   );
-  await expect(
-    editor.getByText("Draft saved locally", { exact: true }),
-  ).toBeVisible();
   await text.evaluate((field: HTMLTextAreaElement) =>
     field.setSelectionRange(2, 9),
   );
@@ -2438,6 +2493,7 @@ test("live page capture keeps its editor at the bottom and previews images acros
     await stop();
     await context.close();
     await new Promise<void>((resolve) => app.close(() => resolve()));
+    await launch();
   }
 });
 

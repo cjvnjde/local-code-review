@@ -23,6 +23,7 @@ export function CodeRow({
   selected,
   expanding,
   notes,
+  commented,
   onSelect,
   onExpand,
   onRead,
@@ -39,6 +40,7 @@ export function CodeRow({
   selected: boolean;
   expanding: boolean;
   notes: number;
+  commented: boolean;
   onSelect: (extend: boolean) => void;
   onExpand: (direction: string) => void;
   onRead: () => void;
@@ -110,6 +112,7 @@ export function CodeRow({
         row.t === "add" && "diff-add",
         row.t === "del" && "diff-del",
         row.t === "hunk" && "bg-muted/50 text-muted-foreground",
+        commented && row.t !== "hunk" && "diff-commented",
         row.t !== "hunk" &&
           !selected &&
           "hover:outline hover:outline-1 hover:-outline-offset-1 hover:outline-primary/35",

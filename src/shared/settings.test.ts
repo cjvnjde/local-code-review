@@ -95,6 +95,7 @@ describe("UI settings schema", () => {
       "hideDeleted",
       "foldDel",
       "enterSaves",
+      "capturedCodeOpen",
       "navHidden",
       "ntFold",
       "bmFold",

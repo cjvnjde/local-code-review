@@ -17,7 +17,7 @@ import { noteKey } from "../../../shared/note-id.ts";
 import { Button, cn } from "../components/ui/button.tsx";
 import { ActionMenu, ActionMenuItem } from "../components/ui/action-menu.tsx";
 import { Markdown } from "../components/markdown.tsx";
-import { Code } from "../components/code.tsx";
+import { CapturedCode } from "./captured-code.tsx";
 import { useAction, useDiff } from "../app/api.ts";
 import type { Draft } from "./composer.tsx";
 import { WebEvidence, ConversationBody } from "../web-review/evidence.tsx";
@@ -89,6 +89,7 @@ export function NoteCard({
       }}
       size="icon"
       variant="ghost"
+      className="size-7 rounded"
       aria-label={label}
     >
       <MoreHorizontal />
@@ -120,14 +121,6 @@ export function NoteCard({
           })
         }
       />
-      <span
-        className={
-          state.resolved(note) ? "text-success" : "text-muted-foreground"
-        }
-        title="Reviewer acknowledgement saved only in this browser. Conversation changes reopen this note."
-      >
-        {state.resolved(note) ? "Resolved" : "Open"} · this browser
-      </span>
       {unreadBadge.current > 0 && (
         // Reading on pointer entry or focus must not move the action being targeted.
         <span
@@ -140,12 +133,52 @@ export function NoteCard({
           {unreadBadge.current} new from agent
         </span>
       )}
+      {(state.resolved(note) || canResolve(note)) && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 px-2"
+          disabled={!!editor}
+          title="Reviewer acknowledgement in this browser only; conversation changes reopen the note."
+          onClick={() => state.toggle(note)}
+        >
+          {state.resolved(note) ? "Reopen" : "Resolve"}
+        </Button>
+      )}
+      <ActionMenu trigger={menuTrigger("note", "Note actions")}>
+        <ActionMenuItem
+          disabled={!refOf(note.id)}
+          onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(refToken(note));
+              setCopyResult("copied");
+            } catch {
+              setCopyResult("failed");
+            }
+          }}
+        >
+          <Copy /> Copy note reference
+        </ActionMenuItem>
+        {editable && !editor && (
+          <ActionMenuItem
+            onClick={() => onCompose({ kind: "note", comment: { ...note } })}
+          >
+            <Pencil /> Edit note
+          </ActionMenuItem>
+        )}
+        <ActionMenuItem
+          disabled={action.isPending || !!editor}
+          onClick={() => setRemoving("note")}
+        >
+          <Trash2 /> Delete note
+        </ActionMenuItem>
+      </ActionMenu>
     </NoteHeader>
   );
   return (
     <article
       ref={entrance}
-      className="min-w-0 w-full rounded-lg border bg-card"
+      className="min-w-0 w-full rounded border bg-transparent [&_button]:rounded"
       data-note-id={note.id}
       data-note-surface
       onPointerEnter={() => state.read(note)}
@@ -153,35 +186,8 @@ export function NoteCard({
       id={`${inline ? "diff-note" : "note"}-${reference}`}
     >
       {header}
-      <div className="space-y-3 p-3">
-        {note.code &&
-          (inline ? (
-            <details className="text-xs">
-              <summary className="cursor-pointer text-muted-foreground">
-                Captured code{outdated ? " · no longer in diff" : ""}
-              </summary>
-              <pre
-                aria-label="Captured code"
-                className="mt-2 max-h-48 overflow-auto bg-muted/30 py-2 text-xs"
-              >
-                <Code value={note.code} language="diff" />
-              </pre>
-            </details>
-          ) : (
-            <div>
-              {outdated && (
-                <p className="mb-1 text-xs text-muted-foreground">
-                  Captured code · no longer in diff
-                </p>
-              )}
-              <pre
-                aria-label="Captured code"
-                className="max-h-48 overflow-auto bg-muted/30 py-2 text-xs"
-              >
-                <Code value={note.code} language="diff" />
-              </pre>
-            </div>
-          ))}
+      <div className="space-y-2 px-2.5 py-2">
+        {note.code && <CapturedCode value={note.code} outdated={outdated} />}
         {webEnabled && note.web && (
           <div className="flex flex-wrap gap-2">
             <Button
@@ -275,7 +281,7 @@ export function NoteCard({
           <Markdown body={note.body} file={note.file} captured={note.code} />
         )}
         {note.detail && (
-          <p className="rounded-md bg-muted p-2 text-xs text-muted-foreground">
+          <p className="rounded border px-2 py-1 text-xs text-muted-foreground">
             {note.detail}
           </p>
         )}
@@ -297,7 +303,7 @@ export function NoteCard({
           <section
             key={message.at || i}
             data-note-message={i}
-            className="space-y-2 border-t bg-muted/15 p-3"
+            className="space-y-1.5 border-t px-2.5 py-2"
           >
             <div className="flex items-center gap-2 text-xs">
               <span
@@ -351,10 +357,10 @@ export function NoteCard({
         );
       })}
       {editor && !editingNote && !editingReply && (
-        <div className="border-t p-3">{editor}</div>
+        <div className="border-t px-2.5 py-2">{editor}</div>
       )}
       {!editingNote && (
-        <footer className="flex flex-wrap items-center gap-1 border-t px-3 py-1.5">
+        <footer className="flex flex-wrap items-center gap-1 border-t px-2 py-1 [&_button]:h-7">
           {!editor && (
             <Button
               size="sm"
@@ -381,47 +387,6 @@ export function NoteCard({
             </Button>
           )}
           <div className="ml-auto" />
-          {(state.resolved(note) || canResolve(note)) && (
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={!!editor}
-              title="Reviewer acknowledgement in this browser only; conversation changes reopen the note."
-              onClick={() => state.toggle(note)}
-            >
-              {state.resolved(note) ? "Reopen" : "Resolve"}
-            </Button>
-          )}
-          <ActionMenu trigger={menuTrigger("note", "Note actions")}>
-            <ActionMenuItem
-              disabled={!refOf(note.id)}
-              onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(refToken(note));
-                  setCopyResult("copied");
-                } catch {
-                  setCopyResult("failed");
-                }
-              }}
-            >
-              <Copy /> Copy note reference
-            </ActionMenuItem>
-            {editable && !editor && (
-              <ActionMenuItem
-                onClick={() =>
-                  onCompose({ kind: "note", comment: { ...note } })
-                }
-              >
-                <Pencil /> Edit note
-              </ActionMenuItem>
-            )}
-            <ActionMenuItem
-              disabled={action.isPending || !!editor}
-              onClick={() => setRemoving("note")}
-            >
-              <Trash2 /> Delete note
-            </ActionMenuItem>
-          </ActionMenu>
           {agent && settings.aiAnswers && (
             <Button
               size="sm"

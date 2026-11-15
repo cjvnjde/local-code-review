@@ -36,6 +36,7 @@ import {
   LoaderCircle,
   Plus,
   Ellipsis,
+  Info,
 } from "lucide-react";
 import type { ReviewComment } from "../../../shared/review-types.ts";
 import { noteKey } from "../../../shared/note-id.ts";
@@ -45,7 +46,7 @@ import { ActionMenu, ActionMenuItem } from "../components/ui/action-menu.tsx";
 import { Tooltip } from "../components/ui/tooltip.tsx";
 import { ComposerImages } from "../components/images.tsx";
 import { Markdown } from "../components/markdown.tsx";
-import { Code } from "../components/code.tsx";
+import { CapturedCode } from "./captured-code.tsx";
 import { suggestionBlock } from "../diff/model.ts";
 import { WebEvidence } from "../web-review/evidence.tsx";
 import { NoteHeader, TriageSelect } from "./note-header.tsx";
@@ -367,13 +368,15 @@ export function Composer({
   );
   const content = (
     <div
-      className={`flex min-h-0 flex-col gap-3 ${embedded ? "flex-1 pt-3" : integrated ? "" : "p-4"}`}
+      className={`flex min-h-0 flex-col gap-2 ${embedded ? "flex-1 pt-2" : integrated ? "" : "p-2.5"}`}
     >
       <div
         role={embedded ? "region" : undefined}
         aria-label={embedded ? "Evidence and attachments" : undefined}
         className={
-          embedded ? "min-h-0 flex-1 space-y-3 overflow-auto px-4" : "contents"
+          embedded
+            ? "min-h-0 flex-1 space-y-2 overflow-auto px-2.5"
+            : "contents"
         }
       >
         {!integrated && draft.kind === "note" && draft.comment.image && (
@@ -383,12 +386,7 @@ export function Composer({
           />
         )}
         {!integrated && code && (
-          <pre
-            aria-label={`Captured code · ${file}`}
-            className="max-h-48 overflow-auto border-y bg-muted/30 py-3 text-xs"
-          >
-            <Code value={code} language="diff" />
-          </pre>
+          <CapturedCode value={code} label={`Captured code · ${file}`} />
         )}
         {(!integrated || draft.kind === "reply") && web && (
           <div className={embedded ? "" : "max-h-56 overflow-auto"}>
@@ -440,14 +438,14 @@ export function Composer({
       <div
         className={
           embedded
-            ? "shrink-0 space-y-3 border-t bg-background p-3"
-            : "space-y-3"
+            ? "shrink-0 space-y-1.5 border-t bg-background p-2.5"
+            : "space-y-1.5"
         }
       >
         <div
           role="toolbar"
           aria-label="Text formatting"
-          className="flex flex-wrap items-center gap-1"
+          className="flex flex-wrap items-center gap-0.5"
         >
           {[
             { label: "Bold", Icon: Bold, before: "**", after: "**" },
@@ -458,7 +456,7 @@ export function Composer({
               <Button
                 variant="ghost"
                 size="icon"
-                className="size-8"
+                className="size-7"
                 aria-label={label}
                 disabled={preview}
                 onMouseDown={(event) => event.preventDefault()}
@@ -475,7 +473,7 @@ export function Composer({
               <Button
                 variant="ghost"
                 size="icon"
-                className="size-8"
+                className="size-7"
                 aria-label="More formatting"
                 title="More formatting"
                 disabled={preview}
@@ -521,7 +519,7 @@ export function Composer({
               <Button
                 variant="ghost"
                 size="icon"
-                className="size-8"
+                className="size-7"
                 aria-label="Suggest change"
                 onClick={() => {
                   setPreview(false);
@@ -536,7 +534,7 @@ export function Composer({
             <Button
               variant="ghost"
               size="icon"
-              className="size-8"
+              className="size-7"
               aria-label="Attach file"
               disabled={busy}
               onClick={() => picker.current?.click()}
@@ -544,12 +542,12 @@ export function Composer({
               <Paperclip />
             </Button>
           </Tooltip>
-          <div className="ml-auto flex items-center gap-1 rounded-md bg-muted/50 p-0.5">
+          <div className="ml-auto flex items-center gap-0.5 rounded border p-0.5">
             <Button
               variant="ghost"
               size="sm"
               aria-pressed={!preview}
-              className={!preview ? "bg-background shadow-sm" : ""}
+              className={`h-7 px-2 ${!preview ? "bg-muted/50" : ""}`}
               onClick={() => setPreview(false)}
             >
               <Pencil />
@@ -559,7 +557,7 @@ export function Composer({
               variant="ghost"
               size="sm"
               aria-pressed={preview}
-              className={preview ? "bg-background shadow-sm" : ""}
+              className={`h-7 px-2 ${preview ? "bg-muted/50" : ""}`}
               onClick={() => setPreview(true)}
             >
               <Eye />
@@ -699,7 +697,7 @@ export function Composer({
                 }
               }}
               placeholder="Write feedback, ask a question, or type # for a note or @ for a file…"
-              className={`w-full rounded-md border-0 bg-muted/50 px-3 py-3 text-[15px] leading-relaxed text-foreground placeholder:text-muted-foreground outline-none focus-visible:outline-1 focus-visible:outline-ring ${embedded ? "min-h-20 max-h-[30dvh] resize-none" : "min-h-18 resize-y"}`}
+              className={`w-full rounded border bg-transparent px-2 py-2 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground outline-none focus-visible:outline-1 focus-visible:outline-ring ${embedded ? "min-h-20 max-h-[30dvh] resize-none" : "min-h-18 resize-y"}`}
             />
             {completion && (
               <div
@@ -760,25 +758,31 @@ export function Composer({
             {action.error?.message || uploadError}
           </p>
         )}
-        <div className="flex flex-wrap items-center gap-3 border-t pt-3">
-          <div className="flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs text-muted-foreground">
-            {draftStorageError !== undefined &&
-              (draftStorageError ? (
-                <p role="alert" className="min-w-0 text-destructive">
-                  Draft not saved locally. {draftStorageError}
-                </p>
-              ) : hasContent ? (
-                <p role="status">
-                  {draft.editing && body === draft.original
-                    ? "No text changes"
-                    : "Draft saved locally"}
-                </p>
-              ) : null)}
-            <p>
-              {settings.enterSaves ? "Enter" : "Shift+Enter"} or Ctrl/Cmd+Enter{" "}
-              to submit
-            </p>
-          </div>
+        {draftStorageError && (
+          <p role="alert" className="text-xs text-destructive">
+            Draft not saved locally. {draftStorageError}
+          </p>
+        )}
+        {draftStorageError === "" && hasContent && (
+          <span role="status" className="sr-only">
+            {draft.editing && body === draft.original
+              ? "No text changes"
+              : "Draft saved locally"}
+          </span>
+        )}
+        <div className="flex flex-wrap items-center gap-2 border-t pt-1.5 [&_button]:h-7">
+          <Tooltip
+            label={`${settings.enterSaves ? "Enter" : "Shift+Enter"} or Ctrl/Cmd+Enter to submit. ${settings.enterSaves ? "Shift+Enter" : "Enter"} inserts a newline. Type # for a note or @ for a file.`}
+          >
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7 text-muted-foreground"
+              aria-label="Editor help"
+            >
+              <Info />
+            </Button>
+          </Tooltip>
           {draft.kind === "note" && (
             <TriageSelect
               value={draft.comment.triage}
@@ -843,10 +847,10 @@ export function Composer({
       aria-label="Comment editor"
       className={
         embedded
-          ? "flex min-h-0 flex-1 flex-col"
+          ? "flex min-h-0 flex-1 flex-col [&_button]:rounded"
           : integrated
-            ? "min-w-0 w-full"
-            : "min-w-0 w-full rounded-xl border bg-card shadow-sm"
+            ? "min-w-0 w-full [&_button]:rounded"
+            : "min-w-0 w-full rounded border bg-transparent [&_button]:rounded"
       }
       onDragOver={(event) => {
         if (event.dataTransfer.types.includes("Files")) event.preventDefault();

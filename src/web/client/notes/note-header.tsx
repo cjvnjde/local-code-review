@@ -27,7 +27,7 @@ export function TriageSelect({
   return (
     <Select
       label="Note triage"
-      className="h-8"
+      className="h-7 rounded px-2 text-xs"
       value={value || ""}
       options={[...triageOptions]}
       disabled={disabled}
@@ -71,44 +71,44 @@ export function NoteHeader({
         ? `Agent ${status}`
         : status;
   return (
-    <header className="space-y-1.5 border-b px-3 py-2">
-      <div
-        className="flex min-w-0 items-baseline gap-1 text-sm font-medium"
-        title={fullLocation}
-        aria-label={fullLocation}
-      >
-        <span className="min-w-0 truncate">{location}</span>
-        {lines && (
-          <span className="shrink-0 text-xs text-muted-foreground">
-            · {lines}
+    <header className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b px-2.5 py-1">
+      <div className="flex min-w-0 flex-[1_1_12rem] items-baseline gap-2">
+        <div
+          className="flex min-w-0 flex-1 items-baseline gap-1 text-xs font-medium"
+          title={fullLocation}
+          aria-label={fullLocation}
+        >
+          <span className="min-w-0 truncate">{location}</span>
+          {lines && (
+            <span className="shrink-0 text-muted-foreground">· {lines}</span>
+          )}
+        </div>
+        {statusLabel && (
+          <span
+            className={cn(
+              "shrink-0 text-xs",
+              status && ["applied", "answered"].includes(status)
+                ? "text-success"
+                : status === "needs-input"
+                  ? "text-warning"
+                  : "text-muted-foreground",
+            )}
+          >
+            {statusLabel}
+          </span>
+        )}
+        {note.triage && !children && (
+          <span
+            className="rounded border px-1 text-xs font-medium"
+            aria-label={`Triage: ${note.triage}`}
+          >
+            {note.triage}
           </span>
         )}
       </div>
-      {(children || statusLabel || note.triage) && (
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+      {children && (
+        <div className="flex max-w-full flex-wrap items-center gap-1 text-xs">
           {children}
-          {note.triage && (
-            <span
-              className="rounded border px-1.5 py-0.5 font-medium"
-              aria-label={`Triage: ${note.triage}`}
-            >
-              {note.triage}
-            </span>
-          )}
-          {statusLabel && (
-            <span
-              className={cn(
-                "text-xs",
-                status && ["applied", "answered"].includes(status)
-                  ? "text-success"
-                  : status === "needs-input"
-                    ? "text-warning"
-                    : "text-muted-foreground",
-              )}
-            >
-              {statusLabel}
-            </span>
-          )}
         </div>
       )}
     </header>

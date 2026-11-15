@@ -1253,10 +1253,7 @@ function Workspace({
                           </div>
                         )}
                         <div
-                          className={cn(
-                            "min-h-0 flex-1 overflow-auto p-3",
-                            compactNotes ? "space-y-2" : "space-y-4",
-                          )}
+                          className="min-h-0 flex-1 space-y-2 overflow-auto p-2"
                           role={compactNotes ? "list" : undefined}
                           aria-label={
                             compactNotes
@@ -1284,7 +1281,7 @@ function Workspace({
                                 ) ? (
                                   <button
                                     type="button"
-                                    className="w-full min-w-0 rounded-lg border bg-card px-3 py-2 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                    className="w-full min-w-0 rounded border bg-transparent px-2.5 py-2 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                     id={`note-${note.id.split("|#").at(-1)}`}
                                     data-note-id={note.id}
                                     aria-label={
@@ -1328,11 +1325,11 @@ function Workspace({
                                           {noteState.unread(note)} new
                                         </span>
                                       )}
-                                      <span className="shrink-0 text-xs text-muted-foreground">
-                                        {noteState.resolved(note)
-                                          ? "Resolved"
-                                          : "Open"}
-                                      </span>
+                                      {noteState.resolved(note) && (
+                                        <span className="shrink-0 text-xs text-muted-foreground">
+                                          Resolved
+                                        </span>
+                                      )}
                                     </span>
                                     <span className="mt-1 line-clamp-2 whitespace-normal break-words text-xs text-muted-foreground">
                                       {plainRefs(note.body).replace(

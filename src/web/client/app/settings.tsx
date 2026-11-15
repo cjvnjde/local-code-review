@@ -91,6 +91,7 @@ export function Settings({
             ["back", "Unmark automatically viewed files when scrolling back"],
             ["foldDel", "Fold removed lines by default"],
             ["enterSaves", "Enter saves · Shift+Enter inserts a newline"],
+            ["capturedCodeOpen", "Expand captured code in notes by default"],
             ["lineNumbers", "Show line numbers and gutter controls"],
             ["wrapLines", "Wrap long lines"],
             ["single", "Keep one pending note per selection"],

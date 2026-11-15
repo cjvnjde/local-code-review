@@ -59,7 +59,11 @@ Notes appear inline beside their subject; the conversation pane defaults to a
 compact index rather than duplicating every thread. **In diff** jumps to the
 note, reopening its file. The pane preserves your reading position when notes or
 code change. Incoming diff updates wait until an open editor closes.
-Redundant captured code on inline saved notes is available under **Captured code**.
+Captured code uses the same disclosure in drafts, inline notes, and full sidebar
+conversations. It starts closed; **Settings → Expand captured code in notes by
+default** opens it by default. Each disclosure can still be toggled independently.
+Commented code ranges have a subtle edge marker and tint, preserving added/removed
+line colors.
 Note indicators stay in a fixed gutter slot; saving a note never shifts or
 inserts content into the source line.
 Line-number columns fit the largest old/new line numbers in each file, including
@@ -72,9 +76,9 @@ Hover over code to highlight a commentable row and show its gutter affordance.
 Click code or a line number to comment immediately, drag across lines for a range,
 or drag within a line to select specific characters. Shift-click extends a range;
 Alt-drag keeps normal browser text selection for copying. Comments open directly
-below their subject in a compact bordered card with a distinct input background.
-Locations take precedence over metadata. File-level draft cards remain pinned
-below their file header; saved conversations use a compact identity header.
+below their subject in a left-aligned, compact card with a transparent background,
+small corner radii, and a bordered input. Locations and agent outcomes share the
+identity row. File-level draft cards remain pinned below their file header.
 **Cancel** clears the selected-line highlight. Re-aiming an overlapping selection
 preserves your draft text and caret; an unrelated click cannot replace a dirty
 draft. The file header offers a file comment; while creating it, the editor stays
@@ -114,8 +118,9 @@ that note; **Save only** persists without dispatch. Enter saves by default;
 Shift+Enter inserts a newline, and Cmd/Ctrl+Enter always saves. Settings can turn
 off Enter-to-save. The editor retains failed saves and drafts across reloads;
 incoming live updates do not replace their text.
-The editor shows the active submit shortcut and **Draft saved locally** after
-successful browser persistence; storage failures display a warning instead.
+Submit shortcuts and reference hints live under the editor's help icon.
+Successful browser draft persistence is announced to assistive technology;
+storage failures remain visible warnings.
 
 **Triage** classifies a note as blocker, bug, suggestion, question, or unclassified.
 It persists in Markdown, imports, history, and reloads. Filter by triage separately
@@ -169,16 +174,17 @@ counts, and empty states distinguish an empty review from a filtered list.
 Agent outcomes and activity remain separate.
 
 **View → Compact list / Full conversations** changes how the sidebar presents notes.
-Compact rows show locations, feedback, state, and reply counts. Clicking a note
+Compact rows show locations, feedback, resolution when applicable, and reply counts. Clicking a note
 jumps to its inline thread, including overall notes. Notes whose files are no
 longer in the diff expand individually in the sidebar; **Back to note list**
 returns to the index. Finish an open conversation
 editor before switching views. View preferences survive reloads.
 
-Reply and Resolve stay below the conversation. **Note actions** contains copying
-the stable reference, editing, and deletion; each editable reply has **Reply
-actions**. Agent messages remain the agent's account. Unread counts include only
-incoming agent messages, never your own replies.
+**Resolve / Reopen** and **Note actions** sit in the compact note header.
+Reply stays below the conversation. **Note actions** contains copying the stable
+reference, editing, and deletion; each editable reply has **Reply actions**.
+Agent messages remain the agent's account. Unread counts include only incoming
+agent messages, never your own replies.
 References expand in place to show their note and conversation. Type `#` in a note
 or reply to search notes by reference, file, or text. Use ↑/↓ and Enter/Tab, or click
 a suggestion, to insert its reference; Escape dismisses suggestions. Type `@` to

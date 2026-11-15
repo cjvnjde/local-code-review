@@ -137,6 +137,17 @@
 .diff-del {
   background-color: var(--diff-del);
 }
+.diff-commented {
+  box-shadow: inset 3px 0 color-mix(in srgb, var(--primary) 60%, transparent);
+}
+.diff-commented::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: var(--primary);
+  opacity: 0.05;
+}
 .markdown {
   @apply break-words text-sm leading-relaxed;
   overflow-wrap: anywhere;

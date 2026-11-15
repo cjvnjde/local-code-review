@@ -32,6 +32,7 @@ export const uiSettingsSchema = z.strictObject({
   hideDeleted: z.boolean(),
   foldDel: z.boolean(),
   enterSaves: z.boolean(),
+  capturedCodeOpen: z.boolean(),
   lineNumbers: z.boolean(),
   wrapLines: z.boolean(),
   expand: z
@@ -65,6 +66,7 @@ export const DEFAULT_UI_SETTINGS: Readonly<UiSettings> = {
   hideDeleted: false,
   foldDel: false,
   enterSaves: true,
+  capturedCodeOpen: false,
   lineNumbers: true,
   wrapLines: true,
   expand: 20,
