@@ -2925,9 +2925,29 @@ test("live page capture keeps its editor fixed and opens drawings directly acros
     await input.fill("Keep this draft through fullscreen previews");
     await target.screenshot({ path: "/tmp/lcr-web-composer.png" });
     const panel = (await iframe.boundingBox())!;
+    const triage = target.getByRole("combobox", {
+      name: "Note triage",
+      exact: true,
+    });
+    const help = target.getByRole("button", {
+      name: "Editor help",
+      exact: true,
+    });
+    await expect(triage).toBeVisible();
+    const triageBounds = (await triage.boundingBox())!;
+    const helpBounds = (await help.boundingBox())!;
+    expect(triageBounds.y + triageBounds.height).toBeLessThanOrEqual(panel.y);
+    expect(helpBounds.y).toBeCloseTo(triageBounds.y, 0);
     await expect(
-      frame.locator("header").getByRole("combobox", { name: "Note triage" }),
-    ).toBeVisible();
+      frame.getByRole("combobox", { name: "Note triage" }),
+    ).toHaveCount(0);
+    await triage.selectOption("bug");
+    await expect(input).toHaveValue(
+      "Keep this draft through fullscreen previews",
+    );
+    await help.hover();
+    await expect(target.getByRole("tooltip")).toBeVisible();
+    await input.click();
     const captureImage = frame.getByRole("link", {
       name: "Annotate Checkout target",
       exact: true,
@@ -2959,7 +2979,20 @@ test("live page capture keeps its editor fixed and opens drawings directly acros
     await expect(drawing).toHaveCount(0);
     await expect.poll(() => iframe.boundingBox()).toEqual(panel);
     await captureImage.click();
+    await expect
+      .poll(async () => (await iframe.boundingBox())!.width)
+      .toBe(1200);
+    await expect
+      .poll(async () => (await iframe.boundingBox())!.height)
+      .toBe(900);
+    await expect(
+      drawing.getByRole("button", { name: "Use drawing", exact: true }),
+    ).toBeEnabled();
     await drawing.locator('[data-tool="rectangle"]').click();
+    await expect(drawing.locator('[data-tool="rectangle"]')).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     const canvas = (await drawing.locator("canvas").first().boundingBox())!;
     await target.mouse.move(
       canvas.x + canvas.width / 2 - 40,
@@ -3038,6 +3071,7 @@ test("live page capture keeps its editor fixed and opens drawings directly acros
     const note = saved.notes.find((n: { body: string }) =>
       n.body.includes("Increase this checkout"),
     );
+    expect(note.triage).toBe("bug");
     expect(note.web.before.element.text).toBe("Checkout target");
     expect(note.web.before.area).toMatch(/^images\/.+\.png$/);
     expect(note.web.additional[0].element.text).toBe("Secondary action");
@@ -3058,6 +3092,21 @@ test("live page capture keeps its editor fixed and opens drawings directly acros
       new RegExp(encodeURIComponent(note.web.before.annotation.image)),
     );
     await expect(target.locator("[data-active-capture]")).toHaveCount(2);
+    await expect(triage).toHaveValue("bug");
+    await expect(
+      reopened.getByRole("combobox", { name: "Note triage" }),
+    ).toHaveCount(0);
+    await triage.selectOption("suggestion");
+    await expect
+      .poll(async () => {
+        const review = await (
+          await page.request.get(`${url}/api/review`)
+        ).json();
+        return review.notes.find(
+          (entry: { id: string }) => entry.id === note.id,
+        )?.triage;
+      })
+      .toBe("suggestion");
     await target
       .getByRole("button", { name: "Close note panel", exact: true })
       .click();

@@ -1446,7 +1446,6 @@ function editAnnotation(
           JSON.stringify(colors.filter((c) => !PALETTE.includes(c))),
         );
       } catch {}
-      view.closePopup();
       sync();
     }
   }

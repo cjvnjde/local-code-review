@@ -300,6 +300,56 @@ async function withEditor(
 }
 
 browserTest(
+  "custom color adjustments keep the palette open and paint with the final color",
+  async () => {
+    await withEditor(async ({ js, click, drag, key, save, reopen }) => {
+      await click("[data-tool=rectangle]");
+      await click("[data-command=colors]");
+      for (const color of ["#123456", "#3478ab"]) {
+        await js(`(()=>{
+          const input=document.querySelector('#annotation-colors [data-field=color]');
+          input.focus();
+          Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(color)});
+          input.dispatchEvent(new Event('input',{bubbles:true}));
+          input.dispatchEvent(new Event('change',{bubbles:true}));
+        })()`);
+        expect(
+          await js(
+            "document.querySelector('#annotation-colors').hasAttribute('data-open')",
+          ),
+        ).toBe(true);
+        expect(
+          await js(
+            "document.activeElement===document.querySelector('#annotation-colors [data-field=color]')",
+          ),
+        ).toBe(true);
+      }
+      await key("Escape");
+      await drag({ x: 120, y: 120 }, { x: 240, y: 190 });
+      expect((await save()).marks[0]).toMatchObject({
+        tool: "rectangle",
+        color: "#3478ab",
+      });
+      await reopen();
+      await click("[data-tool=rectangle]");
+      await click("[data-command=colors]");
+      await click('[data-color="#123456"]');
+      expect(
+        await js(
+          "document.querySelector('#annotation-colors').hasAttribute('data-open')",
+        ),
+      ).toBe(false);
+      await drag({ x: 280, y: 220 }, { x: 350, y: 280 });
+      expect((await save()).marks[1]).toMatchObject({
+        tool: "rectangle",
+        color: "#123456",
+      });
+    });
+  },
+  30000,
+);
+
+browserTest(
   "owned drawing dialogs mount real scenes and clean up portals without replacing the note or caret",
   async () => {
     await withEditor(async ({ js, click, reopen }) => {

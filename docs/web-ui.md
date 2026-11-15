@@ -21,7 +21,8 @@ on hover. Clicking an editable thumbnail opens the drawing editor directly;
 read-only images open the viewer. Closing either restores the window and draft.
 The bin icon removes a capture. **Capture details** contains nested collapsibles
 for metadata, originals, and context, without nested scroll areas. Classification
-and editor help live in the note header; **Add capture** sits left of Cancel/Save.
+and editor help share the window title bar with close/minimize; there is no second
+header row. **Add capture** sits left of Cancel/Save.
 The input and save controls stay visible while evidence scrolls above them.
 Reopening a note scrolls to and highlights its captured block on the page.
 
@@ -40,7 +41,8 @@ belong to a reply rather than replacing its original evidence.
 Drawing tools share one compact header with undo/redo, original-view, checkmark,
 and close icons. **More tools** appears only when there is insufficient width.
 Parameters for the active tool or selection appear in a second row; the color
-circle opens the palette. Tooltips and info icons carry explanations and gesture
+circle opens the palette, which stays open while adjusting a custom color.
+Tooltips and info icons carry explanations and gesture
 help. Hold O to compare the original temporarily. Striped margins are drawing
 space and are not exported. Zoom controls remain bottom-right.
 The checkmark returns an image to the draft, or updates an already-saved drawing;

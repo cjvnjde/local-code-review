@@ -1,10 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { request, type DiffResponse, type ReviewResponse } from "../app/api.ts";
+import {
+  request,
+  useAction,
+  type DiffResponse,
+  type ReviewResponse,
+} from "../app/api.ts";
 import { useStored } from "../app/preferences.ts";
 import {
   Composer,
   DraftReviewNotice,
+  editorHelp,
   draftBody,
   type Draft,
 } from "../notes/composer.tsx";
@@ -12,6 +18,9 @@ import { NoteCard } from "../notes/note-card.tsx";
 import { NoteState, useReviewState } from "../notes/review-state.tsx";
 import { makeComment } from "../diff/model.ts";
 import { webReview } from "../../../shared/web-review.ts";
+import { useUi } from "../app/ui-preferences.tsx";
+import { commentInput } from "../notes/comment-input.ts";
+import { triageOptions } from "../notes/note-header.tsx";
 
 const query =
   typeof location === "undefined"
@@ -40,6 +49,8 @@ export function EmbeddedReview({
   );
   const [busy, setBusy] = useState(false);
   const [capturing, setCapturing] = useState(false);
+  const { settings } = useUi();
+  const headerAction = useAction();
   const client = useQueryClient();
   const origin = diff.web ? new URL(diff.web.url).origin : "";
   const evidence = useQuery({
@@ -52,6 +63,8 @@ export function EmbeddedReview({
   });
   const latest = useRef(draft);
   latest.current = draft;
+  const headerBusy = useRef(false);
+  headerBusy.current = busy || capturing || headerAction.isPending;
   const tell = (action: string, values: object = {}) => {
     if (origin)
       window.parent.postMessage(
@@ -86,6 +99,25 @@ export function EmbeddedReview({
         return;
       if (event.data.action === "capturing")
         setCapturing(event.data.busy === true);
+      if (event.data.action === "triage") {
+        const option = triageOptions.find(
+          ({ value }) => value === event.data.triage,
+        );
+        if (!option || headerBusy.current) return;
+        const triage = option.value || undefined;
+        const current = latest.current;
+        if (current?.kind === "note")
+          setDraft({ ...current, comment: { ...current.comment, triage } });
+        else if (!current) {
+          const note = review?.notes.find((note) => note.id === noteId);
+          if (note)
+            headerAction.mutate({
+              url: "/api/note",
+              method: "POST",
+              body: { comment: { ...commentInput(note), triage }, ask: false },
+            });
+        }
+      }
       if (event.data.action === "evidence") {
         const web = webReview(event.data.web);
         if (noteId && event.data.reply && web) {
@@ -127,7 +159,7 @@ export function EmbeddedReview({
       window.removeEventListener("message", receive);
       document.removeEventListener("lcr:image-preview", preview);
     };
-  }, [origin, client, review?.notes, review?.file]);
+  }, [origin, client, review?.notes, review?.file, headerAction.mutate]);
   useEffect(() => {
     tell("dirty", {
       dirty: !!draft && !!draftBody(draft).trim(),
@@ -154,6 +186,17 @@ export function EmbeddedReview({
     tell(noteId ? "reply-sent" : "close");
   };
   const note = review?.notes.find((n) => n.id === noteId);
+  const triage = draft?.kind === "note" ? draft.comment.triage : note?.triage;
+  const classify = draft ? draft.kind === "note" : !!note;
+  const help = draft ? editorHelp(settings.enterSaves) : "";
+  useEffect(() => {
+    tell("header", {
+      triage: triage || "",
+      options: classify ? triageOptions : [],
+      disabled: busy || capturing || headerAction.isPending,
+      help,
+    });
+  }, [origin, triage, classify, help, busy, capturing, headerAction.isPending]);
   return (
     <NoteState value={noteState}>
       <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-background text-foreground">
@@ -163,6 +206,11 @@ export function EmbeddedReview({
             onChange={setDraft}
             busy={busy || capturing}
           />
+        )}
+        {headerAction.error && (
+          <p role="alert" className="p-3 text-xs text-destructive">
+            {headerAction.error.message}
+          </p>
         )}
         {(evidence.error || storageError) && (
           <p role="alert" className="p-4 text-sm text-destructive">

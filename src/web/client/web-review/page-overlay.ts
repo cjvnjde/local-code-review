@@ -221,6 +221,8 @@ export function installPageReview(config: {
     .resize-edge[data-resize=n],.resize-edge[data-resize=s]{left:var(--space-2);right:var(--tap-lg);width:auto;height:6px;cursor:ns-resize}.resize-edge[data-resize=n]{top:0;bottom:auto}
     .resize:is(:hover,:focus-visible)::before{content:attr(title);position:absolute;right:var(--space-2);bottom:100%;width:calc(var(--tap) * 9);max-width:calc(100vw - var(--space-4)*2);padding:var(--space-2);border:1px solid var(--edge);border-radius:var(--radius-sm);background:var(--panel);color:var(--ink);font-size:var(--fs-small);pointer-events:none;cursor:default}
     .bar[hidden],.dock[hidden],.selection-tools[hidden]{display:none}.head{display:flex;flex:none;align-items:center;gap:var(--space-1);min-height:var(--bar-height);padding:var(--space-2) var(--space-3);background:var(--panel);cursor:move;touch-action:none;user-select:none}.head b{display:block;flex:1;min-width:0;min-height:var(--tap-lg);line-height:var(--tap-lg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-radius:var(--radius-sm)}.head button,.head .review-link{flex:none}.head button{width:var(--tap-lg);padding:0}.head .review-link{display:inline-flex;align-items:center;color:var(--ink-dim)}.head svg{width:var(--icon);height:var(--icon);pointer-events:none}.content{display:flex;flex-direction:column;flex:1;min-height:0;overflow:auto}.content iframe{width:100%;flex:1;min-height:0;border:0;background:var(--panel2)}.status,.error{padding:var(--space-3) var(--space-4);margin:0}
+    .head select{flex:none;min-width:0;max-width:118px;height:var(--tap-lg);border:1px solid var(--edge);border-radius:var(--radius-sm);padding:0 var(--space-1);background:var(--panel2);color:var(--ink);font:inherit;cursor:pointer;touch-action:auto}.head select:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}.head [hidden]{display:none}
+    .editor-help{flex:none;display:flex}.editor-help span{display:none;position:absolute;top:var(--bar-height);left:var(--space-2);right:var(--space-2);z-index:2;padding:var(--space-2);border:1px solid var(--edge);border-radius:var(--radius-sm);background:var(--panel);color:var(--ink);font-size:var(--fs-small);font-weight:400;cursor:default}.editor-help:is(:hover,:focus-within) span{display:block}
     .dock.fullscreen .head,.dock.fullscreen .resize{display:none}
     .dock.fullscreen{border:0;border-radius:0;box-shadow:none;max-width:none;max-height:none}
     .dock.fullscreen~.launcher,.dock.fullscreen~.bar{display:none}
@@ -236,7 +238,7 @@ export function installPageReview(config: {
   <div class="freeze-status" hidden role="status"><span data-freeze-status></span><button data-resume>Resume · Ctrl+Shift+F</button></div>
   <div class="capture-prompt" hidden role="status"><span data-capture-instruction></span><button data-cancel-capture>Cancel · Esc</button></div>
   <div class="selection-tools" hidden><span data-selection-count></span><button data-write>Write note</button><button data-clear>Clear</button></div>
-  <div class="dock" hidden><div class="head"><b tabindex="0" title="Drag to move; arrow keys move the note window"></b><a class="review-link" data-panel-review target="lcr-review" rel="noopener" aria-label="Open full review" title="Open full review"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 3h6v6M10 14 21 3M21 14v7H3V3h7"/></svg></a><button type="button" data-minimize aria-label="Minimize note panel" title="Minimize note panel" aria-expanded="true">−</button><button type="button" data-close aria-label="Close note panel" title="Close note panel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg></button></div><div class="content"></div><button type="button" class="resize" data-resize="se" aria-label="Resize note panel" title="Drag to resize; arrow keys resize; Shift moves farther"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 13 13 3M8 13l5-5M12 13l1-1"/></svg></button>${(["n", "e", "s", "w"] as const).map((edge, i) => `<button type="button" class="resize resize-edge" data-resize="${edge}" aria-label="Resize note panel from ${["top", "right", "bottom", "left"][i]}" title="Drag to resize; arrow keys resize; Shift moves farther"></button>`).join("")}</div>
+  <div class="dock" hidden><div class="head"><b tabindex="0" title="Drag to move; arrow keys move the note window"></b><div class="editor-help" hidden><button type="button" data-editor-help aria-label="Editor help" aria-describedby="editor-hint"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7v1"/></svg></button><span id="editor-hint" role="tooltip"></span></div><select data-triage aria-label="Note triage" hidden></select><a class="review-link" data-panel-review target="lcr-review" rel="noopener" aria-label="Open full review" title="Open full review"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 3h6v6M10 14 21 3M21 14v7H3V3h7"/></svg></a><button type="button" data-minimize aria-label="Minimize note panel" title="Minimize note panel" aria-expanded="true">−</button><button type="button" data-close aria-label="Close note panel" title="Close note panel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg></button></div><div class="content"></div><button type="button" class="resize" data-resize="se" aria-label="Resize note panel" title="Drag to resize; arrow keys resize; Shift moves farther"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 13 13 3M8 13l5-5M12 13l1-1"/></svg></button>${(["n", "e", "s", "w"] as const).map((edge, i) => `<button type="button" class="resize resize-edge" data-resize="${edge}" aria-label="Resize note panel from ${["top", "right", "bottom", "left"][i]}" title="Drag to resize; arrow keys resize; Shift moves farther"></button>`).join("")}</div>
   <div class="launcher" role="group" aria-label="Page review mode"><button data-browse aria-pressed="false" title="Use page controls normally">Browse</button><button data-annotate aria-pressed="true" title="Select page content to capture for a note; hold Alt to browse temporarily">Annotate</button><button data-launcher aria-label="Capture targeting: Element" aria-expanded="false" aria-controls="capture-tools" title="Choose capture target; drag to move"><span class="mode-state">Element</span><span aria-hidden="true"> ▾</span></button></div>
   <div class="bar" id="capture-tools" role="group" aria-label="Capture targeting" hidden><button data-mode="element" aria-pressed="true" title="Hover for dimensions; Alt + wheel picks parents; Shift-click selects multiple; drag selects an area">Element <small>One element</small></button><button data-mode="block" aria-pressed="false" title="Select the containing layout section">Block <small>Containing section</small></button><button data-multiple aria-pressed="false" title="Collect elements for one note, then choose Write note">Multiple <small>Several elements, one note</small></button><button data-mode="area" aria-pressed="false" title="Drag a rectangle to capture an area">Area <small>Drag a rectangle</small></button><button data-mode="point" aria-pressed="false" title="Click a point to capture its surroundings">Point <small>Click a location</small></button><p class="capture-help">Hold Alt to browse temporarily. Shift-click adds elements; Alt + wheel picks parents.</p><button data-freeze title="Freeze the current view · Ctrl+Shift+F">Freeze view</button><button data-notes>Notes · 0 ↗</button></div>`;
   (document.body || document.documentElement).append(host);
@@ -1988,6 +1990,8 @@ export function installPageReview(config: {
     content.textContent = "";
     activeToken = token;
     frameKind = kind;
+    $("[data-triage]").hidden = true;
+    $(".editor-help").hidden = true;
     ($("[data-panel-review]") as HTMLAnchorElement).href =
       config.reviewUrl +
       (kind === "note"
@@ -2201,7 +2205,29 @@ export function installPageReview(config: {
       message.token !== activeToken
     )
       return;
-    if (message.action === "dirty") {
+    if (message.action === "header") {
+      const triage = $("[data-triage]") as HTMLSelectElement;
+      if (Array.isArray(message.options)) {
+        triage.replaceChildren();
+        for (const option of message.options) {
+          if (
+            typeof option?.value !== "string" ||
+            typeof option?.label !== "string"
+          )
+            continue;
+          const item = document.createElement("option");
+          item.value = option.value;
+          item.textContent = option.label;
+          triage.append(item);
+        }
+      }
+      triage.hidden = !triage.options.length;
+      triage.value = typeof message.triage === "string" ? message.triage : "";
+      triage.disabled = message.disabled === true;
+      const help = typeof message.help === "string" ? message.help : "";
+      $(".editor-help").hidden = !help;
+      $("#editor-hint").textContent = help;
+    } else if (message.action === "dirty") {
       if (typeof message.dirty === "boolean") frameDirty = message.dirty;
       if (typeof message.saving === "boolean") frameSaving = message.saving;
       if (typeof message.editOriginal === "boolean")
@@ -2637,9 +2663,18 @@ export function installPageReview(config: {
       if (!busy && !freezing) finishAddCapture();
     } else minimize(!minimized);
   };
+  ($("[data-triage]") as HTMLSelectElement).onchange = (event) => {
+    tellFrame("triage", {
+      triage: (event.currentTarget as HTMLSelectElement).value,
+    });
+  };
   const head = $(".head");
   head.onpointerdown = (e) => {
-    if (e.button !== 0 || (e.target as Element).closest("button,a")) return;
+    if (
+      e.button !== 0 ||
+      (e.target as Element).closest("button,a,select,.editor-help")
+    )
+      return;
     dockPress = {
       id: e.pointerId,
       x: e.clientX,

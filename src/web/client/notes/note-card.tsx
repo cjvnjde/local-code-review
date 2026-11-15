@@ -44,6 +44,7 @@ export function NoteCard({
   editor,
   editorDraft,
   onAddCapture,
+  embedded = false,
 }: {
   note: ReviewNote;
   file?: DiffFile;
@@ -145,7 +146,7 @@ export function NoteCard({
           {unreadBadge.current > 9 ? "9+" : unreadBadge.current}
         </span>
       )}
-      {!editor && (
+      {!editor && !embedded && (
         <TriageSelect
           value={note.triage}
           disabled={action.isPending}

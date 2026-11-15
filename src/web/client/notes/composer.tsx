@@ -50,6 +50,9 @@ import { WebEvidence } from "../web-review/evidence.tsx";
 import { NoteHeader, TriageSelect } from "./note-header.tsx";
 import { commentInput } from "./comment-input.ts";
 
+export const editorHelp = (enterSaves: boolean) =>
+  `${enterSaves ? "Enter" : "Shift+Enter"} or Ctrl/Cmd+Enter to submit. ${enterSaves ? "Shift+Enter" : "Enter"} inserts a newline. Type # for a note or @ for a file.`;
+
 export type Draft = {
   /** Captured when opening the editor; never follows another tab's selected review. */
   review?: string;
@@ -427,11 +430,9 @@ export function Composer({
       />
     </>
   );
-  const editorControls = (
+  const editorControls = !embedded && (
     <>
-      <Tooltip
-        label={`${settings.enterSaves ? "Enter" : "Shift+Enter"} or Ctrl/Cmd+Enter to submit. ${settings.enterSaves ? "Shift+Enter" : "Enter"} inserts a newline. Type # for a note or @ for a file.`}
-      >
+      <Tooltip label={editorHelp(settings.enterSaves)}>
         <Button
           variant="ghost"
           size="icon"
@@ -901,11 +902,6 @@ export function Composer({
     >
       {!integrated && !embedded && draft.kind === "note" && (
         <NoteHeader note={draft.comment} status="Draft" />
-      )}
-      {embedded && (
-        <header className="flex shrink-0 items-center justify-end gap-1 border-b px-2.5 py-1">
-          {editorControls}
-        </header>
       )}
       {content}
     </section>
