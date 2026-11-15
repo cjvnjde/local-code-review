@@ -33,15 +33,17 @@ and conversation pane. Focused dividers also accept arrow keys and Home/End;
 double-click resets that pane's width. Widths and panel visibility survive reloads
 and hide/show toggles. Resizing keeps the current code position and open draft;
 narrow screens retain the file picker and conversation drawer.
-The diff yields space to either divider instead of locking sidebar growth behind
-a fixed minimum diff width.
+Either divider works with the opposite sidebar hidden. The diff yields space to
+either divider instead of locking sidebar growth behind a fixed minimum diff width.
 
 The right sidebar has **Notes** and **Bookmarks** tabs. Bookmark a code line from
 its gutter; use the Bookmarks tab or Alt ↑/↓ to return to saved places. Switching
 tabs keeps conversation drafts and list positions intact.
 
-Panel toggles and newly arriving notes/replies use brief, subtle animations.
-Dragging stays immediate; reduced-motion preferences disable these animations.
+Panel toggles smoothly expand or collapse the layout, keeping sidebar content at
+its expanded width instead of rewrapping it during the animation. Newly arriving
+notes/replies use brief, subtle animations. Dragging stays immediate; reduced-motion
+preferences disable these animations.
 
 File headers stay visible while reading their code. Their history badge opens
 earlier-review notes without adding another header row. Collapse a file with its

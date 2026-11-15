@@ -1425,6 +1425,131 @@ test("left sidebar grows and shrinks in a compact window without moving the note
   await expect.poll(() => width(files)).toBeCloseTo(268, 0);
 });
 
+test("either divider still drags after the other sidebar is hidden, including after reload", async ({
+  page,
+}) => {
+  await page.goto(url);
+  const files = page.getByRole("complementary", { name: "Changed files" });
+  const notes = page.getByRole("complementary", { name: "Review notes" });
+  const width = (pane: typeof files) =>
+    pane.evaluate((element) => element.getBoundingClientRect().width);
+  const drag = async (name: string, delta: number) => {
+    const handle = page.getByRole("separator", { name, exact: true });
+    const box = (await handle.boundingBox())!;
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height * 0.25;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x + delta, y, { steps: 12 });
+    await page.mouse.up();
+  };
+  const original = await width(files);
+  await page
+    .getByRole("button", { name: "Hide notes panel", exact: true })
+    .click();
+  await expect(page.locator("#notes-pane")).toHaveCSS("flex-grow", "0");
+  await drag("Resize file sidebar", 64);
+  await expect.poll(() => width(files)).toBeCloseTo(original + 64, 0);
+  await expect
+    .poll(
+      async () =>
+        (await (await page.request.get(`${url}/api/settings`)).json()).settings
+          .navWidth,
+    )
+    .toBe(Math.round(original + 64));
+  await page.reload();
+  await expect(notes).toBeHidden();
+  await expect.poll(() => width(files)).toBeCloseTo(original + 64, 0);
+  await drag("Resize file sidebar", -32);
+  await expect.poll(() => width(files)).toBeCloseTo(original + 32, 0);
+  await page
+    .getByRole("button", { name: "Show notes panel", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Hide file sidebar", exact: true })
+    .click();
+  await expect(page.locator("#files-pane")).toHaveCSS("flex-grow", "0");
+  const notesWidth = await width(notes);
+  await drag("Resize conversation pane", -48);
+  await expect.poll(() => width(notes)).toBeCloseTo(notesWidth + 48, 0);
+});
+
+test("sidebar toggles interpolate pane geometry without reflowing sidebar content", async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.goto(url);
+  await expect(page.getByRole("navigation")).toBeVisible();
+  for (const [id, name] of [
+    ["files-pane", "file sidebar"],
+    ["notes-pane", "notes panel"],
+  ]) {
+    for (const action of ["Hide", "Show"]) {
+      const sizes = await page.evaluate(
+        async ({ id, label }) => {
+          const pane = document.getElementById(id)!;
+          const content = pane.querySelector("aside")!;
+          const diff = document.getElementById("diff-pane")!;
+          const measure = () => ({
+            pane: pane.getBoundingClientRect().width,
+            content: content.getBoundingClientRect().width,
+            diffLeft: diff.getBoundingClientRect().left,
+            diffWidth: diff.getBoundingClientRect().width,
+          });
+          const frame = () =>
+            new Promise<void>((resolve) =>
+              requestAnimationFrame(() => resolve()),
+            );
+          for (const animation of document.getAnimations()) animation.finish();
+          const before = measure();
+          document
+            .querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!
+            .click();
+          await frame();
+          await frame();
+          await frame();
+          const animations = document
+            .getElementById("review-panes")!
+            .getAnimations({ subtree: true });
+          for (const animation of animations) {
+            animation.pause();
+            animation.currentTime = 90;
+          }
+          const middle = measure();
+          for (const animation of animations) animation.finish();
+          await frame();
+          const after = measure();
+          return { before, middle, after };
+        },
+        { id: id!, label: `${action} ${name}` },
+      );
+      const expanded = Math.max(sizes.before.pane, sizes.after.pane);
+      expect(expanded).toBeGreaterThan(180);
+      expect(sizes.middle.pane).toBeGreaterThan(1);
+      expect(sizes.middle.pane).toBeLessThan(expanded - 1);
+      expect(sizes.middle.content).toBeCloseTo(expanded, 0);
+      expect(sizes.after.content).toBeCloseTo(expanded, 0);
+      expect(sizes.middle.diffWidth).toBeGreaterThan(
+        Math.min(sizes.before.diffWidth, sizes.after.diffWidth) + 1,
+      );
+      expect(sizes.middle.diffWidth).toBeLessThan(
+        Math.max(sizes.before.diffWidth, sizes.after.diffWidth) - 1,
+      );
+      if (id === "files-pane")
+        expect(sizes.middle.diffLeft).toBeCloseTo(sizes.middle.pane, 0);
+    }
+  }
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page
+    .getByRole("button", { name: "Hide file sidebar", exact: true })
+    .click();
+  await expect(page.locator("#files-pane")).toHaveCSS("flex-grow", "0");
+  await expect(page.locator("#files-pane")).toHaveCSS(
+    "transition-duration",
+    "0s",
+  );
+});
+
 test("Base UI focus and pane resizing preserve drafts, reading position and saved widths", async ({
   page,
 }) => {

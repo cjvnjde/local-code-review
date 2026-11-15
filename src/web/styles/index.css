@@ -200,3 +200,17 @@
   user-select: none;
   cursor: crosshair;
 }
+
+/* Animate the actual flex items, not Panel's nested content wrapper. Overlay
+   dividers take no layout space, so hiding one never shifts the diff by a grip. */
+.review-panes[data-panel-motion] > [data-panel] {
+  transition: flex-grow 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.review-panes[data-panel-motion][data-resizing] > [data-panel] {
+  transition: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .review-panes[data-panel-motion] > [data-panel] {
+    transition: none;
+  }
+}
