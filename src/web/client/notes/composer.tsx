@@ -35,14 +35,12 @@ import {
   Pencil,
   LoaderCircle,
   Plus,
-  Ellipsis,
   Info,
 } from "lucide-react";
 import type { ReviewComment } from "../../../shared/review-types.ts";
 import { noteKey } from "../../../shared/note-id.ts";
 import { request, useAction } from "../app/api.ts";
 import { Button } from "../components/ui/button.tsx";
-import { ActionMenu, ActionMenuItem } from "../components/ui/action-menu.tsx";
 import { Tooltip } from "../components/ui/tooltip.tsx";
 import { ComposerImages } from "../components/images.tsx";
 import { Markdown } from "../components/markdown.tsx";
@@ -458,6 +456,21 @@ export function Composer({
             { label: "Bold", Icon: Bold, before: "**", after: "**" },
             { label: "Italic", Icon: Italic, before: "_", after: "_" },
             { label: "Inline code", Icon: CodeIcon, before: "`", after: "`" },
+            {
+              label: "Code block",
+              Icon: SquareCode,
+              before: "\n```\n",
+              after: "\n```\n",
+            },
+            { label: "Quote", Icon: Quote, before: "\n> ", after: "" },
+            { label: "List", Icon: List, before: "\n- ", after: "" },
+            {
+              label: "Checklist",
+              Icon: ListTodo,
+              before: "\n- [ ] ",
+              after: "",
+            },
+            { label: "Link", Icon: Link, before: "[", after: "](https://)" },
           ].map(({ label, Icon, before, after }) => (
             <Tooltip key={label} label={label}>
               <Button
@@ -473,54 +486,6 @@ export function Composer({
               </Button>
             </Tooltip>
           ))}
-          <ActionMenu
-            align="start"
-            finalFocus={textarea}
-            trigger={
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-7"
-                aria-label="More formatting"
-                title="More formatting"
-                disabled={preview}
-              >
-                <Ellipsis />
-              </Button>
-            }
-          >
-            {[
-              {
-                label: "Code block",
-                Icon: SquareCode,
-                before: "\n```\n",
-                after: "\n```\n",
-              },
-              { label: "Quote", Icon: Quote, before: "\n> ", after: "" },
-              { label: "List", Icon: List, before: "\n- ", after: "" },
-              {
-                label: "Checklist",
-                Icon: ListTodo,
-                before: "\n- [ ] ",
-                after: "",
-              },
-              { label: "Link", Icon: Link, before: "[", after: "](https://)" },
-            ].map(({ label, Icon, before, after }) => (
-              <ActionMenuItem
-                key={label}
-                onClick={() => {
-                  textarea.current?.setSelectionRange(
-                    caret.current.start,
-                    caret.current.end,
-                  );
-                  wrap(before, after);
-                }}
-              >
-                <Icon />
-                {label}
-              </ActionMenuItem>
-            ))}
-          </ActionMenu>
           {code && (
             <Tooltip label="Suggest change">
               <Button
@@ -550,26 +515,30 @@ export function Composer({
             </Button>
           </Tooltip>
           <div className="ml-auto flex items-center gap-0.5 rounded border p-0.5">
-            <Button
-              variant="ghost"
-              size="sm"
-              aria-pressed={!preview}
-              className={`h-7 px-2 ${!preview ? "bg-muted/50" : ""}`}
-              onClick={() => setPreview(false)}
-            >
-              <Pencil />
-              Write
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              aria-pressed={preview}
-              className={`h-7 px-2 ${preview ? "bg-muted/50" : ""}`}
-              onClick={() => setPreview(true)}
-            >
-              <Eye />
-              Preview
-            </Button>
+            <Tooltip label="Write">
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Write"
+                aria-pressed={!preview}
+                className={`size-7 ${!preview ? "bg-muted/50" : ""}`}
+                onClick={() => setPreview(false)}
+              >
+                <Pencil />
+              </Button>
+            </Tooltip>
+            <Tooltip label="Preview">
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Preview"
+                aria-pressed={preview}
+                className={`size-7 ${preview ? "bg-muted/50" : ""}`}
+                onClick={() => setPreview(true)}
+              >
+                <Eye />
+              </Button>
+            </Tooltip>
           </div>
           <input
             ref={picker}

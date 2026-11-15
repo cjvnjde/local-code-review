@@ -528,7 +528,6 @@ function Workspace({
       const editor = document.querySelector<HTMLElement>(
         "[data-review-editor]",
       );
-      editor?.scrollIntoView({ block: "nearest" });
       editor
         ?.querySelector<HTMLTextAreaElement>("textarea")
         ?.focus({ preventScroll: true });

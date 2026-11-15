@@ -61,6 +61,8 @@ Notes appear inline beside their subject; the conversation pane defaults to a
 compact index rather than duplicating every thread. **In diff** jumps to the
 note, reopening its file. The pane preserves your reading position when notes or
 code change. Incoming diff updates wait until an open editor closes.
+Creating or saving a note does not navigate to it. Scroll to an offscreen editor
+yourself; explicit **In diff**, note links, and navigation still jump to their targets.
 The note nearest the visible top of the diff is highlighted in the sidebar.
 Captured code uses the same disclosure in drafts, inline notes, and full sidebar
 conversations. It starts closed; **Settings → Expand captured code in notes by
@@ -98,8 +100,9 @@ the same compact header; change counts and refresh live in the existing footer.
 
 The editor accepts Markdown, including tables, checklists, and fenced code.
 Typed line breaks remain visible in previews, saved notes, and replies.
-The toolbar keeps basic formatting and attachments visible, with less-used
-commands under **More formatting** and explicit **Write / Preview** controls.
+The toolbar exposes every formatting action and attachment control as an icon
+button, with titles on hover or keyboard focus. **Write / Preview** are icon
+toggles too; narrow editors wrap the toolbar rather than hiding actions in a menu.
 **Suggest change** inserts a fenced replacement for the captured lines.
 Drop or paste files, or use **Attach file**, to attach them
 directly to a note or reply (up to 12 MiB each). Files are kept beside the review

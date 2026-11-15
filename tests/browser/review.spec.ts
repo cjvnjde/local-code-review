@@ -588,6 +588,97 @@ test("inline note geometry and visible-note tracking follow gutters without movi
   await expect(panel.locator('[aria-current="location"]')).toHaveCount(0);
 });
 
+test("adding an offscreen editor and saving a note never navigates away from the reader", async ({
+  page,
+}) => {
+  await page.request.delete(`${url}/api/review`);
+  await page.goto(url);
+  const pane = page.getByRole("region", { name: "Code diff" });
+  await page
+    .getByRole("navigation")
+    .locator('button[title="untracked.ts"]')
+    .click();
+  await pane.evaluate((element) => (element.scrollTop += 26 * 120));
+  const settle = () =>
+    page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+    );
+  await settle();
+  const position = () =>
+    pane.evaluate((element) => {
+      const top =
+        element.getBoundingClientRect().top +
+        (element.querySelector<HTMLElement>('[data-sticky="true"]')
+          ?.offsetHeight || 0);
+      const row = [
+        ...element.querySelectorAll<HTMLElement>(
+          '[data-file-path="untracked.ts"] [data-row-key]',
+        ),
+      ].find((row) => row.getBoundingClientRect().top >= top - 1);
+      if (!row) throw new Error("No visible code row");
+      return { key: row.dataset.rowKey!, y: row.getBoundingClientRect().top };
+    });
+  const target = await pane.evaluate((element) => {
+    const bottom = element.getBoundingClientRect().bottom;
+    const cell = [
+      ...element.querySelectorAll<HTMLElement>(
+        '[data-file-path="untracked.ts"] [data-code-cell]',
+      ),
+    ]
+      .filter((cell) => cell.getBoundingClientRect().top <= bottom - 60)
+      .at(-1);
+    if (!cell) throw new Error("No code near the viewport bottom");
+    return cell.closest<HTMLElement>("[data-row-key]")!.dataset.rowKey!;
+  });
+  const code = (key: string) =>
+    pane.locator(
+      `[data-file-path="untracked.ts"] [data-row-key="${key}"] [data-code-cell]`,
+    );
+  const before = await position();
+  const top = await pane.evaluate((element) => element.scrollTop);
+  await code(target).click();
+  const text = pane.getByRole("textbox", { name: "Note text", exact: true });
+  await expect(text).toBeFocused();
+  await settle();
+  await expect(text).not.toBeInViewport();
+  expect(await pane.evaluate((element) => element.scrollTop)).toBe(top);
+  expect(await position()).toEqual(before);
+
+  // The reviewer, not editor creation, chooses when to bring the draft into view.
+  await pane.evaluate((element) => (element.scrollTop += 320));
+  await expect(text).toBeInViewport();
+  await text.fill("Keep my reading position after saving this note.");
+  await pane.evaluate((element) => (element.scrollTop += 1000));
+  await settle();
+  await expect(text).not.toBeInViewport();
+  const away = await position();
+  const awayTop = await pane.evaluate((element) => element.scrollTop);
+  await code(away.key).click();
+  await expect(text).toBeFocused();
+  await settle();
+  await expect(text).toHaveValue(
+    "Keep my reading position after saving this note.",
+  );
+  expect(await pane.evaluate((element) => element.scrollTop)).toBe(awayTop);
+
+  // Saving an offscreen draft replaces its height above the viewport, but must
+  // keep the same code at the same screen position instead of revealing the note.
+  await page.keyboard.press("Control+Enter");
+  await expect(text).toHaveCount(0);
+  await settle();
+  expect(await position()).toEqual(away);
+  const review = await (await page.request.get(`${url}/api/review`)).json();
+  expect(
+    review.notes.find(
+      (note: { body: string }) =>
+        note.body === "Keep my reading position after saving this note.",
+    ),
+  ).toMatchObject({ file: "untracked.ts" });
+});
+
 test("line, range and character gestures keep comments inline and protect draft text", async ({
   page,
 }) => {
@@ -2305,19 +2396,19 @@ test("overall notes and formatting tools preserve the code reading position", as
   await text.evaluate((field: HTMLTextAreaElement) =>
     field.setSelectionRange(2, 9),
   );
-  const moreFormatting = toolbar.getByRole("button", {
-    name: "More formatting",
-    exact: true,
-  });
-  await moreFormatting.focus();
-  await moreFormatting.press("Enter");
-  await page
-    .getByRole("menuitem", { name: "Link", exact: true })
-    .press("Enter");
+  const link = toolbar.getByRole("button", { name: "Link", exact: true });
+  await link.focus();
+  await link.press("Enter");
   await expect(text).toBeFocused();
   await expect(text).toHaveValue(
     "**[Overall](https://)** feedback without losing my place",
   );
+  const codeBlock = toolbar.getByRole("button", {
+    name: "Code block",
+    exact: true,
+  });
+  await codeBlock.hover();
+  await expect(page.getByText("Code block", { exact: true })).toBeVisible();
   await text.fill("**Overall** feedback without losing my place");
   await toolbar.getByRole("button", { name: "Preview", exact: true }).click();
   await expect(editor.locator("strong")).toHaveText("Overall");

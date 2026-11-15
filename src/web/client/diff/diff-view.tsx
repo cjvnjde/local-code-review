@@ -498,29 +498,11 @@ export function DiffView({
     scrollToRow: (path, row) => jump(path, undefined, row),
     resumeReading: (place) => jump(place.path, undefined, undefined, place),
     focusEditor: () => {
-      if (editorIndex >= 0) {
-        const viewport = scroll.current?.getBoundingClientRect();
-        const pinned = scroll.current
-          ?.querySelector<HTMLElement>('[data-sticky-editor="true"]')
-          ?.getBoundingClientRect();
-        const headerHeight =
-          virtual.measurementsCache[activeHeader]?.size ?? 58;
-        if (
-          !stickyEditor ||
-          !viewport ||
-          !pinned ||
-          pinned.top < viewport.top + headerHeight - 1 ||
-          pinned.bottom > viewport.bottom
-        )
-          virtual.scrollToIndex(editorIndex, { align: "auto" });
-        requestAnimationFrame(() =>
-          scroll.current
-            ?.querySelector<HTMLTextAreaElement>(
-              "[data-review-editor] textarea",
-            )
-            ?.focus({ preventScroll: true }),
-        );
-      }
+      requestAnimationFrame(() =>
+        scroll.current
+          ?.querySelector<HTMLTextAreaElement>("[data-review-editor] textarea")
+          ?.focus({ preventScroll: true }),
+      );
     },
   }));
   useLayoutEffect(() => {
@@ -554,6 +536,9 @@ export function DiffView({
     } else if (appliedItems.current !== items && anchor.current) {
       const keep = readingIndex(items, anchor.current);
       if (keep) {
+        // Mount refs can measure replacement cards after render. Refresh offsets
+        // before restoring the anchor, or stale estimates undo that correction.
+        virtual.getTotalSize();
         const item = virtual.measurementsCache[keep.index];
         if (item) virtual.scrollToOffset(Math.max(0, item.start - keep.offset));
       }
@@ -603,16 +588,8 @@ export function DiffView({
       : "";
   useLayoutEffect(() => {
     if (!subject && previousSubject.current) clearSelection();
-    if (subject && subject !== previousSubject.current && editorIndex >= 0) {
-      virtual.scrollToIndex(editorIndex, { align: "auto" });
-      requestAnimationFrame(() =>
-        scroll.current
-          ?.querySelector<HTMLTextAreaElement>("[data-review-editor] textarea")
-          ?.focus({ preventScroll: true }),
-      );
-    }
     previousSubject.current = subject;
-  }, [subject, editorIndex, virtual, clearSelection]);
+  }, [subject, clearSelection]);
   useLayoutEffect(() => {
     // Settings and committed content can change geometry without a scroll event.
     updateVisibleNote();
