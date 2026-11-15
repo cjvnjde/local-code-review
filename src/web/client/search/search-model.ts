@@ -10,6 +10,7 @@ const esc = (text: string) =>
   );
 
 export type SearchKind = "file" | "code" | "note" | "reply";
+export type CodeFacet = "all" | "added" | "removed" | "context";
 export type SearchDocument = {
   kind: SearchKind;
   path: string;
@@ -17,6 +18,7 @@ export type SearchDocument = {
   label: string;
   noteId?: string;
   row?: string;
+  codeFacet?: Exclude<CodeFacet, "all">;
   message?: number;
   context?: string;
   location?: string;
@@ -51,6 +53,8 @@ export function searchDocuments(
         path: f.path,
         text: r.text,
         row: rowKey(r),
+        codeFacet:
+          r.t === "add" ? "added" : r.t === "del" ? "removed" : "context",
         label:
           (r.t === "add" ? "Added" : r.t === "del" ? "Removed" : "Context") +
           " · " +
@@ -76,6 +80,8 @@ export function searchDocuments(
             : "");
     const base = { path: n.file || "", noteId: n.id, location };
     docs.push({ ...base, kind: "note", text: n.body || "", label: "Note" });
+    if (n.triage)
+      docs.push({ ...base, kind: "note", text: n.triage, label: "Triage" });
     if (n.web)
       docs.push({
         ...base,
@@ -109,6 +115,13 @@ export function searchDocuments(
     });
   }
   return docs;
+}
+
+/** Code facets narrow only code rows, never discard file or conversation matches. */
+export function matchesCodeFacet(result: SearchDocument, facet: CodeFacet) {
+  return (
+    facet === "all" || result.kind !== "code" || result.codeFacet === facet
+  );
 }
 
 const words = (query: string) => [

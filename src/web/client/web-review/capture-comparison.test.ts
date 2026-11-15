@@ -57,6 +57,15 @@ describe("capture comparison eligibility", () => {
     expect(
       wipeImageMismatch({ width: 0, height: 0 }, { width: 0, height: 0 }),
     ).not.toBeNull();
+    expect(
+      wipeImageMismatch(
+        { width: Infinity, height: 80 },
+        { width: Infinity, height: 80 },
+      ),
+    ).not.toBeNull();
+    expect(
+      wipeImageMismatch({ width: 1.5, height: 80 }, { width: 1.5, height: 80 }),
+    ).not.toBeNull();
   });
   test("different URL, missing screenshots and the same evidence are not pairs", () => {
     expect(
@@ -122,6 +131,17 @@ describe("capture comparison eligibility", () => {
     ]);
     expect(JSON.stringify(pairs)).not.toContain("proposal.png");
     expect(pairs.evidence[2]!.label).toContain("selection 2");
+  });
+  test("an incompatible choice keeps capture selectors available with an honest error", () => {
+    const html = webCaptureHtml({
+      before,
+      after: [{ ...after, url: before.url + "?other" }],
+    });
+    expect(html).toContain("Before capture");
+    expect(html).toContain("After capture");
+    expect(html).toContain(
+      "Two original screenshots of the same URL are required.",
+    );
   });
 });
 

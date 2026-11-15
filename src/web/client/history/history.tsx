@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { HistoryStore } from "./history-store.ts";
 import {
   historyScope,
+  historyScopeLabel,
   historySnapshot,
   historySummary,
   historyMatches,
@@ -14,6 +15,7 @@ import {
 import type { DiffResponse, ReviewResponse } from "../app/api.ts";
 import { Markdown } from "../components/markdown.tsx";
 import { Button } from "../components/ui/button.tsx";
+import { Select } from "../components/ui/select.tsx";
 
 const store = new HistoryStore();
 export function useHistoryCapture(diff: DiffResponse, review?: ReviewResponse) {
@@ -34,14 +36,18 @@ export function useHistoryCapture(diff: DiffResponse, review?: ReviewResponse) {
 }
 export function History({ diff }: { diff: DiffResponse }) {
   const [query, setQuery] = useState("");
+  const [scope, setScope] = useState("current");
   const recording = useQuery<string>({
     queryKey: ["history-error"],
     queryFn: () => "",
     enabled: false,
   });
   const entries = useQuery({
-    queryKey: ["history", diff.repo, diff.range, diff.id],
-    queryFn: () => store.list(historyScope(diff.repo, diff.range, diff.id)),
+    queryKey: ["history", diff.repo, diff.range, diff.id, scope],
+    queryFn: () =>
+      scope === "repository"
+        ? store.list(diff.repo, true)
+        : store.list(historyScope(diff.repo, diff.range, diff.id)),
   });
   function download() {
     const url = URL.createObjectURL(
@@ -61,6 +67,15 @@ export function History({ diff }: { diff: DiffResponse }) {
         Review states observed by this browser. History is read-only and stays
         after notes are deleted.
       </p>
+      <Select
+        label="History scope"
+        value={scope}
+        onValueChange={setScope}
+        options={[
+          { value: "current", label: "Current review" },
+          { value: "repository", label: "All repository reviews" },
+        ]}
+      />
       <input
         aria-label="Filter history"
         value={query}
@@ -92,6 +107,11 @@ export function History({ diff }: { diff: DiffResponse }) {
           <details key={entry.id} className="rounded-lg border p-3">
             <summary className="cursor-pointer text-sm">
               {new Date(entry.at).toLocaleString()}
+              {scope === "repository" && (
+                <span className="ml-3 text-xs">
+                  {historyScopeLabel(entry.scope)}
+                </span>
+              )}
               <span className="ml-3 text-xs text-muted-foreground">
                 {entry.reason || historySummary(entry)}
               </span>
@@ -149,6 +169,7 @@ export function History({ diff }: { diff: DiffResponse }) {
                 <div key={note.id} className="border-t pt-3">
                   <p className="mb-2 text-xs text-muted-foreground">
                     {note.file || "Overall"} · {note.status}
+                    {note.triage && ` · ${note.triage}`}
                   </p>
                   {note.code && (
                     <details>

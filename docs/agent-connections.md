@@ -38,12 +38,24 @@ For example, use an installed `codex-acp` or `claude-agent-acp` executable as `c
 [Codex adapter](https://github.com/agentclientprotocol/codex-acp),
 [Claude adapter](https://github.com/agentclientprotocol/claude-agent-acp), and
 [ACP agent list](https://agentclientprotocol.com/get-started/agents) for installation and authentication.
-The standalone lcr binary includes its transport and scheduler; no SDK, runtime package dependency,
-or application changes are required. The external agent executable is still required.
+The standalone lcr binary embeds the official ACP SDK and its scheduler. No runtime
+package installation or application changes are required. The external agent
+executable is still required.
 
 ACP creates or loads sessions it manages. It does **not** attach to an arbitrary running terminal.
 ACP is the only automatic connection mode; the old agent-specific attachment flags and bridges have
 been removed. An agent operating manually can still read and answer the Markdown review directly.
+
+### Connection doctor
+
+Run `lcr doctor` (or `lcr doctor --acp /path/to/profile.json`) to check executable
+resolution, initialization, and reported capabilities without sending a task or
+requiring Git. It starts and then closes the configured agent; authentication is
+still owned by that agent. `lcr doctor --help` lists the options.
+
+Stderr is discarded by default. `--diagnostics` opts into an in-memory 8 KiB tail
+for troubleshooting; it is printed, not saved. Agent logs can contain credentials,
+paths, or page content. Inspect and redact diagnostic output before sharing it.
 
 ### Model and thinking level
 
@@ -203,6 +215,20 @@ its reply is labelled as answering the earlier revision and leaves the current v
 Setup/authentication failures are **error**. Transport failure after prompt dispatch is **uncertain**,
 because tools might already have run. Agent tool progress is visible while working; completed replies
 use the normal live Markdown update path. Individual response tokens are not rendered as note replies.
+
+## Review rounds
+
+Before each prompt, lcr captures an immutable, bounded checkout baseline associated
+with the task and exact review. Storage failure stops dispatch; partial snapshots
+remain explicitly incomplete rather than pretending to prove a change. Baselines
+compare actual file contents, including additions/deletions, detected renames,
+binary hashes, and executable permissions—not the formatting of the original diff.
+
+The header's **Review rounds** panel also creates manual baselines. Verification is
+an explicit reviewer action against the displayed content fingerprint; later changes
+invalidate it. Completion, verdicts, and resolution cannot mark a round verified.
+Archive older rounds explicitly when the 32-active-round limit is reached. Archives
+remain inspectable and do not change queued work or replay a task.
 
 ## Persistence, restart and recovery
 

@@ -85,13 +85,15 @@ async function withEditor(
         return Response.json({ ref: "images/proposal.png" });
       }
       return new Response(
-        `<!doctype html><link rel="stylesheet" href="/styles/drawing.css"><textarea id="note">Keep my note</textarea><script type="module">
+        `<!doctype html><link rel="stylesheet" href="/styles/drawing.css"><section data-review-editor><textarea id="note">Keep my note</textarea></section><script type="module">
       import {openAnnotation} from '/editor.js';
+      window.addEventListener('error',event=>{window.editorError=event.error??new Error(event.message);});
+      window.addEventListener('unhandledrejection',event=>{window.editorError=event.reason;});
       const c=document.createElement('canvas');c.width=640;c.height=400;const ctx=c.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,640,400);ctx.fillStyle='#111';ctx.fillText('Original screenshot',30,30);ctx.fillStyle='#16803c';ctx.fillRect(240,80,40,40);
       const encoded=Promise.withResolvers();c.toBlob(encoded.resolve);
       await fetch('/source',{method:'POST',body:await encoded.promise});
       window.capture={mode:'area',url:location.origin,title:'Test',viewport:{width:640,height:400,dpr:1},scroll:{x:0,y:0},rect:{x:0,y:0,width:640,height:400},page:'images/source.png',area:'images/source.png'};
-      window.applied=[];window.confirm=()=>true;window.openEditor=(applyLabel)=>openAnnotation('test',{image:capture.area,cssWidth:capture.rect.width,annotation:capture.annotation,applyLabel},async a=>{applied.push(a);capture.annotation=a??undefined;});window.openEditor();
+      window.applied=[];window.confirm=()=>true;window.openEditor=(applyLabel)=>openAnnotation('test',{image:capture.area,cssWidth:capture.rect.width,annotation:capture.annotation,applyLabel},async a=>{applied.push(a);capture.annotation=a??undefined;},undefined,document.querySelector('[data-review-editor]'));window.openEditor();
     </script>`,
         { headers: { "content-type": "text/html" } },
       );
@@ -139,10 +141,25 @@ async function withEditor(
     };
     const until = (condition: string) =>
       js(`(()=>{
-      const ready=()=>${condition};if(ready())return;
+      const ready=()=>${condition};
       const gate=Promise.withResolvers();
-      const observer=new MutationObserver(()=>{if(ready()){observer.disconnect();gate.resolve();}});
+      const observer=new MutationObserver(check);
+      function check(){
+        try{
+          if(window.editorError)throw window.editorError;
+          const alert=document.querySelector('.annotation-error:not([hidden])');
+          if(alert?.textContent)throw new Error(alert.textContent);
+          if(!ready())return;
+          gate.resolve();
+        }catch(reason){gate.reject(reason);}
+        observer.disconnect();
+        window.removeEventListener('error',check);
+        window.removeEventListener('unhandledrejection',check);
+      }
       observer.observe(document,{childList:true,subtree:true,attributes:true});
+      window.addEventListener('error',check);
+      window.addEventListener('unhandledrejection',check);
+      check();
       return gate.promise;
     })()`);
     await until(
@@ -151,9 +168,9 @@ async function withEditor(
     const click = async (selector: string) => {
       const at = await js(`(async()=>{
         const target=document.querySelector(${JSON.stringify(selector)});
-        const popup=target.closest('[popover]');
-        if(popup&&!popup.matches(':popover-open')){
-          document.querySelector('[aria-controls="'+popup.id+'"]').click();
+        const popup=target.closest('.annotation-popover');
+        if(popup&&!popup.hasAttribute('data-open')){
+          document.querySelector('[data-command="'+popup.id.replace('annotation-','')+'"]').click();
           const frame=Promise.withResolvers();
           requestAnimationFrame(()=>requestAnimationFrame(frame.resolve));
           await frame.promise;
@@ -281,6 +298,73 @@ async function withEditor(
     await rm(profile, { recursive: true, force: true });
   }
 }
+
+browserTest(
+  "owned drawing dialogs mount real scenes and clean up portals without replacing the note or caret",
+  async () => {
+    await withEditor(async ({ js, click, reopen }) => {
+      await click("[data-command=cancel]");
+      await js(`(()=>{
+        window.noteBefore=document.querySelector('#note');
+        noteBefore.focus();noteBefore.setSelectionRange(2,7,'backward');
+        window.bodyChildrenBefore=[...document.body.children];
+        window.pendingEditor=openEditor();
+        window.duplicateEditor=openEditor();
+      })()`);
+      await reopen();
+      expect(
+        await js(`(()=>{
+          window.dialogBefore=document.querySelector('[data-annotation-editor]');
+          window.sceneBefore=dialogBefore.querySelector('[data-drawing-surface]');
+          window.portalBefore=dialogBefore.parentElement;
+          return {
+            samePromise:pendingEditor===duplicateEditor,
+            dialogs:document.querySelectorAll('[data-annotation-editor]').length,
+            role:dialogBefore.getAttribute('role'),
+            label:dialogBefore.getAttribute('aria-label'),
+            connected:sceneBefore.isConnected,
+            canvases:sceneBefore.querySelectorAll('canvas').length
+          };
+        })()`),
+      ).toMatchObject({
+        samePromise: true,
+        dialogs: 1,
+        role: "dialog",
+        label: "Draw on screenshot",
+        connected: true,
+        canvases: 2,
+      });
+      await click("[data-command=cancel]");
+      expect(
+        await js(`(async()=>{
+          await pendingEditor;
+          return {
+            dialogConnected:dialogBefore.isConnected,
+            portalConnected:portalBefore.isConnected,
+            sceneChildren:sceneBefore.childElementCount,
+            bodyRestored:bodyChildrenBefore.length===document.body.children.length&&bodyChildrenBefore.every((node,index)=>node===document.body.children[index]),
+            sameNote:noteBefore===document.querySelector('#note'),
+            focused:document.activeElement===noteBefore,
+            value:noteBefore.value,
+            caret:[noteBefore.selectionStart,noteBefore.selectionEnd,noteBefore.selectionDirection]
+          };
+        })()`),
+      ).toEqual({
+        dialogConnected: false,
+        portalConnected: false,
+        sceneChildren: 0,
+        bodyRestored: true,
+        sameNote: true,
+        focused: true,
+        value: "Keep my note",
+        caret: [2, 7, "backward"],
+      });
+      await reopen();
+      await click("[data-command=cancel]");
+    });
+  },
+  30000,
+);
 
 browserTest(
   "unsaved shapes resize with fixed opposite corners; undo, redo, and canceled drags preserve geometry",
@@ -577,10 +661,15 @@ browserTest(
     await withEditor(async ({ click, point, drag, js, save, reopen }) => {
       const change = (field: string, value: unknown) =>
         js(`(()=>{
-        const el=document.querySelector('[data-field="${field}"]');
-        if(el.type==='checkbox')el.checked=${JSON.stringify(value)};
-        else el.value=${JSON.stringify(value)};
-        el.dispatchEvent(new Event('change',{bubbles:true}));
+        const control=document.querySelector('[data-field="${field}"]');
+        const el=control.querySelector('input[type=range]')??control;
+        if(el.type==='checkbox'){
+          if(el.checked!==${JSON.stringify(value)})el.click();
+        } else {
+          Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el,${JSON.stringify(value)});
+          el.dispatchEvent(new Event('input',{bubbles:true}));
+          el.dispatchEvent(new Event('change',{bubbles:true}));
+        }
       })()`);
       await click("[data-tool=callout]");
       await drag({ x: 120, y: 120 }, { x: 220, y: 200 });
@@ -667,8 +756,8 @@ browserTest(
         el.value='This label wraps over the screenshot';el.dispatchEvent(new Event('input',{bubbles:true}));
         for(const [name,value] of [['wrap','120'],['text-outline',true],['text-leader',true]]){
           const field=document.querySelector('[data-field="'+name+'"]');
-          if(field.type==='checkbox')field.checked=value;else field.value=value;
-          field.dispatchEvent(new Event('change',{bubbles:true}));
+          if(field.type==='checkbox'){if(field.checked!==value)field.click();}
+          else {Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(field,value);field.dispatchEvent(new Event('input',{bubbles:true}));}
         }
       })()`);
       const location = await js(`(()=>{
@@ -788,7 +877,7 @@ browserTest(
       );
       expect(
         await js(
-          "document.querySelector('#annotation-more-tools').matches(':popover-open')",
+          "document.querySelector('#annotation-more-tools').hasAttribute('data-open')",
         ),
       ).toBe(false);
       expect(
@@ -804,7 +893,7 @@ browserTest(
       await key(" ");
       expect(
         await js(
-          "document.querySelector('#annotation-more-tools').matches(':popover-open')",
+          "document.querySelector('#annotation-more-tools').hasAttribute('data-open')",
         ),
       ).toBe(false);
       expect(
@@ -821,7 +910,7 @@ browserTest(
       await click(".annotation-active-tool");
       expect(
         await js(
-          "document.querySelector('#annotation-more-tools').matches(':popover-open')",
+          "document.querySelector('#annotation-more-tools').hasAttribute('data-open')",
         ),
       ).toBe(false);
       await click("[data-tool=rectangle]");
@@ -861,7 +950,7 @@ browserTest(
               visible:controls.every(el=>{const r=el.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth;}),
               completionVisible:apply.width>0&&cancel.right<=innerWidth&&apply.top>=0,
               canvasHeight:editor.querySelector('.annotation-viewport').clientHeight,
-              popupOpen:editor.querySelector('#annotation-more-tools').matches(':popover-open'),
+              popupOpen:editor.querySelector('#annotation-more-tools').hasAttribute('data-open'),
               active:editor.querySelector('[data-tool="${tool}"]').getAttribute('aria-pressed')
             };
           })()`);
@@ -914,7 +1003,7 @@ browserTest(
           const margin=stripe.getBoundingClientRect();
           const zoom=document.querySelector('.annotation-zoom-tools').getBoundingClientRect();
           return {
-            originalVisible:original.checkVisibility()&&!original.closest('[popover]'),
+            originalVisible:original.checkVisibility()&&!original.closest('.annotation-popover'),
             paddingVisible:padding.checkVisibility()&&padding.textContent.includes('not captured content'),
             striped:getComputedStyle(stripe).backgroundImage.includes('repeating-linear-gradient'),
             marginEndsAtSource:Math.abs(margin.bottom-source.top)<1,
@@ -971,6 +1060,54 @@ browserTest(
       expect(await js("document.querySelector('#note').value")).toBe(
         "Keep my note",
       );
+    });
+  },
+  30000,
+);
+
+browserTest(
+  "React pressure controls preserve classic strokes and pressure PNGs reopen editable and undoable",
+  async () => {
+    await withEditor(async ({ click, drag, js, save, reopen }) => {
+      await drag({ x: 120, y: 120 }, { x: 220, y: 140 });
+      await click("[data-tool=pen]");
+      await click("[data-command=options]");
+      await js(`(()=>{
+        const mode=document.querySelector('[data-field=pen-mode]');
+        mode.value='pressure';mode.dispatchEvent(new Event('change',{bubbles:true}));
+      })()`);
+      await click("[data-command=options]");
+      await drag({ x: 120, y: 220 }, { x: 260, y: 260 });
+      const first = await save();
+      expect(first.marks[0]).not.toHaveProperty("stroke");
+      expect(first.marks[1]).toMatchObject({
+        tool: "pen",
+        stroke: {
+          algorithm: "perfect-freehand",
+          version: 1,
+          libraryVersion: "1.2.3",
+          pressure: "simulated",
+        },
+      });
+      const pressure = first.marks[1]!;
+      if (pressure.tool !== "pen" || !pressure.stroke)
+        throw new Error("Expected pressure metadata");
+      expect(pressure.stroke.pressures.length).toBe(pressure.points.length);
+      await reopen();
+      expect((await save()).marks).toEqual(first.marks);
+      await reopen();
+      await click("[data-tool=select]");
+      await js(`(()=>{
+        const select=document.querySelector('[data-field=mark]');
+        select.value='1';select.dispatchEvent(new Event('change',{bubbles:true}));
+      })()`);
+      await js(`(()=>{
+        const field=document.querySelector('[data-field=width]');
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(field,'18');
+        field.dispatchEvent(new Event('input',{bubbles:true}));
+      })()`);
+      await click("[data-command=undo]");
+      expect((await save()).marks).toEqual(first.marks);
     });
   },
   30000,

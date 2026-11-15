@@ -111,7 +111,7 @@ function ownMessage(doc: ReviewDoc, id: string, at: string) {
   return { note, message: note.messages[index]! };
 }
 
-/** Only reviewer-owned fields: an agent reply or verdict must never wake the agent again. */
+/** Work-affecting reviewer fields only: triage, agent replies and verdicts never wake the agent. */
 function reviewerFields(note: ReviewNote): string {
   return JSON.stringify([
     note.body,

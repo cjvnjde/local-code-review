@@ -1,4 +1,4 @@
-import type { Cdp } from "../browser/cdp.ts";
+import type { Cdp, CdpEvent, CdpEventParams } from "../browser/cdp.ts";
 import type { ContextPartInput } from "../review/context.ts";
 import { boundedRequest, safeEvidenceUrl } from "./evidence.ts";
 
@@ -101,9 +101,9 @@ export class DiagnosticsEvidence {
       ).catch(() => {});
       return;
     }
-    const on = (
-      method: string,
-      callback: (event: Record<string, unknown>) => void,
+    const on = <M extends CdpEvent>(
+      method: M,
+      callback: (event: CdpEventParams<M>) => void,
     ) => {
       this.listeners.push(
         this.cdp.on(method, (event, sid) => {
@@ -136,7 +136,7 @@ export class DiagnosticsEvidence {
         this.requests.delete(this.requests.keys().next().value!);
         this.clipped = true;
       }
-      const request = event.request as Record<string, unknown>;
+      const request = event.request;
       this.requests.set(event.requestId, {
         at: Date.now(),
         ...(typeof request.method === "string" &&
@@ -157,7 +157,7 @@ export class DiagnosticsEvidence {
         typeof event.response !== "object"
       )
         return;
-      const response = event.response as Record<string, unknown>;
+      const response = event.response;
       if (
         typeof response.status !== "number" ||
         !Number.isInteger(response.status) ||

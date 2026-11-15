@@ -1,5 +1,5 @@
 import type { ContextPartInput } from "../review/context.ts";
-import type { Cdp } from "../browser/cdp.ts";
+import type { Cdp, CdpCommand, CdpParams } from "../browser/cdp.ts";
 
 const MAX_JSON = 128 * 1024;
 type LayoutNode = { id: string; selector: string; targets: string[] };
@@ -214,7 +214,7 @@ export async function cssEvidence(
       detail: "No validated capture-time layout selectors were available.",
     };
   const deadline = Date.now() + 1500;
-  const request = (method: string, params: Record<string, unknown> = {}) => {
+  const request = <M extends CdpCommand>(method: M, params: CdpParams<M>) => {
     if (Date.now() >= deadline)
       throw new Error("Optional evidence deadline exceeded.");
     return boundedRequest(
@@ -303,8 +303,8 @@ export async function cssEvidence(
     });
   };
   try {
-    await request("DOM.enable");
-    await request("CSS.enable");
+    await request("DOM.enable", {});
+    await request("CSS.enable", {});
     const document = await request("DOM.getDocument", { depth: 0 });
     for (const node of nodes.slice(0, 12)) {
       try {
@@ -339,7 +339,9 @@ export async function cssEvidence(
           const rule = match.rule;
           if (!object(rule.selectorList) || !text(rule.selectorList.text, 2048))
             continue;
-          const style = object(rule.style) ? rule.style : {};
+          const style: Record<string, unknown> = object(rule.style)
+            ? rule.style
+            : {};
           const url =
             typeof rule.styleSheetId === "string"
               ? sheets.get(rule.styleSheetId)

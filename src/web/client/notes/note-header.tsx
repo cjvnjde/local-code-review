@@ -1,7 +1,40 @@
 import type { ReactNode } from "react";
-import type { ReviewComment } from "../../../shared/review-types.ts";
+import type {
+  NoteTriage,
+  ReviewComment,
+} from "../../../shared/review-types.ts";
 import { noteKey } from "../../../shared/note-id.ts";
 import { cn } from "../components/ui/button.tsx";
+import { Select } from "../components/ui/select.tsx";
+
+export const triageOptions = [
+  { value: "", label: "Unclassified" },
+  { value: "blocker", label: "Blocker" },
+  { value: "bug", label: "Bug" },
+  { value: "suggestion", label: "Suggestion" },
+  { value: "question", label: "Question" },
+] as const;
+
+export function TriageSelect({
+  value,
+  onChange,
+  disabled,
+}: {
+  value?: NoteTriage;
+  onChange: (value: NoteTriage | undefined) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <Select
+      label="Note triage"
+      className="h-8"
+      value={value || ""}
+      options={[...triageOptions]}
+      disabled={disabled}
+      onValueChange={(next) => onChange(next || undefined)}
+    />
+  );
+}
 
 /** Drafts and saved conversations keep the same identity row and spacing. */
 export function NoteHeader({
@@ -51,9 +84,17 @@ export function NoteHeader({
           </span>
         )}
       </div>
-      {(children || statusLabel) && (
+      {(children || statusLabel || note.triage) && (
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
           {children}
+          {note.triage && (
+            <span
+              className="rounded border px-1.5 py-0.5 font-medium"
+              aria-label={`Triage: ${note.triage}`}
+            >
+              {note.triage}
+            </span>
+          )}
           {statusLabel && (
             <span
               className={cn(

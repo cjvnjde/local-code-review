@@ -38,12 +38,16 @@ export interface NoteStatus {
   source: string;
 }
 
+/** Reviewer classification, independent from agent outcome and manual resolution. */
+export type NoteTriage = "blocker" | "bug" | "suggestion" | "question";
+
 export interface ReviewComment {
   /** Stable anchor id, also written into the review file so statuses can be matched back. */
   id?: string;
   /** Empty for a note about the review as a whole, which belongs to no file. */
   file: string;
   body: string;
+  triage?: NoteTriage;
   start: number;
   end: number;
   label?: string;
@@ -122,6 +126,7 @@ export interface ReviewNote {
   web?: import("./web-review.ts").WebReview;
   code?: string;
   body: string;
+  triage?: NoteTriage;
   status: NoteStatusKind;
   detail: string;
   messages: ReviewMessage[];

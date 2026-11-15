@@ -45,6 +45,40 @@ remain accessible in narrow windows. **Use drawing** returns an image to the dra
 **Save note** still saves the note. **Save drawing** updates an already-saved note.
 Originals and editable drawing data are retained.
 
+Compatible original screenshots also offer a **Pixel difference** overlay with changed
+pixel counts and percentages. URL, viewport, DPR, selection geometry, scroll, and
+decoded dimensions must match. Drawn proposals are never evidence for this metric.
+Threshold and anti-alias controls are explicit; comparison is lazy and bounded to
+2,000,000 pixels and 8,192 pixels per dimension. Browser decoding uses sRGB, with
+transparency compared over white. Existing wipe and side-by-side views remain.
+
+## Pre-capture privacy
+
+Use the overlay's privacy controls to mark rectangular regions before capturing or
+freezing. Pixels are replaced in memory before either the original screenshot or
+its crop is written. Frozen crops retain those masks server-side. This is not an
+editable drawing layer and cannot be undone from a saved capture.
+
+Masked captures omit DOM/text/style/diagnostic context, full-page images, title,
+and URL path, with explicit omission metadata. Invalid geometry fails closed.
+Masks belong to that viewport, not a selector that can safely follow page changes:
+choose fresh regions for later captures. Previously saved evidence is unchanged;
+adding a mask does not retroactively sanitize it. Review the saved image before
+sharing, and avoid capturing sensitive content outside the marked regions.
+
+## Accessibility
+
+**Check page accessibility** runs bundled axe-core only when requested. No CDN,
+extension, screenshots, or automatic agent dispatch is involved. The scan excludes
+the lcr overlay/editor, does not return raw node HTML, and covers the top-level
+document and open shadow roots. Iframes require manual review. Privacy mode also
+withholds target selectors and page-derived details.
+
+Violations and incomplete/manual-review findings remain distinct. Select findings
+and save them as real review notes with rule, impact, targets, engine, time, and
+page provenance. Only selected findings are persisted; saving them again does not
+duplicate notes. Automated checks do not establish accessibility conformance.
+
 ## Browser profiles
 
 - `--browser-profile shared` (default) uses lcr's dedicated browser profile under
@@ -112,8 +146,8 @@ HTML excludes form values, editable/hidden content, scripts, and arbitrary
 props/state. Diagnostics omit typed values, console arguments, exception text,
 headers, bodies, cookies, and storage. URL credentials, queries, and fragments are
 removed from diagnostic/CSS source URLs, but paths and semantic labels may still
-be sensitive. **Screenshots are not redacted.** Disable unwanted capture before
-reviewing sensitive pages.
+be sensitive. Screenshots are unredacted unless you selected privacy regions before
+capture. Disable unwanted capture and inspect redaction coverage before sharing.
 
 ### Select only the evidence needed
 

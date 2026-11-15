@@ -31,6 +31,27 @@ const revision = (
   )!;
 
 describe("review history revisions", () => {
+  test("triage-only changes are durable searchable revisions, including clearing", () => {
+    const labeled = { ...note, triage: "bug" };
+    const entry = revision([note], [labeled]);
+    expect(entry.changes[0]!.kinds).toEqual(["Triage changed"]);
+    expect(entry.snapshot.notes[0]!.triage).toBe("bug");
+    expect(historyMatches(entry, "bug")).toBe(true);
+    expect(historyText(entry, "snapshot")).toContain("Triage: bug");
+    expect(revision([labeled], [note]).changes[0]!.kinds).toEqual([
+      "Triage changed",
+    ]);
+    expect(
+      historyRevision(
+        { scope: "r", source: "page", snapshot: snapshot([labeled]) },
+        snapshot([labeled]),
+      ),
+    ).toBeNull();
+    expect(
+      snapshot([{ ...note, triage: "not-a-label" }]).notes[0]!.triage,
+    ).toBeUndefined();
+  });
+
   test("keeps screenshot coordinates and captures detached and records region changes", () => {
     const image = {
       side: "new",

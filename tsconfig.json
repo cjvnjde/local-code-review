@@ -12,6 +12,8 @@
     "lib": ["ESNext", "DOM", "DOM.Iterable"]
   },
   "include": [
+    "src/index.ts",
+    "src/**/*.d.ts",
     "src/web/client/**/*.tsx",
     "src/shared/note-id.ts",
     "scripts/build.ts",

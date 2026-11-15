@@ -8,6 +8,9 @@ import { readBlob } from "./git/blob.ts";
 import { openInBrowser } from "./browser/open.ts";
 import { HELP, parseArgs } from "./cli/args.ts";
 import { runContextCli } from "./cli/context.ts";
+import { runDoctorCli } from "./cli/doctor.ts";
+import { libraryNotices } from "./cli/licenses.ts";
+import { createReviewRoundStore } from "./review/rounds.ts";
 import {
   loadUserSettings,
   resolveAcpPath,
@@ -49,6 +52,15 @@ async function main() {
   const argv = process.argv.slice(2);
   if (argv[0] === "context") {
     console.log(await runContextCli(argv.slice(1)));
+    return;
+  }
+  if (argv[0] === "doctor") {
+    console.log(await runDoctorCli(argv.slice(1)));
+    return;
+  }
+  if (argv[0] === "licenses") {
+    if (argv.length !== 1) throw new Error("Usage: lcr licenses");
+    console.log(libraryNotices());
     return;
   }
   const explicit = parseArgs(argv);
@@ -113,11 +125,30 @@ async function main() {
   }
   const hub = createHub();
   let webUrl = "";
+  const rounds = createReviewRoundStore({
+    repoRoot,
+    outDir: options.outDir,
+    readNotes: async (review) => {
+      const absolute = path.resolve(repoRoot, review);
+      const name = path.relative(
+        path.resolve(repoRoot, options.outDir),
+        absolute,
+      );
+      const doc = await readReview(name);
+      return (doc?.notes ?? []).map((note) => ({
+        review: absolute,
+        noteId: note.id,
+        file: note.file,
+        label: note.label,
+      }));
+    },
+  });
   const agent = agentConfig
     ? createManagedAgent({
         repoRoot,
         outDir: options.outDir,
         session,
+        rounds,
         directory: path.resolve(
           repoRoot,
           (
@@ -212,7 +243,7 @@ async function main() {
         const source = doc?.notes.find((note) => note.id === from.id);
         if (!source) return null;
         return session.import(
-          comment,
+          { ...comment, triage: comment.triage ?? source.triage },
           source.messages,
           `${from.file}#${from.id}`,
         );
@@ -221,6 +252,7 @@ async function main() {
       hub,
       agent,
       web,
+      rounds,
     });
   } catch (error) {
     // The queue already owns its lock; a failed HTTP bind must release that ownership.

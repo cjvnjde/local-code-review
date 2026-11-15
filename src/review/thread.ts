@@ -1,4 +1,8 @@
-import type { NoteStatusKind, ReviewComment } from "../shared/review-types.ts";
+import type {
+  MessageRole,
+  NoteStatusKind,
+  ReviewComment,
+} from "../shared/review-types.ts";
 import {
   webReview,
   webReviewLines,
@@ -101,6 +105,9 @@ const MARKER = /<!--\s*lcr:(.+?)\s*-->/;
 const FROM = /^<!--\s*lcr:from\s+(.+?)\s*-->\s*$/;
 const WEB = /^<!-- lcr:web (.+) -->$/;
 const IMAGE = /^<!-- lcr:image (.+) -->$/;
+/** A sealed, human-readable classification; ordinary "Triage:" prose remains prose. */
+const TRIAGE =
+  /^Triage: (blocker|bug|suggestion|question) <!-- lcr:triage -->$/;
 const MESSAGE =
   /^\*\*(Reviewer|Agent)\*\*\s*(?:<!--\s*lcr:m\s*([^>]*?)\s*-->\s*)?$/i;
 const STATUS = /^\s*status\s*:\s*(.+?)\s*$/i;
@@ -178,6 +185,7 @@ function dangerous(line: string): boolean {
     MESSAGE.test(line) ||
     SNIPPET.test(line) ||
     FROM.test(line) ||
+    TRIAGE.test(line) ||
     IMAGE.test(line) ||
     WEB.test(line) ||
     END.test(line)
@@ -475,6 +483,15 @@ function readOpening(note: ReviewNote, lines: string[]): void {
 
   for (let at = 0; at < lines.length; at++) {
     const line = lines[at] as string;
+    const triage =
+      !open &&
+      !note.triage &&
+      !body.some((entry) => entry.trim()) &&
+      TRIAGE.exec(line);
+    if (triage) {
+      note.triage = triage[1] as ReviewNote["triage"];
+      continue;
+    }
     const web =
       !open &&
       !note.web &&
@@ -716,6 +733,7 @@ export function noteFromComment(comment: ReviewComment): ReviewNote {
     messages: [],
   };
   if (comment.scope) note.scope = comment.scope;
+  if (comment.triage) note.triage = comment.triage;
   if (comment.scope === "global") {
     note.start = 0;
     note.end = 0;
@@ -777,6 +795,7 @@ export function renderNote(note: ReviewNote): string[] {
       ? " (line numbers before the change)"
       : "";
   const out = [`### ${headingKey(note)}${side}${marker}`, ""];
+  if (note.triage) out.push(`Triage: ${note.triage} <!-- lcr:triage -->`, "");
   if (note.from)
     out.push(`<!-- lcr:from ${note.from.replace(/[<>]/g, "")} -->`, "");
   if (note.web) out.push(...webReviewLines(note.web));

@@ -1,6 +1,13 @@
 import { expect, test } from "bun:test";
 import { browserEvidence, cssEvidence, safeEvidenceUrl } from "./evidence.ts";
 import { DiagnosticsEvidence } from "./diagnostics-evidence.ts";
+import type {
+  CdpCommand,
+  CdpParams,
+  CdpResult,
+  CdpEvent,
+  CdpEventParams,
+} from "../browser/cdp.ts";
 
 class ProtocolFixture {
   listeners = new Map<
@@ -9,11 +16,11 @@ class ProtocolFixture {
   >();
   calls: string[] = [];
   matched: unknown[] = [];
-  async send(
-    method: string,
-    _params?: Record<string, unknown>,
+  async send<M extends CdpCommand>(
+    method: M,
+    _params?: CdpParams<M>,
     _session?: string,
-  ): Promise<Record<string, unknown>> {
+  ): Promise<CdpResult<M>> {
     this.calls.push(method);
     if (method === "CSS.enable")
       this.emit("CSS.styleSheetAdded", {
@@ -23,21 +30,27 @@ class ProtocolFixture {
             "https://user:password@example.test/site.css?secret=value#token",
         },
       });
-    if (method === "DOM.getDocument") return { root: { nodeId: 1 } };
-    if (method === "DOM.querySelector") return { nodeId: 2 };
-    if (method === "CSS.getMatchedStylesForNode")
-      return { matchedCSSRules: this.matched };
-    return {};
+    const result =
+      method === "DOM.getDocument"
+        ? { root: { nodeId: 1 } }
+        : method === "DOM.querySelector"
+          ? { nodeId: 2 }
+          : method === "CSS.getMatchedStylesForNode"
+            ? { matchedCSSRules: this.matched }
+            : {};
+    // Fixtures deliberately include malformed/partial browser payloads to test filtering.
+    return result as CdpResult<M>;
   }
-  on(
-    method: string,
-    callback: (event: Record<string, unknown>, session?: string) => void,
+  on<M extends CdpEvent>(
+    method: M,
+    callback: (event: CdpEventParams<M>, session?: string) => void,
   ) {
     const listeners = this.listeners.get(method) ?? new Set();
-    listeners.add(callback);
+    const listener = callback as (event: unknown, session?: string) => void;
+    listeners.add(listener);
     this.listeners.set(method, listeners);
     return () => {
-      listeners.delete(callback);
+      listeners.delete(listener);
     };
   }
   emit(method: string, event: Record<string, unknown>, session = "target") {
@@ -248,11 +261,15 @@ test("diagnostics pending requests are bounded and unsafe URL schemes excluded",
 
 test("late diagnostic enable completion cannot restore recording after disable", async () => {
   const protocol = new ProtocolFixture();
-  const enabled = Promise.withResolvers<Record<string, unknown>>();
+  const enabled = Promise.withResolvers<CdpResult<"Network.enable">>();
   const send = protocol.send.bind(protocol);
-  protocol.send = (method, params, session) =>
+  protocol.send = <M extends CdpCommand>(
+    method: M,
+    params?: CdpParams<M>,
+    session?: string,
+  ): Promise<CdpResult<M>> =>
     method === "Network.enable"
-      ? enabled.promise
+      ? (enabled.promise as Promise<CdpResult<M>>)
       : send(method, params, session);
   const recorder = new DiagnosticsEvidence(protocol, "target");
   const pending = recorder.configure(true);

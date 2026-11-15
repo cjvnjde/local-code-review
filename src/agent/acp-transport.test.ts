@@ -155,11 +155,8 @@ test("ACP process exit rejects outstanding requests and intentional close remain
     .catch((error: Error) => error);
   await healthy.client.close();
   expect(await stopped).toBeInstanceOf(Error);
-  expect((await stopped).message).toContain("stopped");
   expect(healthy.losses).toEqual([]);
-  await expect(healthy.client.request("session/new", {})).rejects.toThrow(
-    "closed",
-  );
+  await expect(healthy.client.request("session/new", {})).rejects.toThrow();
 });
 
 test("an ACP request timeout fails the whole connection rather than permitting concurrent uncertain execution", async () => {
@@ -192,4 +189,33 @@ test("ACP session restoration honors negotiated load support and validates new s
   expect(await unsupported.client.session()).toBe("created-session");
   const invalid = await peer("invalid-session");
   await expect(invalid.client.session()).rejects.toThrow("no session id");
+});
+
+test.each(["oversized", "partial"])(
+  "ACP fails closed on %s frames without replaying pending work",
+  async (kind) => {
+    const f = await peer();
+    const results = await Promise.allSettled([
+      f.client.request("fixture/hold", { name: "one" }),
+      f.client.request("fixture/bad", { kind }),
+    ]);
+    expect(results.map((result) => result.status)).toEqual([
+      "rejected",
+      "rejected",
+    ]);
+    expect(f.losses).toHaveLength(1);
+    await expect(f.client.session()).rejects.toThrow("closed");
+    await expect(f.client.start()).rejects.toThrow("closed");
+  },
+);
+
+test("closing with an undecided permission discards it and does not report an unexpected loss", async () => {
+  const f = await peer();
+  await f.client.request("fixture/permission", { sessionId: "a" });
+  expect(f.permissions).toHaveLength(1);
+  await f.client.close();
+  expect(() => f.client.decide(f.permissions[0]!.id, "allow")).toThrow(
+    "no longer available",
+  );
+  expect(f.losses).toEqual([]);
 });

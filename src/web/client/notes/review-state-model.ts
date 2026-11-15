@@ -1,6 +1,6 @@
 import type { ReviewNote } from "../../../shared/review-types.ts";
 
-/** Browser-local acknowledgement is invalidated by any conversation revision. */
+/** Browser-local acknowledgement tracks conversation revisions, never triage-only changes. */
 export const reviewRevision = (note: ReviewNote) =>
   JSON.stringify([note.body, note.messages, note.status, note.detail]);
 

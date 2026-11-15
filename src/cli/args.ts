@@ -119,6 +119,14 @@ Offline context:
   lcr context read <id> --review <review.md> --part <name> [--select /pointer] [--offset N --limit N]
   lcr context --help         Read saved AI context without Git, settings, or an agent
 
+Agent diagnostics:
+  lcr doctor [--acp <config.json>] [--diagnostics]
+                            Check the configured agent without sending a task
+  lcr doctor --help          Show diagnostic options and privacy information
+
+Library notices:
+  lcr licenses              Print bundled library licenses and axe-core source availability
+
 Options:
   -h, --help                 Show this help and exit
   -v, --version              Print the build stamp and exit

@@ -1,4 +1,5 @@
 import Konva from "konva";
+import { pressureOutline } from "./annotation-pressure.ts";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import {
@@ -50,6 +51,13 @@ export interface AnnotationSceneModel {
   pendingText: AnnotationPoint | null;
 }
 type Measure = (text: string, size: number) => number;
+export interface AnnotationScene {
+  measure: Measure;
+  render(model: AnnotationSceneModel, exporting?: boolean): void;
+  hit(at: AnnotationPoint): number;
+  export(model: AnnotationSceneModel): Promise<Blob>;
+  destroy(): void;
+}
 const points = (...values: AnnotationPoint[]) =>
   values.flatMap(({ x, y }) => [x, y]);
 const box = (from: AnnotationPoint, to: AnnotationPoint) => ({
@@ -298,6 +306,15 @@ function DrawingMark({
     lineCap: "round" as const,
     lineJoin: "round" as const,
   };
+  if (mark.tool === "pen" && mark.stroke)
+    return (
+      <Line
+        points={pressureOutline(mark)}
+        closed
+        fill={mark.color}
+        strokeEnabled={false}
+      />
+    );
   if (mark.tool === "pen" || mark.tool === "highlighter") {
     const opacity = mark.tool === "highlighter" ? mark.opacity : 1;
     return mark.points.length === 1 ? (
@@ -531,7 +548,7 @@ function Guides({
 /** The same Konva scene owns rendering, hit testing and PNG export for every tool.
  * Saved data remains our validated, portable mark model; never deserialize arbitrary nodes.
  */
-export function createAnnotationScene(host: HTMLElement) {
+export function createAnnotationScene(host: HTMLElement): AnnotationScene {
   // Coordinates already use the source image's physical pixels (including HiDPI
   // captures). Avoid allocating another devicePixelRatio-sized copy of each layer.
   Konva.pixelRatio = 1;

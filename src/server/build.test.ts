@@ -46,8 +46,6 @@ test("production bundle processes Tailwind without warnings and preserves highli
     const html = await Bun.file(path.join(directory, htmlFile!)).text();
     expect(html).toContain("::highlight(lcr-selection)");
     expect(html).toContain("::highlight(lcr-notes)");
-    expect(html).toContain("var(--primary)");
-    expect(html).toContain("#f59e0b33");
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

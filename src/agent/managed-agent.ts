@@ -22,6 +22,7 @@ import {
   discoverContexts,
   type ContextDiscovery,
 } from "../review/context-discovery.ts";
+import type { ReviewRoundStore } from "../review/rounds.ts";
 
 interface Options {
   repoRoot: string;
@@ -29,6 +30,7 @@ interface Options {
   directory: string;
   session: ReviewSession;
   config: AcpConfig;
+  rounds?: Pick<ReviewRoundStore, "capture">;
   notify(): void;
 }
 const stamp = () => new Date().toISOString();
@@ -254,6 +256,36 @@ export function createManagedAgent(options: Options): ManagedAgent {
           task.review,
           noteContextIds(note),
         );
+        if (options.rounds) {
+          activity = "Capturing review baseline";
+          const round = await options.rounds.capture({
+            source: "agent",
+            review: task.review,
+            taskId: task.id,
+            notes: [
+              {
+                review: task.review,
+                noteId: task.noteId,
+                file: note.file,
+                label: note.label,
+              },
+            ],
+          });
+          if (round.baseline === "failed")
+            throw new Error(
+              "Review baseline capture failed; agent handoff was not dispatched. See review rounds for missing evidence.",
+            );
+          if (closing) return;
+          if (
+            task.detail === "Cancellation requested." ||
+            !(await route.readNote(path.basename(task.review), task.noteId))
+          ) {
+            task.state = "cancelled";
+            task.finished = stamp();
+            persist();
+            continue;
+          }
+        }
         activity = "Working";
         prompted = true;
         liveTask = task;

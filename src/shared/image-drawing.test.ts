@@ -83,3 +83,47 @@ test("metadata accepts only bounded editable marks and local original attachment
     "PNG",
   );
 });
+
+test("versioned pressure strokes roundtrip in the existing PNG chunk without changing source pixels", () => {
+  const pressure: ImageDrawing = {
+    ...drawing,
+    annotation: {
+      ...drawing.annotation,
+      marks: [
+        {
+          tool: "pen",
+          color: "#ef4444",
+          width: 12,
+          points: [
+            { x: 12, y: 24 },
+            { x: 36, y: 48 },
+          ],
+          stroke: {
+            algorithm: "perfect-freehand",
+            version: 1,
+            libraryVersion: "1.2.3",
+            pressure: "pointer",
+            pressures: [0.15, 0.85],
+            thinning: 0.65,
+            smoothing: 0.5,
+            streamline: 0.5,
+            taperStart: 1,
+            taperEnd: 2,
+          },
+        },
+      ],
+    },
+  };
+  const encoded = encodeImageDrawing(png, pressure);
+  expect(decodeImageDrawing(encoded, pressure.annotation.image)).toEqual(
+    pressure,
+  );
+  expect(encoded.slice(0, png.length - 12)).toEqual(png.slice(0, -12));
+  expect(encodeImageDrawing(encoded, pressure)).toEqual(encoded);
+  const invalid = structuredClone(pressure);
+  const mark = invalid.annotation.marks[0]!;
+  if (mark.tool !== "pen" || !mark.stroke)
+    throw new Error("Expected pressure pen");
+  mark.stroke.pressures.pop();
+  expect(() => encodeImageDrawing(png, invalid)).toThrow("Invalid");
+});

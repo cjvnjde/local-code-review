@@ -48,11 +48,12 @@ import { Markdown } from "../components/markdown.tsx";
 import { Code } from "../components/code.tsx";
 import { suggestionBlock } from "../diff/model.ts";
 import { WebEvidence } from "../web-review/evidence.tsx";
-import { NoteHeader } from "./note-header.tsx";
+import { NoteHeader, TriageSelect } from "./note-header.tsx";
 
 export type Draft = {
   host?: "diff" | "panel";
   original?: string;
+  originalTriage?: ReviewComment["triage"];
   editing?: boolean;
 } & (
   | { kind: "note"; comment: ReviewComment }
@@ -74,6 +75,9 @@ export const withBody = (draft: Draft, body: string): Draft =>
   draft.kind === "note"
     ? { ...draft, comment: { ...draft.comment, body } }
     : { ...draft, body };
+export const draftChanged = (draft: Draft) =>
+  draftBody(draft) !== (draft.original || "") ||
+  (draft.kind === "note" && draft.comment.triage !== draft.originalTriage);
 
 export function Composer({
   draft,
@@ -679,11 +683,7 @@ export function Composer({
                   wrap(event.code === "KeyB" ? "**" : "_");
                   return;
                 }
-                if (
-                  event.key === "Escape" &&
-                  !busy &&
-                  body === (draft.original || "")
-                ) {
+                if (event.key === "Escape" && !busy && !draftChanged(draft)) {
                   event.preventDefault();
                   onClose();
                 }
@@ -779,6 +779,20 @@ export function Composer({
               to submit
             </p>
           </div>
+          {draft.kind === "note" && (
+            <TriageSelect
+              value={draft.comment.triage}
+              disabled={busy}
+              onChange={(triage) => {
+                const current = latest.current;
+                if (current.kind === "note")
+                  onChange({
+                    ...current,
+                    comment: { ...current.comment, triage },
+                  });
+              }}
+            />
+          )}
           {onAddCapture && (
             <Button
               size="sm"

@@ -70,6 +70,10 @@ const FOOTER = [
   "For each note, the last message in its thread is what you are answering. Everything above it is " +
     "history. A note with no thread yet is asking about its captured code or UI evidence.",
   "",
+  "A sealed `Triage:` line is the reviewer's optional classification (blocker, bug, suggestion, " +
+    "or question), not a verdict or execution instruction. Preserve it while answering; only the " +
+    "`Status:` line records your outcome.",
+  "",
   "A note may point at another note of this review using `#mk1a`, a local comment URL ending in " +
     "`#note=mk1a`, or the older link `[src/app.ts:12](lcr:mk1a)`. " +
     "It names the note in this file whose `<!-- lcr:... -->` marker ends with `#mk1a`: read that one " +

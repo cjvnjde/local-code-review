@@ -12,6 +12,7 @@ import {
   saveContext,
   type ContextPartInput,
 } from "./context.ts";
+import { privateCapture, REDACTION_OMISSION } from "../shared/redaction.ts";
 
 const OWN_PARTS = new Set([
   "capture",
@@ -70,7 +71,11 @@ export async function saveWebContext(
   capture: WebCapture,
   extras: ContextPartInput[] = [],
 ): Promise<WebCapture> {
-  const clean = record(capture);
+  const clean = record(
+    capture.redaction
+      ? privateCapture(capture, capture.redaction.regions)
+      : capture,
+  );
   const encoded = JSON.stringify(clean);
   const inherited: ContextPartInput[] = [];
   if (capture.context) {
@@ -145,7 +150,9 @@ export async function saveWebContext(
     },
     {
       name: "viewport",
-      label: "Captured viewport",
+      label: clean.redaction
+        ? "Permanently redacted viewport"
+        : "Captured viewport",
       type: "image/png",
       attachment: clean.page,
       ...(!clean.page
@@ -157,9 +164,13 @@ export async function saveWebContext(
     },
     {
       name: "selected-area",
-      label: "Original selected area",
+      label: clean.redaction
+        ? "Permanently redacted selected area"
+        : "Original selected area",
       type: "image/png",
-      detail: "Untouched selected-area evidence, not the annotated proposal.",
+      detail: clean.redaction
+        ? "Source pixels were irreversibly masked before this image was saved; masks are not editable drawing marks."
+        : "Untouched selected-area evidence, not the annotated proposal.",
       attachment: clean.area,
       ...(!clean.area
         ? {
@@ -181,6 +192,20 @@ export async function saveWebContext(
     ...inherited,
     ...extras,
   ];
+  if (clean.redaction) {
+    const safe = ["capture", "viewport", "selected-area", "proposal"];
+    for (let index = 0; index < parts.length; index++) {
+      const part = parts[index]!;
+      if (!safe.includes(part.name))
+        parts[index] = {
+          name: part.name,
+          label: part.label,
+          type: part.type,
+          status: "excluded",
+          detail: REDACTION_OMISSION,
+        };
+    }
+  }
   const label = `${clean.title || new URL(clean.url).pathname} — ${clean.mode}`
     .replace(/\s+/g, " ")
     .slice(0, 200);

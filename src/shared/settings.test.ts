@@ -125,4 +125,25 @@ describe("UI settings schema", () => {
     parsed.disabledHide!.push("generated/");
     expect(input.disabledHide).toEqual(["dist/", "*.snap"]);
   });
+
+  test("bounds stored strings and preference arrays without coercing their entries", () => {
+    for (const field of ["hide", "editor"]) {
+      expect(parseUiSettings({ [field]: "x".repeat(16384) })).toEqual({
+        [field]: "x".repeat(16384),
+      });
+      expect(() => parseUiSettings({ [field]: "x".repeat(16385) })).toThrow();
+    }
+    expect(
+      parseUiSettings({ disabledHide: Array(1000).fill("dist/") }).disabledHide,
+    ).toHaveLength(1000);
+    expect(() =>
+      parseUiSettings({ disabledHide: Array(1001).fill("dist/") }),
+    ).toThrow();
+    expect(() =>
+      parseUiSettings({ disabledHide: ["x".repeat(16385)] }),
+    ).toThrow();
+    expect(() =>
+      parseUiSettings({ navWidth: Number.MAX_SAFE_INTEGER + 1 }),
+    ).toThrow();
+  });
 });

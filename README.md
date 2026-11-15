@@ -2,15 +2,19 @@
 
 Review local Git changes and annotate a running web app. Feedback stays in Markdown, ready for any coding agent.
 
-This `v2` branch experiments with React, Tailwind, Base UI primitives, TanStack
-Query/Virtual, Konva/react-konva, react-markdown, highlight.js, and jsdiff. It replaces the handwritten
-browser UI while keeping the terminal CLI and standalone executable. See
-[development](docs/development.md) for the architecture and current feature scope.
+This `v2` branch uses React, Tailwind, Base UI, TanStack Query/Virtual, and
+Konva/react-konva while keeping the terminal CLI and standalone executable.
+Library-backed features include pressure drawing, screenshot differences, modern
+CSS colors, accessibility checks, and the official ACP SDK. Review rounds, note
+triage, search facets, and repository-wide history support follow-up work.
+See [development](docs/development.md) for the architecture and current scope.
 The screenshots and older releases on the default branch show the previous UI.
 
 ## Install
 
 Each release contains one standalone executable, compiled and minified with Bun, with the browser assets embedded. Git is required to review code; Bun and Node.js are not required to run the downloaded executable.
+`lcr licenses` prints the bundled integration licenses, third-party notices, and
+the source-availability link for axe-core; it also works outside a Git repository.
 
 ### Install with mise
 

@@ -140,10 +140,13 @@ export function useLive() {
       void client.invalidateQueries({ queryKey: ["review"] });
       void client.invalidateQueries({ queryKey: ["settings"] });
       void client.invalidateQueries({ queryKey: ["themes"] });
+      void client.invalidateQueries({ queryKey: ["review-rounds"] });
     };
     events.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
+        if (data.type === "diff" || data.type === "review")
+          void client.invalidateQueries({ queryKey: ["review-rounds"] });
         if (data.type === "diff")
           void client.invalidateQueries({ queryKey: ["diff"] });
         else if (data.type === "settings") {

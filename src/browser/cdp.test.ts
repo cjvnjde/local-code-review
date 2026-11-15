@@ -253,3 +253,41 @@ test.each(["cancel", "timeout"] as const)(
     }
   },
 );
+
+test("generated CDP mappings constrain commands, parameters, responses and events", async () => {
+  const f = await transport();
+  const result = f.cdp.send(
+    "Page.navigate",
+    { url: "https://example.test" },
+    "session-a",
+  );
+  const request = await f.received(1);
+  f.send({ id: request.id, result: { frameId: "main-frame" } });
+  const frameId: string = (await result).frameId;
+  expect(frameId).toBe("main-frame");
+  const off = f.cdp.on("Page.frameNavigated", (event, session) => {
+    const id: string = event.frame.id;
+    expect(id).toBe("main-frame");
+    expect(session).toBe("session-a");
+  });
+  f.send({
+    method: "Page.frameNavigated",
+    sessionId: "session-a",
+    params: { frame: { id: "main-frame" } },
+  });
+  const barrier = f.cdp.send("Browser.getVersion");
+  f.send({ id: (await f.received(2)).id, result: {} });
+  await barrier;
+  off();
+  if (false) {
+    // These assertions are checked by TypeScript, never sent over the wire.
+    // @ts-expect-error Unknown methods must be explicitly added to a narrow mapping.
+    f.cdp.send("Page.notACommand", {});
+    // @ts-expect-error Navigation requires a URL.
+    f.cdp.send("Page.navigate");
+    // @ts-expect-error Command parameters come from the generated protocol.
+    f.cdp.send("Page.navigate", { url: 42 });
+    // @ts-expect-error Unknown event names are not a string escape hatch.
+    f.cdp.on("Page.notAnEvent", () => {});
+  }
+});

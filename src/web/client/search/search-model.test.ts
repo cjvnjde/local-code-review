@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   matchRanges,
+  matchesCodeFacet,
   searchDocuments,
   searchExcerpt,
   searchHtml,
@@ -45,6 +46,51 @@ const docs = () =>
   );
 
 describe("review search", () => {
+  test("code facets retain other result kinds and keep both-side jump anchors", () => {
+    const documents = docs();
+    const nonCode = documents.filter((result) => result.kind !== "code");
+    for (const facet of ["added", "removed", "context"] as const) {
+      const filtered = documents.filter((result) =>
+        matchesCodeFacet(result, facet),
+      );
+      expect(filtered.filter((result) => result.kind !== "code")).toEqual(
+        nonCode,
+      );
+      expect(
+        filtered
+          .filter((result) => result.kind === "code")
+          .map((result) => result.row),
+      ).toEqual(
+        facet === "added"
+          ? ["n11"]
+          : facet === "removed"
+            ? ["o11"]
+            : ["n10", "n500"],
+      );
+    }
+    expect(
+      documents.filter((result) => matchesCodeFacet(result, "all")),
+    ).toEqual(documents);
+  });
+
+  test("triage is searchable independently of note text and status", () => {
+    const results = searchReview(
+      searchDocuments(
+        [],
+        [{ ...note, triage: "blocker" }],
+        new Map(),
+        new Map(),
+      ),
+      "blocker",
+    );
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({
+      kind: "note",
+      noteId: note.id,
+      label: "Triage",
+    });
+  });
+
   test("finds code on both sides and surrounding context without hunk headers", () => {
     expect(searchReview(docs(), "freshValue").map((r) => r.kind)).toEqual([
       "code",

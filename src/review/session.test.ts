@@ -41,6 +41,53 @@ const read = async (dir: string, file: string) =>
   parseReview(await readFile(path.join(dir, file), "utf8"));
 
 describe("createSession", () => {
+  test("triage changes and clearing persist across restarts without resubmitting or altering answered notes", async () => {
+    const dir = await workspace();
+    const session = createSession(dir, ".", "HEAD");
+    const comment = {
+      ...note("a|n12|n12|#triage"),
+      triage: "blocker" as const,
+    };
+    const { file } = await session.save({ comments: [comment] });
+    const doc = await read(dir, file);
+    const saved = doc.notes[0]!;
+    saved.status = "applied";
+    saved.detail = "Fixed safely";
+    saved.messages.push({
+      role: "agent",
+      at: "now",
+      body: "Applied the change.",
+    });
+    await writeFile(path.join(dir, file), renderMarkdown(doc), "utf8");
+    const workRevision = reviewerRevision(saved);
+
+    const relabeled = await session.save({
+      comments: [{ ...comment, triage: "question" }],
+    });
+    expect(relabeled.changed).toEqual([]);
+    const restarted = createSession(dir, ".", "HEAD");
+    await restarted.adoptNewest();
+    const restored = (await read(dir, file)).notes[0]!;
+    expect(restored).toMatchObject({
+      triage: "question",
+      status: "applied",
+      detail: "Fixed safely",
+    });
+    expect(restored.messages).toEqual(saved.messages);
+    expect(reviewerRevision(restored)).toBe(workRevision);
+    await restarted.reply(comment.id!, "Thanks for fixing it.");
+    expect((await read(dir, file)).notes[0]!.triage).toBe("question");
+
+    const cleared = await restarted.save({
+      comments: [{ ...comment, triage: undefined }],
+    });
+    expect(cleared.changed).toEqual([]);
+    const final = (await read(dir, file)).notes[0]!;
+    expect(final.triage).toBeUndefined();
+    expect(final.messages[0]).toEqual(saved.messages[0]);
+    expect(final.status).toBe("applied");
+  });
+
   test("screenshot regions survive replies, edits and restarts; deletion removes only the chosen region", async () => {
     const dir = await workspace(),
       session = createSession(dir, ".review", "HEAD");
@@ -704,7 +751,7 @@ describe("reopening and continuing", () => {
     session.startFresh();
 
     const carried = await session.import(
-      note("a|n30|n30|#9", "Rename this."),
+      { ...note("a|n30|n30|#9", "Rename this."), triage: "suggestion" },
       [{ role: "agent", at: "", body: "Renamed the local, not the field." }],
       "review-2026-01-01T00-00-00.md#a|n12|n12|#1",
     );
@@ -715,6 +762,7 @@ describe("reopening and continuing", () => {
       id: "a|n30|n30|#9",
       body: "Rename this.",
       status: "pending",
+      triage: "suggestion",
       from: "review-2026-01-01T00-00-00.md#a|n12|n12|#1",
     });
     expect(doc.notes[0]!.messages).toEqual([

@@ -6,12 +6,14 @@ let current: {
   close: (record?: boolean, focus?: boolean) => void;
 } | null = null;
 
-export const imageEditorOwners = new WeakMap<HTMLDialogElement, HTMLElement>();
+export const imageEditorOwners = new WeakMap<HTMLElement, HTMLElement>();
 
 export function imageEditorOwner(target: Element | null): HTMLElement | null {
   const editor = target?.closest<HTMLElement>("[data-review-editor]");
   if (editor) return editor;
-  const dialog = target?.closest("dialog");
+  const dialog = target?.closest<HTMLElement>(
+    "dialog, [data-annotation-editor]",
+  );
   return dialog ? imageEditorOwners.get(dialog) || null : null;
 }
 

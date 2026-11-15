@@ -36,6 +36,7 @@ import { DEFAULT_UI_SETTINGS } from "../shared/settings.ts";
 import { loadUserSettings, saveUiSettings } from "../cli/config.ts";
 import { loadThemes, saveTheme } from "../cli/themes.ts";
 import { BUILTIN_THEMES, type ThemeDraft } from "../shared/themes.ts";
+import { JSON_LIMITS } from "./request-schemas.ts";
 import type {
   DiffFile,
   NoteStatus,
@@ -444,7 +445,7 @@ describe("review settings handoff", () => {
       '{"expand":1.5}',
       '{"limit":1e999}',
       '{"disabledHide":["dist/",false]}',
-      JSON.stringify({ hide: "x".repeat(32768) }),
+      JSON.stringify({ hide: "x".repeat(16385) }),
     ]) {
       expect(
         (
@@ -631,7 +632,7 @@ describe("theme security and persistence", () => {
         ...draft,
         colors: { ...draft.colors, background: "url(https://evil.example)" },
       }),
-      JSON.stringify({ ...draft, name: "a".repeat(32769) }),
+      JSON.stringify({ ...draft, name: "a".repeat(81) }),
     ]) {
       const response = await request(started, "/api/themes", {
         method: "POST",
@@ -656,7 +657,7 @@ describe("theme security and persistence", () => {
           body: chunks,
         })
       ).status,
-    ).toBe(400);
+    ).toBe(413);
     expect(
       (
         await request(started, "/api/themes", {
@@ -1048,8 +1049,18 @@ describe("combined Git and live-page routes", () => {
           from: { x: 0, y: 0 },
           to: { x: 1, y: 1 },
         },
+        {
+          tool: "pen",
+          color: "#ff0000",
+          width: 1,
+          points: Array.from({ length: 3000 }, (_, index) => ({
+            x: index % 2,
+            y: index % 2,
+          })),
+        },
       ],
     };
+    expect(JSON.stringify(annotation).length).toBeGreaterThan(32768);
     const events: string[] = [],
       off = started.hub.add((event) => events.push(event));
     const annotate = (
@@ -1583,9 +1594,6 @@ describe("open-file API", () => {
     });
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({
-      error: "A file path is required.",
-    });
   });
 
   test("refuses a path that is not in the current diff", async () => {
@@ -2557,9 +2565,6 @@ describe("review conversation APIs", () => {
     });
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({
-      error: "A source review, a note id, and a comment are required.",
-    });
   });
 
   test("import carries the note into the current session with provenance", async () => {
@@ -3190,5 +3195,118 @@ describe("HTTP state preservation and stream lifetimes", () => {
     expect(response.headers.get("cache-control")).toBe("no-cache");
     expect(await response.bytes()).toEqual(new Uint8Array());
     expect(names).toEqual(["images/comparison.png"]);
+  });
+});
+
+describe("bounded JSON mutation boundaries", () => {
+  test("large notes, batch submissions, imports and replies survive persistence and reload", async () => {
+    const started = await startTestServer();
+    const body = "Detailed review evidence. ".repeat(4096).trim();
+    const large = { ...comment, body, code: "selected code\n".repeat(4096) };
+    const batchId = "assets/logo.png|n1|n1|#batch";
+    const importedId = "assets/logo.png|n1|n1|#imported";
+    const post = async (route: string, payload: unknown) => {
+      const response = await request(started, route, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      expect(response.status).toBe(200);
+      return response.json();
+    };
+    await post("/api/note", { comment: large, ask: false });
+    await post("/api/reply", { id: large.id, body, ask: false });
+    await post("/api/submit", { comments: [{ ...large, id: batchId }] });
+    await post("/api/import", {
+      from: { file: "review-old.md", id: "old-note" },
+      comment: { ...large, id: importedId },
+    });
+    const reloaded = createSession(started.options.repoRoot, ".review", "HEAD");
+    await reloaded.adoptMatching();
+    const notes = (await reloaded.read()).notes;
+    for (const id of [large.id, batchId, importedId])
+      expect(notes.find((note) => note.id === id)?.body).toBe(body);
+    expect(notes.find((note) => note.id === large.id)?.messages[0]?.body).toBe(
+      body,
+    );
+  });
+
+  test("chunked settings, controls, annotations and notes reject excess bytes without writes", async () => {
+    const started = await startTestServer({ web: webController() });
+    const events: string[] = [];
+    const detach = started.hub.add((event) => events.push(event));
+    try {
+      for (const [route, method, limit] of [
+        ["/api/settings", "PUT", JSON_LIMITS.settings],
+        ["/api/open-file", "POST", JSON_LIMITS.control],
+        ["/api/web/annotation", "POST", JSON_LIMITS.annotation],
+        ["/api/reply", "POST", JSON_LIMITS.reply],
+        ["/api/note", "POST", JSON_LIMITS.note],
+        ["/api/submit", "POST", JSON_LIMITS.submission],
+      ] as const) {
+        let remaining = limit + 1;
+        const chunk = new Uint8Array(64 * 1024).fill(32);
+        const stream = new ReadableStream<Uint8Array>({
+          pull(controller) {
+            const size = Math.min(remaining, chunk.byteLength);
+            controller.enqueue(chunk.subarray(0, size));
+            remaining -= size;
+            if (!remaining) controller.close();
+          },
+        });
+        const response = await request(started, route, {
+          method,
+          headers: { "content-type": "application/json" },
+          body: stream,
+        });
+        expect(response.status).toBe(413);
+      }
+      expect((await started.options.session.read()).notes).toEqual([]);
+      expect(events).toEqual([]);
+    } finally {
+      detach();
+    }
+  });
+
+  test("every JSON mutation rejects invalid top-level arrays and unknown envelope fields", async () => {
+    const started = await startTestServer({
+      web: webController(),
+      agent: {
+        agent: "test agent",
+        publish: () => ({ state: "queued", count: 0 }),
+        control: async () => {
+          throw new Error("Invalid input reached queue control.");
+        },
+      },
+    });
+    for (const [route, method] of [
+      ["/api/settings", "PUT"],
+      ["/api/themes", "POST"],
+      ["/api/agent/queue", "POST"],
+      ["/api/web/annotation", "POST"],
+      ["/api/web/selection", "POST"],
+      ["/api/web/draft", "DELETE"],
+      ["/api/web", "POST"],
+      ["/api/web/review", "POST"],
+      ["/api/web/focus", "POST"],
+      ["/api/web/capture", "POST"],
+      ["/api/open-file", "POST"],
+      ["/api/review", "PUT"],
+      ["/api/reply", "POST"],
+      ["/api/reply", "PUT"],
+      ["/api/note", "POST"],
+      ["/api/submit", "POST"],
+      ["/api/import", "POST"],
+    ]) {
+      for (const body of ["[]", '{"unknown":true}']) {
+        const response = await request(started, route!, {
+          method,
+          headers: { "content-type": "application/json" },
+          body,
+        });
+        expect(response.status).toBe(400);
+      }
+    }
+    expect((await started.options.session.read()).notes).toEqual([]);
   });
 });

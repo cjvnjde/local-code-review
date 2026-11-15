@@ -75,6 +75,7 @@ export function RelatedReviews({
                       comment: {
                         ...makeComment(file, place.from, place.to),
                         body: note.body,
+                        triage: note.triage,
                       },
                     },
                   },

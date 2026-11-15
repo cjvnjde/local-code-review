@@ -18,6 +18,7 @@ import {
   contextLink,
   contextPath,
 } from "../shared/context.ts";
+import { responseBytes } from "./response-bytes.ts";
 
 export interface ContextRouteOptions {
   repoRoot: string;
@@ -58,7 +59,7 @@ async function uploadBody(request: Request, json = false) {
   if (!request.body)
     throw new ContextRequestError("Context upload body is required.");
   const reader = request.body.getReader();
-  const chunks: Uint8Array[] = [];
+  const chunks: Uint8Array<ArrayBuffer>[] = [];
   let size = 0;
   try {
     while (true) {
@@ -69,7 +70,7 @@ async function uploadBody(request: Request, json = false) {
         await reader.cancel();
         throw new ContextRequestError("Context upload exceeds 12 MiB.", 413);
       }
-      chunks.push(result.value);
+      chunks.push(responseBytes(result.value));
     }
   } finally {
     reader.releaseLock();
@@ -299,7 +300,7 @@ export async function contextRoute(
     const safeImage = /^image\/(?:png|jpeg|gif|webp|avif|bmp|apng)$/.test(
       found.part.type,
     );
-    return new Response(found.bytes, {
+    return new Response(responseBytes(found.bytes), {
       headers: {
         ...headers,
         "content-type": safeImage

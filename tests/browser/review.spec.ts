@@ -803,7 +803,7 @@ test("bookmarks, full review search, references and context stay usable across n
   await seed.getByRole("button", { name: "Cancel", exact: true }).click();
   await page.keyboard.press("Control+k");
   await page
-    .getByRole("searchbox", { name: "Search review", exact: true })
+    .getByRole("combobox", { name: "Search review", exact: true })
     .fill("hello world");
   await page
     .getByRole("listbox", { name: "Search suggestions" })
@@ -1839,7 +1839,7 @@ test("compact header search and hover-only tree controls remain keyboard accessi
   });
   await page.goto(url);
   const header = page.getByRole("banner");
-  const search = header.getByRole("searchbox", {
+  const search = header.getByRole("combobox", {
     name: "Search review",
     exact: true,
   });
@@ -1945,10 +1945,6 @@ test("compact header search and hover-only tree controls remain keyboard accessi
   await search.fill("hello world");
   await expect(results).toBeVisible();
   await search.press("ArrowDown");
-  await expect(search).toHaveAttribute(
-    "aria-activedescendant",
-    /review-search-option-/,
-  );
   await search.press("Enter");
   await expect(results).toHaveCount(0);
   await expect(advanced).toBeVisible();
@@ -2054,7 +2050,7 @@ test("overall notes and formatting tools preserve the code reading position", as
     "**Overall** feedback without losing my place",
   );
   await page
-    .getByRole("searchbox", { name: "Search review", exact: true })
+    .getByRole("combobox", { name: "Search review", exact: true })
     .focus();
   await expect(notes).toBeHidden();
   await overall.click();

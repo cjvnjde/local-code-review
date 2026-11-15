@@ -28,7 +28,7 @@ import {
 } from "../app/agent-activity.tsx";
 import { useUi } from "../app/ui-preferences.tsx";
 import { useNoteEntrance } from "./note-motion.tsx";
-import { NoteHeader } from "./note-header.tsx";
+import { NoteHeader, TriageSelect } from "./note-header.tsx";
 import { refOf, refToken } from "./note-ref.ts";
 
 export function NoteCard({
@@ -59,6 +59,9 @@ export function NoteCard({
   const webEnabled = !!useDiff().data?.web;
   const action = useAction();
   const activity = useNoteAgentActivity(note.id);
+  const unread = state.unread(note);
+  const unreadBadge = useRef(unread);
+  if (unread > 0) unreadBadge.current = unread;
   const asking =
     action.isPending &&
     action.variables?.url === "/api/note" &&
@@ -106,6 +109,17 @@ export function NoteCard({
         ["pending", "unknown"].includes(note.status) ? undefined : note.status
       }
     >
+      <TriageSelect
+        value={note.triage}
+        disabled={action.isPending || !!editor}
+        onChange={(triage) =>
+          action.mutate({
+            url: "/api/note",
+            method: "POST",
+            body: { comment: { ...note, triage }, ask: false },
+          })
+        }
+      />
       <span
         className={
           state.resolved(note) ? "text-success" : "text-muted-foreground"
@@ -114,9 +128,16 @@ export function NoteCard({
       >
         {state.resolved(note) ? "Resolved" : "Open"} · this browser
       </span>
-      {state.unread(note) > 0 && (
-        <span className="text-xs font-medium text-primary">
-          {state.unread(note)} new from agent
+      {unreadBadge.current > 0 && (
+        // Reading on pointer entry or focus must not move the action being targeted.
+        <span
+          className={cn(
+            "text-xs font-medium text-primary",
+            unread === 0 && "invisible",
+          )}
+          aria-hidden={unread === 0}
+        >
+          {unreadBadge.current} new from agent
         </span>
       )}
     </NoteHeader>

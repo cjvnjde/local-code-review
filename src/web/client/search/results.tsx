@@ -1,56 +1,23 @@
-import {
-  useEffect,
-  useImperativeHandle,
-  useMemo,
-  useRef,
-  useState,
-  type Ref,
-  type RefObject,
-} from "react";
-import { createPortal } from "react-dom";
+import { Autocomplete } from "@base-ui/react/autocomplete";
+import { useEffect, useMemo, useState, type RefObject } from "react";
 import { X } from "lucide-react";
 import type { DiffFile, ReviewNote } from "../../../shared/review-types.ts";
 import {
   searchDocuments,
   searchReview,
   searchExcerpt,
+  matchesCodeFacet,
+  type CodeFacet,
   type SearchResult,
 } from "./search-model.ts";
 import { Button } from "../components/ui/button.tsx";
 
-export type SearchResultsHandle = {
-  key: (key: string) => boolean;
-};
-
-export function SearchResults({
-  files,
-  notes,
-  query,
-  open,
-  advanced,
-  anchor,
-  onAdvanced,
-  onActiveChange,
-  ref,
-  onSelect,
-  onClose,
-}: {
-  files: DiffFile[];
-  notes: ReviewNote[];
-  query: string;
-  open: boolean;
-  advanced: boolean;
-  anchor: RefObject<HTMLDivElement | null>;
-  onAdvanced: () => void;
-  onActiveChange: (id: string | undefined) => void;
-  ref?: Ref<SearchResultsHandle>;
-  onSelect: (result: SearchResult) => void;
-  onClose: () => void;
-}) {
-  const [kind, setKind] = useState("all");
-  const [limit, setLimit] = useState(100);
-  const [selected, setSelected] = useState(0);
-  const active = useRef<HTMLButtonElement>(null);
+/** Shared immutable index for the header suggestions and advanced results. */
+export function useSearchResults(
+  files: DiffFile[],
+  notes: ReviewNote[],
+  query: string,
+) {
   const documents = useMemo(
     () =>
       searchDocuments(
@@ -66,49 +33,19 @@ export function SearchResults({
       ),
     [files, notes],
   );
-  const results = useMemo(
-    () =>
-      searchReview(documents, query).filter(
-        (result) => !advanced || kind === "all" || result.kind === kind,
-      ),
-    [documents, query, kind, advanced],
-  );
-  useEffect(() => {
-    setLimit(100);
-    setSelected(0);
-  }, [query, kind, advanced]);
-  useEffect(() => {
-    onActiveChange(
-      open && !advanced && results[selected]
-        ? `review-search-option-${selected}`
-        : undefined,
-    );
-    if (open) active.current?.scrollIntoView({ block: "nearest" });
-  }, [open, advanced, selected, query, kind, results, onActiveChange]);
-  useImperativeHandle(ref, () => ({
-    key(key) {
-      if (key === "Escape") {
-        onClose();
-        return true;
-      }
-      if (key === "Enter") {
-        onAdvanced();
-        return true;
-      }
-      if (key === "ArrowDown" || key === "ArrowUp") {
-        const count = Math.min(results.length, advanced ? limit : 8);
-        const next = count
-          ? (selected + (key === "ArrowDown" ? 1 : -1) + count) % count
-          : 0;
-        setSelected(next);
-        return true;
-      }
-      return false;
-    },
-  }));
-  // Stay mounted so dismissing results never rebuilds the document index.
-  if (!open) return null;
-  const resultContent = (result: SearchResult) => (
+  return useMemo(() => searchReview(documents, query), [documents, query]);
+}
+
+function ResultContent({
+  result,
+  query,
+  advanced = false,
+}: {
+  result: SearchResult;
+  query: string;
+  advanced?: boolean;
+}) {
+  return (
     <>
       <span className="block text-xs text-primary">
         {result.path || "Overall"} · {result.label}
@@ -119,53 +56,100 @@ export function SearchResults({
       </span>
     </>
   );
-  if (!advanced) {
-    if (!anchor.current) return null;
-    return createPortal(
-      <div className="absolute inset-x-0 top-full z-40 mt-2 overflow-hidden rounded-lg border bg-popover shadow-xl">
-        <div
-          id="review-search-suggestions"
-          role="listbox"
-          aria-label="Search suggestions"
-          className="max-h-[min(60vh,32rem)] overflow-auto p-1"
+}
+
+/** A header-local portal preserves placement; Base UI owns list focus and navigation. */
+export function SearchSuggestions({
+  results,
+  query,
+  anchor,
+  onSelect,
+  onAdvanced,
+}: {
+  results: SearchResult[];
+  query: string;
+  anchor: RefObject<HTMLDivElement | null>;
+  onSelect: (result: SearchResult) => void;
+  onAdvanced: () => void;
+}) {
+  return (
+    <Autocomplete.Portal container={anchor}>
+      <Autocomplete.Positioner
+        anchor={anchor}
+        align="center"
+        sideOffset={8}
+        className="z-40 w-[var(--anchor-width)]"
+      >
+        <Autocomplete.Popup
+          initialFocus={false}
+          finalFocus={false}
+          className="overflow-hidden rounded-lg border bg-popover shadow-xl"
         >
-          {results.slice(0, 8).map((result, i) => (
-            <button
-              key={`${result.kind}:${i}`}
-              id={`review-search-option-${i}`}
-              role="option"
-              aria-selected={selected === i}
-              ref={i === selected ? active : undefined}
-              className={`block w-full space-y-1 rounded-md p-3 text-left hover:bg-accent ${i === selected ? "bg-accent" : ""}`}
-              onFocus={() => setSelected(i)}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => onSelect(result)}
-            >
-              {resultContent(result)}
-            </button>
-          ))}
-          <p
-            role="presentation"
-            className="px-3 py-2 text-xs text-muted-foreground"
+          <Autocomplete.List
+            aria-label="Search suggestions"
+            className="max-h-[min(60vh,32rem)] overflow-auto p-1"
           >
+            {results.slice(0, 8).map((result, index) => (
+              <Autocomplete.Item
+                key={`${result.kind}:${index}`}
+                value={result}
+                index={index}
+                className="block w-full cursor-pointer space-y-1 rounded-md p-3 text-left outline-none hover:bg-accent data-highlighted:bg-accent"
+                onClick={() => onSelect(result)}
+              >
+                <ResultContent result={result} query={query} />
+              </Autocomplete.Item>
+            ))}
+          </Autocomplete.List>
+          <Autocomplete.Status className="px-3 py-2 text-xs text-muted-foreground">
             {!query.trim()
               ? "Search files, code, notes, and replies."
               : !results.length
                 ? "No matching results."
                 : `${results.length} results`}
-          </p>
-        </div>
-        <Button
-          variant="ghost"
-          className="w-full justify-between rounded-none border-t px-3 text-xs"
-          onClick={onAdvanced}
-        >
-          Advanced search <kbd>Enter ↵</kbd>
-        </Button>
-      </div>,
-      anchor.current,
-    );
-  }
+          </Autocomplete.Status>
+          <Button
+            variant="ghost"
+            className="w-full justify-between rounded-none border-t px-3 text-xs"
+            onClick={onAdvanced}
+          >
+            Advanced search <kbd>Enter ↵</kbd>
+          </Button>
+        </Autocomplete.Popup>
+      </Autocomplete.Positioner>
+    </Autocomplete.Portal>
+  );
+}
+
+export function SearchResults({
+  results: allResults,
+  query,
+  open,
+  onSelect,
+  onClose,
+}: {
+  results: SearchResult[];
+  query: string;
+  open: boolean;
+  onSelect: (result: SearchResult) => void;
+  onClose: () => void;
+}) {
+  const [kind, setKind] = useState("all");
+  const [facet, setFacet] = useState<CodeFacet>("all");
+  const [limit, setLimit] = useState(100);
+  const results = useMemo(
+    () =>
+      allResults.filter(
+        (result) =>
+          (kind === "all" || result.kind === kind) &&
+          matchesCodeFacet(result, facet),
+      ),
+    [allResults, kind, facet],
+  );
+  useEffect(() => {
+    setLimit(100);
+  }, [query, kind, facet]);
+  if (!open) return null;
   return (
     <section
       id="review-search-results"
@@ -180,16 +164,40 @@ export function SearchResults({
       }}
     >
       <div className="flex flex-wrap items-center gap-2 border-b p-3">
-        {["all", "file", "code", "note", "reply"].map((item) => (
-          <Button
-            key={item}
-            size="sm"
-            variant={kind === item ? "outline" : "ghost"}
-            onClick={() => setKind(item)}
-          >
-            {item}
-          </Button>
-        ))}
+        <div
+          role="group"
+          aria-label="Result kind"
+          className="flex flex-wrap gap-1"
+        >
+          {["all", "file", "code", "note", "reply"].map((item) => (
+            <Button
+              key={item}
+              size="sm"
+              aria-pressed={kind === item}
+              variant={kind === item ? "outline" : "ghost"}
+              onClick={() => setKind(item)}
+            >
+              {item}
+            </Button>
+          ))}
+        </div>
+        <div
+          role="group"
+          aria-label="Code changes"
+          className="flex flex-wrap gap-1"
+        >
+          {(["all", "added", "removed", "context"] as const).map((item) => (
+            <Button
+              key={item}
+              size="sm"
+              aria-pressed={facet === item}
+              variant={facet === item ? "outline" : "ghost"}
+              onClick={() => setFacet(item)}
+            >
+              {item === "all" ? "All code" : item}
+            </Button>
+          ))}
+        </div>
         <span className="ml-auto self-center text-xs text-muted-foreground">
           {results.length} results
         </span>
@@ -203,16 +211,13 @@ export function SearchResults({
         </Button>
       </div>
       <div className="min-h-0 flex-1 space-y-2 overflow-auto p-4">
-        {results.slice(0, limit).map((result, i) => (
+        {results.slice(0, limit).map((result, index) => (
           <button
-            key={`${result.kind}:${i}`}
-            ref={i === selected ? active : undefined}
-            aria-current={i === selected ? "true" : undefined}
-            className={`block w-full space-y-2 rounded-lg border bg-card p-4 text-left hover:border-primary/50 ${i === selected ? "border-primary" : ""}`}
-            onFocus={() => setSelected(i)}
+            key={`${result.kind}:${index}`}
+            className="block w-full space-y-2 rounded-lg border bg-card p-4 text-left hover:border-primary/50 focus-visible:border-primary"
             onClick={() => onSelect(result)}
           >
-            {resultContent(result)}
+            <ResultContent result={result} query={query} advanced />
           </button>
         ))}
         {results.length > limit && (

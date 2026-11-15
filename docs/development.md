@@ -23,11 +23,19 @@ restarts the server when source changes. Bun's HTML bundler handles React and CS
 | UI and editor state                        | React 19 components and hooks                                               |
 | Server state, mutations, refetches         | TanStack Query                                                              |
 | Large code files                           | TanStack Virtual                                                            |
-| Accessible dialogs, tooltips, composition  | [Base UI](https://base-ui.com/react/overview/quick-start)                   |
+| Accessible controls, drawing shell, search | [Base UI](https://base-ui.com/react/overview/quick-start)                   |
 | Local UI components                        | shadcn-style Tailwind components, CVA, clsx, tailwind-merge                 |
 | Pane sizing                                | [react-resizable-panels](https://github.com/bvaughn/react-resizable-panels) |
 | Icons                                      | Lucide React                                                                |
 | Image drawing, selection and PNG rendering | [Konva](https://konvajs.org/) with react-konva                              |
+| Optional pressure/tapered strokes          | perfect-freehand, pinned to 1.2.3 with versioned metadata                   |
+| Original screenshot differences            | pixelmatch, lazy browser-side comparisons                                   |
+| Modern CSS color parsing                   | Culori's selective `culori/fn` imports                                      |
+| Explicit accessibility scans               | Bundled axe-core, top-level document and open shadow roots                  |
+| Pre-save screenshot masking                | Pure-JavaScript pngjs; no native addon                                      |
+| ACP framing and stable-v1 dispatch         | Official `@agentclientprotocol/sdk`                                         |
+| Typed CDP commands and events              | Generated `devtools-protocol` types, erased from runtime                    |
+| JSON and persisted-setting boundaries      | Zod plus streamed byte limits before parsing                                |
 | Markdown and GFM                           | react-markdown and remark-gfm                                               |
 | Syntax coloring                            | highlight.js                                                                |
 | Suggested replacement diffs                | jsdiff (`diff`)                                                             |
@@ -35,6 +43,16 @@ restarts the server when source changes. Bun's HTML bundler handles React and CS
 
 The small UI components are owned here rather than pulled from a hosted registry
 at runtime. There is no frontend server or CDN in the distributed application.
+
+Review-round snapshots and their independent verification records live beside the
+review output, not in agent task state. Snapshot limits and incomplete evidence are
+visible to the reviewer; an incomplete comparison cannot be verified.
+
+Every JSON mutation declares its byte cap. Settings/themes use 32 KiB; controls
+64 KiB; replies 4 MiB; annotations 16 MiB; notes/imports 32 MiB; submission batches
+64 MiB. Actual streamed bytes are counted even with a misleading Content-Length.
+Raw attachment/context uploads retain their existing 12 MiB limits. Zod does not
+coerce inputs, and domain, origin, token, and path checks remain separate.
 
 ## Project layout
 
@@ -81,8 +99,8 @@ bun run build -- --outfile /tmp/lcr
 bun run test:browser
 ```
 
-`check` type-checks the React application and its shared imports, runs Bun tests,
-and bundles the whole application. The build script uses the same Tailwind plugin
+`check` type-checks the React application, CLI, backend, and shared imports, runs
+Bun tests, and bundles the whole application. The build script uses the same Tailwind plugin
 and compiles both the server and HTML assets into one executable. Use this script
 instead of calling `bun build` directly, which does not register the Tailwind
 build plugin.
@@ -107,6 +125,9 @@ The release workflow installs dependencies with the lockfile before checking and
 building each platform. Only the executable goes into release archives. Users of
 the binary need Git, with no Bun, Node.js, package install, or adjacent assets.
 Optional ACP adapters and web capture keep their own requirements.
+License text for the integrated libraries is embedded at build time; `lcr licenses`
+includes the complete axe-core MPL-2.0 license, its third-party notices, and the
+matching unmodified source URL. No notice files need to accompany the executable.
 
 Playwright tests require installed Google Chrome by default. They build the
 executable, run it in an isolated Git repository without `node_modules`, exercise

@@ -9,6 +9,7 @@ import {
   type AnnotationDraftStorage,
 } from "./annotation-draft.ts";
 
+import { pressureStroke } from "./annotation-pressure.ts";
 class MemoryStorage implements AnnotationDraftStorage {
   values = new Map<string, string>();
   failure: "get" | "set" | "remove" | null = null;
@@ -88,6 +89,22 @@ describe("browser-local annotation drafts", () => {
     expect(value(store.load())).toEqual(drawing());
     restored.marks.splice(0);
     expect(value(store.load())).toEqual(drawing());
+  });
+
+  test("restores pressure samples and rendering parameters without flattening", () => {
+    const storage = new MemoryStorage();
+    const pen = mark();
+    if (pen.tool !== "pen") throw new Error("Expected a pen");
+    pen.stroke = pressureStroke("pointer", 0.2);
+    pen.stroke.pressures.push(0.9);
+    const draft = { ...empty(), marks: [pen] };
+    const { store } = seed(storage, draft);
+    expect(value(store.load())).toEqual(draft);
+    pen.stroke.pressures[0] = 0.8;
+    const restored = value(store.load())!.marks[0]!;
+    expect(restored.tool === "pen" && restored.stroke?.pressures).toEqual([
+      0.2, 0.9,
+    ]);
   });
 
   test("isolates repository, review, route, capture, baseline and geometry", () => {

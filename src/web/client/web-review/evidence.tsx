@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { useAnnotator } from "../components/images.tsx";
 import { Button } from "../components/ui/button.tsx";
+import { DifferenceOverlay } from "./difference-overlay.tsx";
 import { Select } from "../components/ui/select.tsx";
 import {
   captureComparisons,
-  canCompareCaptures,
   wipeMismatch,
   wipeImageMismatch,
 } from "./capture-comparison.ts";
@@ -306,15 +306,14 @@ function CaptureComparison({
   const sources = captureComparisons(web, messages);
   const [before, setBefore] = useState(0);
   const [after, setAfter] = useState(0);
-  const [wipe, setWipe] = useState(false);
+  const [mode, setMode] = useState<"side" | "wipe" | "difference">("side");
   const [position, setPosition] = useState(50);
   const [sizes, setSizes] = useState<
     Record<string, { width: number; height: number }>
   >({});
   const left = sources.originals[before];
   const right = sources.evidence[after];
-  if (!left || !right || !canCompareCaptures(left.capture, right.capture))
-    return null;
+  if (!left || !right || !left.capture.area || !right.capture.area) return null;
   const mismatch =
     wipeMismatch(left.capture, right.capture) ||
     (sizes[left.capture.area!] && sizes[right.capture.area!]
@@ -338,6 +337,12 @@ function CaptureComparison({
           },
         }));
       }}
+      onError={() =>
+        setSizes((current) => ({
+          ...current,
+          [side.capture.area!]: { width: 0, height: 0 },
+        }))
+      }
     />
   );
   return (
@@ -367,20 +372,41 @@ function CaptureComparison({
           }))}
         />
         <div className="flex gap-2">
-          <Button size="sm" variant="outline" onClick={() => setWipe(false)}>
+          <Button
+            size="sm"
+            variant="outline"
+            aria-pressed={mode === "side"}
+            onClick={() => setMode("side")}
+          >
             Side by side
           </Button>
           <Button
             size="sm"
             variant="outline"
             disabled={!!mismatch}
-            onClick={() => setWipe(true)}
+            aria-pressed={mode === "wipe"}
+            onClick={() => setMode("wipe")}
           >
             Wipe
           </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!!mismatch}
+            aria-pressed={mode === "difference"}
+            onClick={() => setMode("difference")}
+          >
+            Pixel difference
+          </Button>
         </div>
         {mismatch && <p className="text-muted-foreground">{mismatch}</p>}
-        {wipe && !mismatch ? (
+        <DifferenceOverlay
+          before={attachmentSrc(left.capture.area)}
+          after={attachmentSrc(right.capture.area)}
+          active={mode === "difference" && !mismatch}
+        />
+        {mode === "difference" && !mismatch ? null : mode === "wipe" &&
+          !mismatch ? (
           <div>
             <div className="relative">
               {source(left, "w-full")}

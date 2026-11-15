@@ -17,6 +17,54 @@ const comment: ReviewComment = {
   code: "+  const tmpValue = load();",
 };
 
+describe("note triage metadata", () => {
+  test.each(["blocker", "bug", "suggestion", "question"] as const)(
+    "round-trips %s without confusing captured code or prose with metadata",
+    (triage) => {
+      const literal = "Triage: question <!-- lcr:triage -->";
+      const original = {
+        ...comment,
+        triage,
+        body: `${literal}\n\nTriage: bug\n\n\`\`\`text\n${literal}\n\`\`\``,
+        code: `+${literal}`,
+      };
+      const markdown = write([original]);
+      expect(markdown).toContain(`Triage: ${triage} <!-- lcr:triage -->`);
+      const parsed = parseReview(markdown).notes[0]!;
+      expect(parsed).toMatchObject(original);
+      expect(
+        parseReview(renderMarkdown({ range: "HEAD", notes: [parsed] }))
+          .notes[0],
+      ).toEqual(parsed);
+    },
+  );
+
+  test("old notes and ordinary triage prose remain unclassified", () => {
+    for (const body of [
+      "Triage: blocker",
+      "Triage: bug <!-- lcr:triage -->",
+      "No label.",
+    ]) {
+      const parsed = parseReview(write([{ ...comment, body }])).notes[0]!;
+      expect(parsed.triage).toBeUndefined();
+      expect(parsed.body).toBe(body);
+    }
+  });
+
+  test("agent messages containing a sealed triage line remain messages", () => {
+    const note = noteFromComment({ ...comment, triage: "bug" });
+    note.messages.push({
+      role: "agent",
+      at: "now",
+      body: "Triage: blocker <!-- lcr:triage -->",
+    });
+    const parsed = parseReview(renderMarkdown({ range: "HEAD", notes: [note] }))
+      .notes[0]!;
+    expect(parsed.triage).toBe("bug");
+    expect(parsed.messages).toEqual(note.messages);
+  });
+});
+
 describe("parseReview", () => {
   test("reads a note back with everything the page put into it", () => {
     const doc = parseReview(

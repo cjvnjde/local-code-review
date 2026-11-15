@@ -275,3 +275,19 @@ test("UI persistence creates the configuration directory and refuses to destroy 
     expect(await readFile(f.settings, "utf8")).toBe(invalid);
   }
 });
+
+test("startup schemas reject oversized strings and argument lists without rewriting config", async () => {
+  const f = await fixture();
+  for (const value of [
+    { id: "x".repeat(32769) },
+    { diffArgs: Array(1025).fill("main") },
+    { diffArgs: ["x".repeat(32769)] },
+    { ui: { hide: "x".repeat(16385) } },
+    { context: Number.MAX_SAFE_INTEGER + 1 },
+  ]) {
+    await f.write(value);
+    const source = await readFile(f.settings, "utf8");
+    await expect(loadUserSettings({}, f.settings)).rejects.toThrow();
+    expect(await readFile(f.settings, "utf8")).toBe(source);
+  }
+});

@@ -5,8 +5,28 @@ export type AnnotationNode = AnnotationPoint & {
   out?: AnnotationPoint;
 };
 type AnnotationFill = { fill?: string; opacity?: number };
+/** Version 1 fixes the perfect-freehand 1.2.3 algorithm and linear easing.
+ * Missing stroke metadata always means the historical constant-width pen. */
+export interface AnnotationPenStroke {
+  algorithm: "perfect-freehand";
+  version: 1;
+  libraryVersion: "1.2.3";
+  pressure: "pointer" | "simulated";
+  pressures: number[];
+  thinning: number;
+  smoothing: number;
+  streamline: number;
+  taperStart: number;
+  taperEnd: number;
+}
 export type AnnotationMark =
-  | { tool: "pen"; color: string; width: number; points: AnnotationPoint[] }
+  | {
+      tool: "pen";
+      color: string;
+      width: number;
+      points: AnnotationPoint[];
+      stroke?: AnnotationPenStroke;
+    }
   | {
       tool: "arrow";
       color: string;
@@ -306,8 +326,47 @@ export function webAnnotation(value: unknown): WebAnnotation | null {
           points: clean,
           opacity: mark.opacity,
         });
-      } else
-        marks.push({ tool: "pen", color, width: mark.width, points: clean });
+      } else {
+        let stroke: AnnotationPenStroke | undefined;
+        if (mark.stroke !== undefined) {
+          const input = mark.stroke;
+          if (
+            !record(input) ||
+            input.algorithm !== "perfect-freehand" ||
+            input.version !== 1 ||
+            input.libraryVersion !== "1.2.3" ||
+            (input.pressure !== "pointer" && input.pressure !== "simulated") ||
+            !Array.isArray(input.pressures) ||
+            input.pressures.length !== clean.length ||
+            !input.pressures.every((p) => bounded(p, 0, 1)) ||
+            !bounded(input.thinning, -1, 1) ||
+            !bounded(input.smoothing, 0, 1) ||
+            !bounded(input.streamline, 0, 1) ||
+            !bounded(input.taperStart, 0, 16) ||
+            !bounded(input.taperEnd, 0, 16)
+          )
+            return null;
+          stroke = {
+            algorithm: input.algorithm,
+            version: input.version,
+            libraryVersion: input.libraryVersion,
+            pressure: input.pressure,
+            pressures: [...input.pressures],
+            thinning: input.thinning,
+            smoothing: input.smoothing,
+            streamline: input.streamline,
+            taperStart: input.taperStart,
+            taperEnd: input.taperEnd,
+          };
+        }
+        marks.push({
+          tool: "pen",
+          color,
+          width: mark.width,
+          points: clean,
+          ...(stroke ? { stroke } : {}),
+        });
+      }
     } else if (mark.tool === "path") {
       if (
         typeof mark.closed !== "boolean" ||

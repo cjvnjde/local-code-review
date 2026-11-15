@@ -15,6 +15,10 @@ import {
 } from "./managed-agent.ts";
 import { createSession } from "../review/session.ts";
 import { reviewerRevision } from "./agent-queue.ts";
+import {
+  createReviewRoundStore,
+  type ReviewRoundStore,
+} from "../review/rounds.ts";
 const fixture = path.join(import.meta.dir, "fixtures/acp-agent.ts");
 const roots: string[] = [];
 const agents: ManagedAgent[] = [];
@@ -39,7 +43,10 @@ const comment = (name: string, body = "Question " + name) => ({
   label: "1",
   code: "+line",
 });
-async function setup(mode = "") {
+async function setup(
+  mode = "",
+  rounds?: (root: string) => Pick<ReviewRoundStore, "capture">,
+) {
   const root = mkdtempSync(path.join(tmpdir(), "lcr-managed-"));
   roots.push(root);
   const session = createSession(root, ".review", "HEAD");
@@ -55,6 +62,7 @@ async function setup(mode = "") {
     outDir: ".review",
     directory: path.join(root, "git-state"),
     config,
+    rounds: rounds?.(root),
     notify() {},
   };
   const make = () => {
@@ -570,4 +578,58 @@ test("connection status exposes only safe configured launch fields before connec
   });
   expect(JSON.stringify(agent.status!())).not.toContain("private-token");
   expect(agent.status!().state).toBe("unavailable");
+});
+
+test("agent handoff persists the actual baseline and task/note association before dispatch", async () => {
+  let store!: ReviewRoundStore;
+  const f = await setup("", (root) => {
+    store = createReviewRoundStore({
+      repoRoot: root,
+      outDir: ".review",
+      listFiles: async () => ["a.ts"],
+    });
+    return store;
+  });
+  writeFileSync(path.join(f.root, "a.ts"), "before handoff\n");
+  const note = await f.send("baseline");
+  await until(() => f.started(1));
+  const rounds = await store.list();
+  expect(rounds).toHaveLength(1);
+  expect(rounds[0]!.baseline).toBe("ready");
+  expect(rounds[0]!.taskId).toBe(f.tasks()[0].id);
+  expect(rounds[0]!.notes[0]!.noteId).toBe(note.id);
+  writeFileSync(path.join(f.root, "a.ts"), "agent changed this\n");
+  const comparison = await store.compare(rounds[0]!.id);
+  expect(comparison.files[0]!.patch).toContain("-before handoff");
+  f.release(1);
+  await until(() => f.tasks()[0].state === "completed");
+  expect((await store.compare(rounds[0]!.id)).verification.state).toBe(
+    "unverified",
+  );
+});
+
+test("failed baseline capture persists honest failure and does not dispatch an ACP prompt", async () => {
+  let store!: ReviewRoundStore;
+  const f = await setup("", (root) => {
+    store = createReviewRoundStore({
+      repoRoot: root,
+      outDir: ".review",
+      listFiles: async () => {
+        throw new Error("Unavailable repository inventory");
+      },
+    });
+    return store;
+  });
+  await f.send("failed-baseline");
+  await until(() => f.tasks()[0].state === "error");
+  expect(f.started(1)).toBe(false);
+  expect(f.tasks()[0].detail).toContain("baseline capture failed");
+  expect((await store.list())[0]!.baseline).toBe("failed");
+  expect(
+    f
+      .rpc()
+      .some(
+        (message: { method: string }) => message.method === "session/prompt",
+      ),
+  ).toBe(false);
 });

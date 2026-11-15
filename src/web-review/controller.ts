@@ -37,6 +37,22 @@ import {
 import { browserEvidence, cssEvidence } from "./evidence.ts";
 import { repositoryEvidence } from "./repository-evidence.ts";
 import { DiagnosticsEvidence } from "./diagnostics-evidence.ts";
+import {
+  privateCapture,
+  redactionRegions,
+  REDACTION_OMISSION,
+} from "../shared/redaction.ts";
+import { cropScreenshot, redactScreenshot } from "./redaction.ts";
+import type { CdpCommand, CdpParams } from "../browser/cdp.ts";
+import {
+  accessibilityComment,
+  accessibilityExpression,
+  accessibilityReport,
+} from "./accessibility.ts";
+import type {
+  AccessibilityReport,
+  AccessibilitySaveResult,
+} from "../shared/accessibility.ts";
 
 export interface WebReviewOptions {
   url: string;
@@ -78,6 +94,7 @@ export function createWebReview(options: WebReviewOptions) {
   const replyDrafts = new Map<string, string>();
   const draftOwners = new Map<string, string>();
   let contextSettings: ContextSettings = { ...DEFAULT_CONTEXT_SETTINGS };
+  let latestAccessibility: AccessibilityReport | null = null;
   let diagnostics: DiagnosticsEvidence | undefined;
   let theme = DEFAULT_THEME;
   type ContextSnapshot = {
@@ -86,6 +103,7 @@ export function createWebReview(options: WebReviewOptions) {
   };
   let frozen: {
     id: string;
+    sourceUrl: string;
     capture: WebCapture;
     snapshot: ContextSnapshot;
   } | null = null;
@@ -121,10 +139,15 @@ export function createWebReview(options: WebReviewOptions) {
     listeners = [];
   };
   const status = () => ({ url, state, detail });
-  const send = (method: string, params: Record<string, unknown> = {}) => {
+  function send<M extends CdpCommand>(
+    method: M,
+    ...args: {} extends CdpParams<M>
+      ? [params?: CdpParams<M>]
+      : [params: CdpParams<M>]
+  ) {
     if (!browser) throw new Error("Open the review browser first.");
-    return browser.cdp.send(method, params, sessionId);
-  };
+    return browser.cdp.send(method, (args[0] ?? {}) as CdpParams<M>, sessionId);
+  }
   async function evaluate(expression: string, executionContextId?: number) {
     const result = await send("Runtime.evaluate", {
       expression,
@@ -145,6 +168,7 @@ export function createWebReview(options: WebReviewOptions) {
     );
   async function detachPage() {
     frozen = null;
+    latestAccessibility = null;
     diagnostics?.dispose();
     diagnostics = undefined;
     unbind();
@@ -469,7 +493,13 @@ export function createWebReview(options: WebReviewOptions) {
       : metadata;
     return { capture, snapshot: { settings, extras } };
   }
-  async function screenshot(input: any, freezeId?: unknown) {
+  async function screenshot(
+    input: any,
+    freezeId?: unknown,
+  ): Promise<{
+    capture: WebCapture;
+    snapshot: ContextSnapshot;
+  }> {
     const settings = { ...contextSettings };
     if (input.contextSettings && typeof input.contextSettings === "object") {
       const captured = settingsSnapshot(input.contextSettings);
@@ -481,6 +511,7 @@ export function createWebReview(options: WebReviewOptions) {
       annotation: undefined,
       context: undefined,
       proposal: undefined,
+      redaction: undefined,
       page: "images/page.png",
       area: "images/area.png",
     });
@@ -488,12 +519,31 @@ export function createWebReview(options: WebReviewOptions) {
       throw new Error(
         "Invalid page selection. Select an area in the reviewed localhost page.",
       );
+    const regions = redactionRegions(input.redactions, clean.viewport);
+    const privacyParts: ContextPartInput[] = regions.length
+      ? [
+          "selected-html",
+          "layout",
+          "environment",
+          "interactions",
+          "css-rules",
+          "repository",
+          "diagnostics",
+          "full-page",
+        ].map((name) => ({
+          name,
+          label: name,
+          type: name === "full-page" ? "image/png" : "application/json",
+          status: "excluded",
+          detail: REDACTION_OMISSION,
+        }))
+      : [];
     if (freezeId !== undefined) {
       if (
         !frozen ||
         frozen.id !== freezeId ||
         !["area", "point"].includes(clean.mode) ||
-        clean.url !== frozen.capture.url ||
+        clean.url !== frozen.sourceUrl ||
         clean.at !== frozen.capture.at ||
         JSON.stringify(clean.viewport) !==
           JSON.stringify(frozen.capture.viewport) ||
@@ -502,21 +552,37 @@ export function createWebReview(options: WebReviewOptions) {
         throw new Error(
           "That frozen view expired. Resume and freeze the page again.",
         );
+      const savedRegions = frozen.capture.redaction?.regions ?? [];
+      if (JSON.stringify(regions) !== JSON.stringify(savedRegions))
+        throw new Error(
+          "Frozen evidence cannot be retroactively redacted. Resume, select privacy regions, and freeze again.",
+        );
+      const safe = privateCapture(clean, savedRegions);
       if (clean.mode === "point") {
         const { settings, extras } = frozen.snapshot;
-        return pointCapture(clean, settings, extras);
+        return pointCapture(safe, settings, extras);
       }
       const page = frozen.capture.page;
-      const data = await api("cropFrozen", { id: freezeId, rect: clean.rect });
+      const image = savedRegions.length
+        ? await readAttachment(options.repoRoot, options.outDir, page!)
+        : null;
+      if (savedRegions.length && !image)
+        throw new Error("The redacted frozen source is unavailable.");
+      const bytes = image
+        ? cropScreenshot(image.bytes, clean.viewport, clean.rect)
+        : Buffer.from(
+            await api("cropFrozen", { id: freezeId, rect: clean.rect }),
+            "base64",
+          );
       const area = await saveAttachment(
         options.repoRoot,
         options.outDir,
-        Buffer.from(data, "base64"),
+        bytes,
         "image/png",
       );
       if (!area) throw new Error("Could not save the frozen selection.");
       const snapshot = frozen.snapshot;
-      let capture: WebCapture = { ...clean, page, area: attachRef(area) };
+      let capture: WebCapture = { ...safe, page, area: attachRef(area) };
       if (snapshot.settings.aiContext)
         capture = await saveWebContext(
           options.repoRoot,
@@ -527,12 +593,13 @@ export function createWebReview(options: WebReviewOptions) {
       return { capture, snapshot };
     }
     const actual = await evaluate(
-      "({url:location.href,width:innerWidth,height:innerHeight,x:scrollX,y:scrollY})",
+      "({url:location.href,width:innerWidth,height:innerHeight,dpr:devicePixelRatio,x:scrollX,y:scrollY})",
     );
     if (
       actual.url !== clean.url ||
       actual.width !== clean.viewport.width ||
       actual.height !== clean.viewport.height ||
+      actual.dpr !== clean.viewport.dpr ||
       actual.x !== clean.scroll.x ||
       actual.y !== clean.scroll.y
     )
@@ -540,10 +607,16 @@ export function createWebReview(options: WebReviewOptions) {
         "The page moved during selection. Select the area again.",
       );
     if (clean.mode === "point")
-      return pointCapture(clean, settings, [
-        htmlPart(input, settings),
-        ...(await evidenceParts(input, settings)),
-      ]);
+      return pointCapture(
+        privateCapture(clean, regions),
+        settings,
+        regions.length
+          ? privacyParts
+          : [
+              htmlPart(input, settings),
+              ...(await evidenceParts(input, settings)),
+            ],
+      );
     await api("visible", false);
     try {
       const page = await send("Page.captureScreenshot", {
@@ -551,35 +624,50 @@ export function createWebReview(options: WebReviewOptions) {
         fromSurface: true,
         captureBeyondViewport: false,
       });
-      const area = await send("Page.captureScreenshot", {
-        format: "png",
-        fromSurface: true,
-        captureBeyondViewport: false,
-        clip: {
-          x: clean.rect.x + clean.scroll.x,
-          y: clean.rect.y + clean.scroll.y,
-          width: clean.rect.width,
-          height: clean.rect.height,
-          scale: 1,
-        },
-      });
+      const pageBytes = regions.length
+        ? redactScreenshot(
+            Buffer.from(page.data, "base64"),
+            clean.viewport,
+            regions,
+          )
+        : Buffer.from(page.data, "base64");
+      const area = regions.length
+        ? null
+        : await send("Page.captureScreenshot", {
+            format: "png",
+            fromSurface: true,
+            captureBeyondViewport: false,
+            clip: {
+              x: clean.rect.x + clean.scroll.x,
+              y: clean.rect.y + clean.scroll.y,
+              width: clean.rect.width,
+              height: clean.rect.height,
+              scale: 1,
+            },
+          });
+      const areaBytes = regions.length
+        ? cropScreenshot(pageBytes, clean.viewport, clean.rect)
+        : Buffer.from(area!.data, "base64");
       const extras: ContextPartInput[] = settings.aiContext
-        ? [
-            htmlPart(input, settings),
-            ...(await evidenceParts(input, settings)),
-            settings.contextFullPage
-              ? await fullPagePart(clean)
-              : {
-                  name: "full-page",
-                  label: "Full document screenshot",
-                  type: "image/png",
-                  status: "excluded",
-                  detail: "Full-page screenshot was disabled at capture time.",
-                },
-          ]
+        ? regions.length
+          ? privacyParts
+          : [
+              htmlPart(input, settings),
+              ...(await evidenceParts(input, settings)),
+              settings.contextFullPage
+                ? await fullPagePart(clean)
+                : {
+                    name: "full-page",
+                    label: "Full document screenshot",
+                    type: "image/png",
+                    status: "excluded",
+                    detail:
+                      "Full-page screenshot was disabled at capture time.",
+                  },
+            ]
         : [];
       const after = await evaluate(
-        "({url:location.href,width:innerWidth,height:innerHeight,x:scrollX,y:scrollY})",
+        "({url:location.href,width:innerWidth,height:innerHeight,dpr:devicePixelRatio,x:scrollX,y:scrollY})",
       );
       if (JSON.stringify(actual) !== JSON.stringify(after))
         throw new Error(
@@ -589,20 +677,20 @@ export function createWebReview(options: WebReviewOptions) {
         saveAttachment(
           options.repoRoot,
           options.outDir,
-          Buffer.from(page.data, "base64"),
+          pageBytes,
           "image/png",
         ),
         saveAttachment(
           options.repoRoot,
           options.outDir,
-          Buffer.from(area.data, "base64"),
+          areaBytes,
           "image/png",
         ),
       ]);
       if (!pageName || !areaName)
         throw new Error("Could not save screenshots.");
       let capture: WebCapture = {
-        ...clean,
+        ...privateCapture(clean, regions),
         page: attachRef(pageName),
         area: attachRef(areaName),
       };
@@ -618,6 +706,24 @@ export function createWebReview(options: WebReviewOptions) {
       await api("visible", true).catch(() => {});
     }
   }
+  async function captureAfterNote(id: string) {
+    const note = (await options.session.read()).notes.find(
+      (entry) => entry.id === id,
+    );
+    if (!note?.web) throw new Error("That UI note no longer exists.");
+    if (note.web.before.redaction)
+      throw new Error(
+        "This evidence was redacted. Select fresh privacy regions in the live page and add a new capture; old masks cannot safely follow page changes.",
+      );
+    await open(); // A background page can suspend the animation frame that locates its capture.
+    const metadata = await api("prepare", note.web.before);
+    const { capture } = await screenshot(metadata);
+    return {
+      capture,
+      ...appendReplyCapture(note.id, capture),
+      reply: true as const,
+    };
+  }
   async function action(name: string, payload: any) {
     if (name === "context-settings") return { ...contextSettings };
     if (name === "freeze") {
@@ -631,7 +737,7 @@ export function createWebReview(options: WebReviewOptions) {
       );
       if (!image) throw new Error("Could not load the frozen view.");
       const id = crypto.randomUUID();
-      frozen = { id, capture, snapshot };
+      frozen = { id, sourceUrl: payload.capture.url, capture, snapshot };
       return {
         id,
         data:
@@ -816,19 +922,89 @@ export function createWebReview(options: WebReviewOptions) {
         throw new Error("That captured selection no longer exists.");
       return {};
     }
-    if (name === "after") {
-      const note = (await options.session.read()).notes.find(
-        (n) => n.id === payload.id,
-      );
-      if (!note?.web) throw new Error("That UI note no longer exists.");
-      await open(); // A background page can suspend the animation frame that locates its capture.
-      const metadata = await api("prepare", note.web.before);
-      const { capture } = await screenshot(metadata);
-      const result = { capture };
-      return { ...result, ...appendReplyCapture(note.id, result.capture) };
-    }
+    if (name === "after") return captureAfterNote(payload.id);
     if (name === "review") return review(payload.id);
     throw new Error("Unknown web review action.");
+  }
+  async function scanAccessibility(): Promise<AccessibilityReport> {
+    if (!browser?.cdp.connected || !sessionId)
+      throw new Error(
+        "Open the local page before running an accessibility scan.",
+      );
+    latestAccessibility = null;
+    const before = await evaluate("location.href");
+    if (
+      typeof before !== "string" ||
+      new URL(localWebUrl(before)).origin !== origin
+    )
+      throw new Error(
+        "Accessibility scans are limited to the connected local page.",
+      );
+    const privacy = await api("privacyState", null);
+    const frameId = (await send("Page.getFrameTree")).frameTree.frame.id;
+    const world = await send("Page.createIsolatedWorld", {
+      frameId,
+      worldName: key + "_accessibility",
+    });
+    const results = await evaluate(
+      accessibilityExpression(key),
+      world.executionContextId,
+    );
+    if (before !== (await evaluate("location.href")))
+      throw new Error("The page navigated during the scan. Run it again.");
+    const afterPrivacy = await api("privacyState", null);
+    latestAccessibility = accessibilityReport(
+      results,
+      before,
+      privacy.active === true || afterPrivacy.active === true,
+    );
+    return structuredClone(latestAccessibility);
+  }
+  async function saveAccessibilityFindings(
+    ids: string[],
+  ): Promise<AccessibilitySaveResult> {
+    const report = latestAccessibility;
+    if (
+      !report ||
+      !Array.isArray(ids) ||
+      !ids.length ||
+      ids.some((id) => typeof id !== "string") ||
+      new Set(ids).size !== ids.length
+    )
+      throw new Error("Choose findings from the latest accessibility scan.");
+    const chosen = ids.map((id) =>
+      report.findings.find((finding) => finding.id === id),
+    );
+    if (chosen.some((finding) => !finding))
+      throw new Error(
+        "That accessibility scan expired. Run it again and select findings.",
+      );
+    const privacy = await api("privacyState", null);
+    if (privacy.active && !report.privacy)
+      throw new Error(
+        "Privacy regions changed after this scan. Run the scan again before saving findings.",
+      );
+    const unsaved = chosen.filter((finding) => finding && !finding.savedNoteId);
+    let file = options.session.file;
+    if (unsaved.length) {
+      const result = await options.session.save({
+        comments: unsaved.map((finding) =>
+          accessibilityComment(report, finding!.id),
+        ),
+      });
+      file = result.file;
+      unsaved.forEach((finding, index) => {
+        finding!.savedNoteId = result.changed[index]!.id;
+      });
+      options.hub.emit({ type: "review", file: options.session.file });
+    }
+    return {
+      file,
+      saved: chosen.map((finding) => ({
+        findingId: finding!.id,
+        noteId: finding!.savedNoteId!,
+      })),
+    };
   }
   async function open() {
     if (closing) throw new Error("The browser connection is closing.");
@@ -907,6 +1083,7 @@ export function createWebReview(options: WebReviewOptions) {
           cdp.on("Runtime.executionContextsCleared", (_, sid) => {
             if (sid === attachedSession) {
               contextId = 0;
+              latestAccessibility = null;
               frozen = null;
               diagnostics?.clear();
             }
@@ -1062,6 +1239,18 @@ export function createWebReview(options: WebReviewOptions) {
   }
   return {
     status,
+    scanAccessibility() {
+      const next = queue.then(scanAccessibility, scanAccessibility);
+      queue = next.catch(() => {});
+      return next;
+    },
+    saveAccessibilityFindings(ids: string[]) {
+      const input = Array.isArray(ids) ? [...ids] : ids;
+      const work = () => saveAccessibilityFindings(input);
+      const next = queue.then(work, work);
+      queue = next.catch(() => {});
+      return next;
+    },
     configureContext(settings: Partial<ContextSettings>) {
       contextSettings = settingsSnapshot(settings);
       void diagnostics?.configure(
@@ -1133,7 +1322,7 @@ export function createWebReview(options: WebReviewOptions) {
       draftId: string;
       reply: true;
     }> {
-      const work = () => action("after", { id });
+      const work = () => captureAfterNote(id);
       const next = queue.then(work, work);
       queue = next.catch(() => {});
       return next;

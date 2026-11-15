@@ -88,7 +88,10 @@ async function receive(message: Message) {
         method: "session/request_permission",
         params: {
           sessionId: message.params?.sessionId,
-          toolCall: { title: "Read protected file" },
+          toolCall: {
+            toolCallId: "read-protected",
+            title: "Read protected file",
+          },
           options: [
             { optionId: "allow", name: "Allow once", kind: "allow_once" },
             { optionId: "deny", name: "Reject once", kind: "reject_once" },
@@ -113,6 +116,14 @@ async function receive(message: Message) {
       });
       break;
     case "fixture/bad":
+      if (message.params?.kind === "oversized") {
+        process.stdout.write("x".repeat(16 * 1024 * 1024 + 1));
+        break;
+      }
+      if (message.params?.kind === "partial") {
+        process.stdout.write('{"jsonrpc":"2.0","result":');
+        process.exit(0);
+      }
       if (message.params?.kind === "json")
         process.stdout.write("{invalid json\n");
       else if (message.params?.kind === "version")

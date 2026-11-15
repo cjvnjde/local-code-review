@@ -22,6 +22,18 @@ const pending: ReviewNote = {
   detail: "",
   messages: [],
 };
+
+test("triage changes never invalidate manual reviewer acknowledgement", () => {
+  const acknowledgement = reviewRevision(pending);
+  for (const triage of [
+    "blocker",
+    "bug",
+    "suggestion",
+    "question",
+    undefined,
+  ] as const)
+    expect(isResolved({ ...pending, triage }, acknowledgement)).toBe(true);
+});
 const reviewer: ReviewMessage = {
   role: "reviewer",
   at: "2026-11-15T10:00:00Z",

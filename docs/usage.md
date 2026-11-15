@@ -100,6 +100,14 @@ retain editable shapes, text, paths, callouts and other tools when reopened.
 the active tool or selected drawing. **Use drawing** returns the result to the
 editor without saving the note. Image diffs also support clicking or dragging a
 region to capture it in a comment. Audio diffs have before/after players.
+The pen's optional pressure/taper setting uses versioned perfect-freehand strokes.
+Pen devices retain pressure samples; mouse input uses explicitly recorded simulated
+pressure. Existing drawings keep their original rendering. Drawing controls use
+Base UI while the scene remains Konva.
+
+Color editing recognizes `lab()`, `lch()`, `oklab()`, `oklch()`, and supported
+`color()` spaces as well as legacy literals. Literal and opacity edits retain the
+source color space; using the native picker explicitly converts to sRGB.
 
 **Save note** writes immediately. With ACP configured, **Save & ask AI** also queues
 that note; **Save only** persists without dispatch. Enter saves by default;
@@ -108,6 +116,11 @@ off Enter-to-save. The editor retains failed saves and drafts across reloads;
 incoming live updates do not replace their text.
 The editor shows the active submit shortcut and **Draft saved locally** after
 successful browser persistence; storage failures display a warning instead.
+
+**Triage** classifies a note as blocker, bug, suggestion, question, or unclassified.
+It persists in Markdown, imports, history, and reloads. Filter by triage separately
+from resolution. Changing classification alone preserves replies, verdicts,
+reviewer resolution, and queued work; it does not ask an agent to act.
 
 AI requests show queued, running, and permission/error states on their note and
 in the footer. Running work includes the agent's current activity when available.
@@ -199,8 +212,21 @@ file to retain current agent replies. Restarting adopts its conversation. **Sett
 → New review** leaves the current file in place; the saved-review list reopens it.
 
 The header's history button opens observed review states from this browser's
-append-only journal. It is read-only and can be exported as JSON. History remains
+append-only journal. Choose **Current review** or **All repository** to inspect
+other conversations. It is read-only and can be exported as JSON. History remains
 after a note is deleted; it cannot record changes while no page is listening.
+
+**Review rounds** compares the checkout with an immutable baseline captured at an
+agent handoff, or manually before work starts—even before the first saved note.
+Review actual added, changed, removed, renamed, and binary files plus affected
+conversations. **Verify reviewed changes** records reviewer verification separately
+from task completion, agent verdict, and note resolution. Later checkout changes
+make it stale. Incomplete or unavailable evidence cannot be verified.
+
+At most 32 rounds remain active. Explicitly archive older rounds to free capacity;
+their snapshots and verification remain inspectable under **Archived**. Snapshots
+are bounded to 4,000 files, 256 KiB per file, and 8 MiB of retained content. They
+contain repository content: keep the review output private.
 
 ## Attach on-demand context
 
@@ -236,7 +262,9 @@ not replace it. The centered header search (Cmd/Ctrl+K) fuzzy-searches the compl
 review: filenames, hidden and virtualized code, notes, replies, and captured context.
 Typing shows inline suggestions without replacing the diff. Click a suggestion
 to reveal its file and jump to its subject. Enter opens advanced search with
-result-type filters; its top-right × or Escape closes it.
+result-type filters and added/removed/context code facets; non-code results remain
+available. Its top-right × or Escape closes it. Arrow keys navigate suggestions
+without taking the text caret away from the search input.
 
 Alt+J/K steps through notes, Alt+Up/Down through bookmarks, and Alt+C switches the
 all-notes view. J/K also steps while viewing all notes. Typing in an editor keeps

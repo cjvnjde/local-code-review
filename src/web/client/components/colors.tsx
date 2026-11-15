@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import {
   findColors,
   parseColor,
+  colorPreview,
+  colorWithAlpha,
   replaceColor,
   type ColorLiteral,
 } from "./color-literals.ts";
@@ -28,7 +30,7 @@ export function ColorTools({
             <span
               key={i}
               className="inline-block size-3 rounded-sm border"
-              style={{ backgroundColor: color.hex }}
+              style={{ backgroundColor: color.css }}
             />
           ))}
         </span>
@@ -70,19 +72,21 @@ function ColorEditor({
   onApply?: (value: string) => void;
 }) {
   const [value, setValue] = useState(color.value);
-  const hex = parseColor(value);
+  const preview = colorPreview(value);
+  const hex = preview?.hex;
   const alpha = hex?.length === 9 ? parseInt(hex.slice(7), 16) : 255;
   return (
     <div className="space-y-2 border-t pt-2">
       <div className="flex flex-wrap items-center gap-2">
         <span
           className="size-5 shrink-0 rounded border"
-          style={{ backgroundColor: hex || color.hex }}
+          style={{ backgroundColor: preview?.css || color.css }}
         />
         <code>{color.value}</code>
         <input
           type="color"
-          aria-label={`Choose color ${color.value}`}
+          aria-label={`Choose sRGB replacement for ${color.value}`}
+          title="Choosing here replaces the literal with an sRGB hex color"
           value={(hex || color.hex).slice(0, 7)}
           onChange={(event) =>
             setValue(
@@ -107,8 +111,7 @@ function ColorEditor({
             value={alpha}
             onChange={(event) =>
               setValue(
-                (hex || color.hex).slice(0, 7) +
-                  (+event.target.value).toString(16).padStart(2, "0"),
+                colorWithAlpha(value, +event.target.value / 255) || value,
               )
             }
           />
@@ -125,7 +128,7 @@ function ColorEditor({
           size="sm"
           variant="ghost"
           disabled={!hex}
-          onClick={() => onSave(hex!)}
+          onClick={() => onSave(value)}
         >
           Save color
         </Button>
@@ -140,6 +143,20 @@ function ColorEditor({
           </Button>
         )}
       </div>
+      {preview?.modern && (
+        <p className="text-muted-foreground">
+          Original color space preserved. Native picker: sRGB preview
+          {preview.outOfGamut ? " (clipped; original is outside sRGB)" : ""}.
+          Choosing in the native picker converts to sRGB; Apply and Save
+          otherwise retain the literal.
+        </p>
+      )}
+      {!preview && (
+        <p role="status">
+          Enter a CSS color literal: hex, rgb, hsl, hwb, lab, lch, oklab, oklch
+          or color(display-p3 …).
+        </p>
+      )}
       <div className="flex gap-2">
         {saved
           .filter((value) => parseColor(value))

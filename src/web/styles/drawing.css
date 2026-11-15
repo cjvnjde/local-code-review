@@ -15,12 +15,18 @@
   font: var(--fs-ui)/1.5 var(--sans);
   overflow: hidden;
 }
-[data-annotation-editor][open] {
+[data-annotation-editor][data-open] {
   display: flex;
   flex-direction: column;
 }
-[data-annotation-editor]::backdrop {
+.annotation-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
   background: color-mix(in srgb, var(--overlay) 60%, transparent);
+}
+[data-annotation-editor] {
+  z-index: 81;
 }
 [data-annotation-editor] button {
   display: inline-flex;
@@ -82,6 +88,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  margin: 0;
+  font-size: inherit;
 }
 .annotation-context {
   display: flex;
@@ -227,7 +235,7 @@
 }
 .annotation-popover {
   box-sizing: border-box;
-  position: fixed;
+  position: relative;
   inset: auto;
   margin: 0;
   width: calc(var(--space-4) * 15);
@@ -241,12 +249,57 @@
   color: var(--foreground);
   box-shadow: 0 2px 12px color-mix(in srgb, var(--overlay) 53.33%, transparent);
 }
-.annotation-options:popover-open {
+.annotation-options[data-open] {
   display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: var(--space-2);
   width: max-content;
+}
+.annotation-popover-positioner {
+  z-index: 82;
+}
+.annotation-popover-positioner[data-closed] {
+  display: none;
+}
+.annotation-slider {
+  display: grid;
+  grid-template-columns: minmax(6rem, 1fr) minmax(6rem, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+.annotation-slider-control {
+  display: flex;
+  align-items: center;
+  min-width: 96px;
+  height: 32px;
+  touch-action: none;
+}
+.annotation-slider-track {
+  position: relative;
+  width: 100%;
+  height: 4px;
+  background: var(--border);
+  border-radius: 4px;
+}
+.annotation-slider-indicator {
+  background: var(--foreground);
+  border-radius: inherit;
+}
+.annotation-slider-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--foreground);
+  outline-offset: 4px;
+}
+.annotation-pressure-hint {
+  max-width: 28ch;
+  margin: 0;
+  font-size: 12px;
+}
+.annotation-slider > label {
+  white-space: normal;
 }
 .annotation-options label {
   flex-wrap: wrap;

@@ -122,6 +122,18 @@ export function installPageReview(config: {
   let selected: Element[] = [],
     selectionUrl = location.href,
     multiple = false;
+  let redactions: { x: number; y: number; width: number; height: number }[] =
+    [];
+  let redactionView = "";
+  const currentRedactionView = () =>
+    JSON.stringify([
+      location.href,
+      innerWidth,
+      innerHeight,
+      devicePixelRatio,
+      scrollX,
+      scrollY,
+    ]);
   let inspectBase: Element | null = null,
     inspectDepth = 0;
   type FrozenTarget = {
@@ -161,6 +173,7 @@ export function installPageReview(config: {
   const host = document.createElement("div");
   host.id = config.key;
   if (config.ownerKey) host.dataset.lcrOwner = config.ownerKey;
+  host.dataset.lcrOverlay = "";
   host.style.cssText =
     "position:fixed;inset:0;z-index:2147483647;pointer-events:none";
   const root = host.attachShadow({ mode: "open" });
@@ -224,6 +237,54 @@ export function installPageReview(config: {
   <div class="launcher" role="group" aria-label="Page review mode"><button data-browse aria-pressed="false" title="Use page controls normally">Browse</button><button data-annotate aria-pressed="true" title="Select page content to capture for a note; hold Alt to browse temporarily">Annotate</button><button data-launcher aria-label="Capture targeting: Element" aria-expanded="false" aria-controls="capture-tools" title="Choose capture target; drag to move"><span class="mode-state">Element</span><span aria-hidden="true"> ▾</span></button></div>
   <div class="bar" id="capture-tools" role="group" aria-label="Capture targeting" hidden><button data-mode="element" aria-pressed="true" title="Hover for dimensions; Alt + wheel picks parents; Shift-click selects multiple; drag selects an area">Element <small>One element</small></button><button data-mode="block" aria-pressed="false" title="Select the containing layout section">Block <small>Containing section</small></button><button data-multiple aria-pressed="false" title="Collect elements for one note, then choose Write note">Multiple <small>Several elements, one note</small></button><button data-mode="area" aria-pressed="false" title="Drag a rectangle to capture an area">Area <small>Drag a rectangle</small></button><button data-mode="point" aria-pressed="false" title="Click a point to capture its surroundings">Point <small>Click a location</small></button><p class="capture-help">Hold Alt to browse temporarily. Shift-click adds elements; Alt + wheel picks parents.</p><button data-freeze title="Freeze the current view · Ctrl+Shift+F">Freeze view</button><button data-notes>Notes · 0 ↗</button></div>`;
   (document.body || document.documentElement).append(host);
+  const redactButton = document.createElement("button");
+  redactButton.dataset.mode = "redact";
+  redactButton.setAttribute("aria-pressed", "false");
+  redactButton.textContent = "Redact · draw privacy regions";
+  redactButton.title =
+    "Mask pixels before capture or freeze. Not an editable drawing.";
+  root
+    .querySelector(".bar")!
+    .insertBefore(redactButton, root.querySelector("[data-freeze]"));
+  const privacyLayer = document.createElement("div");
+  privacyLayer.className = "privacy-regions";
+  const privacyControls = document.createElement("section");
+  privacyControls.setAttribute("aria-label", "Pre-capture privacy");
+  privacyControls.style.cssText =
+    "position:fixed;bottom:16px;left:16px;max-width:360px;padding:12px;background:var(--panel2);color:var(--ink);border:1px solid var(--accent);border-radius:8px;pointer-events:auto";
+  root.append(privacyLayer, privacyControls);
+  function renderPrivacy() {
+    privacyLayer.replaceChildren();
+    privacyControls.replaceChildren();
+    privacyControls.hidden = mode !== "redact" && !redactions.length;
+    redactButton.disabled = !!frozen || freezing || busy;
+    const description = document.createElement("p");
+    description.textContent = frozen
+      ? "Frozen evidence is already saved. Resume and select masks before a new freeze; saved evidence is not retroactively sanitized."
+      : "Drag rectangles in Redact mode, then choose Area or Element to capture. Black pixels are permanently removed before saving. DOM/text/style/diagnostic and full-page context are omitted. Earlier evidence is unchanged.";
+    privacyControls.append(description);
+    redactions.forEach((region, index) => {
+      const mask = document.createElement("div");
+      mask.style.cssText = `position:fixed;left:${region.x}px;top:${region.y}px;width:${region.width}px;height:${region.height}px;background:#000;border:1px solid #fff;box-sizing:border-box;pointer-events:none`;
+      privacyLayer.append(mask);
+      const remove = document.createElement("button");
+      remove.textContent = `Remove region ${index + 1}`;
+      remove.disabled = !!frozen || freezing || busy;
+      remove.onclick = () => {
+        redactions.splice(index, 1);
+        if (!redactions.length) redactionView = "";
+        renderPrivacy();
+      };
+      privacyControls.append(remove);
+    });
+    if (mode === "redact") {
+      const done = document.createElement("button");
+      done.textContent = "Done · select capture area";
+      done.onclick = () => setMode("area");
+      privacyControls.append(done);
+    }
+  }
+  renderPrivacy();
   const $ = (s: string) => root.querySelector(s) as HTMLElement;
   const dock = $(".dock"),
     content = $(".content"),
@@ -477,6 +538,7 @@ export function installPageReview(config: {
         ),
       );
     pins();
+    renderPrivacy();
   }
   function updateLauncher() {
     const targetMode = mode === "browse" ? selectionMode : mode;
@@ -551,17 +613,18 @@ export function installPageReview(config: {
     $(".freeze-status").hidden = !frozen && !freezing;
     $("[data-freeze-status]").textContent = freezing
       ? "Freezing view…"
-      : "Frozen view · drag an area to comment";
+      : "Frozen view · already saved. Resume to set privacy masks before a new freeze.";
     ($("[data-resume]") as HTMLButtonElement).disabled = freezing;
     ($("[data-freeze]") as HTMLButtonElement).disabled = freezing;
     $("[data-freeze]").textContent = frozen ? "Resume page" : "Freeze view";
     root
       .querySelectorAll<HTMLButtonElement>(
-        '[data-mode="element"],[data-mode="block"],[data-multiple]',
+        '[data-mode="element"],[data-mode="block"],[data-mode="redact"],[data-multiple]',
       )
       .forEach((button) => {
         button.disabled = !!frozen || freezing;
       });
+    renderPrivacy();
   }
   function resume(next = frozen?.mode) {
     if (!frozen) return;
@@ -1556,8 +1619,15 @@ export function installPageReview(config: {
     settings: CaptureSettings,
     scope = "selection",
   ) {
+    if (redactions.length && redactionView !== currentRedactionView())
+      throw new Error(
+        "The page moved or resized after privacy regions were selected. Remove them and select fresh regions before capture or freeze.",
+      );
     const result = {
       ...capture,
+      ...(redactions.length
+        ? { redactions: redactions.map((r) => ({ ...r })) }
+        : {}),
       contextSettings: {
         aiContext: settings.aiContext === true,
         contextHtml: settings.contextHtml === true,
@@ -1571,6 +1641,7 @@ export function installPageReview(config: {
       contextInteractions: undefined as ContextPart | undefined,
     };
     configureContext(settings);
+    if (redactions.length) return result;
     if (!result.contextSettings.aiContext) return result;
     try {
       result.contextLayout = layoutContext(capture, elements);
@@ -2675,7 +2746,10 @@ export function installPageReview(config: {
         )
           start.area = true;
         if (start.area) {
-          paint(areaRect(start, e.clientX, e.clientY), "Area");
+          paint(
+            areaRect(start, e.clientX, e.clientY),
+            mode === "redact" ? "Privacy region" : "Area",
+          );
           return;
         }
         return;
@@ -2708,7 +2782,7 @@ export function installPageReview(config: {
         y: e.clientY,
         id: e.pointerId,
         el,
-        area: mode === "area",
+        area: mode === "area" || mode === "redact",
         multiple: multiple || e.shiftKey,
       };
     },
@@ -2730,6 +2804,22 @@ export function installPageReview(config: {
       )
         return;
       stop(e);
+      if (mode === "redact") {
+        if (frozen || redactions.length >= 100) return;
+        if (redactions.length && redactionView !== currentRedactionView()) {
+          error(
+            new Error(
+              "Remove existing privacy regions after moving or resizing the page, then select them again.",
+            ),
+          );
+          return;
+        }
+        redactionView = currentRedactionView();
+        redactions.push(areaRect(a, e.clientX, e.clientY));
+        outline.style.display = "none";
+        renderPrivacy();
+        return;
+      }
       if (mode === "point") {
         void choose(
           frozen ? null : target(e) || a.el,
@@ -2948,6 +3038,9 @@ export function installPageReview(config: {
         ? call.resolve(result.value)
         : call.reject(new Error(result.error));
     },
+    privacyState() {
+      return { active: redactions.length > 0, frozen: !!frozen };
+    },
     async visible(value: boolean) {
       host.style.visibility = value ? "visible" : "hidden";
       await new Promise((r) =>
@@ -2990,6 +3083,10 @@ export function installPageReview(config: {
       showNote(id);
     },
     async prepare(c: any) {
+      if (c.redaction)
+        throw new Error(
+          "Select new privacy regions before capturing this redacted page again.",
+        );
       resume();
       const grouped = ["element", "block"].includes(c.mode) && c.selections;
       const captures = grouped || [c],
