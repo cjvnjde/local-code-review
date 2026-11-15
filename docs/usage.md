@@ -181,6 +181,15 @@ is stored as `ui.theme` in your user config and survives restarts. Open pages on
 the same lcr server update together. The header's light/dark shortcut switches
 between Latte and Mocha when using Catppuccin, or between Light and Dark otherwise.
 
+| Light (`light`)                                                                         | Dark (`dark`)                                                                        |
+| --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| [![The example checkout review in the Light theme](review-light.png)](review-light.png) | [![The same review in the Dark theme](local-code-review.png)](local-code-review.png) |
+| **Catppuccin Latte (`catppuccin-latte`)**                                               | **Catppuccin Mocha (`catppuccin-mocha`)**                                            |
+| [![The same review in Catppuccin Latte](catppuccin-latte.png)](catppuccin-latte.png)    | [![The same review in Catppuccin Mocha](catppuccin-mocha.png)](catppuccin-mocha.png) |
+
+These screenshots use the same example checkout and note positions so you can
+compare the palettes. Click an image for its full-size view.
+
 Choose **Create theme** beside the selector to open a separate editor page with
 the selected palette prefilled, leaving your review and note drafts in place.
 Give the copy a name, choose its light/dark color scheme, and edit any of the 31
@@ -188,6 +197,8 @@ colors using a picker or a six-digit hex value. Each field explains its use:
 surfaces, text, controls, status indicators, diff lines, and syntax highlighting.
 The live preview stays separate from the active theme until you save. Light/dark
 sets the browser color scheme; changing it does not replace your chosen colors.
+
+[![Custom theme editor with named color fields, light and dark scheme selection, and a live diff preview](theme-editor.png)](theme-editor.png)
 
 **Save as new theme** creates a JSON file under
 `$XDG_CONFIG_HOME/lcr/themes/`, or `~/.config/lcr/themes/`, and selects it. The editor

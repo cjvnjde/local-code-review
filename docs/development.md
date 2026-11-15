@@ -155,6 +155,26 @@ Do not format generated review files. The optional skill copies must stay identi
 cmp skills/apply-lcr/SKILL.md .agents/skills/apply-lcr/SKILL.md
 ```
 
+## Documentation screenshots
+
+README and guide images are real captures of the current UI, using a disposable
+example checkout rather than personal code or agent conversations:
+
+- `docs/local-code-review.png`: Dark theme and the main review layout.
+- `docs/review-light.png`, `docs/catppuccin-latte.png`, and
+  `docs/catppuccin-mocha.png`: the same review and scroll position in each palette.
+- `docs/theme-editor.png`: **Settings → Appearance → Create theme**, with its live preview.
+- `docs/web-annotation.png`: the live-page capture overlay and embedded note editor.
+
+To refresh them, compile the standalone executable as above, run it in an isolated
+example Git repository with `--no-agent`, and use a temporary `XDG_CONFIG_HOME`
+so theme changes do not overwrite your preferences. Keep the review viewport at
+1600 × 1000 CSS pixels and capture the actual page, not a reconstructed UI.
+Use a local example app for `--web` captures; inspect images for private content
+before replacing the assets. Do not commit the temporary repository, browser
+profile, generated reviews, or executable. Embed images with relative paths and
+descriptive alt text so the README and guides work offline as well as on GitHub.
+
 ## UX preservation
 
 The React implementation keeps the original review interactions. See the

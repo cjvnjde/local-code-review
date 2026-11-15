@@ -15,6 +15,13 @@ server. Write feedback, annotate images or add a suggestion, and save. Captured 
 and element metadata remain in the review file, with pictures stored beside it.
 The external-link icon in the window header opens the full review.
 
+[![Current live-page overlay with a selected order summary and its screenshot in the floating Markdown note editor](web-annotation.png)](web-annotation.png)
+
+The example storefront above uses Catppuccin Mocha for lcr's controls. Change it
+under **Settings → Appearance → Theme** in the full review; the embedded editor
+follows the same palette without recoloring the page or captured image. See
+[themes and custom colors](usage.md#themes-and-custom-colors).
+
 The note window can be moved, resized from any side or its corner, or minimized.
 Capture titles stay on one line with ellipsis; their full titles are available
 on hover. Clicking an editable thumbnail opens the drawing editor directly;

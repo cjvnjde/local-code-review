@@ -2,13 +2,17 @@
 
 Review local Git changes and annotate a running web app. Feedback stays in Markdown, ready for any coding agent.
 
-This `v2` branch uses React, Tailwind, Base UI, TanStack Query/Virtual, and
-Konva/react-konva while keeping the terminal CLI and standalone executable.
-Library-backed features include pressure drawing, screenshot differences, modern
-CSS colors, accessibility checks, and the official ACP SDK. Review rounds, note
-triage, search facets, and repository-wide history support follow-up work.
-See [development](docs/development.md) for the architecture and current scope.
-The screenshots and older releases on the default branch show the previous UI.
+[![Current review UI in the Dark theme, with a continuous diff, inline feedback, and the notes sidebar](docs/local-code-review.png)](docs/local-code-review.png)
+
+- Read continuous diffs with syntax highlighting, bookmarks, and resizable file and note panes.
+- Save Markdown notes, suggested changes, images, and replies without leaving the code.
+- Capture a running local app, draw on screenshots, and keep visual feedback in the same review.
+- Choose Light, Dark, Catppuccin Latte, or Catppuccin Mocha—or create your own palette.
+- Continue with any coding agent through review files, or connect one through ACP.
+
+The screenshots show this `v2` branch's React UI. Older releases may still show the
+previous interface; [build from source](#install-or-update-from-source) to use this
+branch. See [development](docs/development.md) for the library stack and architecture.
 
 ## Install
 
@@ -92,6 +96,24 @@ The browser opens at `http://localhost:7777`; if the port is taken, lcr prints t
 2. **Save note** writes that note to `.review/review-<timestamp>.md` without starting an agent. The output directory is ignored by Git.
 3. Ask your agent to address that file. Replies and status changes appear live; keep the conversation going under each note.
 
+## Themes
+
+Choose **Settings → Appearance → Theme**. The four built-in palettes cover light
+and dark reading, including diff colors and syntax highlighting.
+
+| Catppuccin Latte                                                                                           | Catppuccin Mocha                                                                                          |
+| ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| [![Code review in the Catppuccin Latte light theme](docs/catppuccin-latte.png)](docs/catppuccin-latte.png) | [![Code review in the Catppuccin Mocha dark theme](docs/catppuccin-mocha.png)](docs/catppuccin-mocha.png) |
+
+Prefer the defaults? Preview [Light](docs/review-light.png) or
+[Dark](docs/local-code-review.png). The header shortcut switches between light and
+dark, keeping the Catppuccin pair when selected.
+
+**Create theme** opens a separate editor with 31 editable colors and a live
+preview. Save a named copy to your user configuration without changing the built-in
+palette or losing your review draft. Your selection persists across restarts.
+See the [theme gallery and editor guide](docs/usage.md#themes-and-custom-colors).
+
 ## Annotate a web app
 
 ```sh
@@ -102,6 +124,8 @@ Select an element or area in the running app and write feedback in the embedded
 React editor. Captures and code notes share one Markdown conversation. Requires
 installed Chrome, Chromium, or Edge. See the [web capture guide](docs/web-ui.md)
 for profiles, existing-browser attachment, and capture context.
+
+[![Live-page capture with the current floating note editor and a checkout screenshot attached](docs/web-annotation.png)](docs/web-annotation.png)
 
 ## Hand feedback to an agent
 
@@ -258,14 +282,15 @@ Use `~/.config/lcr/config.json`, or `$XDG_CONFIG_HOME/lcr/config.json` when
   "context": 8,
   "browserProfile": "shared",
   "ui": {
+    "theme": "catppuccin-mocha",
     "aiContext": true
   }
 }
 ```
 
 With this example, plain `lcr` reviews against `origin/main` without an automatic
-agent and enables on-demand capture context. The revision must exist in the
-repository; lcr does not fetch it.
+agent, uses Catppuccin Mocha, and enables on-demand capture context. The revision
+must exist in the repository; lcr does not fetch it.
 
 CLI options override configured defaults. Explicit Git arguments replace `diffArgs`;
 `lcr --worktree` returns to the built-in comparison against `HEAD`. `--no-web` disables
@@ -280,7 +305,9 @@ Both accept `~/` paths. These browser settings apply when `--web` or a configure
 Settings changes persist in `lcr/config.json` under that configuration directory,
 preserving startup options and agent profile paths. **Enable AI answers** turns
 new AI dispatches on or off without cancelling existing queued/running work.
-Theme, panel visibility, viewed marks, and drafts remain browser-local.
+Theme selection also persists as `ui.theme`; panel visibility, viewed marks, and
+drafts remain browser-local. Custom palettes live in the adjacent `lcr/themes/`
+directory.
 
 ## Other options
 
@@ -299,6 +326,7 @@ Unrecognized arguments pass through to `git diff`. Working-tree comparisons incl
 ## Documentation
 
 - [Review workflow and controls](docs/usage.md) — notes, images, history, and saved conversations.
+- [Themes and custom colors](docs/usage.md#themes-and-custom-colors) — built-in previews, the live editor, and saved palettes.
 - [Web annotation](docs/web-ui.md) — page selections, captured evidence, and browser requirements.
 - [Agent connections and sequential queue](docs/agent-connections.md).
 - [Development](docs/development.md) — run from source, checks, and standalone builds.
