@@ -1395,6 +1395,7 @@ function Workspace({
                                       file={noteFile}
                                       agent={!!agent.agent}
                                       editorDraft={draft ?? undefined}
+                                      onChangeDraft={setDraft}
                                       onCompose={(next) =>
                                         compose({ ...next, host: "panel" })
                                       }

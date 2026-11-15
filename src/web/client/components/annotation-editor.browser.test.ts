@@ -798,8 +798,26 @@ browserTest(
 browserTest(
   "text edits in place with wrapping, background, outline and an independent leader; insets magnify original pixels",
   async () => {
-    await withEditor(async ({ click, point, drag, js, save, reopen }) => {
+    await withEditor(async ({ click, point, drag, key, js, save, reopen }) => {
       await click("[data-tool=text]");
+      expect(
+        await js(`(()=>{
+          const background=document.querySelector('[data-field=background]');
+          return {
+            checked:background.checked,
+            visible:background.checkVisibility(),
+            options:!!document.querySelector('[data-command=options]'),
+            placeholder:document.querySelector('[data-field=text]').hasAttribute('placeholder'),
+            help:!!document.querySelector('[data-command=help]'),
+          };
+        })()`),
+      ).toEqual({
+        checked: false,
+        visible: true,
+        options: false,
+        placeholder: false,
+        help: false,
+      });
       await point({ x: 120, y: 280 });
       await js(`(()=>{
         const el=document.querySelector('[data-field=text]');
@@ -810,12 +828,29 @@ browserTest(
           else {Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(field,value);field.dispatchEvent(new Event('input',{bubbles:true}));}
         }
       })()`);
+      expect(
+        await js(
+          "getComputedStyle(document.querySelector('[data-field=text]')).backgroundColor",
+        ),
+      ).toBe("rgba(0, 0, 0, 0)");
       const location = await js(`(()=>{
         const t=document.querySelector('[data-field=text]').getBoundingClientRect();
         const surface=document.querySelector('[data-drawing-surface]');const c=surface.getBoundingClientRect();return {x:t.x-c.x,y:t.y-c.y,zoom:c.width/Number(surface.dataset.width)};
       })()`);
       expect(location.x / location.zoom).toBeCloseTo(120);
       expect(location.y / location.zoom).toBeCloseTo(280);
+      await click("[data-field=background]");
+      expect(
+        await js("document.querySelector('[data-field=background]').checked"),
+      ).toBe(true);
+      await key(" ");
+      expect(
+        await js("document.querySelector('[data-field=background]').checked"),
+      ).toBe(false);
+      await key(" ");
+      expect(
+        await js("document.querySelector('[data-field=background]').checked"),
+      ).toBe(true);
       await click("[data-tool=select]");
       await click("[data-command=edit-text]");
       await js(`(()=>{
@@ -998,6 +1033,7 @@ browserTest(
               completionVisible:apply.width>0&&cancel.right<=innerWidth&&apply.top>=0,
               canvasHeight:editor.querySelector('.annotation-viewport').clientHeight,
               popupOpen:!!editor.querySelector('#annotation-more-tools')?.hasAttribute('data-open'),
+              options:!!editor.querySelector('[data-command=options]'),
               active:editor.querySelector('[data-tool="${tool}"]').getAttribute('aria-pressed')
             };
           })()`);
@@ -1008,6 +1044,11 @@ browserTest(
           expect(layout.canvasHeight).toBeGreaterThan(250);
           expect(layout.popupOpen).toBe(false);
           expect(layout.active).toBe("true");
+          if (
+            ["pen", "rectangle", "text", "path", "magnifier"].includes(tool)
+          ) {
+            expect(layout.options).toBe(width < 640);
+          }
         }
       }
     });
@@ -1094,12 +1135,15 @@ browserTest(
     await withEditor(async ({ click, drag, js, save, reopen }) => {
       await drag({ x: 120, y: 120 }, { x: 220, y: 140 });
       await click("[data-tool=pen]");
-      await click("[data-command=options]");
+      expect(
+        await js(
+          "document.querySelector('[data-field=pen-mode]').checkVisibility()",
+        ),
+      ).toBe(true);
       await js(`(()=>{
         const mode=document.querySelector('[data-field=pen-mode]');
         mode.value='pressure';mode.dispatchEvent(new Event('change',{bubbles:true}));
       })()`);
-      await click("[data-command=options]");
       await drag({ x: 120, y: 220 }, { x: 260, y: 260 });
       const first = await save();
       expect(first.marks[0]).not.toHaveProperty("stroke");

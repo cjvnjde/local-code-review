@@ -35,7 +35,6 @@ import {
   Pencil,
   LoaderCircle,
   Plus,
-  Info,
 } from "lucide-react";
 import type { ReviewComment } from "../../../shared/review-types.ts";
 import { noteKey } from "../../../shared/note-id.ts";
@@ -49,9 +48,6 @@ import { suggestionBlock } from "../diff/model.ts";
 import { WebEvidence } from "../web-review/evidence.tsx";
 import { NoteHeader, TriageSelect } from "./note-header.tsx";
 import { commentInput } from "./comment-input.ts";
-
-export const editorHelp = (enterSaves: boolean) =>
-  `${enterSaves ? "Enter" : "Shift+Enter"} or Ctrl/Cmd+Enter to submit. ${enterSaves ? "Shift+Enter" : "Enter"} inserts a newline. Type # for a note or @ for a file.`;
 
 export type Draft = {
   /** Captured when opening the editor; never follows another tab's selected review. */
@@ -249,10 +245,21 @@ export function Composer({
   }, [selectedReference, completion]);
   useLayoutEffect(() => {
     const field = textarea.current;
-    if (field) {
+    if (!field) return;
+    const resize = () => {
       field.style.height = "auto";
-      field.style.height = `${Math.min(embedded ? 200 : 480, Math.max(embedded ? 112 : 72, field.scrollHeight))}px`;
-    }
+      const border = field.offsetHeight - field.clientHeight;
+      field.style.height = `${Math.max(embedded ? 112 : 72, field.scrollHeight + border)}px`;
+    };
+    resize();
+    let width = field.clientWidth;
+    const observer = new ResizeObserver(() => {
+      if (width === field.clientWidth) return;
+      width = field.clientWidth;
+      resize();
+    });
+    observer.observe(field);
+    return () => observer.disconnect();
   }, [body, preview, embedded]);
   // Upload completion reads the current draft, so text typed during an upload is kept.
   const latest = useRef(draft);
@@ -430,46 +437,28 @@ export function Composer({
       />
     </>
   );
-  const editorControls = !embedded && (
-    <>
-      <Tooltip label={editorHelp(settings.enterSaves)}>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-7 text-muted-foreground"
-          aria-label="Editor help"
-        >
-          <Info />
-        </Button>
-      </Tooltip>
-      {draft.kind === "note" && (
-        <TriageSelect
-          value={draft.comment.triage}
-          disabled={busy}
-          onChange={(triage) => {
-            const current = latest.current;
-            if (current.kind === "note")
-              onChange({
-                ...current,
-                comment: { ...current.comment, triage },
-              });
-          }}
-        />
-      )}
-    </>
+  const classification = draft.kind === "note" && (
+    <TriageSelect
+      value={draft.comment.triage}
+      disabled={busy}
+      onChange={(triage) => {
+        const current = latest.current;
+        if (current.kind === "note")
+          onChange({
+            ...current,
+            comment: { ...current.comment, triage },
+          });
+      }}
+    />
   );
   const content = (
     <div
-      className={`flex min-h-0 flex-col gap-2 ${embedded ? "flex-1 pt-2" : integrated ? "" : "p-2.5"}`}
+      className={`flex flex-col gap-2 ${embedded ? "pt-2" : integrated ? "" : "p-2.5"}`}
     >
       <div
         role={embedded ? "region" : undefined}
         aria-label={embedded ? "Evidence and attachments" : undefined}
-        className={
-          embedded
-            ? "min-h-0 flex-1 space-y-2 overflow-auto px-2.5"
-            : "contents"
-        }
+        className={embedded ? "space-y-2 px-2.5" : "contents"}
       >
         {!integrated && draft.kind === "note" && draft.comment.image && (
           <AttachmentImage
@@ -527,13 +516,7 @@ export function Composer({
         )}
         {embedded && attachments}
       </div>
-      <div
-        className={
-          embedded
-            ? "shrink-0 space-y-1.5 border-t bg-background p-2.5"
-            : "space-y-1.5"
-        }
-      >
+      <div className={embedded ? "space-y-1.5 border-t p-2.5" : "space-y-1.5"}>
         <div
           role="toolbar"
           aria-label="Text formatting"
@@ -639,12 +622,8 @@ export function Composer({
           />
         </div>
         {preview ? (
-          <div className="max-h-80 min-h-28 overflow-auto">
-            <Markdown
-              body={body || "Nothing to preview yet."}
-              file={file}
-              captured={code}
-            />
+          <div className="min-h-28">
+            <Markdown body={body} file={file} captured={code} />
           </div>
         ) : (
           <div className="relative">
@@ -759,8 +738,7 @@ export function Composer({
                   void save();
                 }
               }}
-              placeholder="Write feedback, ask a question, or type # for a note or @ for a file…"
-              className={`w-full rounded border bg-transparent px-2 py-2 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground outline-none focus-visible:outline-1 focus-visible:outline-ring ${embedded ? "min-h-20 max-h-[30dvh] resize-none" : "min-h-18 resize-y"}`}
+              className="block min-h-18 w-full resize-none overflow-hidden rounded border bg-transparent px-2 py-2 text-sm leading-relaxed text-foreground outline-none focus-visible:outline-1 focus-visible:outline-ring"
             />
             {completion && (
               <div
@@ -834,7 +812,6 @@ export function Composer({
           </span>
         )}
         <div className="flex flex-wrap items-center gap-2 border-t pt-1.5 [&_button]:h-7">
-          {!embedded && editorControls}
           {onAddCapture && (
             <Button
               size="sm"
@@ -885,7 +862,7 @@ export function Composer({
       aria-label="Comment editor"
       className={
         embedded
-          ? "flex min-h-0 flex-1 flex-col [&_button]:rounded"
+          ? "flex flex-col [&_button]:rounded"
           : integrated
             ? "min-w-0 w-full [&_button]:rounded"
             : "min-w-0 w-full rounded border bg-card [&_button]:rounded"
@@ -901,7 +878,9 @@ export function Composer({
       }}
     >
       {!integrated && !embedded && draft.kind === "note" && (
-        <NoteHeader note={draft.comment} status="Draft" />
+        <NoteHeader note={draft.comment} status="Draft">
+          {classification}
+        </NoteHeader>
       )}
       {content}
     </section>

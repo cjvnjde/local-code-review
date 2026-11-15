@@ -57,21 +57,6 @@ export interface AnnotationSource {
 }
 
 type Tool = DrawingTool;
-const TOOL_HINTS: Record<Tool, string> = {
-  select: "Click a drawing to select it; drag handles to resize.",
-  pan: "Drag to pan; wheel to zoom.",
-  pen: "Drag to draw; Space + drag to pan.",
-  highlighter: "Drag to highlight; adjust opacity in Options.",
-  arrow: "Drag from the tail to the arrow tip.",
-  rectangle: "Drag to draw; hold Shift for a square.",
-  ellipse: "Drag to draw; hold Shift for a circle.",
-  triangle: "Drag to draw a triangle.",
-  line: "Drag between the line endpoints.",
-  path: "Click points, drag for curves; Enter to finish.",
-  text: "Click to place text, then type your label.",
-  callout: "Click for a numbered badge; drag to point.",
-  magnifier: "Drag from source detail to the magnified inset.",
-};
 type PathMark = Extract<AnnotationMark, { tool: "path" }>;
 type Gesture = {
   id: number;
@@ -185,7 +170,7 @@ function editAnnotation(
     fill = false,
     fillColor = "#eab308",
     wrap = 240,
-    background = true,
+    background = false,
     backgroundColor = "#ffffff",
     textOutline = false,
     textLeader = false,
@@ -346,23 +331,10 @@ function editAnnotation(
       recoverable: !!recoverable,
       discard,
       zoom,
-      padding,
       applyLabel: capture.applyLabel ?? "Use drawing",
       error: errorMessage,
       retry,
       message: statusMessage,
-      hint:
-        original || heldOriginal
-          ? "Original comparison — drawings are hidden, not removed."
-          : tool === "select" && current
-            ? current.tool === "path"
-              ? "Drag points or curve handles; double-click a segment to add a point."
-              : current.tool === "text"
-                ? "Drag to move; double-click to edit text."
-                : current.tool === "arrow" || current.tool === "line"
-                  ? "Drag to move; drag either endpoint to reshape."
-                  : "Drag to move; drag handles to resize."
-            : TOOL_HINTS[tool],
     };
   }
   function sync() {
@@ -663,8 +635,14 @@ function editAnnotation(
       true,
     );
   }
+  let resizeFrame = 0;
   const resize = new ResizeObserver(() => {
-    if (fitted) fit();
+    if (!fitted || resizeFrame) return;
+    // Fitting also updates the toolbar; finish resize delivery before changing layout.
+    resizeFrame = requestAnimationFrame(() => {
+      resizeFrame = 0;
+      if (fitted) fit();
+    });
   });
   viewport.addEventListener(
     "wheel",
@@ -1812,6 +1790,7 @@ function editAnnotation(
     cancelGesture();
     cancelAnimationFrame(paintFrame);
     resize.disconnect();
+    cancelAnimationFrame(resizeFrame);
     window.removeEventListener("keydown", onKey, true);
     window.removeEventListener("keyup", onKeyUp, true);
     window.removeEventListener("blur", onBlur);

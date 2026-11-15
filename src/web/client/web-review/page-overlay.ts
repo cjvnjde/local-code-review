@@ -106,6 +106,11 @@ export function installPageReview(config: {
       origin: { x: number; y: number };
     } | null = null;
   let dockSize: { width: number; height: number } | null = null;
+  let frameHeight = 0;
+  const notifications = new Map<
+    string,
+    { node: HTMLElement; timer?: number }
+  >();
   let resizePress: {
     id: number;
     x: number;
@@ -175,7 +180,7 @@ export function installPageReview(config: {
   if (config.ownerKey) host.dataset.lcrOwner = config.ownerKey;
   host.dataset.lcrOverlay = "";
   host.style.cssText =
-    "position:fixed;inset:0;z-index:2147483647;pointer-events:none";
+    "position:fixed;inset:0;z-index:2147483647;pointer-events:none;overflow:auto;overflow-anchor:none;overscroll-behavior:contain;scroll-behavior:auto";
   const root = host.attachShadow({ mode: "open" });
   function applyTheme(theme?: Theme) {
     if (!theme || (theme.mode !== "light" && theme.mode !== "dark")) return;
@@ -209,22 +214,20 @@ export function installPageReview(config: {
     .launcher [data-launcher]:active{cursor:grabbing}.launcher button[aria-pressed=true]{background:var(--accent);color:var(--primary-ink)}
     .mode-state{white-space:nowrap}
     .bar{pointer-events:auto;position:fixed;display:flex;gap:var(--space-1);align-items:center;padding:var(--space-2);border:0;border-radius:var(--radius-md);background:var(--panel2);box-shadow:0 4px 24px #0005;width:280px;max-width:calc(100vw - var(--space-3)*2);max-height:calc(100dvh - 80px);overflow:auto;flex-wrap:wrap}
-    .bar [data-mode],.bar [data-multiple]{width:100%;text-align:left;display:flex;align-items:baseline;gap:var(--space-2)}.bar small{font-size:var(--fs-small);color:var(--ink-dim);font-weight:400}.bar [data-notes]{width:100%;text-align:left;color:var(--ink-dim)}.capture-help{margin:var(--space-1);font-size:var(--fs-small);color:var(--ink-dim)}
+    .bar [data-mode],.bar [data-multiple]{width:100%;text-align:left;display:flex;align-items:baseline;gap:var(--space-2)}.bar small{font-size:var(--fs-small);color:var(--ink-dim);font-weight:400}.bar [data-notes]{width:100%;text-align:left;color:var(--ink-dim)}
     .outline{position:fixed;pointer-events:none;border:2px solid var(--accent);background:var(--sel);border-radius:var(--radius-sm);display:none}
     .label{position:absolute;bottom:100%;left:0;white-space:nowrap;padding:2px var(--space-2);border-radius:var(--radius-sm) var(--radius-sm) 0 0;background:var(--accent);color:var(--primary-ink);font-size:var(--fs-small)}
-    .dock{pointer-events:auto;position:fixed;right:var(--space-4);top:var(--space-4);height:min(540px,calc(100dvh - var(--space-3)*2));width:min(440px,calc(100vw - var(--space-3)*2));max-width:calc(100vw - var(--space-3)*2);max-height:calc(100dvh - var(--space-3)*2);background:var(--panel2);border:0;box-shadow:0 8px 32px #0006;border-radius:var(--radius-md);display:flex;flex-direction:column;overflow:hidden}
+    .dock{pointer-events:auto;position:absolute;right:var(--space-4);top:var(--space-4);height:540px;width:min(440px,calc(100vw - var(--space-3)*2));max-width:calc(100vw - var(--space-3)*2);background:var(--panel2);border:0;box-shadow:0 8px 32px #0006;border-radius:var(--radius-md);display:flex;flex-direction:column;overflow:hidden;overflow-anchor:none}
     .dock.minimized{height:auto}.dock.minimized .content{position:absolute;top:100%;left:0;right:0;flex:none;height:var(--content-height);visibility:hidden;pointer-events:none}
     .resize{position:absolute;right:0;bottom:0;width:var(--tap-lg);height:var(--tap-lg);padding:0;border:0;border-radius:var(--radius-sm) 0 0 0;background:transparent;cursor:nwse-resize;touch-action:none;display:grid;place-items:center;color:var(--ink-dim)}
     .resize svg{width:var(--icon);height:var(--icon);pointer-events:none}.resize:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}.dock.minimized .resize{display:none}
     .resize-edge{min-width:0;min-height:0;border-radius:0;z-index:1}.resize-edge:is(:hover,:focus-visible){background:var(--sel)}.resize-edge::before{display:none}
     .resize-edge[data-resize=e],.resize-edge[data-resize=w]{top:var(--tap-lg);bottom:var(--tap-lg);width:6px;height:auto;cursor:ew-resize}.resize-edge[data-resize=w]{left:0;right:auto}
     .resize-edge[data-resize=n],.resize-edge[data-resize=s]{left:var(--space-2);right:var(--tap-lg);width:auto;height:6px;cursor:ns-resize}.resize-edge[data-resize=n]{top:0;bottom:auto}
-    .resize:is(:hover,:focus-visible)::before{content:attr(title);position:absolute;right:var(--space-2);bottom:100%;width:calc(var(--tap) * 9);max-width:calc(100vw - var(--space-4)*2);padding:var(--space-2);border:1px solid var(--edge);border-radius:var(--radius-sm);background:var(--panel);color:var(--ink);font-size:var(--fs-small);pointer-events:none;cursor:default}
-    .bar[hidden],.dock[hidden],.selection-tools[hidden]{display:none}.head{display:flex;flex:none;align-items:center;gap:var(--space-1);min-height:var(--bar-height);padding:var(--space-2) var(--space-3);background:var(--panel);cursor:move;touch-action:none;user-select:none}.head b{display:block;flex:1;min-width:0;min-height:var(--tap-lg);line-height:var(--tap-lg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-radius:var(--radius-sm)}.head button,.head .review-link{flex:none}.head button{width:var(--tap-lg);padding:0}.head .review-link{display:inline-flex;align-items:center;color:var(--ink-dim)}.head svg{width:var(--icon);height:var(--icon);pointer-events:none}.content{display:flex;flex-direction:column;flex:1;min-height:0;overflow:auto}.content iframe{width:100%;flex:1;min-height:0;border:0;background:var(--panel2)}.status,.error{padding:var(--space-3) var(--space-4);margin:0}
+    .bar[hidden],.dock[hidden],.selection-tools[hidden]{display:none}.head{display:flex;flex:none;align-items:center;gap:var(--space-1);min-height:var(--bar-height);padding:var(--space-2) var(--space-3);background:var(--panel);cursor:move;touch-action:none;user-select:none}.head b{display:block;flex:1;min-width:0;min-height:var(--tap-lg);line-height:var(--tap-lg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-radius:var(--radius-sm)}.head button,.head .review-link{flex:none}.head button{width:var(--tap-lg);padding:0}.head .review-link{display:inline-flex;align-items:center;color:var(--ink-dim)}.head svg{width:var(--icon);height:var(--icon);pointer-events:none}.content{display:flex;flex-direction:column;flex:1;min-height:0}.content iframe{display:block;width:100%;flex:1;min-height:0;border:0;background:var(--panel2)}.status,.error{padding:var(--space-3) var(--space-4);margin:0}
     .head select{flex:none;min-width:0;max-width:118px;height:var(--tap-lg);border:1px solid var(--edge);border-radius:var(--radius-sm);padding:0 var(--space-1);background:var(--panel2);color:var(--ink);font:inherit;cursor:pointer;touch-action:auto}.head select:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}.head [hidden]{display:none}
-    .editor-help{flex:none;display:flex}.editor-help span{display:none;position:absolute;top:var(--bar-height);left:var(--space-2);right:var(--space-2);z-index:2;padding:var(--space-2);border:1px solid var(--edge);border-radius:var(--radius-sm);background:var(--panel);color:var(--ink);font-size:var(--fs-small);font-weight:400;cursor:default}.editor-help:is(:hover,:focus-within) span{display:block}
     .dock.fullscreen .head,.dock.fullscreen .resize{display:none}
-    .dock.fullscreen{border:0;border-radius:0;box-shadow:none;max-width:none;max-height:none}
+    .dock.fullscreen{position:fixed;border:0;border-radius:0;box-shadow:none;max-width:none}
     .dock.fullscreen~.launcher,.dock.fullscreen~.bar{display:none}
     .pin{pointer-events:auto;position:fixed;display:grid;place-items:center;border-radius:50%;background:var(--mark);border:0;box-shadow:0 2px 8px #0007;color:var(--crust);font-weight:700;padding:0;width:var(--tap);height:var(--tap)}.pin:hover{background:var(--mark);color:var(--crust);box-shadow:0 0 0 2px var(--crust),0 2px 8px #0007}.draft-pin{outline:2px dashed var(--accent);outline-offset:2px}
     .selected{position:fixed;pointer-events:none;border:2px solid var(--accent);background:var(--sel);border-radius:var(--radius-sm)}
@@ -233,15 +236,17 @@ export function installPageReview(config: {
     .frozen-page{position:fixed;inset:0;pointer-events:auto;max-width:none!important;max-height:none!important;user-select:none;touch-action:none}
     .freeze-status{pointer-events:auto;position:fixed;top:var(--space-4);left:50%;transform:translateX(-50%);display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2);padding:var(--space-2);border:1px solid var(--accent);border-radius:var(--radius-md);background:var(--panel2);max-width:calc(100vw - var(--space-3)*2);box-shadow:0 4px 24px #0005}.freeze-status[hidden]{display:none}
     .capture-prompt{pointer-events:auto;position:fixed;top:72px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:var(--space-2);max-width:calc(100vw - 24px);padding:var(--space-2) var(--space-3);background:var(--panel2);border:1px solid var(--accent);border-radius:var(--radius-md);box-shadow:0 4px 24px #0005}.capture-prompt[hidden]{display:none}
+    .notifications{position:fixed;right:var(--space-4);bottom:var(--space-4);z-index:3;display:flex;flex-direction:column;gap:var(--space-2);width:360px;max-width:calc(100vw - var(--space-4)*2);pointer-events:none}.notification{pointer-events:auto;display:flex;gap:var(--space-2);padding:var(--space-3);border:1px solid var(--edge);border-radius:var(--radius-md);background:var(--panel);color:var(--ink);box-shadow:0 4px 24px #0005;overflow-wrap:anywhere}.notification div{flex:1;min-width:0}.notification p{margin:0}.notification p+p{margin-top:var(--space-1);color:var(--ink-dim)}.notification button{align-self:start;flex:none}
     @media(max-width:600px){.selection-tools{bottom:72px}.launcher{font-size:12px}}
   </style><div class="outline"><span class="label"></span></div><div class="selections"></div><div class="pins"></div>
   <div class="freeze-status" hidden role="status"><span data-freeze-status></span><button data-resume>Resume · Ctrl+Shift+F</button></div>
   <div class="capture-prompt" hidden role="status"><span data-capture-instruction></span><button data-cancel-capture>Cancel · Esc</button></div>
   <div class="selection-tools" hidden><span data-selection-count></span><button data-write>Write note</button><button data-clear>Clear</button></div>
-  <div class="dock" hidden><div class="head"><b tabindex="0" title="Drag to move; arrow keys move the note window"></b><div class="editor-help" hidden><button type="button" data-editor-help aria-label="Editor help" aria-describedby="editor-hint"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7v1"/></svg></button><span id="editor-hint" role="tooltip"></span></div><select data-triage aria-label="Note triage" hidden></select><a class="review-link" data-panel-review target="lcr-review" rel="noopener" aria-label="Open full review" title="Open full review"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 3h6v6M10 14 21 3M21 14v7H3V3h7"/></svg></a><button type="button" data-minimize aria-label="Minimize note panel" title="Minimize note panel" aria-expanded="true">−</button><button type="button" data-close aria-label="Close note panel" title="Close note panel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg></button></div><div class="content"></div><button type="button" class="resize" data-resize="se" aria-label="Resize note panel" title="Drag to resize; arrow keys resize; Shift moves farther"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 13 13 3M8 13l5-5M12 13l1-1"/></svg></button>${(["n", "e", "s", "w"] as const).map((edge, i) => `<button type="button" class="resize resize-edge" data-resize="${edge}" aria-label="Resize note panel from ${["top", "right", "bottom", "left"][i]}" title="Drag to resize; arrow keys resize; Shift moves farther"></button>`).join("")}</div>
+  <div class="dock" hidden><div class="head"><b tabindex="0" title="Drag to move; arrow keys move the note window"></b><select data-triage aria-label="Note triage" hidden></select><a class="review-link" data-panel-review target="lcr-review" rel="noopener" aria-label="Open full review" title="Open full review"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 3h6v6M10 14 21 3M21 14v7H3V3h7"/></svg></a><button type="button" data-minimize aria-label="Minimize note panel" title="Minimize note panel" aria-expanded="true">−</button><button type="button" data-close aria-label="Close note panel" title="Close note panel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg></button></div><div class="content"></div><button type="button" class="resize" data-resize="se" aria-label="Resize note panel" title="Drag to resize; arrow keys resize; Shift moves farther"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 13 13 3M8 13l5-5M12 13l1-1"/></svg></button>${(["n", "e", "s", "w"] as const).map((edge, i) => `<button type="button" class="resize resize-edge" data-resize="${edge}" aria-label="Resize note panel from ${["top", "right", "bottom", "left"][i]}" title="Drag to resize; arrow keys resize; Shift moves farther"></button>`).join("")}</div>
   <div class="launcher" role="group" aria-label="Page review mode"><button data-browse aria-pressed="false" title="Use page controls normally">Browse</button><button data-annotate aria-pressed="true" title="Select page content to capture for a note; hold Alt to browse temporarily">Annotate</button><button data-launcher aria-label="Capture targeting: Element" aria-expanded="false" aria-controls="capture-tools" title="Choose capture target; drag to move"><span class="mode-state">Element</span><span aria-hidden="true"> ▾</span></button></div>
-  <div class="bar" id="capture-tools" role="group" aria-label="Capture targeting" hidden><button data-mode="element" aria-pressed="true" title="Hover for dimensions; Alt + wheel picks parents; Shift-click selects multiple; drag selects an area">Element <small>One element</small></button><button data-mode="block" aria-pressed="false" title="Select the containing layout section">Block <small>Containing section</small></button><button data-multiple aria-pressed="false" title="Collect elements for one note, then choose Write note">Multiple <small>Several elements, one note</small></button><button data-mode="area" aria-pressed="false" title="Drag a rectangle to capture an area">Area <small>Drag a rectangle</small></button><button data-mode="point" aria-pressed="false" title="Click a point to capture its surroundings">Point <small>Click a location</small></button><p class="capture-help">Hold Alt to browse temporarily. Shift-click adds elements; Alt + wheel picks parents.</p><button data-freeze title="Freeze the current view · Ctrl+Shift+F">Freeze view</button><button data-notes>Notes · 0 ↗</button></div>`;
-  (document.body || document.documentElement).append(host);
+  <div class="bar" id="capture-tools" role="group" aria-label="Capture targeting" hidden><button data-mode="element" aria-pressed="true" title="Hover for dimensions; Alt + wheel picks parents; Shift-click selects multiple; drag selects an area">Element <small>One element</small></button><button data-mode="block" aria-pressed="false" title="Select the containing layout section">Block <small>Containing section</small></button><button data-multiple aria-pressed="false" title="Collect elements for one note, then choose Write note">Multiple <small>Several elements, one note</small></button><button data-mode="area" aria-pressed="false" title="Drag a rectangle to capture an area">Area <small>Drag a rectangle</small></button><button data-mode="point" aria-pressed="false" title="Click a point to capture its surroundings">Point <small>Click a location</small></button><button data-freeze title="Freeze the current view · Ctrl+Shift+F">Freeze view</button><button data-notes>Notes · 0 ↗</button></div><section class="notifications" aria-label="Notifications"></section>`;
+  // A transformed body must not become the containing block of the overlay.
+  document.documentElement.append(host);
   const redactButton = document.createElement("button");
   redactButton.dataset.mode = "redact";
   redactButton.setAttribute("aria-pressed", "false");
@@ -358,14 +363,16 @@ export function installPageReview(config: {
       1,
       Math.min(dockSize?.width ?? 440, innerWidth - 24),
     );
-    const expandedHeight = Math.max(
+    const headHeight = $(".head").offsetHeight || 50;
+    // Content grows downward; only explicit resizing or viewport changes move the anchor.
+    const placementHeight = Math.max(
       1,
       Math.min(
         dockSize?.height ?? 540,
         innerHeight - (innerWidth <= 600 ? 80 : 24),
       ),
     );
-    const height = minimized ? $(".head").offsetHeight || 50 : expandedHeight;
+    const expandedHeight = Math.max(frameHeight + headHeight, placementHeight);
     dockPosition.x = Math.max(
       12,
       Math.min(innerWidth - width - 12, dockPosition.x),
@@ -373,7 +380,9 @@ export function installPageReview(config: {
     dockPosition.y = Math.max(
       12,
       Math.min(
-        innerHeight - height - (innerWidth <= 600 ? 68 : 12),
+        innerHeight -
+          (minimized ? headHeight : placementHeight) -
+          (innerWidth <= 600 ? 68 : 12),
         dockPosition.y,
       ),
     );
@@ -448,6 +457,61 @@ export function installPageReview(config: {
       reviewOrigin,
     );
   }
+  function dismissNotification(key: string) {
+    const item = notifications.get(key);
+    if (!item) return;
+    clearTimeout(item.timer);
+    item.node.remove();
+    notifications.delete(key);
+  }
+  function notify(message: Record<string, unknown>) {
+    if (
+      (typeof message.id !== "string" && typeof message.id !== "number") ||
+      typeof message.title !== "string" ||
+      !message.title
+    )
+      return;
+    const token = activeToken;
+    const source = frame?.contentWindow;
+    const key = JSON.stringify([token, message.id]);
+    dismissNotification(key);
+    const node = document.createElement("div");
+    node.className = "notification";
+    node.setAttribute("role", message.kind === "error" ? "alert" : "status");
+    const text = document.createElement("div");
+    const title = document.createElement("p");
+    title.textContent = message.title;
+    text.append(title);
+    if (typeof message.description === "string" && message.description) {
+      const description = document.createElement("p");
+      description.textContent = message.description;
+      text.append(description);
+    }
+    const dismiss = (automatic: boolean) => {
+      dismissNotification(key);
+      if (token === activeToken && source === frame?.contentWindow)
+        tellFrame("notification-dismiss", { id: message.id, automatic });
+    };
+    const button = document.createElement("button");
+    button.type = "button";
+    button.setAttribute("aria-label", "Dismiss notification");
+    button.textContent = "×";
+    button.onclick = () => dismiss(false);
+    node.append(text, button);
+    $(".notifications").append(node);
+    const duration =
+      typeof message.duration === "number" &&
+      Number.isFinite(message.duration) &&
+      message.duration > 0
+        ? message.duration
+        : 6000;
+    notifications.set(key, {
+      node,
+      ...(message.duration === Infinity
+        ? {}
+        : { timer: window.setTimeout(() => dismiss(true), duration) }),
+    });
+  }
   function hideTools() {
     expanded = false;
     bar.hidden = true;
@@ -515,6 +579,8 @@ export function installPageReview(config: {
     $(".capture-prompt").hidden = true;
     $("[data-write]").textContent = "Write note";
     frame = null;
+    frameHeight = 0;
+    host.scrollTop = 0;
     activeToken = "";
     frameKind = "";
     pendingWeb = undefined;
@@ -610,7 +676,7 @@ export function installPageReview(config: {
     $("[data-multiple]").setAttribute("aria-pressed", String(multiple));
     updateLauncher();
     minimize(false);
-    frame?.focus();
+    frame?.focus({ preventScroll: true });
   }
   function addCapture() {
     if (
@@ -634,7 +700,7 @@ export function installPageReview(config: {
     ($("[data-cancel-capture]") as HTMLButtonElement).disabled = false;
     $("[data-write]").textContent = "Add capture";
     updateLauncher();
-    $("[data-cancel-capture]").focus();
+    $("[data-cancel-capture]").focus({ preventScroll: true });
   }
   function freezeControls() {
     $(".freeze-status").hidden = !frozen && !freezing;
@@ -1990,8 +2056,8 @@ export function installPageReview(config: {
     content.textContent = "";
     activeToken = token;
     frameKind = kind;
+    frameHeight = 0;
     $("[data-triage]").hidden = true;
-    $(".editor-help").hidden = true;
     ($("[data-panel-review]") as HTMLAnchorElement).href =
       config.reviewUrl +
       (kind === "note"
@@ -2205,6 +2271,14 @@ export function installPageReview(config: {
       message.token !== activeToken
     )
       return;
+    if (message.action === "notification") {
+      notify(message);
+      return;
+    }
+    if (message.action === "notification-dismiss") {
+      dismissNotification(JSON.stringify([activeToken, message.id]));
+      return;
+    }
     if (message.action === "header") {
       const triage = $("[data-triage]") as HTMLSelectElement;
       if (Array.isArray(message.options)) {
@@ -2224,9 +2298,14 @@ export function installPageReview(config: {
       triage.hidden = !triage.options.length;
       triage.value = typeof message.triage === "string" ? message.triage : "";
       triage.disabled = message.disabled === true;
-      const help = typeof message.help === "string" ? message.help : "";
-      $(".editor-help").hidden = !help;
-      $("#editor-hint").textContent = help;
+    } else if (
+      message.action === "content-size" &&
+      Number.isFinite(message.height) &&
+      message.height >= 0 &&
+      message.height !== frameHeight
+    ) {
+      frameHeight = Math.ceil(message.height);
+      positionDock();
     } else if (message.action === "dirty") {
       if (typeof message.dirty === "boolean") frameDirty = message.dirty;
       if (typeof message.saving === "boolean") frameSaving = message.saving;
@@ -2474,7 +2553,7 @@ export function installPageReview(config: {
         return;
       }
       minimize(false);
-      frame?.focus();
+      frame?.focus({ preventScroll: true });
     };
     const draw = (
       capture: any,
@@ -2670,10 +2749,7 @@ export function installPageReview(config: {
   };
   const head = $(".head");
   head.onpointerdown = (e) => {
-    if (
-      e.button !== 0 ||
-      (e.target as Element).closest("button,a,select,.editor-help")
-    )
+    if (e.button !== 0 || (e.target as Element).closest("button,a,select"))
       return;
     dockPress = {
       id: e.pointerId,
@@ -2841,7 +2917,9 @@ export function installPageReview(config: {
     if (e.key === "ArrowDown") {
       e.preventDefault();
       expand(true);
-      bar.querySelector<HTMLButtonElement>("button")?.focus();
+      bar
+        .querySelector<HTMLButtonElement>("button")
+        ?.focus({ preventScroll: true });
     }
   };
   function areaRect(a: any, x: number, y: number) {
@@ -3128,6 +3206,7 @@ export function installPageReview(config: {
     interactionEvents.length = 0;
     lifecycle.abort();
     clearInterval(refreshTimer);
+    for (const key of notifications.keys()) dismissNotification(key);
     cancelAnimationFrame(pinsFrame);
     for (const call of pending.values()) {
       clearTimeout(call.timer);

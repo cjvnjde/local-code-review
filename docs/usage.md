@@ -93,7 +93,8 @@ Cards and editors have solid backgrounds and small corner radii;
 the surrounding area matches the code pane. **Settings → Inline note width →
 Full width** removes the compact width cap. The choice survives reloads and also
 applies to pinned file drafts. Locations and agent outcomes share the identity row.
-File-level draft cards remain pinned below their file header.
+File-level draft cards remain pinned below their file header while they fit the pane;
+long drafts grow in the normal reading flow instead of gaining an inner scrollbar.
 **Cancel** clears the selected-line highlight. Re-aiming an overlapping selection
 preserves your draft text and caret; an unrelated click cannot replace a dirty
 draft. The file header offers a file comment; while creating it, the editor stays
@@ -107,6 +108,8 @@ the same compact header, without a second branch/range row. Change counts and
 refresh live in the footer; the copy icon beside the review path copies that path.
 
 The editor accepts Markdown, including tables, checklists, and fenced code.
+Text and previews grow with the note, without inner scrollbars. Empty editors have
+no placeholder; text fields and new drawing labels have transparent backgrounds.
 Typed line breaks remain visible in previews, saved notes, and replies.
 The toolbar exposes every formatting action and attachment control as an icon
 button, with titles on hover or keyboard focus. **Write / Preview** are icon
@@ -119,13 +122,14 @@ protected with a longer fence.
 Drop or paste files, or use **Attach file**, to attach them
 directly to a note or reply (up to 12 MiB each). Files are kept beside the review
 and linked relatively; external images are not loaded.
-Attached images have inline thumbnails and a zoom viewer. Clicking an editable
-image opens its drawing editor. Drawings retain editable shapes, text, paths,
-callouts and other tools when reopened. Tools share one header; **More tools**
-appears only when they cannot all fit. Tool-specific controls occupy the second
-row, with help in tooltips. The checkmark applies the drawing without saving the
-note. Image diffs also support clicking or dragging a region to capture it in a
-comment. Audio diffs have before/after players.
+Attached images have inline thumbnails without extra framing or preview/annotate
+buttons. Clicking an editable image opens its drawing editor, which also offers
+the original view. Drawings retain editable shapes, text, paths, callouts and other
+tools when reopened. Tools share one header; **More tools** appears only when they
+cannot all fit. Tool-specific controls stay inline on wide screens and use
+**Options** on narrow screens. The checkmark applies the drawing without saving the
+note. Click a diff image to open the drawing editor, or drag a region to capture it
+in a comment. Audio diffs have before/after players.
 The pen's optional pressure/taper setting uses versioned perfect-freehand strokes.
 Pen devices retain pressure samples; mouse input uses explicitly recorded simulated
 pressure. Existing drawings keep their original rendering. Drawing controls use
@@ -140,7 +144,6 @@ that note; **Save only** persists without dispatch. Enter saves by default;
 Shift+Enter inserts a newline, and Cmd/Ctrl+Enter always saves. Settings can turn
 off Enter-to-save. The editor retains failed saves and drafts across reloads;
 incoming live updates do not replace their text.
-Submit shortcuts and reference hints live under the editor's help icon.
 Successful browser draft persistence is announced to assistive technology;
 storage failures remain visible warnings.
 
@@ -151,6 +154,7 @@ explicitly before saving. Concurrent lcr instances serialize Markdown updates th
 a shared filesystem lock and replace complete files atomically.
 
 **Triage** classifies a note as blocker, bug, suggestion, question, or unclassified.
+It stays in the note header while reading and editing.
 It persists in Markdown, imports, history, and reloads. Filter by triage separately
 from resolution. Changing classification alone preserves replies, verdicts,
 reviewer resolution, and queued work; it does not ask an agent to act.
@@ -214,10 +218,11 @@ returns to the index. Finish an open conversation
 editor before switching views. View preferences survive reloads.
 
 **Resolve / Reopen** and **Note actions** sit in the compact note header.
-Reply stays below the conversation. The copy icon beside the note location copies
-its stable reference without a success message. **Note actions** contains editing
-and deletion; each editable reply has **Reply actions**. Copying the footer's review
-path is silent too; copy failures still report an error.
+Reply stays below the conversation, with **Edit note** at the bottom right.
+The copy icon beside the note location copies its stable reference without a
+success message. **Note actions** contains deletion; each editable reply has
+**Reply actions**. Copying the footer's review path is silent too; copy failures
+still report an error.
 Your original note and replies are labeled **You**; agent replies and summaries
 have a separate author icon and accent. Agent messages remain the agent's account.
 Unread counts include only incoming agent messages, never your own replies.

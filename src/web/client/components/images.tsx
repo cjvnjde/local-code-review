@@ -6,13 +6,11 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { Pencil, ZoomIn } from "lucide-react";
 import { decodeImageDrawing } from "../../../shared/image-drawing.ts";
 import type { WebAnnotation } from "../../../shared/web-annotation.ts";
 import { openAnnotation } from "./annotation-editor.ts";
 import { imageEditorOwner, openImagePreview } from "./image-preview.ts";
 import { attachmentSrc, imageTokens } from "./attachments.ts";
-import { Button } from "./ui/button.tsx";
 
 const DrawingScope = createContext({ repo: "", read: "" });
 export function ImageScope({
@@ -76,7 +74,7 @@ export function AttachmentImage({
         className={
           thumbnail
             ? "h-auto max-h-56 w-auto max-w-full rounded object-contain"
-            : "max-h-80 max-w-full rounded-lg border object-contain"
+            : "h-auto max-h-80 max-w-full object-contain"
         }
       />
     </a>
@@ -187,41 +185,12 @@ export function ComposerImages({
           className="grid gap-3 sm:grid-cols-2"
         >
           {tokens.map((token, index) => (
-            <div
-              key={`${token.ref}:${index}`}
-              className="rounded-lg border bg-muted/20 p-3"
-            >
+            <div key={`${token.ref}:${index}`} aria-busy={busy}>
               <AttachmentImage
                 source={token.ref}
                 label={token.label}
                 onDraw={() => void edit(token, index)}
               />
-              <div className="mt-2 flex gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={(event) =>
-                    openImagePreview(
-                      token.ref,
-                      token.label,
-                      () => void edit(token, index),
-                      imageEditorOwner(event.currentTarget),
-                    )
-                  }
-                >
-                  <ZoomIn />
-                  Preview
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={busy}
-                  onClick={() => void edit(token, index)}
-                >
-                  <Pencil />
-                  Annotate
-                </Button>
-              </div>
             </div>
           ))}
         </section>

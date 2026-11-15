@@ -705,18 +705,18 @@ export function DiffView({
         </div>
       );
     }
-    if (entry.kind === "editor" && stickyEditor) {
+    if (
+      entry.kind === "editor" &&
+      stickyEditor &&
+      item.size <
+        (virtual.scrollRect?.height ?? scroll.current?.clientHeight ?? 0) - 104
+    ) {
       const header = headerByPath.get(entry.path);
       if (header != null) {
         const end =
           virtual.measurementsCache[headerEnds.get(header)!]?.start ??
           virtual.getTotalSize();
         const headerHeight = virtual.measurementsCache[header]!.size;
-        const availableHeight = Math.max(
-          0,
-          (virtual.scrollRect?.height ?? scroll.current?.clientHeight ?? 0) -
-            headerHeight,
-        );
         return (
           <div
             key={item.key}
@@ -734,15 +734,8 @@ export function DiffView({
               data-diff-kind={entry.kind}
               data-item-key={entry.key}
               data-sticky-editor={header === activeHeader || undefined}
-              className="pointer-events-auto sticky z-[15] w-full overflow-y-auto bg-background"
-              style={{
-                top: headerHeight,
-                // Reserve code space when possible, but never exceed the measured pane.
-                maxHeight: Math.min(
-                  availableHeight,
-                  Math.max(120, availableHeight - 104),
-                ),
-              }}
+              className="pointer-events-auto sticky z-[15] w-full bg-background"
+              style={{ top: headerHeight }}
             >
               <div
                 className={inlineNoteClass}
@@ -840,6 +833,7 @@ export function DiffView({
                 onCompose={onCompose}
                 inline
                 editorDraft={draft ?? undefined}
+                onChangeDraft={onChangeDraft}
                 editor={
                   (draft?.kind === "note" ? draft.comment.id : draft?.id) ===
                   entry.note.id

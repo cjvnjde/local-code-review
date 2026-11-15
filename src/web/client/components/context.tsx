@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronRight, Copy, Info } from "lucide-react";
+import { ChevronRight, Copy } from "lucide-react";
 import { Tooltip } from "./ui/tooltip.tsx";
 import { contextId, contextIsText } from "../../../shared/context.ts";
 import { fetchContextManifest, fetchContextText } from "./context-api.ts";
@@ -56,26 +56,21 @@ export function ContextReference({
                 <Copy />
               </Button>
             </Tooltip>
-            {manifest.data && (
-              <Tooltip
-                label={`Captured ${manifest.data.at}${manifest.data.source?.target ? ` from ${manifest.data.source.target}` : ""}. Historical evidence; unavailable parts are not evidence of an empty page.`}
-              >
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="size-6"
-                  aria-label="Context information"
-                >
-                  <Info />
-                </Button>
-              </Tooltip>
-            )}
           </span>
+          {manifest.data && (
+            <span className="block text-muted-foreground">
+              Captured {manifest.data.at}
+              {manifest.data.source?.target
+                ? ` · ${manifest.data.source.target}`
+                : ""}
+            </span>
+          )}
           {manifest.isFetching && <span>Loading…</span>}
           {manifest.error && <span role="alert">{manifest.error.message}</span>}
           {manifest.data?.parts.map((part) => (
             <span className="block rounded border p-3" key={part.name}>
               <b>{part.label}</b>
+              <code className="ml-2 text-muted-foreground">{part.name}</code>
               <span className="ml-2 text-muted-foreground">
                 {part.bytes} bytes · {part.status}
                 {part.truncated ? " · partial capture" : ""}

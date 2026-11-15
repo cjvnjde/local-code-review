@@ -21,16 +21,20 @@ on hover. Clicking an editable thumbnail opens the drawing editor directly;
 read-only images open the viewer. Closing either restores the window and draft.
 The bin icon removes a capture. **Capture details** contains nested collapsibles
 for metadata, originals, and context, without nested scroll areas. Classification
-and editor help share the window title bar with close/minimize; there is no second
-header row. **Add capture** sits left of Cancel/Save.
-The input and save controls stay visible while evidence scrolls above them.
-Reopening a note scrolls to and highlights its captured block on the page.
+shares the window title bar with close/minimize; there is no second header or help
+icon. **Add capture** sits left of Cancel/Save.
+Text, evidence, and previews expand the note naturally. Long notes scroll at the
+overlay's page level, not inside the note; creating a note leaves the reviewed
+page's scroll position unchanged. Notifications appear at the page corner outside
+the floating note window. Reopening a note scrolls to and highlights its captured
+block on the page. In the diff, after-capture and page-targeting actions belong to
+the agent workflow rather than extra note buttons.
 
 The floating launcher keeps **Browse / Annotate** visible. Browse lets you use
 the app normally; Annotate restores targeting. A separate targeting menu selects
-an element, containing block, multiple elements, area, or point, with short hints
-for each choice. Hold Alt to interact temporarily, or drag the launcher out of
-the way. Point captures retain metadata without a screenshot.
+an element, containing block, multiple elements, area, or point. Hold Alt to
+interact temporarily, or drag the launcher out of the way. Point captures retain
+metadata without a screenshot.
 
 **Add capture** temporarily minimizes the note so you can select more evidence.
 The editor returns with its text intact after capture; Escape cancels selection
@@ -40,11 +44,11 @@ belong to a reply rather than replacing its original evidence.
 
 Drawing tools share one compact header with undo/redo, original-view, checkmark,
 and close icons. **More tools** appears only when there is insufficient width.
-Parameters for the active tool or selection appear in a second row; the color
-circle opens the palette, which stays open while adjusting a custom color.
-Tooltips and info icons carry explanations and gesture
-help. Hold O to compare the original temporarily. Striped margins are drawing
-space and are not exported. Zoom controls remain bottom-right.
+Parameters for the active tool or selection stay inline on wide screens and use
+**Options** only on narrow screens; the color circle opens the palette, which stays
+open while adjusting a custom color. New text labels have transparent backgrounds.
+Hold O to compare the original temporarily. Striped margins are drawing space and
+are not exported. Zoom controls remain bottom-right.
 The checkmark returns an image to the draft, or updates an already-saved drawing;
 **Save note** still saves the note. Originals and editable drawing data are retained.
 
@@ -114,7 +118,9 @@ images load only when explicitly opened. The selected-area original and any
 annotated proposal remain primary evidence; opening the inventory does not load
 the full-page image.
 
-Each bundle keeps separate, immutable parts:
+Each bundle keeps separate, immutable parts. Its ID plus the unique part name
+addresses one piece of evidence; available parts also record their own SHA-256 and
+byte size. Reading one part does not read or require any sibling payload:
 
 - **Full-page sources:** capture-time document HTML plus inline and loaded
   stylesheet/script sources, stored as inert text evidence. External resources
@@ -168,6 +174,9 @@ When lcr is available, offline helpers support focused reads:
 
 ```sh
 lcr context inspect <id> --review <review.md>
+lcr context read <id> --review <review.md> --part selected-html
+lcr context read <id> --review <review.md> --part full-page-html
+lcr context read <id> --review <review.md> --part full-page
 lcr context read <id> --review <review.md> --part layout \
   --selector 'button#checkout' --property gap
 lcr context read <id> --review <review.md> --part css-rules --property --space

@@ -10,7 +10,6 @@ import { useStored } from "../app/preferences.ts";
 import {
   Composer,
   DraftReviewNotice,
-  editorHelp,
   draftBody,
   type Draft,
 } from "../notes/composer.tsx";
@@ -18,7 +17,6 @@ import { NoteCard } from "../notes/note-card.tsx";
 import { NoteState, useReviewState } from "../notes/review-state.tsx";
 import { makeComment } from "../diff/model.ts";
 import { webReview } from "../../../shared/web-review.ts";
-import { useUi } from "../app/ui-preferences.tsx";
 import { commentInput } from "../notes/comment-input.ts";
 import { triageOptions } from "../notes/note-header.tsx";
 
@@ -49,7 +47,6 @@ export function EmbeddedReview({
   );
   const [busy, setBusy] = useState(false);
   const [capturing, setCapturing] = useState(false);
-  const { settings } = useUi();
   const headerAction = useAction();
   const client = useQueryClient();
   const origin = diff.web ? new URL(diff.web.url).origin : "";
@@ -62,6 +59,7 @@ export function EmbeddedReview({
       ),
   });
   const latest = useRef(draft);
+  const content = useRef<HTMLDivElement>(null);
   latest.current = draft;
   const headerBusy = useRef(false);
   headerBusy.current = busy || capturing || headerAction.isPending;
@@ -83,6 +81,17 @@ export function EmbeddedReview({
         });
     }
   }, [evidence.data, review?.file]);
+  useEffect(() => {
+    const element = content.current;
+    if (!element || !origin) return;
+    const observer = new ResizeObserver(() =>
+      tell("content-size", {
+        height: Math.ceil(element.getBoundingClientRect().height),
+      }),
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [origin]);
   useEffect(() => {
     const preview = () => {
       tell("image-preview", {
@@ -188,18 +197,19 @@ export function EmbeddedReview({
   const note = review?.notes.find((n) => n.id === noteId);
   const triage = draft?.kind === "note" ? draft.comment.triage : note?.triage;
   const classify = draft ? draft.kind === "note" : !!note;
-  const help = draft ? editorHelp(settings.enterSaves) : "";
   useEffect(() => {
     tell("header", {
       triage: triage || "",
       options: classify ? triageOptions : [],
       disabled: busy || capturing || headerAction.isPending,
-      help,
     });
-  }, [origin, triage, classify, help, busy, capturing, headerAction.isPending]);
+  }, [origin, triage, classify, busy, capturing, headerAction.isPending]);
   return (
     <NoteState value={noteState}>
-      <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-background text-foreground">
+      <div
+        ref={content}
+        className="flex flex-col bg-background text-foreground"
+      >
         {draft && (
           <DraftReviewNotice
             draft={draft}
@@ -245,13 +255,12 @@ export function EmbeddedReview({
             }
           />
         ) : note ? (
-          <div className="min-h-0 flex-1 overflow-auto p-3">
+          <div className="p-3">
             <NoteCard
               note={note}
               agent={!!diff.agent}
               onCompose={(next) => setDraft({ ...next, review: review?.file })}
               embedded
-              onAddCapture={() => tell("add-capture")}
             />
           </div>
         ) : (

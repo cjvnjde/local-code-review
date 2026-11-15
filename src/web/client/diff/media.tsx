@@ -7,7 +7,7 @@ import type {
 import { regionRect, type ImageRegion } from "../../../shared/image-region.ts";
 import { mintNoteId } from "../../../shared/note-id.ts";
 import { uploadImage } from "../components/attachments.ts";
-import { Button } from "../components/ui/button.tsx";
+import { useDrawing } from "../components/images.tsx";
 import { isImage } from "./reading-model.ts";
 
 type Rect = Pick<
@@ -37,17 +37,14 @@ export function FileMedia({
       </div>
     );
   return (
-    <div className="grid gap-4 border-b p-5 md:grid-cols-2">
+    <div className="grid gap-px border-b md:grid-cols-2">
       {(["old", "new"] as const)
         .filter((side) =>
           side === "old" ? file.status !== "added" : file.status !== "deleted",
         )
         .map((side) => (
-          <figure
-            key={side}
-            className="min-w-0 rounded-lg border bg-muted/20 p-3"
-          >
-            <figcaption className="mb-3 text-xs text-muted-foreground">
+          <figure key={side} className="min-w-0">
+            <figcaption className="px-3 py-1 text-xs text-muted-foreground">
               {side === "old" ? "Before" : "After"}
             </figcaption>
             {audio ? (
@@ -89,6 +86,7 @@ function ImageRegions({
   blocked: boolean;
 }) {
   const img = useRef<HTMLImageElement>(null);
+  const draw = useDrawing();
   const press = useRef<{ x: number; y: number } | null>(null);
   const [rect, setRect] = useState<Rect | null>(null);
   const [busy, setBusy] = useState(false);
@@ -112,7 +110,7 @@ function ImageRegions({
       imageHeight: size.height,
     };
   }
-  async function capture(r: Rect) {
+  async function capture(r: Rect, edit = false) {
     if (blocked || busy || !img.current) return;
     setBusy(true);
     setError("");
@@ -146,21 +144,21 @@ function ImageRegions({
         ),
       );
       const ref = await uploadImage(blob);
-      const image: ImageRegion = {
-        ...r,
-        side,
-        source: file.hash,
-        capture: ref,
-      };
-      onComment({
-        id: mintNoteId(file.path, "*", "*"),
-        file: file.path,
-        scope: "file",
-        start: 0,
-        end: 0,
-        body: "",
-        image,
-      });
+      const comment = (capture: string) =>
+        onComment({
+          id: mintNoteId(file.path, "*", "*"),
+          file: file.path,
+          scope: "file",
+          start: 0,
+          end: 0,
+          body: "",
+          image: { ...r, side, source: file.hash, capture },
+        });
+      if (edit)
+        await draw(`file:${file.hash}:${side}`, ref, async (next) => {
+          comment(next);
+        });
+      else comment(ref);
     } catch (error) {
       setError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -168,6 +166,14 @@ function ImageRegions({
       setRect(null);
     }
   }
+  const wholeImage = (): Rect => ({
+    x: 0,
+    y: 0,
+    width: size.width,
+    height: size.height,
+    imageWidth: size.width,
+    imageHeight: size.height,
+  });
   return (
     <div className="space-y-3">
       <div
@@ -178,53 +184,64 @@ function ImageRegions({
             : undefined,
         }}
         data-image-side={side}
-        onPointerDown={(event) => {
-          if (
-            event.button !== 0 ||
-            event.altKey ||
-            blocked ||
-            busy ||
-            !size.width ||
-            (event.target as Element).closest("button")
-          )
-            return;
-          event.preventDefault();
-          press.current = point(event.clientX, event.clientY);
-          setRect(region(press.current));
-          event.currentTarget.setPointerCapture(event.pointerId);
-        }}
-        onPointerMove={(event) => {
-          if (press.current)
-            setRect(region(point(event.clientX, event.clientY)));
-        }}
-        onPointerUp={(event) => {
-          if (!press.current) return;
-          const r = region(point(event.clientX, event.clientY));
-          press.current = null;
-          if (!event.altKey) void capture(r);
-          else setRect(null);
-        }}
-        onPointerCancel={() => {
-          press.current = null;
-          setRect(null);
-        }}
-        onLostPointerCapture={() => {
-          press.current = null;
-        }}
       >
-        <img
-          ref={img}
-          className="block h-auto w-full"
-          src={`/api/blob?${new URLSearchParams({ side, path: file.path })}`}
-          alt={`${side === "old" ? "Before" : "After"}: ${file.path}`}
-          draggable={false}
-          onLoad={(event) =>
-            setSize({
-              width: event.currentTarget.naturalWidth,
-              height: event.currentTarget.naturalHeight,
-            })
-          }
-        />
+        <button
+          type="button"
+          className="block w-full cursor-zoom-in focus-visible:outline-2 focus-visible:outline-ring"
+          aria-label={`Edit ${side === "old" ? "before" : "after"} image: ${file.path}`}
+          disabled={blocked || busy || !size.width}
+          onClick={(event) => {
+            if (event.detail === 0) void capture(wholeImage(), true);
+          }}
+          onPointerDown={(event) => {
+            if (
+              event.button !== 0 ||
+              event.altKey ||
+              blocked ||
+              busy ||
+              !size.width
+            )
+              return;
+            event.preventDefault();
+            press.current = point(event.clientX, event.clientY);
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }}
+          onPointerMove={(event) => {
+            if (press.current)
+              setRect(region(point(event.clientX, event.clientY)));
+          }}
+          onPointerUp={(event) => {
+            if (!press.current) return;
+            const end = point(event.clientX, event.clientY);
+            const clicked =
+              Math.hypot(end.x - press.current.x, end.y - press.current.y) < 4;
+            const r = clicked ? wholeImage() : region(end);
+            press.current = null;
+            if (!event.altKey) void capture(r, clicked);
+            else setRect(null);
+          }}
+          onPointerCancel={() => {
+            press.current = null;
+            setRect(null);
+          }}
+          onLostPointerCapture={() => {
+            press.current = null;
+          }}
+        >
+          <img
+            ref={img}
+            className="block h-auto w-full"
+            src={`/api/blob?${new URLSearchParams({ side, path: file.path })}`}
+            alt={`${side === "old" ? "Before" : "After"}: ${file.path}`}
+            draggable={false}
+            onLoad={(event) =>
+              setSize({
+                width: event.currentTarget.naturalWidth,
+                height: event.currentTarget.naturalHeight,
+              })
+            }
+          />
+        </button>
         {notes
           .filter(
             (note) =>
@@ -256,23 +273,6 @@ function ImageRegions({
           />
         )}
       </div>
-      <Button
-        size="sm"
-        variant="ghost"
-        disabled={blocked || busy || !size.width}
-        onClick={() => {
-          const box = img.current!.getBoundingClientRect();
-          press.current = { x: box.width / 2, y: box.height / 2 };
-          const r = region(press.current);
-          press.current = null;
-          void capture(r);
-        }}
-      >
-        {busy ? "Capturing…" : "Comment on image region"}
-      </Button>
-      <p className="text-xs text-muted-foreground">
-        Click or drag on the image to capture a region.
-      </p>
       {error && (
         <p role="alert" className="text-xs text-destructive">
           {error}

@@ -37,7 +37,7 @@ import {
   MessageSquare,
   Slash,
   Ellipsis,
-  Info,
+  Trash2,
   SlidersHorizontal,
   SquareCheck,
 } from "lucide-react";
@@ -92,7 +92,7 @@ const TOOL_ORDER: DrawingTool[] = [
   "magnifier",
   "pan",
 ];
-type Popup = "colors" | "more-tools" | "options" | "help" | null;
+type Popup = "colors" | "more-tools" | "options" | null;
 export interface DrawingControlsModel {
   tool: DrawingTool;
   current?: AnnotationMark;
@@ -115,9 +115,7 @@ export interface DrawingControlsModel {
   recoverable: boolean;
   discard: boolean;
   zoom: number;
-  padding: number;
   applyLabel: string;
-  hint: string;
   error: string;
   message: string;
   retry: boolean;
@@ -255,6 +253,7 @@ function DrawingPopover({
   refs,
   className = "",
   pressed,
+  inline = false,
 }: {
   name: Exclude<Popup, null>;
   label: string;
@@ -265,7 +264,19 @@ function DrawingPopover({
   refs: Refs;
   className?: string;
   pressed?: boolean;
+  inline?: boolean;
 }) {
+  if (inline) {
+    return (
+      <div
+        className={`annotation-options annotation-inline-options ${className}`}
+        role="group"
+        aria-label={label}
+      >
+        {children}
+      </div>
+    );
+  }
   return (
     <Popover.Root
       open={popup === name}
@@ -274,7 +285,7 @@ function DrawingPopover({
       <Popover.Trigger
         data-command={name}
         aria-label={label}
-        title={name === "help" ? model.hint : label}
+        title={label}
         aria-pressed={pressed}
         className={name === "colors" ? "annotation-color" : undefined}
         style={
@@ -288,8 +299,6 @@ function DrawingPopover({
           <Ellipsis size={16} />
         ) : name === "options" ? (
           <SlidersHorizontal size={16} />
-        ) : name === "help" ? (
-          <Info size={16} />
         ) : null}
       </Popover.Trigger>
       <Popover.Portal container={refs.dialog.current} keepMounted>
@@ -339,10 +348,14 @@ export function DrawingEditorView({
   );
   const [toolBar, setToolBar] = useState<HTMLDivElement | null>(null);
   const [visibleTools, setVisibleTools] = useState(TOOL_ORDER.length);
+  const [compactProperties, setCompactProperties] = useState(
+    () => window.innerWidth < 640,
+  );
   useLayoutEffect(() => {
     const bar = toolBar;
     if (!bar) return;
     const measure = () => {
+      setCompactProperties(window.innerWidth < 640);
       const button = bar.querySelector("button");
       if (!button) return;
       const gap = parseFloat(getComputedStyle(bar).columnGap) || 0;
@@ -354,9 +367,19 @@ export function DrawingEditorView({
       );
     };
     measure();
-    const observer = new ResizeObserver(measure);
+    let frame = 0;
+    const observer = new ResizeObserver(() => {
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        measure();
+      });
+    });
     observer.observe(bar);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(frame);
+    };
   }, [toolBar]);
   const overflowTools = TOOL_ORDER.slice(visibleTools);
   const hasProperties =
@@ -509,49 +532,12 @@ export function DrawingEditorView({
                 m.busy,
                 { pressed: m.original },
               )}
-              <DrawingPopover
-                name="help"
-                label="Drawing help"
-                {...popoverProps}
-              >
-                <p>{m.hint}</p>
-                <p>
-                  Select to move or resize. Shift constrains shapes. Escape
-                  cancels a gesture. Hold O to compare the original. Wheel to
-                  zoom; Space and drag to pan.
-                </p>
-                <p>
-                  Paths: click points, drag for curves, Enter or double-click to
-                  finish. Click the first point to close. Double-click a segment
-                  to add a point.
-                </p>
-                {!!m.padding && (
-                  <p>
-                    Striped margins are drawing space, not captured content.
-                    They are not exported.
-                  </p>
-                )}
-                {activeTool === "pen" && (
-                  <p>
-                    Pressure mode uses pen-reported pressure; mouse and touch
-                    simulate pressure. Existing strokes keep their rendering
-                    mode.
-                    {m.current?.tool === "pen" &&
-                      m.current.stroke &&
-                      (m.current.stroke.pressure === "pointer"
-                        ? " This stroke uses recorded pen pressure."
-                        : " This stroke uses simulated pressure.")}
-                  </p>
-                )}
-                <div className="annotation-secondary-actions">
-                  {command(
-                    "clear",
-                    "Clear all drawings",
-                    undefined,
-                    m.busy || (!m.marks.length && !m.pathDraft),
-                  )}
-                </div>
-              </DrawingPopover>
+              {command(
+                "clear",
+                "Clear all drawings",
+                <Trash2 size={16} />,
+                m.busy || (!m.marks.length && !m.pathDraft),
+              )}
               <div
                 className="annotation-group annotation-commit"
                 role="group"
@@ -635,6 +621,7 @@ export function DrawingEditorView({
                   <DrawingPopover
                     name="options"
                     label="Options"
+                    inline={!compactProperties}
                     className="annotation-properties"
                     {...popoverProps}
                   >
@@ -910,7 +897,6 @@ export function DrawingEditorView({
                   rows={2}
                   maxLength={LIMITS.maxText}
                   aria-label="Text to draw"
-                  placeholder="Type your label"
                   disabled={m.busy}
                   onInput={a.textInput}
                   onBlur={a.textBlur}

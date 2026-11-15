@@ -1,13 +1,15 @@
 import { useEffect, useRef, type CSSProperties } from "react";
-import { Toaster, toast } from "sonner";
+import { Toaster, toast, useSonner, type ToastT } from "sonner";
 import type { ReviewNote } from "../../../shared/review-types.ts";
-import type { ReviewResponse } from "./api.ts";
+import { useDiff, type ReviewResponse } from "./api.ts";
 import { useUi } from "./ui-preferences.tsx";
 import { ReplyNotificationsTracker } from "./reply-notifications-model.ts";
+import { embedToken } from "../web-review/embedded.tsx";
 
 const replyToast = "agent-replies";
 
 export function Notifications() {
+  if (embedToken) return <EmbeddedNotifications />;
   return (
     <Toaster
       position="bottom-right"
@@ -31,6 +33,68 @@ export function Notifications() {
       }}
     />
   );
+}
+
+/** The reviewed page owns notification placement, independently of the note iframe. */
+function EmbeddedNotifications() {
+  const { data: diff } = useDiff();
+  const { toasts } = useSonner();
+  const sent = useRef(new Map<string | number, ToastT>());
+  const origin = diff?.web ? new URL(diff.web.url).origin : "";
+  useEffect(() => {
+    if (!origin) return;
+    for (const item of toasts) {
+      if (sent.current.get(item.id) === item) continue;
+      sent.current.set(item.id, item);
+      window.parent.postMessage(
+        {
+          type: "lcr:ui",
+          token: embedToken,
+          action: "notification",
+          id: item.id,
+          title: typeof item.title === "string" ? item.title : "",
+          description:
+            typeof item.description === "string" ? item.description : "",
+          kind: item.type,
+          duration: item.duration ?? 6000,
+        },
+        origin,
+      );
+    }
+    for (const id of sent.current.keys()) {
+      if (toasts.some((item) => item.id === id)) continue;
+      sent.current.delete(id);
+      window.parent.postMessage(
+        {
+          type: "lcr:ui",
+          token: embedToken,
+          action: "notification-dismiss",
+          id,
+        },
+        origin,
+      );
+    }
+  }, [origin, toasts]);
+  useEffect(() => {
+    const receive = (event: MessageEvent) => {
+      if (
+        event.source !== window.parent ||
+        event.origin !== origin ||
+        event.data?.type !== "lcr:ui" ||
+        event.data.token !== embedToken ||
+        event.data.action !== "notification-dismiss"
+      )
+        return;
+      const item = sent.current.get(event.data.id);
+      if (!item) return;
+      if (event.data.automatic) item.onAutoClose?.(item);
+      else item.onDismiss?.(item);
+      toast.dismiss(item.id);
+    };
+    window.addEventListener("message", receive);
+    return () => window.removeEventListener("message", receive);
+  }, [origin]);
+  return null;
 }
 
 /** Mount once below UiPreferences; disabled notifications still consume snapshots. */

@@ -216,6 +216,24 @@ test("compiled executable reviews changes, preserves drafts, and continues the M
     .getByRole("button", { name: "Comment on line 2", exact: true })
     .last()
     .click();
+  const text = page.getByRole("textbox", { name: "Note text" });
+  await text.fill(
+    Array.from({ length: 60 }, (_, i) => `Paragraph ${i}`).join("\n\n"),
+  );
+  expect(
+    await text.evaluate((field) => field.scrollHeight - field.clientHeight),
+  ).toBeLessThanOrEqual(1);
+  const composer = page.locator("[data-review-editor]");
+  await composer.getByRole("button", { name: "Preview", exact: true }).click();
+  const preview = composer.locator(".markdown");
+  await expect(preview).toContainText("Paragraph 59");
+  expect(
+    await preview.evaluate(
+      (body) =>
+        body.parentElement!.scrollHeight - body.parentElement!.clientHeight,
+    ),
+  ).toBeLessThanOrEqual(1);
+  await composer.getByRole("button", { name: "Write", exact: true }).click();
   await page
     .getByRole("textbox", { name: "Note text" })
     .fill(
@@ -299,9 +317,8 @@ test("compiled executable reviews changes, preserves drafts, and continues the M
     inlineCard.getByLabel("Captured code", { exact: true }),
   ).toContainText("return 'hello world'");
   await inlineCard
-    .getByRole("button", { name: "Note actions", exact: true })
+    .getByRole("button", { name: "Edit note", exact: true })
     .click();
-  await page.getByRole("menuitem", { name: "Edit note", exact: true }).click();
   await expect(page.getByRole("textbox", { name: "Note text" })).toHaveValue(
     /Please \*\*rename\*\*/,
   );
@@ -572,8 +589,14 @@ test("classification changes and stale editor saves preserve the latest category
   await card.getByRole("combobox", { name: "Note triage" }).click();
   await page.getByRole("option", { name: "Bug", exact: true }).click();
   await expect.poll(async () => (await current()).triage).toBe("bug");
-  await card.getByRole("button", { name: "Note actions", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Edit note", exact: true }).click();
+  const triageTop = (await card
+    .getByRole("combobox", { name: "Note triage" })
+    .boundingBox())!.y;
+  await card.getByRole("button", { name: "Edit note", exact: true }).click();
+  expect(
+    (await card.getByRole("combobox", { name: "Note triage" }).boundingBox())!
+      .y,
+  ).toBeCloseTo(triageTop, 0);
   await card
     .getByRole("textbox", { name: "Note text" })
     .fill("Updated reviewer wording.");
@@ -1172,15 +1195,9 @@ test("image attachments preview, retain editable drawings and survive note and r
   });
   const images = editor.getByRole("region", { name: "Attached images" });
   await expect(images.getByRole("img")).toBeVisible();
-  await images.getByRole("button", { name: "Preview", exact: true }).click();
-  const viewer = page.locator("dialog.image-viewer");
-  await expect(viewer).toBeVisible();
-  await viewer
-    .getByRole("button", { name: "Actual image size", exact: true })
+  await images
+    .getByRole("link", { name: "Annotate evidence.png", exact: true })
     .click();
-  await viewer.getByRole("button", { name: "Fit image", exact: true }).click();
-  await viewer.getByRole("button", { name: "Close", exact: true }).click();
-  await images.getByRole("button", { name: "Annotate", exact: true }).click();
   const drawing = page.getByRole("dialog", {
     name: "Draw on screenshot",
     exact: true,
@@ -1226,7 +1243,6 @@ test("image attachments preview, retain editable drawings and survive note and r
     );
     await page.mouse.up();
   }
-  await drawing.getByRole("button", { name: "Options", exact: true }).click();
   await drawing
     .getByRole("textbox", { name: "Callout label", exact: true })
     .fill("Check this detail");
@@ -1254,12 +1270,11 @@ test("image attachments preview, retain editable drawings and survive note and r
     { tool: "callout", number: 2, label: "Check this detail" },
   ]);
   // Reopen uses the original image and editable vectors, not a flattened second layer.
-  await images.getByRole("button", { name: "Annotate", exact: true }).click();
+  await images.getByRole("link").click();
   await expect(drawing).toBeVisible();
   await drawing
     .getByRole("button", { name: "Select and edit drawings", exact: true })
     .click();
-  await drawing.getByRole("button", { name: "Options", exact: true }).click();
   await expect(
     drawing
       .getByRole("combobox", { name: "Select an editable drawing" })
@@ -1828,6 +1843,16 @@ test("image-region comments, audio playback, preferences and the resume marker r
   await expect
     .poll(() => image.evaluate((img: HTMLImageElement) => img.naturalWidth))
     .toBe(240);
+  await image.click();
+  const drawing = page.getByRole("dialog", {
+    name: "Draw on screenshot",
+    exact: true,
+  });
+  await expect(drawing).toBeVisible();
+  await drawing
+    .getByRole("button", { name: "Close drawing editor", exact: true })
+    .click();
+  await expect(page.locator("[data-review-editor]")).toHaveCount(0);
   const box = await image.boundingBox();
   await page.mouse.move(box!.x + 30, box!.y + 30);
   await page.mouse.down();
@@ -2860,14 +2885,14 @@ test("long lines wrap by default and nowrap scrolling stays inside each file", a
   }
 });
 
-test("live page capture keeps its editor fixed and opens drawings directly across the viewport", async ({
+test("live page capture grows notes without moving the page and opens drawings across the viewport", async ({
   page,
 }) => {
   await stop();
   const app = createServer((_req, response) => {
     response.setHeader("content-type", "text/html");
     response.end(
-      '<!doctype html><title>Capture fixture</title><style>body{background:white;color:black}button{margin:120px;padding:24px;font:20px sans-serif}button+button{margin-left:0}</style><button id="target">Checkout target</button><button id="other">Secondary action</button>',
+      '<!doctype html><title>Capture fixture</title><style>body{min-height:2400px;background:white;color:black}button{margin:520px 120px 120px;padding:24px;font:20px sans-serif}button+button{margin-left:0}</style><button id="target">Checkout target</button><button id="other">Secondary action</button>',
     );
   });
   await new Promise<void>((resolve) => app.listen(0, "127.0.0.1", resolve));
@@ -2893,11 +2918,33 @@ test("live page capture keeps its editor fixed and opens drawings directly acros
     ]);
     const opened = await page.request.post(`${url}/api/web`, { data: {} });
     expect(opened.ok()).toBe(true);
+    await target.evaluate(() => {
+      document
+        .querySelector("#target")!
+        .scrollIntoView({ block: "center", behavior: "instant" });
+      const positions: number[] = [];
+      (window as any).captureScrollPositions = positions;
+      const record = () => {
+        positions.push(scrollY);
+        if (!(window as any).captureScrollFinished)
+          requestAnimationFrame(record);
+      };
+      requestAnimationFrame(record);
+    });
     await target.locator("#target").click();
     const frame = target.frameLocator('iframe[title="New visual review note"]');
     await expect(
       frame.getByRole("textbox", { name: "Note text" }),
     ).toBeVisible();
+    const scrollPositions = await target.evaluate(() => {
+      (window as any).captureScrollFinished = true;
+      return (window as any).captureScrollPositions as number[];
+    });
+    expect(scrollPositions.length).toBeGreaterThan(0);
+    expect(scrollPositions[0]).toBeGreaterThan(0);
+    expect(
+      Math.max(...scrollPositions) - Math.min(...scrollPositions),
+    ).toBeLessThanOrEqual(1);
     const iframe = target.locator('iframe[title="New visual review note"]');
     const input = frame.getByRole("textbox", {
       name: "Note text",
@@ -2906,22 +2953,30 @@ test("live page capture keeps its editor fixed and opens drawings directly acros
     const evidence = frame.getByRole("region", {
       name: "Evidence and attachments",
     });
-    const inputY = (await input.boundingBox())!.y;
     await frame.getByText("Capture details", { exact: true }).click();
-    await evidence.evaluate(
-      (element) => (element.scrollTop = element.scrollHeight),
-    );
-    expect((await input.boundingBox())!.y).toBeCloseTo(inputY, 0);
-    await expect(
-      frame.getByRole("button", { name: "Save note", exact: true }),
-    ).toBeInViewport();
+    expect(
+      await evidence.evaluate(
+        (element) => element.scrollHeight - element.clientHeight,
+      ),
+    ).toBeLessThanOrEqual(1);
+    await frame.getByText("Capture details", { exact: true }).click();
     await input.fill(
       Array.from({ length: 100 }, (_, i) => `Line ${i}`).join("\n"),
     );
-    expect((await input.boundingBox())!.height).toBeLessThanOrEqual(200);
-    await expect(
-      frame.getByRole("button", { name: "Save note", exact: true }),
-    ).toBeInViewport();
+    expect(
+      await input.evaluate((field) => field.scrollHeight - field.clientHeight),
+    ).toBeLessThanOrEqual(1);
+    await frame.getByRole("button", { name: "Preview", exact: true }).click();
+    const preview = frame.locator("[data-review-editor] .markdown");
+    await expect(preview).toContainText("Line 99");
+    expect(
+      await preview.evaluate(
+        (element) =>
+          element.parentElement!.scrollHeight -
+          element.parentElement!.clientHeight,
+      ),
+    ).toBeLessThanOrEqual(1);
+    await frame.getByRole("button", { name: "Write", exact: true }).click();
     await input.fill("Keep this draft through fullscreen previews");
     await target.screenshot({ path: "/tmp/lcr-web-composer.png" });
     const panel = (await iframe.boundingBox())!;
@@ -2929,15 +2984,9 @@ test("live page capture keeps its editor fixed and opens drawings directly acros
       name: "Note triage",
       exact: true,
     });
-    const help = target.getByRole("button", {
-      name: "Editor help",
-      exact: true,
-    });
     await expect(triage).toBeVisible();
     const triageBounds = (await triage.boundingBox())!;
-    const helpBounds = (await help.boundingBox())!;
     expect(triageBounds.y + triageBounds.height).toBeLessThanOrEqual(panel.y);
-    expect(helpBounds.y).toBeCloseTo(triageBounds.y, 0);
     await expect(
       frame.getByRole("combobox", { name: "Note triage" }),
     ).toHaveCount(0);
@@ -2945,8 +2994,6 @@ test("live page capture keeps its editor fixed and opens drawings directly acros
     await expect(input).toHaveValue(
       "Keep this draft through fullscreen previews",
     );
-    await help.hover();
-    await expect(target.getByRole("tooltip")).toBeVisible();
     await input.click();
     const captureImage = frame.getByRole("link", {
       name: "Annotate Checkout target",
@@ -3063,6 +3110,22 @@ test("live page capture keeps its editor fixed and opens drawings directly acros
     await frame
       .getByRole("textbox", { name: "Note text" })
       .fill("Increase this checkout target size.");
+    await target.route(
+      "**/api/note",
+      (route) =>
+        route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Save temporarily unavailable" }),
+        }),
+      { times: 1 },
+    );
+    await frame.getByRole("button", { name: "Save note", exact: true }).click();
+    await expect(
+      target.getByText("Could not save note", { exact: true }),
+    ).toBeVisible();
+    await expect(input).toHaveValue("Increase this checkout target size.");
+    await target.screenshot({ path: "/tmp/lcr-web-notification.png" });
     await frame.getByRole("button", { name: "Save note", exact: true }).click();
     await expect(
       target.locator('iframe[title="New visual review note"]'),
@@ -3124,18 +3187,22 @@ test("live page capture keeps its editor fixed and opens drawings directly acros
     await target
       .locator("#target")
       .evaluate((element) => (element.style.backgroundColor = "#22c55e"));
-    await card
-      .getByRole("button", { name: "Capture after", exact: true })
-      .click();
-    const reply = page.locator("[data-review-editor]");
-    await expect(reply).toBeVisible();
-    await page
-      .getByRole("textbox", { name: "Note text" })
-      .fill("Updated checkout appearance.");
-    await reply
-      .getByRole("button", { name: "Send reply", exact: true })
-      .click();
-    await expect(reply).toHaveCount(0);
+    const after = await page.request.post(`${url}/api/web/capture`, {
+      headers: await reviewHeaders(page.request),
+      data: { id: note.id },
+    });
+    expect(after.ok()).toBe(true);
+    const evidenceAfter = await after.json();
+    const { webReviewLines } = await import("../../src/shared/web-review.ts");
+    const reply = await page.request.post(`${url}/api/reply`, {
+      headers: await reviewHeaders(page.request),
+      data: {
+        id: note.id,
+        body: `Updated checkout appearance.\n\n${webReviewLines(evidenceAfter.web).join("\n")}`,
+        ask: false,
+      },
+    });
+    expect(reply.ok()).toBe(true);
     await expect(
       card.getByText("Updated checkout appearance.", { exact: true }),
     ).toBeVisible();

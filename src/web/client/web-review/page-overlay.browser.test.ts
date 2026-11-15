@@ -327,6 +327,105 @@ browserTest(
       );
       await message("image-preview", { open: false });
       expect(await dockBounds()).toEqual(resized);
+      await message("header", {
+        triage: "bug",
+        options: [{ value: "bug", label: "Bug" }],
+        disabled: false,
+      });
+      expect(await js(`${root}.querySelector('[data-triage]').value`)).toBe(
+        "bug",
+      );
+      expect(
+        await js(`${root}.querySelector('[data-editor-help],.capture-help')`),
+      ).toBeNull();
+      const pageScroll = await js("({x:scrollX,y:scrollY})");
+      await message("content-size", { height: 1400 }, "wrong-token");
+      expect(await dockBounds()).toEqual(resized);
+      await message("content-size", { height: 1400 });
+      const grown = await dockBounds();
+      expect(grown.x).toBe(resized.x);
+      expect(grown.y).toBe(resized.y);
+      expect(grown.height).toBeGreaterThan(1400);
+      expect(await js("({x:scrollX,y:scrollY})")).toEqual(pageScroll);
+      expect(
+        await js(
+          `getComputedStyle(${root}.querySelector('.content')).overflowY`,
+        ),
+      ).toBe("visible");
+      expect(
+        await js(
+          "getComputedStyle(document.getElementById('overlay')).pointerEvents",
+        ),
+      ).toBe("none");
+      expect(
+        await js(
+          "document.getElementById('overlay').parentElement===document.documentElement",
+        ),
+      ).toBe(true);
+      await message("content-size", { height: 0 });
+      expect(await dockBounds()).toEqual(resized);
+
+      await js(`window.frameMessages=[];
+        savedFrame.contentWindow.addEventListener('message',event=>{
+          if(event.source===window && event.origin===location.origin) frameMessages.push(event.data);
+        });
+        for(const invalid of [
+          {origin:'https://untrusted.invalid',source:savedFrame.contentWindow},
+          {origin:location.origin,source:window},
+        ]) window.dispatchEvent(new MessageEvent('message',{
+          ...invalid,data:{type:'lcr:ui',token:new URL(savedFrame.src).searchParams.get('ui-draft'),
+          action:'notification',id:'untrusted',title:'Do not render'}
+        }));`);
+      await message(
+        "notification",
+        { id: "untrusted", title: "Do not render" },
+        "wrong-token",
+      );
+      expect(await js(`${root}.querySelector('.notification')`)).toBeNull();
+      await message("notification", {
+        id: "save-error",
+        title: "Could not save note",
+        description: "<img src=x onerror=alert(1)>",
+        kind: "error",
+        duration: 60_000,
+      });
+      expect(
+        await js(
+          `${root}.querySelector('.notifications [role=alert] p').textContent`,
+        ),
+      ).toBe("Could not save note");
+      expect(
+        await js(
+          `${root}.querySelector('.dock .notification,.notifications img')`,
+        ),
+      ).toBeNull();
+      await control("[data-minimize]");
+      expect(
+        await js(
+          `${root}.querySelector('.notification').getBoundingClientRect().bottom<=innerHeight`,
+        ),
+      ).toBe(true);
+      await control("[data-minimize]");
+      await message(
+        "notification-dismiss",
+        { id: "save-error" },
+        "wrong-token",
+      );
+      expect(await js(`${root}.querySelectorAll('.notification').length`)).toBe(
+        1,
+      );
+      await control('[aria-label="Dismiss notification"]');
+      await until(
+        "frameMessages.some(message=>message.action==='notification-dismiss' && message.id==='save-error' && !message.automatic)",
+      );
+      expect(await js(`${root}.querySelector('.notification')`)).toBeNull();
+      await message("notification", {
+        id: 9,
+        title: "Updated",
+        duration: 60_000,
+      });
+      await message("notification-dismiss", { id: 9 });
+      expect(await js(`${root}.querySelector('.notification')`)).toBeNull();
       await message("add-capture", {}, "wrong-token");
       expect(await js(`${root}.querySelector('.capture-prompt').hidden`)).toBe(
         true,
@@ -473,10 +572,30 @@ browserTest(
       );
       expect((await captures()).at(-1).rect).toEqual(area);
       expect(await js(`${root}.querySelectorAll('.draft-pin').length`)).toBe(1);
+      await js(`window.savedFrame=${root}.querySelector('iframe');
+        window.closedFrameMessages=[];
+        savedFrame.contentWindow.addEventListener('message',event=>closedFrameMessages.push(event.data));`);
+      await message("notification", {
+        id: "persistent",
+        title: "Page notification",
+        duration: 60_000,
+      });
       await js("window.scrollTo(0,40)");
       await until(`${root}.querySelector('.draft-pin').style.top==='260px'`);
       await control("[data-close]");
       expect(await js(`${root}.querySelector('.draft-pin')`)).toBeNull();
+      expect(
+        await js(`${root}.querySelector('.notification p').textContent`),
+      ).toBe("Page notification");
+      await control('[aria-label="Dismiss notification"]');
+      await js(
+        "(()=>{const gate=Promise.withResolvers();requestAnimationFrame(()=>requestAnimationFrame(gate.resolve));return gate.promise})()",
+      );
+      expect(
+        await js(
+          "closedFrameMessages.some(message=>message.action==='notification-dismiss')",
+        ),
+      ).toBe(false);
       await js("window.scrollTo(0,0)");
 
       // New evidence is bounded, opt-in, and never includes editable values or event payloads.

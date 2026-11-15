@@ -80,6 +80,80 @@ test("inspect and paginated reads scope to an explicit review, and binary reads 
   ).rejects.toThrow("missing");
 });
 
+test("HTML and full-page evidence are independently addressable without reading sibling payloads", async () => {
+  const { root, review } = await fixture();
+  await mkdir(path.join(root, "images"));
+  const image = new Uint8Array([137, 80, 78, 71]);
+  await writeFile(path.join(root, "images/full-page.png"), image);
+  const ref = await saveContext(root, ".", {
+    label: "Independent page evidence",
+    parts: [
+      {
+        name: "full-page-html",
+        label: "Page HTML",
+        type: "text/html",
+        data: "<main>Saved HTML only</main>",
+      },
+      {
+        name: "full-page",
+        label: "Full-page screenshot",
+        type: "image/png",
+        attachment: "images/full-page.png",
+      },
+      {
+        name: "capture",
+        label: "Complete capture",
+        type: "application/json",
+        data: '{"private":"Unrequested capture metadata"}',
+      },
+    ],
+  });
+  await rm(path.join(root, "context", ref.id, "capture.part"));
+  await rm(path.join(root, "images/full-page.png"));
+  const manifest = JSON.parse(
+    await runContextCli(["inspect", ref.id, "--review", review]),
+  );
+  expect(manifest.parts.map((part: { name: string }) => part.name)).toEqual([
+    "full-page-html",
+    "full-page",
+    "capture",
+  ]);
+  expect(JSON.stringify(manifest)).not.toContain("Saved HTML only");
+  expect(JSON.stringify(manifest)).not.toContain(
+    "Unrequested capture metadata",
+  );
+  const html = JSON.parse(
+    await runContextCli([
+      "read",
+      ref.id,
+      "--review",
+      review,
+      "--part",
+      "full-page-html",
+    ]),
+  );
+  expect(html.content).toBe("<main>Saved HTML only</main>");
+  expect(html.part.name).toBe("full-page-html");
+  expect(html.nextOffset).toBeNull();
+  await rm(path.join(root, "context", ref.id, "full-page-html.part"));
+  await writeFile(path.join(root, "images/full-page.png"), image);
+  const screenshot = JSON.parse(
+    await runContextCli([
+      "read",
+      `context/${ref.id}/manifest.json`,
+      "--review",
+      review,
+      "--part",
+      "full-page",
+    ]),
+  );
+  expect(new Uint8Array(await readFile(screenshot.path))).toEqual(image);
+  expect(screenshot.type).toBe("image/png");
+  expect(screenshot.part.name).toBe("full-page");
+  expect(screenshot.content).toBeUndefined();
+  expect(screenshot.totalBytes).toBe(image.byteLength);
+});
+
 test("CLI errors reject ambiguous options and unavailable resources", async () => {
   const { ref, review } = await fixture();
   const cases = [

@@ -99,7 +99,7 @@ function Capture({
     capture.page;
   const src = image && attachmentSrc(image);
   return (
-    <figure className="min-w-0 space-y-2 rounded-md bg-muted/30 p-2">
+    <figure className="min-w-0 space-y-2">
       <figcaption className="flex min-w-0 items-center gap-2" title={label}>
         <span className="min-w-0 flex-1 truncate text-xs font-medium">
           {label}

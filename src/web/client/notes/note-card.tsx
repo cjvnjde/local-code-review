@@ -1,4 +1,3 @@
-import { webReview } from "../../../shared/web-review.ts";
 import { useEffect, useRef, useState } from "react";
 import { useNoteState, canResolve } from "./review-state.tsx";
 import { AttachmentImage } from "../components/images.tsx";
@@ -20,7 +19,7 @@ import { Button, cn } from "../components/ui/button.tsx";
 import { ActionMenu, ActionMenuItem } from "../components/ui/action-menu.tsx";
 import { Markdown } from "../components/markdown.tsx";
 import { CapturedCode } from "./captured-code.tsx";
-import { useAction, useDiff } from "../app/api.ts";
+import { useAction } from "../app/api.ts";
 import type { Draft } from "./composer.tsx";
 import { WebEvidence, ConversationBody } from "../web-review/evidence.tsx";
 import { placeNote } from "../diff/model.ts";
@@ -43,7 +42,7 @@ export function NoteCard({
   onJump,
   editor,
   editorDraft,
-  onAddCapture,
+  onChangeDraft,
   embedded = false,
 }: {
   note: ReviewNote;
@@ -55,12 +54,11 @@ export function NoteCard({
   editor?: React.ReactNode;
   editorDraft?: Draft;
   embedded?: boolean;
-  onAddCapture?: () => void;
+  onChangeDraft?: (draft: Draft) => void;
 }) {
   const { settings } = useUi();
   const state = useNoteState();
   const entrance = useNoteEntrance(note.id);
-  const webEnabled = !!useDiff().data?.web;
   const action = useAction();
   const activity = useNoteAgentActivity(note.id);
   const unread = state.unread(note);
@@ -146,17 +144,30 @@ export function NoteCard({
           {unreadBadge.current > 9 ? "9+" : unreadBadge.current}
         </span>
       )}
-      {!editor && !embedded && (
+      {!embedded && (
         <TriageSelect
-          value={note.triage}
-          disabled={action.isPending}
-          onChange={(triage) =>
-            action.mutate({
-              url: "/api/note",
-              method: "POST",
-              body: { comment: { ...commentInput(note), triage }, ask: false },
-            })
+          value={
+            editingNote && editorDraft?.kind === "note"
+              ? editorDraft.comment.triage
+              : note.triage
           }
+          disabled={action.isPending}
+          onChange={(triage) => {
+            if (editingNote && editorDraft?.kind === "note")
+              onChangeDraft?.({
+                ...editorDraft,
+                comment: { ...editorDraft.comment, triage },
+              });
+            else
+              action.mutate({
+                url: "/api/note",
+                method: "POST",
+                body: {
+                  comment: { ...commentInput(note), triage },
+                  ask: false,
+                },
+              });
+          }}
         />
       )}
       {(state.resolved(note) || canResolve(note)) && (
@@ -172,15 +183,6 @@ export function NoteCard({
         </Button>
       )}
       <ActionMenu trigger={menuTrigger("note", "Note actions")}>
-        {editable && !editor && (
-          <ActionMenuItem
-            onClick={() =>
-              onCompose({ kind: "note", comment: commentInput(note) })
-            }
-          >
-            <Pencil /> Edit note
-          </ActionMenuItem>
-        )}
         <ActionMenuItem
           disabled={action.isPending || !!editor}
           onClick={() => setRemoving("note")}
@@ -203,57 +205,6 @@ export function NoteCard({
       {header}
       <div className="space-y-2 px-2.5 py-2">
         {note.code && <CapturedCode value={note.code} outdated={outdated} />}
-        {webEnabled && note.web && (
-          <div className="flex flex-wrap gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={action.isPending}
-              onClick={() =>
-                onAddCapture
-                  ? onAddCapture()
-                  : action.mutate({
-                      url: "/api/web/focus",
-                      method: "POST",
-                      body: { id: note.id },
-                    })
-              }
-            >
-              {onAddCapture ? "Add capture" : "Select on page"}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={action.isPending}
-              onClick={async () => {
-                const result = (await action
-                  .mutateAsync({
-                    url: "/api/web/capture",
-                    method: "POST",
-                    body: { id: note.id },
-                  })
-                  .catch(() => null)) as {
-                  web?: unknown;
-                  draftId?: string;
-                } | null;
-                const web = webReview(result?.web);
-                if (web)
-                  onCompose({
-                    kind: "reply",
-                    id: note.id,
-                    body: "",
-                    label: noteKey(note),
-                    file: note.file,
-                    code: note.code,
-                    web,
-                    webDraftId: result?.draftId,
-                  });
-              }}
-            >
-              Capture after
-            </Button>
-          </div>
-        )}
         <WebEvidence
           value={note.web}
           editable={editable && !editingNote}
@@ -466,6 +417,17 @@ export function NoteCard({
                 : activity?.blocksAsk
                   ? activity.label
                   : "Ask AI"}
+            </Button>
+          )}
+          {editable && !editor && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() =>
+                onCompose({ kind: "note", comment: commentInput(note) })
+              }
+            >
+              <Pencil /> Edit note
             </Button>
           )}
         </footer>
