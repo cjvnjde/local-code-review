@@ -44,6 +44,11 @@ mise use github:cjvnjde/local-code-review@2.0.0
 
 This writes the version to `mise.toml`; others can run `mise install` to install it. The version is the release tag without its leading `v`. `lcr --version` prints the executable's source build stamp, which is separate from the release version.
 
+Mise's [minimum-release-age policy](https://mise.jdx.dev/configuration/settings.html#minimum_release_age)
+can keep `@latest` and upgrades on an older release immediately after publication.
+Use an explicit version such as `@2.0.0` to install a just-published release without
+changing your global safety settings.
+
 If you previously installed `lcr` in `~/.local/bin`, check `which lcr` (or `where.exe lcr` on Windows) after switching. An older executable earlier on `PATH` can still take precedence. `mise exec github:cjvnjde/local-code-review@latest -- lcr --version` explicitly runs the mise-managed version. Restart running lcr instances after updating.
 
 ### Download directly
