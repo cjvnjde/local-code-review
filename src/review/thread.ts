@@ -585,22 +585,27 @@ function readOpening(note: ReviewNote, lines: string[]): void {
   note.body = trimBlock(unescapeLines(body));
 }
 
+/**
+ * Match the anchor suffix from the right: paths may themselves contain pipes and anchor-like names.
+ * Older ids omit the stable reference, and character offsets are optional in either format.
+ */
+const NOTE_ANCHOR =
+  /^(.*)\|([no]\d+|\*|@)\|([no]\d+|\*|@)(?:\|(\d+)-(\d+))?(?:\|#[^|]+)?$/;
+
 /** Path, label, and line range, taken from the id when it is there and from the heading when not. */
 function locate(note: ReviewNote, key: string): void {
-  const parts = note.id ? note.id.split("|") : [];
-  if (parts.length >= 3) {
-    note.file = parts[0] as string;
-    const range = parts.slice(3).find((part) => /^\d+-\d+$/.test(part));
-    if (range) {
-      const [ca, cb] = range.split("-");
-      note.ca = Number(ca);
-      note.cb = Number(cb);
+  const anchor = NOTE_ANCHOR.exec(note.id);
+  if (anchor) {
+    note.file = anchor[1]!;
+    if (anchor[4] != null) {
+      note.ca = Number(anchor[4]);
+      note.cb = Number(anchor[5]);
     }
-    if (parts[1] === "*") note.scope = "file";
-    if (parts[1] === GLOBAL_ANCHOR) note.scope = "global";
-    note.start = lineOf(parts[1] as string);
-    note.end = lineOf(parts[2] as string);
-    if ((parts[1] as string).startsWith("o")) note.side = "old";
+    if (anchor[2] === "*") note.scope = "file";
+    if (anchor[2] === GLOBAL_ANCHOR) note.scope = "global";
+    note.start = lineOf(anchor[2]!);
+    note.end = lineOf(anchor[3]!);
+    if (anchor[2]!.startsWith("o")) note.side = "old";
   }
 
   // A heading alone only says "overall" when no id contradicts it: a file may be called anything.
@@ -612,7 +617,7 @@ function locate(note: ReviewNote, key: string): void {
     note.end = 0;
     return;
   }
-  if (WHOLE_FILE.test(key)) {
+  if (note.scope === "file" || WHOLE_FILE.test(key)) {
     note.scope = "file";
     note.file = note.file || key.replace(WHOLE_FILE, "").trim();
     note.label = "";

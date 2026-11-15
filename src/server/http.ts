@@ -8,7 +8,7 @@ import { fingerprint } from "../git/diff.ts";
 import { currentBranch } from "../git/commands.ts";
 import type { Hub } from "./events.ts";
 import type { GhostGroup, ReviewInfo } from "../review/history.ts";
-import type { ReviewSession } from "../review/session.ts";
+import { ReviewChangedError, type ReviewSession } from "../review/session.ts";
 import type { ReviewNote } from "../review/thread.ts";
 import type {
   DiffFile,
@@ -101,6 +101,7 @@ export interface ServerOptions {
   importNote: (
     from: { file: string; id: string },
     comment: ReviewComment,
+    expectedReview: string,
   ) => Promise<ReviewNote | null>;
   /** The one review file this run is talking through. */
   session: ReviewSession;
@@ -711,12 +712,12 @@ function serve(options: ServerOptions, port: number) {
           if (request.method === "GET") {
             // Statuses ride along: a reply and the verdict it explains are written in the same pass,
             // so the page must not have to ask for the diff again to see one of them.
-            const [doc, statuses] = await Promise.all([
-              options.session.read(),
+            const [{ file, doc }, statuses] = await Promise.all([
+              options.session.snapshot(),
               options.getStatuses(),
             ]);
             return Response.json({
-              file: options.session.shownFile,
+              file,
               notes: doc.notes,
               statuses,
               ...agentState(options),
@@ -786,7 +787,8 @@ function serve(options: ServerOptions, port: number) {
                 { status: 400 },
               );
             }
-            const review = options.session.file;
+            const target = reviewTarget(request, options.session);
+            const review = path.basename(target);
             const note =
               request.method === "POST"
                 ? await options.session.reply(id, body, review)
@@ -797,15 +799,15 @@ function serve(options: ServerOptions, port: number) {
                 { status: 404 },
               );
             console.log(
-              `\n  ${request.method === "POST" ? "replied" : "reworded a reply"} on ${note.key} in ${options.session.shownFile}\n`,
+              `\n  ${request.method === "POST" ? "replied" : "reworded a reply"} on ${note.key} in ${target}\n`,
             );
-            options.hub.emit({ type: "review", file: options.session.file });
+            options.hub.emit({ type: "review", file: review });
             const delivery =
               !settings.aiAnswers || payload.ask === false
                 ? undefined
                 : await options.agent?.publish(review, [note]);
             return Response.json({
-              file: options.session.shownFile,
+              file: target,
               note,
               ...agentState(options),
               ...(delivery ? { delivery } : {}),
@@ -820,7 +822,8 @@ function serve(options: ServerOptions, port: number) {
                 { status: 400 },
               );
             }
-            const review = options.session.file;
+            const target = reviewTarget(request, options.session);
+            const review = path.basename(target);
             const note = await options.session.dropReply(id, at, review);
             if (!note)
               return Response.json(
@@ -828,11 +831,9 @@ function serve(options: ServerOptions, port: number) {
                 { status: 404 },
               );
             await options.agent?.revise?.(review, note);
-            console.log(
-              `\n  took a reply back on ${note.key} in ${options.session.shownFile}\n`,
-            );
-            options.hub.emit({ type: "review", file: options.session.file });
-            return Response.json({ file: options.session.shownFile, note });
+            console.log(`\n  took a reply back on ${note.key} in ${target}\n`);
+            options.hub.emit({ type: "review", file: review });
+            return Response.json({ file: target, note });
           }
           return new Response("method not allowed", {
             status: 405,
@@ -855,6 +856,7 @@ function serve(options: ServerOptions, port: number) {
             { comments: [comment] },
             payload?.replace === true,
             payload.preserveTriage === true,
+            reviewTarget(request, options.session),
           );
           for (const old of removed) await options.agent?.withdraw?.(old);
           const review = path.basename(file);
@@ -885,11 +887,10 @@ function serve(options: ServerOptions, port: number) {
               { error: "A note id is required." },
               { status: 400 },
             );
-          const review = options.session.file;
+          const review = path.basename(reviewTarget(request, options.session));
           const removed = await options.session.remove(ids, review);
           if (removed) await options.agent?.withdraw?.(review, ids);
-          if (removed)
-            options.hub.emit({ type: "review", file: options.session.file });
+          if (removed) options.hub.emit({ type: "review", file: review });
           return Response.json({ removed });
         }
         if (url.pathname === "/api/submit" && request.method === "POST") {
@@ -907,6 +908,8 @@ function serve(options: ServerOptions, port: number) {
           const { file, removed, changed } = await options.session.save(
             submission,
             payload.replace === true,
+            false,
+            reviewTarget(request, options.session),
           );
           console.log(
             `\n  saved ${file}  (${submission.comments.length} notes)`,
@@ -950,7 +953,11 @@ function serve(options: ServerOptions, port: number) {
             from: { file, id },
             comment,
           } = payload;
-          const note = await options.importNote({ file, id }, comment);
+          const note = await options.importNote(
+            { file, id },
+            comment,
+            reviewTarget(request, options.session),
+          );
           if (!note) {
             return Response.json(
               { error: "That note is no longer in its review file." },
@@ -994,6 +1001,8 @@ function serve(options: ServerOptions, port: number) {
         }
         return new Response("not found", { status: 404 });
       } catch (error) {
+        if (error instanceof ReviewChangedError)
+          return Response.json({ error: error.message }, { status: 409 });
         if (
           error instanceof RequestInputError ||
           error instanceof ReviewRoundError
@@ -1296,6 +1305,22 @@ function missing(method: string): string {
 
 function plural(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? "" : "s"}`;
+}
+/** A stale tab must never apply a mutation to another tab's selected conversation. */
+function reviewTarget(request: Request, session: ReviewSession): string {
+  const header = request.headers.get("x-lcr-review");
+  if (header === null)
+    throw new RequestInputError(
+      "Review identity is required. Reload the review before saving.",
+    );
+  let expected: string;
+  try {
+    expected = decodeURIComponent(header);
+  } catch {
+    throw new RequestInputError("Invalid review identity.");
+  }
+  if (expected !== session.shownFile) throw new ReviewChangedError();
+  return expected;
 }
 
 function isJsonRequest(request: Request): boolean {

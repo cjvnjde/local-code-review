@@ -661,11 +661,12 @@ export function DiffView({
           key={item.key}
           className="pointer-events-none absolute left-0 top-0 w-full"
           style={{
-            top: item.start,
-            height: Math.max(item.size, end - item.start),
+            top: Math.max(item.start, Math.min(top, end - item.size)),
           }}
         >
-          {/* The file's full virtual extent bounds native sticky positioning. */}
+          {/* Position the measured header, not a file-height native sticky track:
+              browser focus/reveal scrolling must use its visible position while
+              earlier media measurements reconcile an explicit file jump. */}
           <div
             ref={virtual.measureElement}
             data-index={item.index}
@@ -673,7 +674,7 @@ export function DiffView({
             data-diff-kind={entry.kind}
             data-item-key={entry.key}
             data-sticky={item.index === activeHeader || undefined}
-            className="pointer-events-auto sticky top-0 z-20 w-full"
+            className="pointer-events-auto relative z-20 w-full"
           >
             <FileHeader
               file={entry.file}
@@ -709,7 +710,12 @@ export function DiffView({
         const end =
           virtual.measurementsCache[headerEnds.get(header)!]?.start ??
           virtual.getTotalSize();
-        const headerHeight = virtual.measurementsCache[header]?.size ?? 58;
+        const headerHeight = virtual.measurementsCache[header]!.size;
+        const availableHeight = Math.max(
+          0,
+          (virtual.scrollRect?.height ?? scroll.current?.clientHeight ?? 0) -
+            headerHeight,
+        );
         return (
           <div
             key={item.key}
@@ -730,10 +736,10 @@ export function DiffView({
               className="pointer-events-auto sticky z-[15] w-full overflow-y-auto bg-background"
               style={{
                 top: headerHeight,
-                // Keep code visible while a growing draft scrolls within its own editor.
-                maxHeight: Math.max(
-                  120,
-                  (virtual.scrollRect?.height ?? 800) - headerHeight - 104,
+                // Reserve code space when possible, but never exceed the measured pane.
+                maxHeight: Math.min(
+                  availableHeight,
+                  Math.max(120, availableHeight - 104),
                 ),
               }}
             >

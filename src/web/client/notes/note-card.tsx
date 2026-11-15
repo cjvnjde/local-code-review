@@ -127,17 +127,19 @@ export function NoteCard({
           {unreadBadge.current > 9 ? "9+" : unreadBadge.current}
         </span>
       )}
-      <TriageSelect
-        value={note.triage}
-        disabled={action.isPending || !!editor}
-        onChange={(triage) =>
-          action.mutate({
-            url: "/api/note",
-            method: "POST",
-            body: { comment: { ...commentInput(note), triage }, ask: false },
-          })
-        }
-      />
+      {!editor && (
+        <TriageSelect
+          value={note.triage}
+          disabled={action.isPending}
+          onChange={(triage) =>
+            action.mutate({
+              url: "/api/note",
+              method: "POST",
+              body: { comment: { ...commentInput(note), triage }, ask: false },
+            })
+          }
+        />
+      )}
       {(state.resolved(note) || canResolve(note)) && (
         <Button
           variant="ghost"

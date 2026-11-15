@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { readBlob } from "./blob.ts";
@@ -54,6 +61,145 @@ describe("Git diff isolation and revision boundaries", () => {
     ).rejects.toThrow();
     expect(await runGit(["status", "--porcelain=v1", "-z"], root)).toBe(before);
     expect(await runGit(["ls-files", "--", "untracked.txt"], root)).toBe("");
+  });
+
+  test("review reads preserve index bytes, intent-to-add entries, and unstaged deletions", async () => {
+    const root = await repository();
+    await writeFile(path.join(root, "staged.txt"), "staged\n");
+    await runGit(["add", "--", "staged.txt"], root);
+    await writeFile(path.join(root, "intent.txt"), "intent\n");
+    await runGit(["add", "-N", "--", "intent.txt"], root);
+    await rm(path.join(root, "app.txt"));
+    await writeFile(path.join(root, "untracked.txt"), "new\n");
+    const binary = new Uint8Array([0, 1, 2, 3]);
+    await writeFile(path.join(root, "untracked.png"), binary);
+    const indexPath = path.join(root, ".git", "index");
+    const before = await readFile(indexPath);
+    const staged = await runGit(["diff", "--cached", "--binary"], root);
+    const status = await runGit(
+      ["--no-optional-locks", "status", "--porcelain=v1", "-z"],
+      root,
+    );
+    expect(status).toContain(" D app.txt\0");
+    expect(status).toContain(" A intent.txt\0");
+
+    for (const args of [
+      [],
+      ["HEAD"],
+      ["--"],
+      ["--cached"],
+      ["HEAD..HEAD"],
+      ["HEAD...HEAD"],
+      ["HEAD", "--", "untracked.txt"],
+    ]) {
+      const selected = source(root, args);
+      await validateDiff(selected);
+      const files = await getDiff(selected);
+      if (args.length === 0 || args[0] === "--") {
+        expect(files.find((file) => file.path === "app.txt")).toMatchObject({
+          status: "deleted",
+          removed: 5,
+        });
+        expect(
+          files.find((file) => file.path === "untracked.txt"),
+        ).toMatchObject({
+          status: "added",
+          added: 1,
+        });
+        expect(
+          files.find((file) => file.path === "untracked.png"),
+        ).toMatchObject({
+          status: "added",
+          binary: true,
+        });
+        const sides = await diffSides(selected);
+        expect(await readBlob(root, sides.old, "untracked.png")).toBeNull();
+        expect(await readBlob(root, sides.new, "untracked.png")).toEqual(
+          binary,
+        );
+      }
+      if (args[0] === "--cached")
+        expect(files.map((file) => file.path)).toEqual(["staged.txt"]);
+      await getFileContext(selected, "app.txt", 1, 5);
+      expect(await readFile(indexPath)).toEqual(before);
+      expect(await runGit(["diff", "--cached", "--binary"], root)).toBe(staged);
+      expect(
+        await runGit(
+          ["--no-optional-locks", "status", "--porcelain=v1", "-z"],
+          root,
+        ),
+      ).toBe(status);
+    }
+    await expect(
+      getDiff(source(root, ["missing-revision", "--"])),
+    ).rejects.toThrow();
+    expect(await readFile(indexPath)).toEqual(before);
+  });
+
+  test("unborn repositories without an index stay index-free while reading untracked files", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "lcr-no-index-"));
+    roots.push(root);
+    await runGit(["init", "-q", "-b", "main"], root);
+    await writeFile(path.join(root, "new.txt"), "new\n");
+    await validateDiff(source(root));
+    expect(await getDiff(source(root))).toMatchObject([
+      { path: "new.txt", status: "added", added: 1 },
+    ]);
+    expect(await getFileContext(source(root), "new.txt", 1, 1)).toEqual([]);
+    await expect(
+      readFile(path.join(root, ".git", "index")),
+    ).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
+  test("a narrow expansion includes a reintroduced untracked file without a prior diff read", async () => {
+    const root = await repository();
+    await runGit(["rm", "--", "app.txt"], root);
+    await commit(root, "remove app");
+    await writeFile(
+      path.join(root, "app.txt"),
+      "one\ntwo\nchanged\nfour\nfive\n",
+    );
+    const before = await readFile(path.join(root, ".git", "index"));
+    const selected = source(root, ["HEAD~1", "--", "app.txt"]);
+    expect(await getFileContext(selected, "app.txt", 2, 4)).toEqual([
+      { t: "ctx", o: 2, n: 2, text: "two" },
+      { t: "ctx", o: 4, n: 4, text: "four" },
+    ]);
+    expect(await getDiff(selected)).toMatchObject([
+      { path: "app.txt", status: "modified", added: 1, removed: 1 },
+    ]);
+    expect(await readFile(path.join(root, ".git", "index"))).toEqual(before);
+    expect(await runGit(["ls-files", "--", "app.txt"], root)).toBe("");
+  });
+
+  test("linked worktrees and split indexes keep their original index bytes", async () => {
+    const root = await repository();
+    const linked = path.join(root, "linked");
+    await runGit(["worktree", "add", "-q", "-b", "linked", linked], root);
+    await runGit(["update-index", "--split-index"], linked);
+    await rm(path.join(linked, "app.txt"));
+    const untracked = "new\nliteral[1].txt";
+    await writeFile(path.join(linked, untracked), "new\n");
+    const indexPath = (
+      await runGit(
+        ["rev-parse", "--path-format=absolute", "--git-path", "index"],
+        linked,
+      )
+    ).trim();
+    const before = await readFile(indexPath);
+    const files = await getDiff(source(linked, ["--"]));
+    expect(files.find((file) => file.path === "app.txt")).toMatchObject({
+      status: "deleted",
+      removed: 5,
+    });
+    expect(files.find((file) => file.path === untracked)).toMatchObject({
+      status: "added",
+      added: 1,
+    });
+    expect(await readFile(indexPath)).toEqual(before);
+    expect(await runGit(["diff", "--cached"], linked)).toBe("");
   });
 
   test("cached review uses staged bytes and leaves untracked and later edits alone", async () => {

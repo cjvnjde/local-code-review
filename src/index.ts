@@ -238,7 +238,7 @@ async function main() {
           taken,
         });
       },
-      importNote: async (from, comment) => {
+      importNote: async (from, comment, expectedReview) => {
         const doc = await readReview(from.file);
         const source = doc?.notes.find((note) => note.id === from.id);
         if (!source) return null;
@@ -246,6 +246,7 @@ async function main() {
           { ...comment, triage: comment.triage ?? source.triage },
           source.messages,
           `${from.file}#${from.id}`,
+          expectedReview,
         );
       },
       session,
@@ -313,9 +314,14 @@ async function main() {
 
   const watchers = [
     watchTree(repoRoot, () => checkDiff(), { ignore: ignoreTree }),
-    watchDir(outPath, () => {
-      if (hub.size) hub.emit({ type: "review", file: session.file });
-    }),
+    watchDir(
+      outPath,
+      () => {
+        if (hub.size) hub.emit({ type: "review", file: session.file });
+      },
+      120,
+      (file) => file === ".lcr.lock" || /^\.lcr-[0-9a-f-]{36}\.tmp$/.test(file),
+    ),
   ];
   const heartbeat = setInterval(() => hub.ping(), 25_000);
 

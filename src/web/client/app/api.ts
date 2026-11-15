@@ -50,16 +50,18 @@ export async function request<T>(
   url: string,
   method = "GET",
   body?: unknown,
+  review?: string,
 ): Promise<T> {
   const response = await fetch(url, {
     method,
     cache: "no-store",
-    ...(body === undefined
-      ? {}
-      : {
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(body),
-        }),
+    headers: {
+      ...(body === undefined ? {} : { "content-type": "application/json" }),
+      ...(review === undefined
+        ? {}
+        : { "x-lcr-review": encodeURIComponent(review) }),
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   const data = await response.json();
   if (!response.ok)
@@ -82,16 +84,19 @@ export function useReview() {
 export function useAction() {
   const client = useQueryClient();
   const { settings } = useUi();
+  const currentReview = useReview().data?.file;
   return useMutation({
     mutationFn: ({
       url,
       method,
       body,
+      review = currentReview,
     }: {
       url: string;
       method?: string;
       body?: unknown;
-    }) => request<unknown>(url, method, body),
+      review?: string;
+    }) => request<unknown>(url, method, body, review),
     onError: (_error, variables) => {
       if (!settings.toast) return;
       const saved = savedItem(variables);

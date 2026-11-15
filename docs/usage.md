@@ -19,6 +19,9 @@ range or branch changes; otherwise the range, branch, and base identify it.
 Settings are read from the user's XDG configuration, never a discovered repository
 config. `--no-agent` bypasses the default ACP profile.
 
+Reading changes leaves the Git index untouched, including unstaged deletions and
+existing intent-to-add entries. Untracked files are included using a private index.
+
 ## Read and comment
 
 Scroll through the entire review in one pane; files follow one another in sidebar
@@ -27,6 +30,9 @@ the mobile file picker jump within that continuous review instead of replacing i
 Only a small window of code and notes is mounted, even for very large diffs.
 File visibility controls appear on row hover or keyboard focus without reserving
 a separate column.
+The context strip keeps the branch, comparison range, and named-review identity
+visible at laptop widths. On compact screens it also shows the selected filename
+in the file picker.
 
 Drag the vertical dividers or their full grip handles to resize the file sidebar
 and conversation pane. Focused dividers also accept arrow keys and Home/End;
@@ -42,6 +48,8 @@ sidebar controls. Either divider works with the opposite sidebar hidden.
 The right sidebar has **Notes** and **Bookmarks** tabs. Bookmark a code line from
 its gutter; use the Bookmarks tab or Alt ↑/↓ to return to saved places. Switching
 tabs keeps conversation drafts and list positions intact.
+Previous/next note navigation stays within the selected file scope, triage, and
+open/resolved filters.
 
 Panel toggles smoothly expand or collapse the layout, keeping sidebar content at
 its expanded width instead of rewrapping it during the animation. Newly arriving
@@ -130,6 +138,12 @@ incoming live updates do not replace their text.
 Submit shortcuts and reference hints live under the editor's help icon.
 Successful browser draft persistence is announced to assistive technology;
 storage failures remain visible warnings.
+
+Drafts remember their originating review. If another window switches conversations,
+saving is rejected without discarding the draft; **Return to draft review** restores
+its destination. A recovered draft from an older build asks you to choose its review
+explicitly before saving. Concurrent lcr instances serialize Markdown updates through
+a shared filesystem lock and replace complete files atomically.
 
 **Triage** classifies a note as blocker, bug, suggestion, question, or unclassified.
 It persists in Markdown, imports, history, and reloads. Filter by triage separately

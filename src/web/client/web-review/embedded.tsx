@@ -2,7 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { request, type DiffResponse, type ReviewResponse } from "../app/api.ts";
 import { useStored } from "../app/preferences.ts";
-import { Composer, draftBody, type Draft } from "../notes/composer.tsx";
+import {
+  Composer,
+  DraftReviewNotice,
+  draftBody,
+  type Draft,
+} from "../notes/composer.tsx";
 import { NoteCard } from "../notes/note-card.tsx";
 import { NoteState, useReviewState } from "../notes/review-state.tsx";
 import { makeComment } from "../diff/model.ts";
@@ -55,11 +60,16 @@ export function EmbeddedReview({
       );
   };
   useEffect(() => {
-    if (evidence.data && !latest.current) {
+    if (evidence.data && review && !latest.current) {
       const web = webReview(evidence.data.web);
-      if (web) setDraft({ kind: "note", comment: { ...makeComment(), web } });
+      if (web)
+        setDraft({
+          kind: "note",
+          review: review.file,
+          comment: { ...makeComment(), web },
+        });
     }
-  }, [evidence.data]);
+  }, [evidence.data, review?.file]);
   useEffect(() => {
     const preview = () => {
       tell("image-preview", {
@@ -85,6 +95,7 @@ export function EmbeddedReview({
               ? { ...current, web, webDraftId: event.data.draftId }
               : {
                   kind: "reply",
+                  review: review?.file,
                   id: noteId,
                   body: "",
                   label: note?.key || "UI note",
@@ -99,7 +110,11 @@ export function EmbeddedReview({
           setDraft((current) =>
             current?.kind === "note"
               ? { ...current, comment: { ...current.comment, web } }
-              : { kind: "note", comment: { ...makeComment(), web } },
+              : {
+                  kind: "note",
+                  review: review?.file,
+                  comment: { ...makeComment(), web },
+                },
           );
         void client.invalidateQueries({ queryKey: ["review"] });
       }
@@ -112,7 +127,7 @@ export function EmbeddedReview({
       window.removeEventListener("message", receive);
       document.removeEventListener("lcr:image-preview", preview);
     };
-  }, [origin, client, review?.notes]);
+  }, [origin, client, review?.notes, review?.file]);
   useEffect(() => {
     tell("dirty", {
       dirty: !!draft && !!draftBody(draft).trim(),
@@ -142,6 +157,13 @@ export function EmbeddedReview({
   return (
     <NoteState value={noteState}>
       <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-background text-foreground">
+        {draft && (
+          <DraftReviewNotice
+            draft={draft}
+            onChange={setDraft}
+            busy={busy || capturing}
+          />
+        )}
         {(evidence.error || storageError) && (
           <p role="alert" className="p-4 text-sm text-destructive">
             {evidence.error?.message || storageError}
@@ -179,7 +201,7 @@ export function EmbeddedReview({
             <NoteCard
               note={note}
               agent={!!diff.agent}
-              onCompose={setDraft}
+              onCompose={(next) => setDraft({ ...next, review: review?.file })}
               embedded
               onAddCapture={() => tell("add-capture")}
             />

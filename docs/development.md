@@ -37,6 +37,7 @@ restarts the server when source changes. Bun's HTML bundler handles React and CS
 | Typed CDP commands and events              | Generated `devtools-protocol` types, erased from runtime                    |
 | JSON and persisted-setting boundaries      | Zod plus streamed byte limits before parsing                                |
 | Markdown and GFM                           | react-markdown and remark-gfm                                               |
+| Cross-process review writes                | proper-lockfile plus atomic Markdown replacement                            |
 | Syntax coloring                            | highlight.js                                                                |
 | Suggested replacement diffs                | jsdiff (`diff`)                                                             |
 | Local serving and executable packaging     | Bun                                                                         |
@@ -79,6 +80,12 @@ into a second global store. An editor owns a snapshot of its subject and text.
 Live refetches do not replace that snapshot. One draft is persisted per repository
 and read; a successful save clears it. The server remains responsible for merging
 reviewer changes with current agent messages and verdicts.
+Review mutations carry the URI-encoded originating `review.file` in the
+`X-Lcr-Review` header (empty before the first save). Stale destinations return 409;
+clients retain their draft and offer to reopen its original review. Independent
+lcr sessions share `.review/.lcr.lock`; `.lcr-<UUID>.tmp` files stage atomic writes.
+These internal paths are excluded before review-event debouncing. External editors
+that do not participate in the lock protocol must not write concurrently with lcr.
 
 The diff viewer is one continuous scroll pane, virtualized across every file,
 code row, and inline conversation. Sticky file headers retain their controls;

@@ -5,8 +5,12 @@ import axeDependencies from "../../node_modules/axe-core/LICENSE-3RD-PARTY.txt" 
 import axePackage from "../../node_modules/axe-core/package.json";
 import culori from "../../node_modules/culori/LICENSE" with { type: "text" };
 import freehand from "../../node_modules/perfect-freehand/LICENSE" with { type: "text" };
+import gracefulFs from "../../node_modules/graceful-fs/LICENSE.md" with { type: "text" };
 import pixelmatch from "../../node_modules/pixelmatch/LICENSE" with { type: "text" };
 import pngjs from "../../node_modules/pngjs/LICENSE" with { type: "text" };
+import properLockfile from "../../node_modules/proper-lockfile/LICENSE" with { type: "text" };
+import retry from "../../node_modules/retry/License" with { type: "text" };
+import signalExit from "../../node_modules/signal-exit/LICENSE.txt" with { type: "text" };
 import zod from "../../node_modules/zod/LICENSE" with { type: "text" };
 
 /** Bun embeds these build-time text imports in the standalone executable. */
@@ -22,9 +26,13 @@ export function libraryNotices(): string {
       ["axe-core", axe],
       ["axe-core bundled dependencies", axeDependencies],
       ["culori", culori],
+      ["graceful-fs", gracefulFs],
       ["perfect-freehand", freehand],
       ["pixelmatch", pixelmatch],
       ["pngjs", pngjs],
+      ["proper-lockfile", properLockfile],
+      ["retry", retry],
+      ["signal-exit", signalExit],
       ["zod", zod],
     ].map(([name, text]) => `\n=== ${name} ===\n\n${text}`),
   ].join("\n");

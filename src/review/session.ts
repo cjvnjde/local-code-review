@@ -1,7 +1,8 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { reviewerRevision } from "../agent/agent-queue.ts";
 import { deleteReviews, listReviews } from "./output.ts";
+import { withReviewLock, writeReviewFile } from "./lock.ts";
 import { renderMarkdown } from "./render.ts";
 import { applyComment, noteFromComment, parseReview } from "./thread.ts";
 import type { ReviewDoc, ReviewMessage, ReviewNote } from "./thread.ts";
@@ -37,6 +38,15 @@ export interface SaveResult {
   removed: string[];
   /** New or reworded notes, for an optional ACP connection to queue after the write. */
   changed: ReviewNote[];
+}
+
+export class ReviewChangedError extends Error {
+  constructor() {
+    super(
+      "The active review has changed. Reopen the review you were editing and try again.",
+    );
+    this.name = "ReviewChangedError";
+  }
 }
 
 /** The context a review is opened in: what it is called, what is diffed, from where, and against which commit. */
@@ -140,8 +150,8 @@ function reviewerFields(note: ReviewNote): string {
  * the picker reopens an earlier one.
  *
  * Both sides write this file: lcr renders it whole, the agent appends replies and rewrites status
- * lines. Every mutation here therefore re-reads the file first and keeps what it does not own — the
- * agent's messages and verdicts survive a save that happens while it is still working.
+ * lines. Every mutation here therefore locks the output directory, re-reads the file, and keeps what
+ * it does not own. Independent lcr processes share that lock; external editors must cooperate too.
  */
 export function createSession(
   repoRoot: string,
@@ -150,7 +160,7 @@ export function createSession(
   context: ReviewContext = { range },
 ) {
   let name = "";
-  /** Serialises this side's read-modify-write cycles; the agent's edits are outside our control. */
+  /** Preserves invocation order and serializes changes to which review this session shows. */
   let queue: Promise<unknown> = Promise.resolve();
 
   const dir = () => path.resolve(repoRoot, outDir);
@@ -170,7 +180,7 @@ export function createSession(
 
   async function read(): Promise<ReviewDoc> {
     if (!name) return fresh();
-    const text = await readFile(path.join(dir(), name), "utf8").catch(() => "");
+    const text = await readFile(path.join(dir(), name), "utf8");
     return text
       ? hydrateContextDoc(repoRoot, outDir, parseReview(text))
       : fresh();
@@ -179,7 +189,7 @@ export function createSession(
   /** Agent tasks name their original file, even after the page has opened another conversation. */
   async function readNamed(file: string): Promise<ReviewDoc | null> {
     if (!(await listReviews(repoRoot, outDir)).includes(file)) return null;
-    const text = await readFile(path.join(dir(), file), "utf8").catch(() => "");
+    const text = await readFile(path.join(dir(), file), "utf8");
     return text ? hydrateContextDoc(repoRoot, outDir, parseReview(text)) : null;
   }
 
@@ -206,23 +216,31 @@ export function createSession(
     for (const note of doc.notes)
       if (note.web)
         note.web = await preserveWebContexts(repoRoot, outDir, note.web);
-    if (!name) name = await mint();
-    await mkdir(dir(), { recursive: true });
+    const file = name || (await mint());
     // The doc's own context wins: a conversation adopted from another range or branch keeps saying
     // where it came from, rather than being restamped with wherever it was reopened.
-    await writeFile(
-      path.join(dir(), name),
+    await writeReviewFile(
+      path.join(dir(), file),
       renderMarkdown({ ...doc, range: doc.range || range }),
-      "utf8",
     );
-    return name;
+    name = file;
+    return file;
   }
 
-  /** Runs one read-modify-write against the session file with nothing else of ours in flight. */
+  /** Locks the shared directory before reading, minting names, writing, or deleting any review. */
   function serialise<T>(work: () => Promise<T>): Promise<T> {
-    const next = queue.then(work, work);
+    const locked = () => withReviewLock(dir(), work);
+    const next = queue.then(locked, locked);
     queue = next.catch(() => {});
     return next;
+  }
+
+  function assertReview(expectedReview?: string) {
+    if (
+      expectedReview !== undefined &&
+      expectedReview !== (name ? shown(name) : "")
+    )
+      throw new ReviewChangedError();
   }
 
   return {
@@ -245,9 +263,7 @@ export function createSession(
      */
     async adoptMatching(): Promise<string> {
       for (const candidate of (await listReviews(repoRoot, outDir)).reverse()) {
-        const text = await readFile(path.join(dir(), candidate), "utf8").catch(
-          () => "",
-        );
+        const text = await readFile(path.join(dir(), candidate), "utf8");
         if (text && matchesContext(parseReview(text), context)) {
           name = candidate;
           return name;
@@ -276,6 +292,14 @@ export function createSession(
     },
     read: () => serialise(read),
 
+    /** Pair the displayed origin with its document inside the same queue barrier as mutations. */
+    snapshot(): Promise<{ file: string; doc: ReviewDoc }> {
+      return serialise(async () => {
+        const doc = await read();
+        return { file: name ? shown(name) : "", doc };
+      });
+    },
+
     readNote(file: string, id: string): Promise<ReviewNote | null> {
       return serialise(
         async () =>
@@ -299,7 +323,7 @@ export function createSession(
           note.status = status;
           note.detail = "";
         }
-        await writeFile(path.join(dir(), file), renderMarkdown(doc), "utf8");
+        await writeReviewFile(path.join(dir(), file), renderMarkdown(doc));
         return note;
       });
     },
@@ -330,7 +354,7 @@ export function createSession(
           note.detail = "";
         }
         if (same && !note.triage && triage) note.triage = triage;
-        await writeFile(path.join(dir(), file), renderMarkdown(doc), "utf8");
+        await writeReviewFile(path.join(dir(), file), renderMarkdown(doc));
         return note;
       });
     },
@@ -345,8 +369,10 @@ export function createSession(
       submission: ReviewSubmission,
       replace = false,
       preserveTriage = false,
+      expectedReview?: string,
     ): Promise<SaveResult> {
       return serialise(async () => {
+        assertReview(expectedReview);
         const doc = await read();
         const known = new Map(doc.notes.map((note, index) => [note.id, index]));
         const changed: ReviewNote[] = [];
@@ -393,8 +419,10 @@ export function createSession(
       comment: ReviewComment,
       thread: ReviewMessage[],
       from: string,
+      expectedReview?: string,
     ): Promise<ReviewNote> {
       return serialise(async () => {
+        assertReview(expectedReview);
         const doc = await read();
         const note = noteFromComment(comment);
         note.messages = thread;
@@ -418,7 +446,7 @@ export function createSession(
           body,
         };
         note.messages.push(message);
-        await writeFile(path.join(dir(), file), renderMarkdown(doc), "utf8");
+        await writeReviewFile(path.join(dir(), file), renderMarkdown(doc));
         return note;
       });
     },
@@ -440,7 +468,7 @@ export function createSession(
         const found = ownMessage(doc, id, at);
         if (!found) return null;
         found.message.body = body;
-        await writeFile(path.join(dir(), file), renderMarkdown(doc), "utf8");
+        await writeReviewFile(path.join(dir(), file), renderMarkdown(doc));
         return found.note;
       });
     },
@@ -455,7 +483,7 @@ export function createSession(
         found.note.messages = found.note.messages.filter(
           (entry) => entry !== found.message,
         );
-        await writeFile(path.join(dir(), file), renderMarkdown(doc), "utf8");
+        await writeReviewFile(path.join(dir(), file), renderMarkdown(doc));
         return found.note;
       });
     },
@@ -573,7 +601,7 @@ export function createSession(
         // Nothing to take out: leave the file untouched, so a session with none never mints one.
         if (next.length === doc.notes.length) return false;
         doc.notes = next;
-        await writeFile(path.join(dir(), file), renderMarkdown(doc), "utf8");
+        await writeReviewFile(path.join(dir(), file), renderMarkdown(doc));
         return true;
       });
     },

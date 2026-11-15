@@ -66,7 +66,12 @@ import { Dialog, DialogContent } from "../components/ui/dialog.tsx";
 import { DiffView, type DiffViewHandle } from "../diff/diff-view.tsx";
 import { makeComment, orderFiles } from "../diff/model.ts";
 import { NoteCard } from "../notes/note-card.tsx";
-import { Composer, draftChanged, type Draft } from "../notes/composer.tsx";
+import {
+  Composer,
+  DraftReviewNotice,
+  draftChanged,
+  type Draft,
+} from "../notes/composer.tsx";
 import { AgentActivity } from "./agent-activity.tsx";
 import { ReviewTools } from "./review-tools.tsx";
 import type { RoundNoteReference } from "../../../shared/review-rounds.ts";
@@ -241,7 +246,7 @@ function Workspace({
   ) {
     noteState.read(note);
     setRightTab("notes");
-    if (noteState.resolved(note)) setFilter("all");
+    if (filter === "open" && noteState.resolved(note)) setFilter("all");
     if (triageFilter !== "all" && (note.triage || "") !== triageFilter)
       setTriageFilter("all");
     if (
@@ -308,7 +313,7 @@ function Workspace({
   );
   const reading = useReadingNavigation(scope, files);
   const bookmarkAt = useRef(-1);
-  const noteAt = useRef(-1);
+  const noteAt = useRef<string | null>(null);
   function jumpBookmark(bookmark: ReviewBookmark) {
     reveal(bookmark.file, () =>
       diffView.current?.scrollToRow(bookmark.file, bookmark.a),
@@ -463,13 +468,13 @@ function Workspace({
   const progress = files.length ? Math.round((viewed / files.length) * 100) : 0;
   const open = notes.filter((note) => !noteState.resolved(note)).length;
   function stepNote(direction: number) {
-    const targets = allNotes ? listed : notes;
-    noteAt.current = stepAt(targets.length, noteAt.current, direction);
-    const target = targets[noteAt.current];
+    const current = listed.findIndex(
+      (note) => note.id === (visibleNote || noteAt.current),
+    );
+    const target = listed[stepAt(listed.length, current, direction)];
     if (!target) return;
+    noteAt.current = target.id;
     setNotesOpen(true);
-    setAllNotes(true);
-    setFilter("all");
     setSearch("");
     jumpToNote(target);
     requestAnimationFrame(() =>
@@ -534,7 +539,7 @@ function Workspace({
     } else diffView.current?.focusEditor();
   }
   const compose = (next: Draft) => {
-    if (busy) {
+    if (!review || busy || (draft && draft.review !== review.file)) {
       focusEditor();
       return false;
     }
@@ -564,6 +569,7 @@ function Workspace({
       if (reaim) {
         setDraft({
           ...next,
+          review: draft.review,
           host: draft.host,
           original: "",
           editing: false,
@@ -594,6 +600,7 @@ function Workspace({
     setSearchOpen(false);
     setDraft({
       ...next,
+      review: review.file,
       host: next.host || "diff",
       original,
       originalTriage: known?.triage,
@@ -701,24 +708,6 @@ function Workspace({
                   </h1>
                   <p className="text-[10px] text-muted-foreground">{VERSION}</p>
                 </div>
-                <div className="hidden min-w-0 items-center gap-2 text-xs text-muted-foreground 2xl:flex">
-                  <GitBranch className="size-3.5" />
-                  <span className="max-w-36 truncate">{diff.branch}</span>
-                  <span className="opacity-40">/</span>
-                  <span
-                    className="max-w-48 truncate font-mono"
-                    title={diff.range}
-                  >
-                    {diff.id || diff.range}
-                  </span>
-                </div>
-                <Select
-                  label="Select file"
-                  className="h-8 w-9 shrink-0 gap-0 px-2 [&>span:first-child]:hidden xl:hidden"
-                  value={file?.path || ""}
-                  onValueChange={jumpToFile}
-                  options={files.map((f) => ({ value: f.path, label: f.path }))}
-                />
                 <div
                   ref={searchContainer}
                   className="relative mx-auto min-w-0 max-w-xl flex-1"
@@ -913,6 +902,45 @@ function Workspace({
                   )}
                 </div>
               </header>
+              <div
+                aria-label="Review context"
+                className="flex min-h-8 shrink-0 items-center gap-3 border-b bg-card px-3 py-1 text-xs text-muted-foreground"
+              >
+                <Select
+                  label="Select file"
+                  className="h-8 w-[min(40vw,14rem)] shrink-0 gap-1 px-2 xl:hidden"
+                  value={file?.path || ""}
+                  onValueChange={jumpToFile}
+                  options={files.map((f) => ({ value: f.path, label: f.path }))}
+                />
+                <GitBranch className="hidden size-3.5 shrink-0 sm:block" />
+                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-0.5">
+                  <span className="max-w-48 truncate" title={diff.branch}>
+                    {diff.branch || "Working tree"}
+                  </span>
+                  {diff.id && (
+                    <span
+                      className="max-w-48 truncate font-medium"
+                      title={diff.id}
+                    >
+                      {diff.id}
+                    </span>
+                  )}
+                  <span
+                    className="min-w-0 truncate font-mono"
+                    title={diff.range}
+                  >
+                    {diff.range}
+                  </span>
+                </div>
+              </div>
+              {draft && (
+                <DraftReviewNotice
+                  draft={draft}
+                  onChange={setDraft}
+                  busy={busy}
+                />
+              )}
               {(error || storageError || action.error) && (
                 <div
                   role="alert"

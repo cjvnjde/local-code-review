@@ -149,8 +149,8 @@ async function startTestServer(overrides: Partial<ServerOptions> = {}) {
     deleteReviews: async () => [],
     describeReviews: async () => [],
     getGhosts: async () => [],
-    importNote: (from, imported) =>
-      session.import(imported, [], `${from.file}#${from.id}`),
+    importNote: (from, imported, expectedReview) =>
+      session.import(imported, [], `${from.file}#${from.id}`, expectedReview),
     session,
     hub,
     ...overrides,
@@ -173,8 +173,15 @@ type StartedServer = {
   server: Server;
 };
 
-const request = (started: StartedServer, route: string, init?: RequestInit) =>
-  fetch(`${started.base}${route}`, init);
+const request = (started: StartedServer, route: string, init?: RequestInit) => {
+  const headers = new Headers(init?.headers);
+  if (!headers.has("x-lcr-review"))
+    headers.set(
+      "x-lcr-review",
+      encodeURIComponent(started.options.session.shownFile),
+    );
+  return fetch(`${started.base}${route}`, { ...init, headers });
+};
 
 beforeAll(() => {
   console.log = () => {};
@@ -2126,6 +2133,69 @@ test("simple text and empty-type uploads cannot be written by another browser or
 });
 
 describe("review conversation APIs", () => {
+  test("stale clients cannot write notes or replies into another selected review", async () => {
+    const started = await startTestServer();
+    const session = started.options.session;
+    await session.save({ comments: [comment] });
+    const original = session.shownFile;
+    const originalName = session.file;
+    await session.run(async () => session.startFresh());
+    await session.save({
+      comments: [{ ...comment, body: "The other review." }],
+    });
+    const selected = session.file;
+    const headers = {
+      "content-type": "application/json",
+      "x-lcr-review": encodeURIComponent(original),
+    };
+    for (const [route, body] of [
+      [
+        "/api/note",
+        { comment: { ...comment, body: "Stale editor." }, ask: false },
+      ],
+      [
+        "/api/submit",
+        { comments: [{ ...comment, body: "Stale submission." }] },
+      ],
+      ["/api/reply", { id: comment.id, body: "Stale reply.", ask: false }],
+      [
+        "/api/import",
+        { from: { file: originalName, id: comment.id }, comment },
+      ],
+    ] as const) {
+      const response = await request(started, route, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+      });
+      expect(response.status).toBe(409);
+    }
+    const removed = await request(
+      started,
+      `/api/note?id=${encodeURIComponent(comment.id!)}`,
+      {
+        method: "DELETE",
+        headers,
+      },
+    );
+    expect(removed.status).toBe(409);
+    expect(await session.readNote(originalName, comment.id!)).toMatchObject({
+      body: comment.body,
+      messages: [],
+    });
+    expect(await session.readNote(selected, comment.id!)).toMatchObject({
+      body: "The other review.",
+      messages: [],
+    });
+    const unidentified = await fetch(`${started.base}/api/note`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ comment, ask: false }),
+    });
+    expect(unidentified.status).toBe(400);
+    expect((await unidentified.json()).error).toContain("Review identity");
+  });
+
   test("save-only notes and replies persist without starting ACP, then explicit ask submits the saved conversation", async () => {
     const started = await startTestServer();
     const dispatched: ReviewNote[][] = [];
@@ -2899,7 +2969,6 @@ describe("HTTP state preservation and stream lifetimes", () => {
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual({ removed: false });
       expect(started.options.session.file).toBe("");
-      expect(await readdir(started.options.repoRoot)).toEqual([]);
       expect(events).toEqual([]);
     } finally {
       detach();

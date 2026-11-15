@@ -1,4 +1,10 @@
-import { test, expect, chromium, type Page } from "@playwright/test";
+import {
+  test,
+  expect,
+  chromium,
+  type Page,
+  type APIRequestContext,
+} from "@playwright/test";
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import {
   mkdtemp,
@@ -55,6 +61,13 @@ async function stop() {
     child.kill("SIGTERM");
   });
 }
+async function reviewHeaders(request: APIRequestContext) {
+  const response = await request.get(`${url}/api/review`);
+  expect(response.ok()).toBe(true);
+  const review = await response.json();
+  return { "x-lcr-review": encodeURIComponent(review.file) };
+}
+
 test.beforeAll(async () => {
   root = await mkdtemp(path.join(tmpdir(), "lcr-react-e2e-"));
   directory = path.join(root, "repo");
@@ -455,6 +468,7 @@ test("classification changes and stale editor saves preserve the latest category
     body: "Investigate the greeting behavior.",
   };
   const saved = await page.request.post(`${url}/api/note`, {
+    headers: await reviewHeaders(page.request),
     data: { comment, ask: false },
   });
   expect(saved.ok()).toBe(true);
@@ -473,12 +487,17 @@ test("classification changes and stale editor saves preserve the latest category
   await card
     .getByRole("textbox", { name: "Note text" })
     .fill("Updated reviewer wording.");
+  await expect(card.getByRole("combobox", { name: "Note triage" })).toHaveCount(
+    1,
+  );
   // Another client/agent classifies while this editor still holds the old category.
   const classified = await page.request.post(`${url}/api/note`, {
+    headers: await reviewHeaders(page.request),
     data: { comment: { ...comment, triage: "question" }, ask: false },
   });
   expect(classified.ok()).toBe(true);
   await card.getByRole("button", { name: "Save note", exact: true }).click();
+  await expect(card.getByRole("textbox", { name: "Note text" })).toHaveCount(0);
   await expect.poll(current).toMatchObject({
     body: "Updated reviewer wording.",
     triage: "question",
@@ -490,6 +509,163 @@ test("classification changes and stale editor saves preserve the latest category
   await expect(
     card.getByRole("region", { name: "Your note", exact: true }),
   ).toContainText("Updated reviewer wording.");
+});
+
+test("a draft stays with its original review when another client switches conversations", async ({
+  page,
+}) => {
+  await page.request.delete(`${url}/api/review`);
+  const seed = async (id: string, body: string) => {
+    const response = await page.request.post(`${url}/api/note`, {
+      headers: await reviewHeaders(page.request),
+      data: {
+        comment: {
+          id: `|@|@|#${id}`,
+          scope: "global",
+          file: "",
+          start: 0,
+          end: 0,
+          body,
+        },
+        ask: false,
+      },
+    });
+    expect(response.ok()).toBe(true);
+    return response.json();
+  };
+  const original = await seed("sourceReview", "Original conversation.");
+  await page.goto(url);
+  const overall = page.getByRole("button", {
+    name: "Overall note",
+    exact: true,
+  });
+  await overall.click();
+  const text = page.getByRole("textbox", { name: "Note text", exact: true });
+  await text.fill("Keep this draft in its original conversation.");
+
+  // A separate HTTP client changes the server selection while this editor stays open.
+  await page.request.delete(`${url}/api/review`);
+  const other = await seed("otherReview", "Other conversation.");
+  await expect(
+    page.getByRole("button", { name: "Return to draft review" }),
+  ).toBeVisible();
+  const rejected = page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/api/note") &&
+      response.request().method() === "POST",
+  );
+  await page.getByRole("button", { name: "Save note", exact: true }).click();
+  expect((await rejected).status()).toBe(409);
+  await expect(text).toHaveValue(
+    "Keep this draft in its original conversation.",
+  );
+  const unchanged = await (await page.request.get(`${url}/api/review`)).json();
+  expect(unchanged.file).toBe(other.file);
+  expect(unchanged.notes.map((note: { body: string }) => note.body)).toEqual([
+    "Other conversation.",
+  ]);
+
+  await page.getByRole("button", { name: "Return to draft review" }).click();
+  await expect(
+    page.getByRole("button", { name: "Return to draft review" }),
+  ).toHaveCount(0);
+  if ((await overall.getAttribute("aria-expanded")) !== "true")
+    await overall.click();
+  await expect(text).toHaveValue(
+    "Keep this draft in its original conversation.",
+  );
+  await page.getByRole("button", { name: "Save note", exact: true }).click();
+  await expect(text).toHaveCount(0);
+  const saved = await (await page.request.get(`${url}/api/review`)).json();
+  expect(saved.file).toBe(original.file);
+  expect(saved.notes.map((note: { body: string }) => note.body)).toEqual(
+    expect.arrayContaining([
+      "Original conversation.",
+      "Keep this draft in its original conversation.",
+    ]),
+  );
+  expect(
+    await readFile(path.join(directory, other.file), "utf8"),
+  ).not.toContain("Keep this draft");
+});
+
+test("note stepping retains file scope and resolved filters without revisiting the same target", async ({
+  page,
+}) => {
+  await page.request.delete(`${url}/api/review`);
+  const notes = [
+    {
+      id: "src/app.ts|n2|n2|#scopeother",
+      file: "src/app.ts",
+      start: 2,
+      end: 2,
+      body: "Another file.",
+    },
+    {
+      id: "untracked.ts|n1200|n1200|#scopefirst",
+      file: "untracked.ts",
+      start: 1200,
+      end: 1200,
+      body: "First scoped note.",
+    },
+    {
+      id: "untracked.ts|n1300|n1300|#scopesecond",
+      file: "untracked.ts",
+      start: 1300,
+      end: 1300,
+      body: "Second scoped note.",
+    },
+  ];
+  for (const comment of notes) {
+    const response = await page.request.post(`${url}/api/note`, {
+      headers: await reviewHeaders(page.request),
+      data: { comment, ask: false },
+    });
+    expect(response.ok()).toBe(true);
+  }
+  await page.goto(url);
+  const panel = page.getByRole("complementary", { name: "Review notes" });
+  const pane = page.getByRole("region", { name: "Code diff" });
+  await page
+    .getByRole("navigation")
+    .locator('button[title="untracked.ts"]')
+    .click();
+  const scope = panel.getByRole("button", {
+    name: "This file (2)",
+    exact: true,
+  });
+  await scope.click();
+  const next = panel.getByRole("button", { name: "Next note", exact: true });
+  await next.click();
+  await expect(page).toHaveURL(/#note=scopefirst$/);
+  await next.click();
+  await expect(page).toHaveURL(/#note=scopesecond$/);
+  await expect(scope).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    panel.getByRole("button", { name: "Open 2", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await panel.getByRole("button", { name: "All 2", exact: true }).click();
+  for (const note of notes.slice(1)) {
+    await panel.locator(`button[data-note-id="${note.id}"]`).click();
+    await pane
+      .locator(`[data-note-id="${note.id}"]`)
+      .getByRole("button", { name: "Resolve", exact: true })
+      .click();
+  }
+  const resolved = panel.getByRole("button", {
+    name: "Resolved 2",
+    exact: true,
+  });
+  await resolved.click();
+  await next.click();
+  const first = new URL(page.url()).hash;
+  await next.click();
+  await expect.poll(() => new URL(page.url()).hash).not.toBe(first);
+  await expect(scope).toHaveAttribute("aria-pressed", "true");
+  await expect(resolved).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    panel.locator('[aria-label="Compact conversation notes"]'),
+  ).not.toContainText("Another file.");
 });
 
 test("inline note geometry and visible-note tracking follow gutters without moving editors", async ({
@@ -519,6 +695,7 @@ test("inline note geometry and visible-note tracking follow gutters without movi
   ];
   for (const comment of notes) {
     const saved = await page.request.post(`${url}/api/note`, {
+      headers: await reviewHeaders(page.request),
       data: { comment, ask: false },
     });
     expect(saved.ok()).toBe(true);
@@ -1026,6 +1203,7 @@ test("bookmarks, full review search, references and context stay usable across n
   page,
 }) => {
   await page.request.post(`${url}/api/note`, {
+    headers: await reviewHeaders(page.request),
     data: {
       comment: {
         id: "|@|@|#refseed123",
@@ -1223,6 +1401,7 @@ test("folder controls, color edits and local resolution preserve the underlying 
 }) => {
   await page.request.delete(`${url}/api/review`);
   await page.request.post(`${url}/api/note`, {
+    headers: await reviewHeaders(page.request),
     data: {
       comment: {
         id: "src/app.ts|n2|n2|#resolve123",
@@ -1322,6 +1501,7 @@ test("continuous scrolling follows files, reopens viewed files, and preserves th
     )
   ) {
     await page.request.post(`${url}/api/note`, {
+      headers: await reviewHeaders(page.request),
       data: {
         comment: {
           id: "src/app.ts|n2|n2|#scrolltest",
@@ -1712,6 +1892,11 @@ test("laptop and narrow layouts protect code width without losing file navigatio
   await expect(files).toBeVisible();
   await files.locator('button[title="src/app.ts"]').click();
   await expect(files).toBeHidden();
+  await expect(
+    page
+      .getByRole("combobox", { name: "Select file", exact: true })
+      .getByText("src/app.ts", { exact: true }),
+  ).toBeVisible();
   await pane
     .getByRole("button", { name: "Comment on file src/app.ts", exact: true })
     .click();
@@ -1735,6 +1920,9 @@ test("laptop and narrow layouts protect code width without losing file navigatio
   await expect(files).toBeVisible();
   await page.getByRole("button", { name: "Close files", exact: true }).click();
   await page.setViewportSize({ width: 1440, height: 960 });
+  await expect(
+    page.locator('[aria-label="Review context"]').getByText(/HEAD/),
+  ).toBeVisible();
   await expect(
     page.getByRole("separator", { name: "Resize file sidebar" }),
   ).toBeVisible();
@@ -1827,6 +2015,7 @@ test("closed notes panel survives note-link reloads while new links still reveal
   try {
     for (const { comment } of targets) {
       const response = await page.request.post(`${url}/api/note`, {
+        headers: await reviewHeaders(page.request),
         data: { comment, ask: false },
       });
       expect(response.ok()).toBe(true);
@@ -1872,6 +2061,7 @@ test("closed notes panel survives note-link reloads while new links still reveal
     for (const { comment } of targets)
       await page.request.delete(
         `${url}/api/note?${new URLSearchParams({ id: comment.id })}`,
+        { headers: await reviewHeaders(page.request) },
       );
   }
 });
@@ -2183,6 +2373,7 @@ test("compact header search and hover-only tree controls remain keyboard accessi
   page,
 }) => {
   await page.request.post(`${url}/api/note`, {
+    headers: await reviewHeaders(page.request),
     data: {
       comment: {
         id: "src/app.ts|n2|n2|#headerhistory123",
@@ -2199,6 +2390,7 @@ test("compact header search and hover-only tree controls remain keyboard accessi
   });
   await page.request.delete(`${url}/api/review`);
   await page.request.post(`${url}/api/note`, {
+    headers: await reviewHeaders(page.request),
     data: {
       comment: {
         id: "|@|@|#fuzzyreview123",

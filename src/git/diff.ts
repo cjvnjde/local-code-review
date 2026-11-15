@@ -1,3 +1,6 @@
+import { copyFile, mkdtemp, rm, stat, utimes } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { runGit } from "./commands.ts";
 import type { DiffFile, DiffRow, FileStatus } from "../shared/review-types.ts";
 
@@ -148,28 +151,86 @@ async function isCommit(repoRoot: string, rev: string): Promise<boolean> {
 }
 
 export async function getDiff(source: DiffSource): Promise<DiffFile[]> {
-  const readsWorktree =
-    source.diffArgs.length === 0 || (await diffSides(source)).new === WORKTREE;
-  // An untracked file has no diff until Git knows its path. Include it in every comparison whose
-  // new side is the worktree, including one with an explicit base such as `origin/main`.
-  if (readsWorktree) {
-    await runGit(["add", "-N", "--", "."], source.repoRoot).catch(() => {});
-  }
-
   return parseDiff(await readDiff(source));
 }
 
 /** Check Git's arguments without staging untracked files or opening review resources. */
 export async function validateDiff(source: DiffSource): Promise<void> {
-  await readDiff(source);
+  await readDiff(source, false);
 }
 
-async function readDiff(source: DiffSource): Promise<string> {
+async function readDiff(
+  source: DiffSource,
+  includeUntracked = true,
+): Promise<string> {
   const args = await gitDiffArgs(source);
-  return runGit(
-    [...DIFF_ARGS, `-U${source.context}`, ...args],
-    source.repoRoot,
+  return withDiffIndex(source, includeUntracked, (git) =>
+    git([...DIFF_ARGS, `-U${source.context}`, ...args]),
   );
+}
+
+/** Every diff gets its own snapshot: even Git's optional index refreshes stay private. */
+async function withDiffIndex<T>(
+  source: DiffSource,
+  includeUntracked: boolean,
+  read: (
+    git: (args: string[], input?: string) => Promise<string>,
+  ) => Promise<T>,
+): Promise<T> {
+  const index = (
+    await runGit(
+      ["rev-parse", "--path-format=absolute", "--git-path", "index"],
+      source.repoRoot,
+    )
+  ).trim();
+  const directory = await mkdtemp(path.join(tmpdir(), "lcr-index-"));
+  const isolatedIndex = path.join(directory, "index");
+  const git = (args: string[], input?: string) =>
+    runGit(["-c", "core.splitIndex=false", ...args], source.repoRoot, input, {
+      GIT_INDEX_FILE: isolatedIndex,
+      GIT_OPTIONAL_LOCKS: "0",
+    });
+  try {
+    try {
+      const { atime, mtimeMs } = await stat(index);
+      await copyFile(index, isolatedIndex);
+      // A newer copy timestamp would hide same-size edits made in the index's
+      // original timestamp window. Round down so Git's racy-index checks still run.
+      await utimes(isolatedIndex, atime, Math.floor(mtimeMs / 1000));
+    } catch (error) {
+      // A repository with no staged files yet may not have an index at all.
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    if (
+      includeUntracked &&
+      (source.diffArgs.length === 0 ||
+        (await diffSides(source)).new === WORKTREE)
+    ) {
+      const untracked = await git([
+        "ls-files",
+        "--others",
+        "--exclude-standard",
+        "-z",
+      ]);
+      if (untracked) {
+        // Only add unknown paths. `add -N .` also stages tracked deletions, changing an
+        // index-to-worktree comparison even when performed on this private copy.
+        await git(
+          [
+            "--literal-pathspecs",
+            "add",
+            "-N",
+            "--pathspec-from-file=-",
+            "--pathspec-file-nul",
+          ],
+          untracked,
+        );
+      }
+    }
+    return await read(git);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 }
 
 /**
@@ -218,8 +279,8 @@ export async function getFileContext(
   const scoped = args.includes("--")
     ? [...whole, path]
     : [...whole, "--", path];
-  const raw = await runGit(scoped, source.repoRoot).catch(() =>
-    runGit(whole, source.repoRoot),
+  const raw = await withDiffIndex(source, true, (git) =>
+    git(scoped).catch(() => git(whole)),
   );
   return contextRows(parseDiff(raw), path, start, last);
 }

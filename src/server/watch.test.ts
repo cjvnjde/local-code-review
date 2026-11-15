@@ -186,6 +186,37 @@ describe("watchTree lifecycle", () => {
 });
 
 describe("watchDir lifecycle", () => {
+  test("ignored lock activity neither emits nor replaces a pending review change", async () => {
+    const root = await directory();
+    const changed = Promise.withResolvers<string>();
+    const files: string[] = [];
+    watchers.push(
+      watchDir(
+        root,
+        (file) => {
+          files.push(file);
+          changed.resolve(file);
+        },
+        20,
+        (file) => file === ".lcr.lock",
+      ),
+    );
+    await writeFile(path.join(root, ".lcr.lock"), "lock");
+    await delay(60);
+    expect(files).toEqual([]);
+    const writer = setInterval(() => {
+      writeFileSync(path.join(root, "review-1.md"), "saved");
+      writeFileSync(path.join(root, ".lcr.lock"), "unlock");
+    }, 250);
+    writers.push(writer);
+    try {
+      expect(await changed.promise).toBe("review-1.md");
+    } finally {
+      clearInterval(writer);
+    }
+    expect(files.every((file) => file === "review-1.md")).toBe(true);
+  });
+
   test("reports a filename and suppresses all notifications after close", async () => {
     const root = await directory();
     const changed = Promise.withResolvers<string>();

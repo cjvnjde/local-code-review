@@ -66,6 +66,7 @@ export function watchDir(
   dir: string,
   onChange: (file: string) => void,
   delay = 120,
+  ignore: (file: string) => boolean = () => false,
 ): Watcher {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let retry: ReturnType<typeof setInterval> | null = null;
@@ -74,6 +75,8 @@ export function watchDir(
   let closed = false;
 
   const fire = (file: string) => {
+    // Ignore before debouncing so internal activity cannot replace a real review event.
+    if (file && ignore(file)) return;
     last = file;
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => {

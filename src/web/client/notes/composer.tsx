@@ -39,7 +39,7 @@ import {
 } from "lucide-react";
 import type { ReviewComment } from "../../../shared/review-types.ts";
 import { noteKey } from "../../../shared/note-id.ts";
-import { request, useAction } from "../app/api.ts";
+import { request, useAction, useReview } from "../app/api.ts";
 import { Button } from "../components/ui/button.tsx";
 import { Tooltip } from "../components/ui/tooltip.tsx";
 import { ComposerImages } from "../components/images.tsx";
@@ -51,6 +51,8 @@ import { NoteHeader, TriageSelect } from "./note-header.tsx";
 import { commentInput } from "./comment-input.ts";
 
 export type Draft = {
+  /** Captured when opening the editor; never follows another tab's selected review. */
+  review?: string;
   host?: "diff" | "panel";
   original?: string;
   originalTriage?: ReviewComment["triage"];
@@ -78,6 +80,54 @@ export const withBody = (draft: Draft, body: string): Draft =>
 export const draftChanged = (draft: Draft) =>
   draftBody(draft) !== (draft.original || "") ||
   (draft.kind === "note" && draft.comment.triage !== draft.originalTriage);
+
+export function DraftReviewNotice({
+  draft,
+  onChange,
+  busy,
+}: {
+  draft: Draft;
+  onChange: (draft: Draft) => void;
+  busy: boolean;
+}) {
+  const { data: review } = useReview();
+  const action = useAction();
+  if (busy || !review || draft.review === review.file) return null;
+  return (
+    <div role="alert" className="shrink-0 border-b bg-card px-3 py-2 text-sm">
+      <p>
+        {draft.review === undefined
+          ? "Choose the current review before saving this recovered draft."
+          : "Another window changed the review. Your draft still belongs to its original review."}
+      </p>
+      <Button
+        size="sm"
+        className="mt-2"
+        disabled={action.isPending}
+        onClick={() => {
+          if (draft.review === undefined) {
+            onChange({ ...draft, review: review.file });
+            return;
+          }
+          action.mutate({
+            url: "/api/review",
+            method: draft.review ? "PUT" : "DELETE",
+            ...(draft.review
+              ? { body: { file: draft.review.split(/[\\/]/).at(-1)! } }
+              : {}),
+          });
+        }}
+      >
+        {draft.review === undefined
+          ? "Use current review"
+          : "Return to draft review"}
+      </Button>
+      {action.error && (
+        <p className="mt-2 text-destructive">{action.error.message}</p>
+      )}
+    </div>
+  );
+}
 
 export function Composer({
   draft,
@@ -304,12 +354,17 @@ export function Composer({
   }
   async function save(ask = askAI) {
     if (!hasContent || busy) return;
+    if (draft.review === undefined) {
+      setUploadError("Choose a review for this recovered draft before saving.");
+      return;
+    }
     onBusy?.(true);
     try {
       if (draft.kind === "note")
         await action.mutateAsync({
           url: "/api/note",
           method: "POST",
+          review: draft.review,
           body: {
             comment: commentInput(draft.comment),
             ask,
@@ -322,6 +377,7 @@ export function Composer({
         await action.mutateAsync({
           url: "/api/reply",
           method: draft.at ? "PUT" : "POST",
+          review: draft.review,
           body: {
             id: draft.id,
             at: draft.at,
