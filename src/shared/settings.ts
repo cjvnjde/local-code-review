@@ -1,28 +1,62 @@
-import { DEFAULT_CONTEXT_SETTINGS, type ContextSettings } from "./context.ts";
+import { z } from "zod";
+import { DEFAULT_CONTEXT_SETTINGS } from "./context.ts";
+import { DEFAULT_THEME, isThemeId } from "./themes.ts";
 
-export interface UiSettings extends ContextSettings {
-  auto: boolean;
-  back: boolean;
-  limit: number;
-  toast: boolean;
-  hide: string;
-  hideEnabled: boolean;
-  disabledHide: string[];
-  hideDeleted: boolean;
-  foldDel: boolean;
-  enterSaves: boolean;
-  expand: number;
-  navHidden: boolean;
-  navWidth: number;
-  ntFold: boolean;
-  bmFold: boolean;
-  single: boolean;
-  ghosts: boolean;
-  editor: string;
-}
+const LIMIT_CHOICES = [0, 500, 900, 1800];
+const EXPAND_CHOICES = [10, 20, 50, 100];
+
+export const uiSettingsSchema = z.strictObject({
+  aiContext: z.boolean(),
+  contextHtml: z.boolean(),
+  contextFullPage: z.boolean(),
+  contextDiagnostics: z.boolean(),
+  theme: z.string().max(80).refine(isThemeId, "Must be a valid theme ID."),
+  aiAnswers: z.boolean(),
+  auto: z.boolean(),
+  back: z.boolean(),
+  limit: z
+    .number()
+    .refine(
+      (value) => LIMIT_CHOICES.includes(value),
+      "Must be one of 0, 500, 900, 1800.",
+    ),
+  toast: z.boolean(),
+  hide: z.string().max(16384),
+  hideEnabled: z.boolean(),
+  disabledHide: z
+    .custom<unknown[]>(
+      (value) => Array.isArray(value) && value.length <= 1000,
+      "Must be an array of at most 1000 strings.",
+    )
+    .pipe(z.array(z.string().max(16384))),
+  hideDeleted: z.boolean(),
+  foldDel: z.boolean(),
+  enterSaves: z.boolean(),
+  capturedCodeOpen: z.boolean(),
+  noteWidth: z.enum(["compact", "full"]),
+  lineNumbers: z.boolean(),
+  wrapLines: z.boolean(),
+  expand: z
+    .number()
+    .refine(
+      (value) => EXPAND_CHOICES.includes(value),
+      "Must be one of 10, 20, 50, 100.",
+    ),
+  navHidden: z.boolean(),
+  navWidth: z.number().int().nonnegative(),
+  ntFold: z.boolean(),
+  bmFold: z.boolean(),
+  single: z.boolean(),
+  ghosts: z.boolean(),
+  editor: z.string().max(16384),
+});
+export const uiSettingsPatchSchema = uiSettingsSchema.partial();
+export type UiSettings = z.infer<typeof uiSettingsSchema>;
 
 export const DEFAULT_UI_SETTINGS: Readonly<UiSettings> = {
   ...DEFAULT_CONTEXT_SETTINGS,
+  theme: DEFAULT_THEME.id,
+  aiAnswers: true,
   auto: true,
   back: true,
   limit: 900,
@@ -32,7 +66,11 @@ export const DEFAULT_UI_SETTINGS: Readonly<UiSettings> = {
   disabledHide: [],
   hideDeleted: false,
   foldDel: false,
-  enterSaves: false,
+  enterSaves: true,
+  capturedCodeOpen: false,
+  noteWidth: "compact",
+  lineNumbers: true,
+  wrapLines: true,
   expand: 20,
   navHidden: false,
   navWidth: 0,
@@ -42,8 +80,6 @@ export const DEFAULT_UI_SETTINGS: Readonly<UiSettings> = {
   ghosts: true,
   editor: "",
 };
-const LIMIT_CHOICES = [0, 500, 900, 1800];
-const EXPAND_CHOICES = [10, 20, 50, 100];
 
 /** Validate a partial configuration without coercing values or accepting obsolete preferences. */
 export function parseUiSettings(value: unknown): Partial<UiSettings> {
@@ -52,37 +88,12 @@ export function parseUiSettings(value: unknown): Partial<UiSettings> {
   const prototype = Object.getPrototypeOf(value);
   if (prototype !== Object.prototype && prototype !== null)
     throw new Error("ui must be an object");
-  const settings: Partial<UiSettings> = {};
-  for (const [key, next] of Object.entries(value)) {
-    if (!Object.hasOwn(DEFAULT_UI_SETTINGS, key))
-      throw new Error(`unknown ui setting: ${key}`);
-    if (key === "disabledHide") {
-      if (
-        !Array.isArray(next) ||
-        !next.every((item) => typeof item === "string")
-      )
-        throw new Error("ui.disabledHide must be an array of strings");
-      settings.disabledHide = [...next];
-    } else if (key === "limit") {
-      if (typeof next !== "number" || !LIMIT_CHOICES.includes(next))
-        throw new Error("ui.limit must be one of 0, 500, 900, 1800");
-      settings.limit = next;
-    } else if (key === "expand") {
-      if (typeof next !== "number" || !EXPAND_CHOICES.includes(next))
-        throw new Error("ui.expand must be one of 10, 20, 50, 100");
-      settings.expand = next;
-    } else if (key === "navWidth") {
-      if (typeof next !== "number" || !Number.isSafeInteger(next) || next < 0)
-        throw new Error("ui.navWidth must be a non-negative safe integer");
-      settings.navWidth = next;
-    } else {
-      const name = key as keyof UiSettings;
-      if (typeof next !== typeof DEFAULT_UI_SETTINGS[name])
-        throw new Error(
-          `ui.${key} must be a ${typeof DEFAULT_UI_SETTINGS[name]}`,
-        );
-      Reflect.set(settings, name, next);
-    }
+  const parsed = uiSettingsPatchSchema.safeParse(value);
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0]!;
+    if (issue.code === "unrecognized_keys")
+      throw new Error(`unknown ui setting: ${issue.keys[0]}`);
+    throw new Error(`ui.${issue.path.join(".")}: ${issue.message}`);
   }
-  return settings;
+  return parsed.data;
 }

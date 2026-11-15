@@ -1,7 +1,0 @@
-.nhead .jmp {
-  color: var(--accent);
-}
-.nhead .jmp:hover {
-  color: var(--accent);
-  border-color: var(--accent);
-}

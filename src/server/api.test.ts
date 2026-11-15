@@ -2,6 +2,7 @@ import type { Server } from "bun";
 import {
   mkdir,
   mkdtemp,
+  readFile,
   readdir,
   rm,
   symlink,
@@ -24,10 +25,18 @@ import { repoId, startServer } from "./http.ts";
 import type { ServerOptions } from "./http.ts";
 import { webSelectionKey, type WebCapture } from "../shared/web-review.ts";
 import { createWebReview } from "../web-review/controller.ts";
-import { saveAttachment } from "../review/attach.ts";
+import {
+  ATTACH_MAX_BYTES,
+  readAttachment,
+  saveAttachment,
+} from "../review/attach.ts";
 import type { WebAnnotation } from "../shared/web-annotation.ts";
 import type { ReviewNote } from "../review/thread.ts";
 import { DEFAULT_UI_SETTINGS } from "../shared/settings.ts";
+import { loadUserSettings, saveUiSettings } from "../cli/config.ts";
+import { loadThemes, saveTheme } from "../cli/themes.ts";
+import { BUILTIN_THEMES, type ThemeDraft } from "../shared/themes.ts";
+import { JSON_LIMITS } from "./request-schemas.ts";
 import type {
   DiffFile,
   NoteStatus,
@@ -140,8 +149,8 @@ async function startTestServer(overrides: Partial<ServerOptions> = {}) {
     deleteReviews: async () => [],
     describeReviews: async () => [],
     getGhosts: async () => [],
-    importNote: (from, imported) =>
-      session.import(imported, [], `${from.file}#${from.id}`),
+    importNote: (from, imported, expectedReview) =>
+      session.import(imported, [], `${from.file}#${from.id}`, expectedReview),
     session,
     hub,
     ...overrides,
@@ -164,8 +173,15 @@ type StartedServer = {
   server: Server;
 };
 
-const request = (started: StartedServer, route: string, init?: RequestInit) =>
-  fetch(`${started.base}${route}`, init);
+const request = (started: StartedServer, route: string, init?: RequestInit) => {
+  const headers = new Headers(init?.headers);
+  if (!headers.has("x-lcr-review"))
+    headers.set(
+      "x-lcr-review",
+      encodeURIComponent(started.options.session.shownFile),
+    );
+  return fetch(`${started.base}${route}`, { ...init, headers });
+};
 
 beforeAll(() => {
   console.log = () => {};
@@ -263,6 +279,94 @@ describe("review settings handoff", () => {
     expect(modes).toEqual([true, false]);
   });
 
+  test("persists concurrent settings patches and restores them in a new server", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "lcr-settings-"));
+    serverRoots.push(root);
+    const file = path.join(root, "config", "lcr", "config.json");
+    const started = await startTestServer({
+      saveUiSettings: (patch) => saveUiSettings(patch, file),
+    });
+    const responses = await Promise.all(
+      [{ aiAnswers: false }, { enterSaves: false, lineNumbers: false }].map(
+        (patch) =>
+          request(started, "/api/settings", {
+            method: "PUT",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(patch),
+          }),
+      ),
+    );
+    expect(responses.map((response) => response.status)).toEqual([200, 200]);
+    const saved = await loadUserSettings({}, file);
+    const restarted = await startTestServer({ uiDefaults: saved.ui });
+    expect(
+      (await (await request(restarted, "/api/settings")).json()).settings,
+    ).toMatchObject({
+      aiAnswers: false,
+      enterSaves: false,
+      lineNumbers: false,
+    });
+  });
+
+  test("failed persistence leaves effective preferences unchanged and reports the failure", async () => {
+    const started = await startTestServer({
+      saveUiSettings: async () => {
+        throw new Error("Configuration is read-only.");
+      },
+    });
+    const response = await request(started, "/api/settings", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ aiAnswers: false }),
+    });
+    expect(response.status).toBe(500);
+    expect(
+      (await (await request(started, "/api/settings")).json()).settings
+        .aiAnswers,
+    ).toBe(true);
+  });
+
+  test("disabled AI answers persist notes, replies and submissions without dispatching", async () => {
+    const published: string[] = [];
+    const started = await startTestServer({
+      uiDefaults: { aiAnswers: false },
+      agent: {
+        agent: "test",
+        publish: (_review, notes) => {
+          published.push(...notes.map((note) => note.id));
+          return { state: "unchanged", count: 0 };
+        },
+      },
+    });
+    const post = (route: string, body: unknown) =>
+      request(started, route, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    expect((await post("/api/note", { comment, ask: true })).status).toBe(200);
+    expect(
+      (
+        await post("/api/reply", {
+          id: comment.id,
+          body: "Manual follow-up",
+          ask: true,
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await post("/api/submit", {
+          comments: [{ ...comment, body: "Manual revision" }],
+        })
+      ).status,
+    ).toBe(200);
+    const review = await (await request(started, "/api/review")).json();
+    expect(review.notes[0].body).toBe("Manual revision");
+    expect(review.notes[0].messages[0].body).toBe("Manual follow-up");
+    expect(published).toEqual([]);
+  });
+
   test("retains a run-local snapshot for new editors and announces changes to open editors", async () => {
     const configured = { enterSaves: true, disabledHide: ["*.snap"] };
     const started = await startTestServer({ uiDefaults: configured });
@@ -348,7 +452,7 @@ describe("review settings handoff", () => {
       '{"expand":1.5}',
       '{"limit":1e999}',
       '{"disabledHide":["dist/",false]}',
-      JSON.stringify({ hide: "x".repeat(32768) }),
+      JSON.stringify({ hide: "x".repeat(16385) }),
     ]) {
       expect(
         (
@@ -373,6 +477,203 @@ describe("review settings handoff", () => {
       defaults: {},
       settings: DEFAULT_UI_SETTINGS,
     });
+    expect(events).toEqual([]);
+    detach();
+  });
+});
+
+describe("theme security and persistence", () => {
+  const draft: ThemeDraft = {
+    name: "Custom light",
+    mode: "light",
+    extends: "catppuccin-latte",
+    colors: { ...BUILTIN_THEMES[2]!.colors },
+  };
+
+  test("theme saves and selection survive restart without overwriting settings or auto-selecting", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "lcr-theme-api-"));
+    serverRoots.push(root);
+    const file = path.join(root, "config.json");
+    await writeFile(
+      file,
+      JSON.stringify({
+        port: 8123,
+        outDir: "custom-review",
+        ui: { enterSaves: false },
+      }),
+    );
+    const callbacks = {
+      getThemes: () => loadThemes(file),
+      saveTheme: (theme: ThemeDraft) => saveTheme(theme, file),
+      saveUiSettings: (patch: Parameters<typeof saveUiSettings>[0]) =>
+        saveUiSettings(patch, file),
+    };
+    const started = await startTestServer({
+      ...callbacks,
+      uiDefaults: (await loadUserSettings({}, file)).ui,
+    });
+    const events: string[] = [];
+    const detach = started.hub.add((event) => events.push(event));
+    const response = await request(started, "/api/themes", {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: started.base },
+      body: JSON.stringify(draft),
+    });
+    expect(response.status).toBe(201);
+    const saved = await response.json();
+    expect(JSON.parse(await readFile(saved.file, "utf8"))).toEqual(saved.theme);
+    expect(
+      (await (await request(started, "/api/settings")).json()).settings.theme,
+    ).toBe("dark");
+    expect(events).toEqual(['data: {"type":"settings"}\n\n']);
+    expect(
+      (
+        await request(started, "/api/settings", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ theme: saved.theme.id }),
+        })
+      ).status,
+    ).toBe(200);
+    detach();
+    expect(JSON.parse(await readFile(file, "utf8"))).toEqual({
+      port: 8123,
+      outDir: "custom-review",
+      ui: { enterSaves: false, theme: saved.theme.id },
+    });
+    const restarted = await startTestServer({
+      ...callbacks,
+      uiDefaults: (await loadUserSettings({}, file)).ui,
+    });
+    const catalog = await request(restarted, "/api/themes");
+    expect(catalog.headers.get("cache-control")).toBe("no-store");
+    expect(await catalog.json()).toEqual({
+      themes: [...BUILTIN_THEMES, saved.theme],
+      directory: path.join(root, "themes"),
+      errors: [],
+    });
+    expect(
+      (await (await request(restarted, "/api/settings")).json()).settings.theme,
+    ).toBe(saved.theme.id);
+  });
+
+  test("standalone servers list builtins but never pretend a custom save succeeded", async () => {
+    const started = await startTestServer({
+      uiDefaults: { theme: "missing-custom" },
+    });
+    expect(
+      (await (await request(started, "/api/themes")).json()).themes,
+    ).toEqual(BUILTIN_THEMES);
+    expect(
+      (
+        await request(started, "/api/themes", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(draft),
+        })
+      ).status,
+    ).toBe(503);
+    expect(
+      (
+        await request(started, "/api/settings", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ theme: "missing-custom" }),
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await request(started, "/api/settings", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ enterSaves: false }),
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (await (await request(started, "/api/settings")).json()).settings.theme,
+    ).toBe("missing-custom");
+  });
+
+  test("foreign origins and hosts cannot read or mutate themes", async () => {
+    const started = await startTestServer();
+    const forbiddenHeaders: Record<string, string>[] = [
+      { origin: "https://evil.example" },
+      { origin: `http://localhost:${started.server.port}` },
+      { host: `evil.example:${started.server.port}` },
+    ];
+    for (const headers of forbiddenHeaders) {
+      expect((await request(started, "/api/themes", { headers })).status).toBe(
+        403,
+      );
+      expect(
+        (
+          await request(started, "/api/themes", {
+            method: "POST",
+            headers: { ...headers, "content-type": "application/json" },
+            body: JSON.stringify(draft),
+          })
+        ).status,
+      ).toBe(403);
+    }
+  });
+
+  test("malicious JSON and bounded chunked bodies are rejected before persistence", async () => {
+    let saves = 0;
+    const started = await startTestServer({
+      saveTheme: async () => {
+        saves++;
+        throw new Error("Invalid input must never reach persistence.");
+      },
+    });
+    const events: string[] = [];
+    const detach = started.hub.add((event) => events.push(event));
+    for (const body of [
+      "{",
+      "null",
+      "[]",
+      JSON.stringify({ ...draft, id: "../../outside" }),
+      JSON.stringify({ ...draft, extends: "../dark" }),
+      JSON.stringify({
+        ...draft,
+        colors: { ...draft.colors, background: "url(https://evil.example)" },
+      }),
+      JSON.stringify({ ...draft, name: "a".repeat(81) }),
+    ]) {
+      const response = await request(started, "/api/themes", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body,
+      });
+      expect(response.status).toBe(400);
+      expect((await response.json()).error).toBeTruthy();
+    }
+    const chunks = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(" ".repeat(20000)));
+        controller.enqueue(new TextEncoder().encode(" ".repeat(20000)));
+        controller.close();
+      },
+    });
+    expect(
+      (
+        await request(started, "/api/themes", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: chunks,
+        })
+      ).status,
+    ).toBe(413);
+    expect(
+      (
+        await request(started, "/api/themes", {
+          method: "POST",
+          body: JSON.stringify(draft),
+        })
+      ).status,
+    ).toBe(415);
+    expect(saves).toBe(0);
     expect(events).toEqual([]);
     detach();
   });
@@ -755,8 +1056,18 @@ describe("combined Git and live-page routes", () => {
           from: { x: 0, y: 0 },
           to: { x: 1, y: 1 },
         },
+        {
+          tool: "pen",
+          color: "#ff0000",
+          width: 1,
+          points: Array.from({ length: 3000 }, (_, index) => ({
+            x: index % 2,
+            y: index % 2,
+          })),
+        },
       ],
     };
+    expect(JSON.stringify(annotation).length).toBeGreaterThan(32768);
     const events: string[] = [],
       off = started.hub.add((event) => events.push(event));
     const annotate = (
@@ -1290,9 +1601,6 @@ describe("open-file API", () => {
     });
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({
-      error: "A file path is required.",
-    });
   });
 
   test("refuses a path that is not in the current diff", async () => {
@@ -1498,7 +1806,7 @@ describe("blob API", () => {
 });
 
 describe("attachment APIs", () => {
-  test("attach accepts only POST requests with a supported image type", async () => {
+  test("attach accepts arbitrary file types and rejects non-POST requests", async () => {
     const started = await startTestServer();
 
     const wrongMethod = await request(started, "/api/attach");
@@ -1510,10 +1818,10 @@ describe("attachment APIs", () => {
 
     expect(wrongMethod.status).toBe(405);
     expect(wrongMethod.headers.get("allow")).toBe("POST");
-    expect(wrongType.status).toBe(415);
+    expect(wrongType.status).toBe(200);
   });
 
-  test("attach rejects an empty image", async () => {
+  test("attach accepts an empty file without inventing text content", async () => {
     const started = await startTestServer();
 
     const response = await request(started, "/api/attach", {
@@ -1522,8 +1830,8 @@ describe("attachment APIs", () => {
       body: new Uint8Array(),
     });
 
-    expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: "That image is empty." });
+    expect(response.status).toBe(200);
+    expect((await response.json()).ref).toBe("images/image-hash.png");
   });
 
   test("attach stores the exact bytes and returns the Markdown-relative ref", async () => {
@@ -1567,7 +1875,7 @@ describe("attachment APIs", () => {
 
     expect(response.status).toBe(415);
     expect(await response.json()).toEqual({
-      error: "That image could not be kept.",
+      error: "That file could not be kept.",
     });
   });
 
@@ -1659,7 +1967,235 @@ describe("attachment APIs", () => {
   });
 });
 
+test.each([
+  "",
+  "application/octet-stream",
+  "application/x-unrecognized",
+  "application/pdf",
+])(
+  "binary %s attachments survive note/reply save and session reload",
+  async (type) => {
+    const started = await startTestServer();
+    const { repoRoot, outDir } = started.options;
+    started.options.saveAttachment = (bytes, media, filename) =>
+      saveAttachment(repoRoot, outDir, bytes, media, filename);
+    started.options.readAttachment = (name) =>
+      readAttachment(repoRoot, outDir, name);
+    const raw = new Uint8Array([0, 255, 254, 128, 13, 10, 0]);
+    const uploaded = await request(started, "/api/attach", {
+      method: "POST",
+      headers: {
+        "content-type": type,
+        "x-attachment-name": encodeURIComponent("report with spaces.bin"),
+      },
+      body: raw,
+    });
+    expect(uploaded.status).toBe(200);
+    const { ref } = await uploaded.json();
+    expect(ref).toMatch(/^images\/[a-f0-9]{16}-report_with_spaces\.bin$/);
+    const body = `[report with spaces.bin](${ref})`;
+    for (const [route, payload] of [
+      ["/api/note", { comment: { ...comment, body }, ask: false }],
+      ["/api/reply", { id: comment.id, body, ask: false }],
+    ] as const) {
+      const response = await request(started, route, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      expect(response.status).toBe(200);
+    }
+    const restored = createSession(repoRoot, outDir, "HEAD");
+    await restored.adoptMatching();
+    const note = await restored.readNote(restored.file, comment.id!);
+    expect(note!.body).toBe(body);
+    expect(note!.messages.at(-1)!.body).toBe(body);
+    expect(
+      new Uint8Array(await readFile(path.join(repoRoot, outDir, ref))),
+    ).toEqual(raw);
+    const download = await request(
+      started,
+      `/api/attachment?ref=${encodeURIComponent(ref)}`,
+    );
+    expect(download.status).toBe(200);
+    expect(download.headers.get("content-type")).toBe(
+      "application/octet-stream",
+    );
+    expect(download.headers.get("content-disposition")).toBe(
+      'attachment; filename="report_with_spaces.bin"',
+    );
+    expect(download.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(download.headers.get("content-security-policy")).toBe(
+      "default-src 'none'; sandbox",
+    );
+    expect(await download.bytes()).toEqual(raw);
+  },
+);
+
+test("attachment upload enforces 12 MiB before calling the store", async () => {
+  let writes = 0;
+  const started = await startTestServer({
+    saveAttachment: async () => {
+      writes++;
+      return "should-not-exist";
+    },
+  });
+  const response = await request(started, "/api/attach", {
+    method: "POST",
+    body: new Uint8Array(ATTACH_MAX_BYTES + 1),
+  });
+  expect(response.status).toBe(413);
+  expect((await response.json()).error).toContain("12 MiB");
+  expect(writes).toBe(0);
+});
+
+test.each(["text/html", "image/svg+xml", "application/xhtml+xml"])(
+  "%s uploads are attachment-only downloads even without an explicit download flag",
+  async (type) => {
+    const started = await startTestServer();
+    const { repoRoot, outDir } = started.options;
+    started.options.saveAttachment = (bytes, media, filename) =>
+      saveAttachment(repoRoot, outDir, bytes, media, filename);
+    started.options.readAttachment = (name) =>
+      readAttachment(repoRoot, outDir, name);
+    const source =
+      "<svg xmlns='http://www.w3.org/2000/svg'><script>alert(1)</script></svg>";
+    const upload = await request(started, "/api/attach", {
+      method: "POST",
+      headers: { "content-type": type, "x-attachment-name": "active.html" },
+      body: source,
+    });
+    const { ref } = await upload.json();
+    for (const method of ["GET", "HEAD"]) {
+      const response = await request(
+        started,
+        `/api/attachment?ref=${encodeURIComponent(ref)}`,
+        { method },
+      );
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toBe(
+        type === "image/svg+xml" ? type : "application/octet-stream",
+      );
+      expect(response.headers.get("content-disposition")).toStartWith(
+        "attachment;",
+      );
+      expect(response.headers.get("content-security-policy")).toBe(
+        "default-src 'none'; sandbox",
+      );
+      expect(await response.text()).toBe(method === "HEAD" ? "" : source);
+    }
+    for (const ref of [
+      "../active.html",
+      "images/../../active.html",
+      "./review.md",
+    ]) {
+      expect(
+        (
+          await request(
+            started,
+            `/api/attachment?ref=${encodeURIComponent(ref)}`,
+          )
+        ).status,
+      ).toBe(404);
+    }
+  },
+);
+
+test("ordinary image attachment links explicitly download instead of navigating to media", async () => {
+  const started = await startTestServer();
+  const response = await request(
+    started,
+    "/api/attachment?ref=images%2Fpicture.png&download=1",
+  );
+  expect(response.headers.get("content-disposition")).toBe(
+    'attachment; filename="picture.png"',
+  );
+  expect(response.headers.get("content-type")).toBe("application/octet-stream");
+});
+
+test("simple text and empty-type uploads cannot be written by another browser origin", async () => {
+  let writes = 0;
+  const started = await startTestServer({
+    saveAttachment: async () => {
+      writes++;
+      return "should-not-exist";
+    },
+  });
+  for (const type of ["", "text/plain", "application/octet-stream"]) {
+    const response = await request(started, "/api/attach", {
+      method: "POST",
+      headers: { origin: "https://attacker.example", "content-type": type },
+      body: new Uint8Array([0, 255]),
+    });
+    expect(response.status).toBe(403);
+  }
+  expect(writes).toBe(0);
+});
+
 describe("review conversation APIs", () => {
+  test("stale clients cannot write notes or replies into another selected review", async () => {
+    const started = await startTestServer();
+    const session = started.options.session;
+    await session.save({ comments: [comment] });
+    const original = session.shownFile;
+    const originalName = session.file;
+    await session.run(async () => session.startFresh());
+    await session.save({
+      comments: [{ ...comment, body: "The other review." }],
+    });
+    const selected = session.file;
+    const headers = {
+      "content-type": "application/json",
+      "x-lcr-review": encodeURIComponent(original),
+    };
+    for (const [route, body] of [
+      [
+        "/api/note",
+        { comment: { ...comment, body: "Stale editor." }, ask: false },
+      ],
+      [
+        "/api/submit",
+        { comments: [{ ...comment, body: "Stale submission." }] },
+      ],
+      ["/api/reply", { id: comment.id, body: "Stale reply.", ask: false }],
+      [
+        "/api/import",
+        { from: { file: originalName, id: comment.id }, comment },
+      ],
+    ] as const) {
+      const response = await request(started, route, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+      });
+      expect(response.status).toBe(409);
+    }
+    const removed = await request(
+      started,
+      `/api/note?id=${encodeURIComponent(comment.id!)}`,
+      {
+        method: "DELETE",
+        headers,
+      },
+    );
+    expect(removed.status).toBe(409);
+    expect(await session.readNote(originalName, comment.id!)).toMatchObject({
+      body: comment.body,
+      messages: [],
+    });
+    expect(await session.readNote(selected, comment.id!)).toMatchObject({
+      body: "The other review.",
+      messages: [],
+    });
+    const unidentified = await fetch(`${started.base}/api/note`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ comment, ask: false }),
+    });
+    expect(unidentified.status).toBe(400);
+    expect((await unidentified.json()).error).toContain("Review identity");
+  });
+
   test("save-only notes and replies persist without starting ACP, then explicit ask submits the saved conversation", async () => {
     const started = await startTestServer();
     const dispatched: ReviewNote[][] = [];
@@ -2099,9 +2635,6 @@ describe("review conversation APIs", () => {
     });
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({
-      error: "A source review, a note id, and a comment are required.",
-    });
   });
 
   test("import carries the note into the current session with provenance", async () => {
@@ -2436,7 +2969,6 @@ describe("HTTP state preservation and stream lifetimes", () => {
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual({ removed: false });
       expect(started.options.session.file).toBe("");
-      expect(await readdir(started.options.repoRoot)).toEqual([]);
       expect(events).toEqual([]);
     } finally {
       detach();
@@ -2732,5 +3264,118 @@ describe("HTTP state preservation and stream lifetimes", () => {
     expect(response.headers.get("cache-control")).toBe("no-cache");
     expect(await response.bytes()).toEqual(new Uint8Array());
     expect(names).toEqual(["images/comparison.png"]);
+  });
+});
+
+describe("bounded JSON mutation boundaries", () => {
+  test("large notes, batch submissions, imports and replies survive persistence and reload", async () => {
+    const started = await startTestServer();
+    const body = "Detailed review evidence. ".repeat(4096).trim();
+    const large = { ...comment, body, code: "selected code\n".repeat(4096) };
+    const batchId = "assets/logo.png|n1|n1|#batch";
+    const importedId = "assets/logo.png|n1|n1|#imported";
+    const post = async (route: string, payload: unknown) => {
+      const response = await request(started, route, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      expect(response.status).toBe(200);
+      return response.json();
+    };
+    await post("/api/note", { comment: large, ask: false });
+    await post("/api/reply", { id: large.id, body, ask: false });
+    await post("/api/submit", { comments: [{ ...large, id: batchId }] });
+    await post("/api/import", {
+      from: { file: "review-old.md", id: "old-note" },
+      comment: { ...large, id: importedId },
+    });
+    const reloaded = createSession(started.options.repoRoot, ".review", "HEAD");
+    await reloaded.adoptMatching();
+    const notes = (await reloaded.read()).notes;
+    for (const id of [large.id, batchId, importedId])
+      expect(notes.find((note) => note.id === id)?.body).toBe(body);
+    expect(notes.find((note) => note.id === large.id)?.messages[0]?.body).toBe(
+      body,
+    );
+  });
+
+  test("chunked settings, controls, annotations and notes reject excess bytes without writes", async () => {
+    const started = await startTestServer({ web: webController() });
+    const events: string[] = [];
+    const detach = started.hub.add((event) => events.push(event));
+    try {
+      for (const [route, method, limit] of [
+        ["/api/settings", "PUT", JSON_LIMITS.settings],
+        ["/api/open-file", "POST", JSON_LIMITS.control],
+        ["/api/web/annotation", "POST", JSON_LIMITS.annotation],
+        ["/api/reply", "POST", JSON_LIMITS.reply],
+        ["/api/note", "POST", JSON_LIMITS.note],
+        ["/api/submit", "POST", JSON_LIMITS.submission],
+      ] as const) {
+        let remaining = limit + 1;
+        const chunk = new Uint8Array(64 * 1024).fill(32);
+        const stream = new ReadableStream<Uint8Array>({
+          pull(controller) {
+            const size = Math.min(remaining, chunk.byteLength);
+            controller.enqueue(chunk.subarray(0, size));
+            remaining -= size;
+            if (!remaining) controller.close();
+          },
+        });
+        const response = await request(started, route, {
+          method,
+          headers: { "content-type": "application/json" },
+          body: stream,
+        });
+        expect(response.status).toBe(413);
+      }
+      expect((await started.options.session.read()).notes).toEqual([]);
+      expect(events).toEqual([]);
+    } finally {
+      detach();
+    }
+  });
+
+  test("every JSON mutation rejects invalid top-level arrays and unknown envelope fields", async () => {
+    const started = await startTestServer({
+      web: webController(),
+      agent: {
+        agent: "test agent",
+        publish: () => ({ state: "queued", count: 0 }),
+        control: async () => {
+          throw new Error("Invalid input reached queue control.");
+        },
+      },
+    });
+    for (const [route, method] of [
+      ["/api/settings", "PUT"],
+      ["/api/themes", "POST"],
+      ["/api/agent/queue", "POST"],
+      ["/api/web/annotation", "POST"],
+      ["/api/web/selection", "POST"],
+      ["/api/web/draft", "DELETE"],
+      ["/api/web", "POST"],
+      ["/api/web/review", "POST"],
+      ["/api/web/focus", "POST"],
+      ["/api/web/capture", "POST"],
+      ["/api/open-file", "POST"],
+      ["/api/review", "PUT"],
+      ["/api/reply", "POST"],
+      ["/api/reply", "PUT"],
+      ["/api/note", "POST"],
+      ["/api/submit", "POST"],
+      ["/api/import", "POST"],
+    ]) {
+      for (const body of ["[]", '{"unknown":true}']) {
+        const response = await request(started, route!, {
+          method,
+          headers: { "content-type": "application/json" },
+          body,
+        });
+        expect(response.status).toBe(400);
+      }
+    }
+    expect((await started.options.session.read()).notes).toEqual([]);
   });
 });

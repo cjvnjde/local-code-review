@@ -58,7 +58,9 @@ export function wipeImageMismatch(
   before: { width: number; height: number },
   after: { width: number; height: number },
 ): string | null {
-  return before.width > 0 &&
+  return Number.isSafeInteger(before.width) &&
+    Number.isSafeInteger(before.height) &&
+    before.width > 0 &&
     before.height > 0 &&
     before.width === after.width &&
     before.height === after.height

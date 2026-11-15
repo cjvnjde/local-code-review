@@ -1,21 +1,43 @@
+import type { ProtocolMapping } from "devtools-protocol/types/protocol-mapping";
+
+export type CdpCommand = keyof ProtocolMapping.Commands;
+export type CdpParams<M extends CdpCommand> =
+  ProtocolMapping.Commands[M]["paramsType"] extends []
+    ? Record<string, never>
+    : NonNullable<ProtocolMapping.Commands[M]["paramsType"][0]>;
+export type CdpResult<M extends CdpCommand> =
+  ProtocolMapping.Commands[M]["returnType"];
+export type CdpEvent = keyof ProtocolMapping.Events;
+export type CdpEventParams<M extends CdpEvent> = ProtocolMapping.Events[M][0];
+type OptionalCdpCommand = {
+  [M in CdpCommand]: {} extends CdpParams<M> ? M : never;
+}[CdpCommand];
+
 /** Small request/event transport. No browser automation runtime is shipped with lcr. */
 export class Cdp {
   private seq = 0;
   private pending = new Map<
     number,
     {
-      resolve: (v: any) => void;
+      resolve: (v: unknown) => void;
       reject: (e: Error) => void;
       timer: ReturnType<typeof setTimeout>;
     }
   >();
   private listeners = new Map<
     string,
-    Set<(params: any, session?: string) => void>
+    Set<(params: unknown, session?: string) => void>
   >();
   private constructor(private socket: WebSocket) {
     socket.addEventListener("message", (event) => {
-      let msg: any;
+      let msg: {
+        id?: number;
+        result?: unknown;
+        error?: { message: string };
+        method?: string;
+        params?: unknown;
+        sessionId?: string;
+      };
       try {
         msg = JSON.parse(String(event.data));
       } catch {
@@ -28,7 +50,7 @@ export class Cdp {
         clearTimeout(pending.timer);
         if (msg.error) pending.reject(new Error(msg.error.message));
         else pending.resolve(msg.result);
-      } else
+      } else if (msg.method)
         for (const fn of this.listeners.get(msg.method) || [])
           fn(msg.params, msg.sessionId);
     });
@@ -82,11 +104,17 @@ export class Cdp {
   get connected() {
     return this.socket.readyState === WebSocket.OPEN;
   }
-  send(
-    method: string,
-    params: Record<string, unknown> = {},
+  send<M extends CdpCommand>(
+    method: M,
+    params: CdpParams<M>,
     sessionId?: string,
-  ): Promise<any> {
+  ): Promise<CdpResult<M>>;
+  send<M extends OptionalCdpCommand>(method: M): Promise<CdpResult<M>>;
+  send(
+    method: CdpCommand,
+    params: object = {},
+    sessionId?: string,
+  ): Promise<unknown> {
     if (this.socket.readyState !== WebSocket.OPEN)
       return Promise.reject(new Error("The review browser is not connected."));
     const id = ++this.seq;
@@ -112,11 +140,17 @@ export class Cdp {
       }
     });
   }
-  on(method: string, fn: (params: any, session?: string) => void): () => void {
+  on<M extends CdpEvent>(
+    method: M,
+    fn: (params: CdpEventParams<M>, session?: string) => void,
+  ): () => void {
+    // The wire payload becomes typed only at this generated-protocol boundary.
+    const listener = (params: unknown, session?: string) =>
+      fn(params as CdpEventParams<M>, session);
     const list = this.listeners.get(method) || new Set();
-    list.add(fn);
+    list.add(listener);
     this.listeners.set(method, list);
-    return () => list.delete(fn);
+    return () => list.delete(listener);
   }
   private fail(error: Error) {
     for (const p of this.pending.values()) {

@@ -8,11 +8,18 @@ import { readBlob } from "./git/blob.ts";
 import { openInBrowser } from "./browser/open.ts";
 import { HELP, parseArgs } from "./cli/args.ts";
 import { runContextCli } from "./cli/context.ts";
+import { runDoctorCli } from "./cli/doctor.ts";
+import { libraryNotices } from "./cli/licenses.ts";
+import { createReviewRoundStore } from "./review/rounds.ts";
 import {
   loadUserSettings,
   resolveAcpPath,
   resolveBrowserDataDir,
+  saveUiSettings,
+  userConfigFile,
 } from "./cli/config.ts";
+import { loadThemes, saveTheme } from "./cli/themes.ts";
+import { DEFAULT_THEME } from "./shared/themes.ts";
 import {
   diffBase,
   diffRangeLabel,
@@ -47,6 +54,15 @@ async function main() {
     console.log(await runContextCli(argv.slice(1)));
     return;
   }
+  if (argv[0] === "doctor") {
+    console.log(await runDoctorCli(argv.slice(1)));
+    return;
+  }
+  if (argv[0] === "licenses") {
+    if (argv.length !== 1) throw new Error("Usage: lcr licenses");
+    console.log(libraryNotices());
+    return;
+  }
   const explicit = parseArgs(argv);
   if (explicit.help) {
     console.log(HELP);
@@ -57,7 +73,8 @@ async function main() {
     console.log(VERSION);
     process.exit(0);
   }
-  const settings = await loadUserSettings(explicit);
+  const configFile = userConfigFile();
+  const settings = await loadUserSettings(explicit, configFile);
   const options = parseArgs(argv, settings);
   const repoRoot = await findRepoRoot();
   process.chdir(repoRoot);
@@ -108,11 +125,30 @@ async function main() {
   }
   const hub = createHub();
   let webUrl = "";
+  const rounds = createReviewRoundStore({
+    repoRoot,
+    outDir: options.outDir,
+    readNotes: async (review) => {
+      const absolute = path.resolve(repoRoot, review);
+      const name = path.relative(
+        path.resolve(repoRoot, options.outDir),
+        absolute,
+      );
+      const doc = await readReview(name);
+      return (doc?.notes ?? []).map((note) => ({
+        review: absolute,
+        noteId: note.id,
+        file: note.file,
+        label: note.label,
+      }));
+    },
+  });
   const agent = agentConfig
     ? createManagedAgent({
         repoRoot,
         outDir: options.outDir,
         session,
+        rounds,
         directory: path.resolve(
           repoRoot,
           (
@@ -155,6 +191,13 @@ async function main() {
           reviewUrl: () => webUrl,
         })
       : undefined;
+    if (web) {
+      const catalog = await loadThemes(configFile);
+      web.configureTheme(
+        catalog.themes.find((theme) => theme.id === settings.ui?.theme) ??
+          DEFAULT_THEME,
+      );
+    }
     server = startServer({
       port: options.port,
       repoRoot,
@@ -163,14 +206,17 @@ async function main() {
       reviewId: options.id,
       context: options.context,
       uiDefaults: settings.ui,
+      saveUiSettings: (patch) => saveUiSettings(patch, configFile),
+      getThemes: () => loadThemes(configFile),
+      saveTheme: (draft) => saveTheme(draft, configFile),
       getDiff: () => getDiff(diffSource),
       getContext: (file, start, end) =>
         getFileContext(diffSource, file, start, end),
       readBlob: (side, file) =>
         readBlob(repoRoot, side === "old" ? sides.old : sides.new, file),
       // Beside the review file, because that is what a note's link to one resolves against.
-      saveAttachment: (bytes, type) =>
-        saveAttachment(repoRoot, options.outDir, bytes, type),
+      saveAttachment: (bytes, type, filename) =>
+        saveAttachment(repoRoot, options.outDir, bytes, type, filename),
       readAttachment: (name) => readAttachment(repoRoot, options.outDir, name),
       openFile: (file, editor) => openInEditor(repoRoot, file, editor),
       getStatuses: () => collectStatuses(repoRoot, options.outDir),
@@ -192,20 +238,22 @@ async function main() {
           taken,
         });
       },
-      importNote: async (from, comment) => {
+      importNote: async (from, comment, expectedReview) => {
         const doc = await readReview(from.file);
         const source = doc?.notes.find((note) => note.id === from.id);
         if (!source) return null;
         return session.import(
-          comment,
+          { ...comment, triage: comment.triage ?? source.triage },
           source.messages,
           `${from.file}#${from.id}`,
+          expectedReview,
         );
       },
       session,
       hub,
       agent,
       web,
+      rounds,
     });
   } catch (error) {
     // The queue already owns its lock; a failed HTTP bind must release that ownership.
@@ -266,9 +314,14 @@ async function main() {
 
   const watchers = [
     watchTree(repoRoot, () => checkDiff(), { ignore: ignoreTree }),
-    watchDir(outPath, () => {
-      if (hub.size) hub.emit({ type: "review", file: session.file });
-    }),
+    watchDir(
+      outPath,
+      () => {
+        if (hub.size) hub.emit({ type: "review", file: session.file });
+      },
+      120,
+      (file) => file === ".lcr.lock" || /^\.lcr-[0-9a-f-]{36}\.tmp$/.test(file),
+    ),
   ];
   const heartbeat = setInterval(() => hub.ping(), 25_000);
 

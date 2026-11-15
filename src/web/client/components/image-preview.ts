@@ -1,10 +1,21 @@
-import { attachSrc } from "./attach.ts";
+import { attachmentSrc as attachSrc } from "./attachments.ts";
 import { registerView, setView } from "../navigation/ui-navigation.ts";
 
 let current: {
   ref: string;
   close: (record?: boolean, focus?: boolean) => void;
 } | null = null;
+
+export const imageEditorOwners = new WeakMap<HTMLElement, HTMLElement>();
+
+export function imageEditorOwner(target: Element | null): HTMLElement | null {
+  const editor = target?.closest<HTMLElement>("[data-review-editor]");
+  if (editor) return editor;
+  const dialog = target?.closest<HTMLElement>(
+    "dialog, [data-annotation-editor]",
+  );
+  return dialog ? imageEditorOwners.get(dialog) || null : null;
+}
 
 /** Drawing replaces the preview in the same history entry, without a pending Back traversal. */
 export function closeImagePreviewForDrawing() {
@@ -29,6 +40,7 @@ export function openImagePreview(
   ref: string,
   label = "Attached image",
   draw?: () => void,
+  owner?: HTMLElement | null,
 ): boolean {
   const src = attachSrc(ref);
   if (!src) return false;
@@ -39,18 +51,30 @@ export function openImagePreview(
       : null;
   const dialog = document.createElement("dialog");
   dialog.className = "image-viewer";
+  if (owner) imageEditorOwners.set(dialog, owner);
   dialog.setAttribute("aria-label", label);
   const tools = document.createElement("div");
   tools.className = "image-viewer-tools";
   const title = document.createElement("strong");
   title.textContent = label;
   tools.append(title);
-  const command = (label: string, action: () => void) => {
+  const zoomTools = document.createElement("div");
+  zoomTools.className = "image-viewer-zoom";
+  zoomTools.setAttribute("role", "group");
+  zoomTools.setAttribute("aria-label", "Zoom");
+  const command = (
+    label: string,
+    action: () => void,
+    group = tools,
+    accessibleLabel = label,
+  ) => {
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = label;
+    button.setAttribute("aria-label", accessibleLabel);
+    button.title = accessibleLabel;
     button.onclick = action;
-    tools.append(button);
+    group.append(button);
     return button;
   };
   const viewport = document.createElement("div");
@@ -64,35 +88,55 @@ export function openImagePreview(
     image.style.width = zoom ? image.naturalWidth * zoom + "px" : "";
     image.classList.toggle("actual", !!zoom);
   };
-  command("−", () => {
-    zoom = Math.max(
-      0.1,
-      (zoom || Math.min(1, image.clientWidth / image.naturalWidth)) / 1.25,
-    );
-    resize();
-  });
-  command("+", () => {
-    zoom = Math.min(
-      8,
-      (zoom || Math.min(1, image.clientWidth / image.naturalWidth)) * 1.25,
-    );
-    resize();
-  });
-  command("Fit", () => {
-    zoom = 0;
-    resize();
-  });
-  command("100%", () => {
-    zoom = 1;
-    resize();
-  });
+  command(
+    "−",
+    () => {
+      zoom = Math.max(
+        0.1,
+        (zoom || Math.min(1, image.clientWidth / image.naturalWidth)) / 1.25,
+      );
+      resize();
+    },
+    zoomTools,
+    "Zoom out",
+  );
+  command(
+    "100%",
+    () => {
+      zoom = 1;
+      resize();
+    },
+    zoomTools,
+    "Actual image size",
+  );
+  command(
+    "+",
+    () => {
+      zoom = Math.min(
+        8,
+        (zoom || Math.min(1, image.clientWidth / image.naturalWidth)) * 1.25,
+      );
+      resize();
+    },
+    zoomTools,
+    "Zoom in",
+  );
+  command(
+    "Fit",
+    () => {
+      zoom = 0;
+      resize();
+    },
+    zoomTools,
+    "Fit image",
+  );
   let restoreFocus = true;
   const close = (record = false, focus = true) => {
     restoreFocus = focus;
     dialog.close();
     if (record) setView("image", null, { close: true });
   };
-  if (draw) command("Draw / edit", draw);
+  if (draw) command("Annotate", draw);
   const link = document.createElement("a");
   link.href = src;
   link.target = "_blank";
@@ -108,7 +152,7 @@ export function openImagePreview(
     message.textContent =
       "Could not load this image. Close and reopen to retry.";
   };
-  dialog.append(tools, message, viewport);
+  dialog.append(tools, message, viewport, zoomTools);
   const onKey = (event: KeyboardEvent) => {
     // Keep review navigation shortcuts from moving the page behind the modal.
     event.stopImmediatePropagation();
@@ -125,7 +169,10 @@ export function openImagePreview(
   dialog.addEventListener(
     "close",
     () => {
-      if (current?.close === close) current = null;
+      if (current?.close === close) {
+        current = null;
+        document.dispatchEvent(new Event("lcr:image-preview"));
+      }
       window.removeEventListener("keydown", onKey, true);
       dialog.remove();
       if (restoreFocus && previous?.isConnected)
@@ -136,6 +183,7 @@ export function openImagePreview(
   document.body.append(dialog);
   dialog.showModal();
   current = { ref, close };
+  document.dispatchEvent(new Event("lcr:image-preview"));
   setView("image", ref);
   return true;
 }
@@ -159,6 +207,8 @@ export function watchImagePreviews() {
       openImagePreview(
         link.dataset.imagePreview!,
         link.querySelector("img")?.alt,
+        undefined,
+        imageEditorOwner(link),
       )
     )
       event.preventDefault();

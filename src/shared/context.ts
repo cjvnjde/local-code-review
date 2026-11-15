@@ -26,18 +26,25 @@ export interface ContextManifest {
   id: string;
   label: string;
   at: string;
-  source?: { url?: string; title?: string; captureAt?: string };
+  source?: {
+    url?: string;
+    title?: string;
+    captureAt?: string;
+    target?: string;
+  };
   parts: ContextPart[];
 }
 export interface ContextSettings {
   aiContext: boolean;
   contextHtml: boolean;
   contextFullPage: boolean;
+  contextDiagnostics: boolean;
 }
 export const DEFAULT_CONTEXT_SETTINGS: Readonly<ContextSettings> = {
-  aiContext: false,
-  contextHtml: false,
-  contextFullPage: false,
+  aiContext: true,
+  contextHtml: true,
+  contextFullPage: true,
+  contextDiagnostics: false,
 };
 
 export function contextId(value: unknown): string {

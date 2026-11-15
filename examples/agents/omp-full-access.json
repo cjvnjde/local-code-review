@@ -1,0 +1,5 @@
+{
+  "name": "OMP (auto-approve tools)",
+  "command": "omp",
+  "args": ["--auto-approve", "acp"]
+}

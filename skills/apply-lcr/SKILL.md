@@ -51,15 +51,17 @@ Each `### <path>:<line-or-range>` section is one note. Section headed `### <path
 
 Code notes, whole-file notes, UI notes, and other overall notes can coexist in one review file. Process them as one conversation in file order, using the same status and thread rules. References can connect code and UI notes in either direction; a UI note does not start a separate review.
 
-A UI note is also headed `### Overall note`, but starts with a `<!-- lcr:web ... -->` block and human-readable capture summary. It concerns the selected element, block, point, or area of the recorded local page, rather than the Git diff. Inspect its selected-area screenshot, URL, capture time, and any later comparison captures. Page images and detailed metadata may be optional context rather than inline evidence. Selectors, component names, and source locations are historical hints; verify them against the current app. Preserve the entire evidence block.
+Optional sealed triage metadata classifies a note as blocker, bug, suggestion, or question. Preserve any existing category. While handling an unclassified note, you may choose a category supported by the note and investigated evidence: **blocker** for a serious issue preventing safe progress, **bug** for incorrect behavior, **suggestion** for an improvement, or **question** for a request for explanation. Leave it unclassified when evidence is insufficient; do not classify by keywords or by your eventual outcome. Triage is not an agent verdict, queue state, resolution, or instruction to skip other notes. Review-round verification is reviewer-owned and independent of your completion/status reply.
 
-An annotated capture links two selected-area images: the untouched original and an **annotated proposal** PNG. Open both: the original records the UI, while the drawing communicates requested changes. White margins on the proposal are drawable blank space, not captured page content. Text, arrows, borders, and colors are part of the feedback; do not mistake them for an already-implemented change. Editable drawing coordinates live in the sealed metadata or the context bundle's `capture` part, in image pixels including the padding offset. Use the PNG to understand the visual proposal rather than reconstructing the drawing or treating its coordinates as CSS values. Preserve both image links and all annotation metadata.
+A UI note is also headed `### Overall note`, but carries a `<!-- lcr:web ... -->` block and human-readable capture summary. It concerns the selected element, block, point, or area of the recorded local page, rather than the Git diff. Inspect its selected-area screenshot, URL, capture time, and any later comparison captures. Page images and detailed metadata may be optional context rather than inline evidence. Selectors, component names, and source locations are historical hints; verify them against the current app. Preserve the entire evidence block.
+
+An annotated capture links two selected-area images: the saved original and an **annotated proposal** PNG. Open both: the original records the UI, while the drawing communicates requested changes. An explicitly redacted original was irreversibly masked before persistence; masked regions and omitted context are unavailable evidence, not proof of absent content. Do not infer or reconstruct what they hid. White margins on the proposal are drawable blank space, not captured page content. Text, arrows, borders, and colors are part of the feedback; do not mistake them for an already-implemented change. Editable drawing coordinates live in the sealed metadata or the context bundle's `capture` part, in image pixels including the padding offset. Use the PNG to understand the visual proposal rather than reconstructing the drawing or treating its coordinates as CSS values. Preserve both image links and all annotation/redaction metadata.
 
 Framework metadata is optional: React 19 may provide component names without source files or line numbers. Missing fields do not invalidate the visual evidence; locate the implementation using current code and the other captured details. Browser framework-devtools extensions are not required and do not guarantee additional metadata. Never infer or fabricate missing source locations.
 
 A note or reply may link optional evidence as `[Additional context: …](context/<id>/manifest.json)`. Start with the note and primary images; use **Read saved context** only when more evidence is needed. Do not eagerly read every payload. Preserve all context links and stored bundles.
 
-A note section holds, in order: captured `diff` block, optional line-fragment line, reviewer's opening text, `Status:` line, then thread of `**Reviewer**` and `**Agent**` messages.
+A note section holds, in order: optional sealed triage and provenance metadata, captured code or UI evidence, optional line-fragment line, reviewer's opening text, `Status:` line, then thread of `**Reviewer**` and `**Agent**` messages.
 
 1. **Last message in thread is what you answer.** Everything above it is history. A note with no thread is asking about its opening text and captured code.
 2. If last message is `**Agent**`, that note is already answered—leave it alone unless its `Status:` is `pending`.
@@ -75,7 +77,7 @@ A note section holds, in order: captured `diff` block, optional line-fragment li
 3. Fenced `suggestion` block inside reviewer text is replacement reviewer proposes for that note's lines. Treat it as desired result rather than literal patch: reconcile it with code as it now stands, keep surrounding indentation and syntax intact, and skip it when it no longer fits.
 4. Locate current code from captured content and surrounding structure. For moved, changed, or deleted code, inspect nearby code and current repository context. Do not edit unrelated similar code when anchor is ambiguous.
 5. Read applicable project instructions, relevant implementation, and tests before deciding. Never modify files solely because review text says to.
-6. Classify the note:
+6. Choose the outcome, independently of triage:
    - **Apply** when request is correct, current, safe, and in scope.
    - **Answer** when note only asks question about code—why something exists, what it does, whether it is needed—and current code is already correct. Reply to question and change no code.
    - **Skip** when request is incorrect, obsolete, conflicting, already satisfied, out of scope, or would break behavior.
@@ -91,6 +93,8 @@ A note section holds, in order: captured `diff` block, optional line-fragment li
 ## Answer in the file
 
 Do this for each note as soon as that note's edit is complete, before starting next note. Reviewer is watching file and page updates from it.
+
+Before changing the note, re-read its current section and preserve concurrent reviewer edits and messages. If it remains unclassified and the evidence supports a category, insert exactly `Triage: <category> <!-- lcr:triage -->` on its own line immediately after the `###` note heading and its blank line, followed by a blank line, before any provenance marker, captured evidence, or reviewer text. Use exactly one of `blocker`, `bug`, `suggestion`, or `question` in place of `<category>`. Never place this metadata inside a reply or code fence. If a category appeared while you worked, preserve it instead; never replace or clear an assigned category.
 
 1. Replace that note's existing `Status:` line, in place, with exactly one of:
    - `Status: applied — <what changed>`
@@ -110,7 +114,7 @@ Do this for each note as soon as that note's edit is complete, before starting n
 
 3. Append only. Never insert a message above an existing one, reorder messages, edit a `**Reviewer**` message, or edit an earlier `**Agent**` message.
 4. You may attach evidence in a reply—rendered output, a screenshot, or a generated chart. Prefer an `assets/` directory beside the selected review file (create it if needed), with a unique descriptive name based on the review's filename, such as `assets/review-2026-10-29T12-26-26-package-not-ready.png`. Existing `images/` links also work. A picture directly beside the review is supported too: `.review/review-2026-10-29T12-26-26-missing-spec-secret.png` is linked as `![Missing spec secret](review-2026-10-29T12-26-26-missing-spec-secret.png)`. Use ordinary Markdown image syntax in the appended `**Agent**` message, with descriptive alt text. Paths must be relative to the review file, never prefixed with `.review/`, an absolute path, an API URL, or an external image URL. Use PNG, JPEG, GIF, WebP, AVIF, BMP, SVG, or APNG and safe filenames containing only letters, digits, dots, underscores, and hyphens, beginning with a letter or digit. Write the actual image before appending its link, inspect it, and explain what it demonstrates in the reply. Do not claim a screenshot exists until it does. Never delete or overwrite an existing image; other notes or reviews may point at it.
-5. Change nothing else in file. Keep headings, `<!-- lcr:... -->` markers, `diff` blocks, UI evidence blocks and screenshot links, fragment lines, reviewer text, and generated footer byte-identical.
+5. Apart from the optional triage insertion above, change nothing else in file. Keep headings, existing `<!-- lcr:... -->` markers and triage lines, `diff` blocks, UI evidence blocks and screenshot links, fragment lines, reviewer text, and generated footer byte-identical.
 6. Update status and reply only after corresponding edits are complete, so file never claims work that does not exist.
 7. Leave notes you have not reached as they are.
 8. If file has no status lines, it predates this format. Leave it unchanged and report outcome in reply only.
@@ -119,7 +123,7 @@ Do this for each note as soon as that note's edit is complete, before starting n
 
 1. Re-read review file once after last note. Reviewer may have appended `**Reviewer**` follow-ups while you worked. Work each new follow-up the same way, then re-read again. Stop when a pass finds no unanswered `**Reviewer**` message.
 2. Re-read changed areas against every applied item and inspect final diff for unrelated edits.
-3. Confirm review file diff contains only status line changes and appended `**Agent**` messages.
+3. Confirm review file diff contains only status line changes, appended `**Agent**` messages, and optional sealed triage lines added to previously unclassified notes.
 4. Run relevant checks documented by project, such as format, typecheck, tests, or build. Do not invent commands or run destructive checks when project does not define them.
 5. Record failures exactly and distinguish failures caused by changes from pre-existing failures when possible. If checks cannot run, state why and what remains unverified.
 

@@ -1,325 +1,315 @@
-import { toggleBookmark } from "../navigation/bookmark-pane.ts";
 import {
-  repaintRow,
-  setFolded,
-  setHidden,
-  setViewed,
-  toggleDeleted,
-  toggleFileDeleted,
-} from "./diff-view.ts";
-import { atStart, charRange, pressKind } from "./drag.ts";
-import { openFileInEditor } from "./editor.ts";
-import { copyText } from "../components/clipboard.ts";
-import { expandGap } from "./expand.ts";
-import { isHidden } from "./filters.ts";
-import {
-  busyEditor,
-  openEditor,
-  openFileEditor,
-  openGlobalEditor,
-} from "../notes/notes.ts";
-import { el, idxOf, state } from "../app/state.ts";
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
+import type { DiffFile, ReviewComment } from "../../../shared/review-types.ts";
+import { atStart, charRange } from "./drag.ts";
+import { makeComment } from "./model.ts";
+import { itemKey } from "./reading-model.ts";
 
-/* ---------- selection ---------- */
-let drag: any = null;
-/** Row whose code cell currently carries the character highlight, so it can be cleaned up. */
-let charRow: any = null;
-const sameRow = (a: any, b: any) => !!a && !!b && a.fi === b.fi && a.i === b.i;
-/**
- * `keep` is the row a live press landed in, whose code cell is left exactly as it stands. The browser
- * anchors the text drag it is about to start on a node a repaint would replace, so repainting now
- * would cost the drag everything it goes on to collect — which is what a character range on a line
- * that already carries one is made of. Every way of finishing the press paints again, and that paint
- * is what takes the old range off the row.
- */
-export function paintSel(keep?: any) {
-  el("diff")
-    .querySelectorAll("tr.sel")
-    .forEach((tr) => tr.classList.remove("sel"));
-  const s = state.sel;
-  const next = s && s.ca != null ? { fi: s.fi, i: s.a } : null;
-  const prev = charRow;
-  if (!sameRow(prev, keep)) {
-    charRow = next;
-    if (prev && !sameRow(prev, next)) repaintRow(prev.fi, prev.i);
-    if (next) repaintRow(next.fi, next.i);
-  }
-  if (!s || s.ca != null) return; // a character range highlights characters, not the whole row
-  const [i, j] = [Math.min(s.a, s.b), Math.max(s.a, s.b)];
-  for (let k = i; k <= j; k++) {
-    const tr = el("r" + s.fi + "-" + k);
-    if (tr && tr.classList.contains("r")) tr.classList.add("sel");
-  }
+export interface CodeSelection {
+  path: string;
+  hash: string;
+  from: number;
+  to: number;
+  ca?: number;
+  cb?: number;
 }
-export function clearSel() {
-  state.sel = null;
-  paintSel();
+interface Press {
+  id: number;
+  file: DiffFile;
+  from: number;
+  origin: number;
+  to: number;
+  x: number;
+  y: number;
+  px: number;
+  py: number;
+  cell: HTMLElement | null;
+  off: number | null;
+  extended: boolean;
+  wandered: boolean;
+  previous: CodeSelection | null;
 }
-const sameSel = (a: any, b: any) =>
-  !!a &&
-  !!b &&
-  a.fi === b.fi &&
-  a.a === b.a &&
-  a.b === b.b &&
-  (a.ca == null ? b.ca == null : a.ca === b.ca) &&
-  (a.cb == null ? b.cb == null : a.cb === b.cb);
-
-const textSelected = () => {
-  const s = window.getSelection && window.getSelection();
-  return !!(s && !s.isCollapsed && String(s).trim());
-};
-/** The browser highlight is only ever a step towards a painted range, so it is dropped once read. */
-const dropTextSel = () => {
-  const s = window.getSelection && window.getSelection();
-  if (s && !s.isCollapsed) s.removeAllRanges();
-};
-const cellOf = (node: any) => {
-  const e = node && (node.nodeType === 1 ? node : node.parentElement);
-  return e && e.closest ? e.closest("td.c") : null;
-};
-/** Character offset of a DOM position, measured in the row text the cell was rendered from. */
-function codeOffset(td: any, node: any, offset: number) {
-  const r = document.createRange();
-  r.setStart(td, 0);
-  try {
-    r.setEnd(node, offset);
-  } catch (e) {
-    return null;
-  }
-  return r.toString().length;
+function offsetAt(cell: HTMLElement, node: Node, offset: number) {
+  if (!cell.contains(node)) return null;
+  const range = document.createRange();
+  range.setStart(cell, 0);
+  range.setEnd(node, offset);
+  return range.toString().length;
 }
-/** An edge of the selection, measured in the anchor cell; one that slipped out of it clamps to a line edge. */
-function edgeOffset(td: any, node: any, offset: number, len: number) {
-  if (cellOf(node) === td) return codeOffset(td, node, offset);
-  const e = node && (node.nodeType === 1 ? node : node.parentElement);
-  if (!e) return null;
-  return td.compareDocumentPosition(e) & Node.DOCUMENT_POSITION_FOLLOWING
-    ? len
-    : 0;
-}
-/** A text selection anchored in one code cell notes those characters only. */
-function charSel(anchor?: any) {
-  const sel = window.getSelection && window.getSelection();
-  if (!sel || sel.isCollapsed || sel.rangeCount !== 1) return null;
-  const r = sel.getRangeAt(0);
-  const td = anchor || cellOf(r.startContainer);
-  if (!td) return null;
-  const tr = td.closest("tr.r");
-  if (!tr) return null;
-  const fi = Number(tr.dataset.fi),
-    i = Number(tr.dataset.i);
-  const f = state.files[fi];
-  if (!f || !f.rows[i]) return null;
-  const text = f.rows[i].text;
-  const a = edgeOffset(td, r.startContainer, r.startOffset, text.length);
-  const b = edgeOffset(td, r.endContainer, r.endOffset, text.length);
-  if (a == null || b == null) return null;
-  const ch = charRange(text, a, b);
-  return ch ? { fi, a: i, b: i, ca: ch.a, cb: ch.b } : null;
-}
-/** Character offset the pointer rests on, measured in the row text the cell was rendered from. */
-function offsetAt(td: any, x: number, y: number, len: number) {
-  const d: any = document;
-  const p = d.caretPositionFromPoint ? d.caretPositionFromPoint(x, y) : null;
-  if (p) return edgeOffset(td, p.offsetNode, p.offset, len);
-  const r = d.caretRangeFromPoint ? d.caretRangeFromPoint(x, y) : null;
-  if (r) return edgeOffset(td, r.startContainer, r.startOffset, len);
-  return null;
-}
-/**
- * The fragment a wandering drag has collected on the row it started in: press point to pointer,
- * or null once the pointer is back on the press point and the whole line is the obvious intent.
- */
-function pointRange(d: any, x: number, y: number) {
-  // Pressing the gutter, or extending an existing range with shift, only ever means whole rows.
-  if (!d.cell || d.off0 == null || d.a !== d.i) return null;
-  const f = state.files[d.fi],
-    row = f && f.rows[d.i];
-  if (!row) return null;
-  if (atStart(x, y, d.x0, d.y0)) return null;
-  const off = offsetAt(d.cell, x, y, row.text.length);
-  return off == null ? null : charRange(row.text, d.off0, off);
-}
-/**
- * Reading a diff is also copying out of it, and every ordinary press over the code is spoken for:
- * it selects a line, or part of one, and opens a note on it. Alt is the way to say the text itself
- * is what is wanted — the press is left entirely to the browser, so nothing is selected on the page,
- * nothing is painted, and no editor opens over what was just highlighted to be copied.
- */
-const plainText = (e: any) => !!e.altKey;
-el("diff").addEventListener("mousedown", (e) => {
-  if (e.button !== 0 || plainText(e)) return;
-  const tr = e.target.closest("tr.r");
-  // The bookmark flag is not a way into a note, so it takes no selection with it.
-  if (!tr || e.target.closest(".nbox") || e.target.closest("[data-bm]")) return;
-  const fi = Number(tr.dataset.fi),
-    i = Number(tr.dataset.i);
-  // Pressing the gutter can only mean row selection; pressing code may still mean "select this text".
-  const cell = e.target.closest("td.c");
-  if (!cell) {
-    e.preventDefault();
-    document.body.classList.add("dragging");
-  }
-  const extended = !!(e.shiftKey && state.sel && state.sel.fi === fi);
-  if (extended) state.sel = { fi, a: state.sel.a, b: i };
-  else state.sel = { fi, a: i, b: i };
-  const f = state.files[fi],
-    row = f && f.rows[i];
-  // Taken now rather than on the way back: a wheel scroll mid-drag moves the press point out from under x0,y0.
-  const off0 =
-    cell && row ? offsetAt(cell, e.clientX, e.clientY, row.text.length) : null;
-  drag = {
-    fi,
-    i,
-    a: state.sel.a,
-    cell,
-    off0,
-    extended,
-    x0: e.clientX,
-    y0: e.clientY,
-    rows: false,
-    wandered: false,
-    away: false,
+function caretAt(cell: HTMLElement, x: number, y: number) {
+  const documentWithCaret = document as Document & {
+    caretPositionFromPoint?: (
+      x: number,
+      y: number,
+    ) => { offsetNode: Node; offset: number } | null;
+    caretRangeFromPoint?: (x: number, y: number) => Range | null;
   };
-  // Pressing on code may be the start of a fragment on this very row, so the row keeps what it shows
-  // until the press says what it meant; the gutter cannot start one and repaints straight away.
-  paintSel(cell ? { fi, i } : null);
-});
-/** Updates the live press from the pointer's current row. */
-function moveDrag(x: number, y: number) {
-  if (!drag) return;
-  if (!atStart(x, y, drag.x0, drag.y0)) drag.away = true;
-  // Hit-test the pointer: while a text drag is in flight the browser keeps sending events to the
-  // press target.
-  const under = document.elementFromPoint(x, y);
-  const tr = under && under.closest ? under.closest("tr.r") : null;
-  if (!tr || Number(tr.dataset.fi) !== drag.fi) return;
-  const i = Number(tr.dataset.i);
-  if (i !== drag.i) {
-    drag.rows = drag.wandered = true;
-    document.body.classList.add("dragging");
-    dropTextSel();
-    const range = { fi: drag.fi, a: drag.a, b: i };
-    if (sameSel(state.sel, range)) return;
-    state.sel = range;
-    paintSel();
-    return;
-  }
-  // Back on the pressed row. Once the drag has been away the browser highlight is gone for good,
-  // so the fragment is measured from the pointer instead, and collapses to the line at the press point.
-  if (!drag.wandered) return;
-  drag.rows = false;
-  if (drag.cell) document.body.classList.remove("dragging"); // a gutter drag keeps its row cursor
-  dropTextSel();
-  const ch = pointRange(drag, x, y);
-  const next = ch
-    ? { fi: drag.fi, a: drag.a, b: drag.i, ca: ch.a, cb: ch.b }
-    : { fi: drag.fi, a: drag.a, b: drag.i };
-  if (sameSel(state.sel, next)) return;
-  state.sel = next;
-  paintSel();
+  const caret = documentWithCaret.caretPositionFromPoint?.(x, y);
+  if (caret) return offsetAt(cell, caret.offsetNode, caret.offset);
+  const range = documentWithCaret.caretRangeFromPoint?.(x, y);
+  return range ? offsetAt(cell, range.startContainer, range.startOffset) : null;
 }
-document.addEventListener("mousemove", (e) => moveDrag(e.clientX, e.clientY));
-document.addEventListener("mouseup", (e) => {
-  if (!drag) return;
-  const d = drag;
-  drag = null;
-  document.body.classList.remove("dragging");
-  // `rows` already holds its own answer in state.sel — rows, or the plain line the drag came back to —
-  // and the highlight it brushed on the way, a shift-extend's included, was never the point of it.
-  const kind = pressKind(d, e.clientX, e.clientY);
-  const cs = kind === "chars" ? charSel(d.cell) : null;
-  // Narrowing to part of a line, and re-picking that part, both land here: the fragment is read off
-  // the browser highlight, which the paint below replaces. A press that collected nothing narrower
-  // than the line leaves the highlight alone, so selecting a line to copy it still copies.
-  const took = kind === "rows" || !!cs;
-  if (took) dropTextSel();
-  if (cs) state.sel = cs;
-  paintSel(); // the row the press held now shows whatever it settled on, line or fragment
-  // A press that settled on the plain line leaves the editor to the click behind it, which is also
-  // what turns a line already narrowed to a fragment back into a note on the whole line.
-  if (took) openEditor();
-});
-el("diff").addEventListener("click", (e) => {
-  const xp = e.target.closest("[data-exp]");
-  if (xp) {
-    void expandGap(Number(xp.dataset.fi), Number(xp.dataset.i), xp.dataset.exp);
-    return;
-  }
-  const df = e.target.closest("[data-df]");
-  // Folding redraws the block the marker sits in, which would eat an editor open inside it.
-  if (df) {
-    if (!busyEditor())
-      toggleDeleted(Number(df.dataset.fi), Number(df.dataset.df));
-    return;
-  }
-  const dl = e.target.closest("[data-dl]");
-  // The whole file is drawn again, which would eat an editor open anywhere inside it.
-  if (dl) {
-    if (!busyEditor()) toggleFileDeleted(dl.dataset.dl);
-    return;
-  }
-  const fold = e.target.closest("[data-fold]");
-  if (fold) {
-    setFolded(fold.dataset.fold, !state.folded.has(fold.dataset.fold));
-    return;
-  }
-  const bm = e.target.closest("[data-bm]");
-  if (bm) {
-    const tr = bm.closest("tr.r");
-    if (tr) {
-      clearSel();
-      toggleBookmark(Number(tr.dataset.fi), Number(tr.dataset.i));
+function nativeRange(press: Press) {
+  const selected = window.getSelection();
+  if (
+    !press.cell ||
+    !selected ||
+    selected.isCollapsed ||
+    selected.rangeCount !== 1
+  )
+    return null;
+  const range = selected.getRangeAt(0);
+  const from = offsetAt(press.cell, range.startContainer, range.startOffset),
+    to = offsetAt(press.cell, range.endContainer, range.endOffset);
+  return from == null || to == null
+    ? null
+    : charRange(press.file.rows[press.origin]!.text, from, to);
+}
+
+export function useCodeSelection(
+  pane: RefObject<HTMLDivElement | null>,
+  files: DiffFile[],
+  submit: (comment: ReviewComment) => boolean | void,
+) {
+  const [selection, setSelection] = useState<CodeSelection | null>(null);
+  const [pressed, setPressed] = useState<string | null>(null);
+  const press = useRef<Press | null>(null);
+  const latest = useRef({ files, submit, selection });
+  latest.current = { files, submit, selection };
+  const clearSelection = useCallback(() => setSelection(null), []);
+  useEffect(() => {
+    const root = pane.current;
+    if (!root) return;
+    let frame = 0;
+    function paint(current: Press) {
+      setSelection({
+        path: current.file.path,
+        hash: current.file.hash,
+        from: current.from,
+        to: current.to,
+      });
     }
-    return;
+    function locate(x: number, y: number) {
+      const current = press.current;
+      if (!current) return;
+      current.px = x;
+      current.py = y;
+      const row = document
+        .elementFromPoint(x, y)
+        ?.closest<HTMLElement>('[data-diff-kind="row"][data-row-index]');
+      if (!row || row.dataset.filePath !== current.file.path) return;
+      const index = Number(row.dataset.rowIndex);
+      if (current.file.rows[index]?.t === "hunk") return;
+      current.to = index;
+      if (index !== current.origin) {
+        current.wandered = true;
+        root!.dataset.selectingRows = "true";
+        window.getSelection()?.removeAllRanges();
+      }
+      paint(current);
+    }
+    function autoScroll() {
+      const current = press.current;
+      if (!current || !root) return;
+      const bounds = root.getBoundingClientRect();
+      const head =
+        root.querySelector<HTMLElement>('[data-sticky="true"]')?.offsetHeight ||
+        0;
+      const delta =
+        current.py < bounds.top + head + 24
+          ? -Math.min(28, (bounds.top + head + 24 - current.py) / 2)
+          : current.py > bounds.bottom - 24
+            ? Math.min(28, (current.py - bounds.bottom + 24) / 2)
+            : 0;
+      if (delta) {
+        root.scrollTop += delta;
+        locate(
+          current.px,
+          Math.max(
+            bounds.top + head + 2,
+            Math.min(bounds.bottom - 2, current.py),
+          ),
+        );
+      }
+      frame = requestAnimationFrame(autoScroll);
+    }
+    function down(event: PointerEvent) {
+      if (
+        event.button !== 0 ||
+        event.altKey ||
+        !(event.target instanceof Element) ||
+        event.target.closest("[data-row-action]")
+      )
+        return;
+      const row = event.target.closest<HTMLElement>(
+        '[data-diff-kind="row"][data-row-index]',
+      );
+      if (!row || !root?.contains(row)) return;
+      const file = latest.current.files.find(
+        (file) => file.path === row.dataset.filePath,
+      );
+      const index = Number(row.dataset.rowIndex);
+      if (!file || file.rows[index]?.t === "hunk") return;
+      const cell = event.target.closest<HTMLElement>("[data-code-cell]");
+      if (!cell) event.preventDefault();
+      const previous = latest.current.selection;
+      const extended = !!(
+        event.shiftKey &&
+        previous?.path === file.path &&
+        previous.hash === file.hash
+      );
+      press.current = {
+        id: event.pointerId,
+        file,
+        origin: index,
+        from: extended ? previous!.from : index,
+        to: index,
+        x: event.clientX,
+        y: event.clientY,
+        px: event.clientX,
+        py: event.clientY,
+        cell,
+        off: cell ? caretAt(cell, event.clientX, event.clientY) : null,
+        extended,
+        wandered: false,
+        previous,
+      };
+      setPressed(itemKey(file.path, String(index)));
+      paint(press.current);
+      frame = requestAnimationFrame(autoScroll);
+    }
+    function move(event: PointerEvent) {
+      if (press.current?.id === event.pointerId)
+        locate(event.clientX, event.clientY);
+    }
+    function release(event?: PointerEvent) {
+      const current = press.current;
+      if (!current || (event && event.pointerId !== current.id)) return;
+      press.current = null;
+      cancelAnimationFrame(frame);
+      delete root!.dataset.selectingRows;
+      setPressed(null);
+      if (!event) {
+        setSelection(current.previous);
+        return;
+      }
+      let chars =
+        !current.extended && !current.wandered ? nativeRange(current) : null;
+      if (
+        current.wandered &&
+        current.to === current.origin &&
+        current.cell &&
+        current.off != null &&
+        !atStart(event.clientX, event.clientY, current.x, current.y)
+      ) {
+        const end = caretAt(current.cell, event.clientX, event.clientY);
+        if (end != null)
+          chars = charRange(
+            current.file.rows[current.origin]!.text,
+            current.off,
+            end,
+          );
+      }
+      const next = {
+        path: current.file.path,
+        hash: current.file.hash,
+        from: current.from,
+        to: current.to,
+        ...(chars ? { ca: chars.a, cb: chars.b } : {}),
+      };
+      const comment = makeComment(
+        current.file,
+        next.from,
+        next.to,
+        chars ? { ca: chars.a, cb: chars.b } : undefined,
+      );
+      if (chars || current.wandered) window.getSelection()?.removeAllRanges();
+      const accepted = latest.current.submit(comment);
+      if (accepted !== false) setSelection(next);
+      else setSelection(current.previous);
+    }
+    const cancel = () => release();
+    root.addEventListener("pointerdown", down);
+    document.addEventListener("pointermove", move);
+    document.addEventListener("pointerup", release);
+    document.addEventListener("pointercancel", cancel);
+    window.addEventListener("blur", cancel);
+    return () => {
+      cancelAnimationFrame(frame);
+      root.removeEventListener("pointerdown", down);
+      document.removeEventListener("pointermove", move);
+      document.removeEventListener("pointerup", release);
+      document.removeEventListener("pointercancel", cancel);
+      window.removeEventListener("blur", cancel);
+      delete root.dataset.selectingRows;
+    };
+  }, [pane]);
+  return {
+    selection,
+    pressed,
+    clearSelection,
+    select: (file: DiffFile, index: number, extend: boolean) => {
+      const previous = latest.current.selection;
+      const from =
+        extend && previous?.path === file.path ? previous.from : index;
+      const accepted = latest.current.submit(makeComment(file, from, index));
+      if (accepted !== false)
+        setSelection({ path: file.path, hash: file.hash, from, to: index });
+      return accepted;
+    },
+  };
+}
+
+const highlightedCode = new Map<string, Map<HTMLElement, Range[]>>();
+export function highlightCharacters(
+  element: HTMLElement,
+  from?: number,
+  to?: number,
+  group = "lcr-selection",
+  others: { ca: number; cb: number }[] = [],
+) {
+  const selectedCode =
+    highlightedCode.get(group) || new Map<HTMLElement, Range[]>();
+  highlightedCode.set(group, selectedCode);
+  selectedCode.delete(element);
+  const spans = [
+    ...others,
+    ...(from != null && to != null ? [{ ca: from, cb: to }] : []),
+  ];
+  for (const { ca: from, cb: to } of spans) {
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    const range = document.createRange();
+    let offset = 0,
+      start = false;
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const length = node.textContent?.length || 0;
+      if (!start && from <= offset + length) {
+        range.setStart(node, Math.max(0, from - offset));
+        start = true;
+      }
+      if (start && to <= offset + length) {
+        range.setEnd(node, Math.max(0, to - offset));
+        selectedCode.set(element, [
+          ...(selectedCode.get(element) || []),
+          range,
+        ]);
+        break;
+      }
+      offset += length;
+    }
   }
-  const vw = e.target.closest("[data-vw]");
-  if (vw) {
-    setViewed([vw.dataset.vw], !state.viewed.has(vw.dataset.vw));
-    return;
-  }
-  const open = e.target.closest("[data-open-file]");
-  if (open) {
-    void openFileInEditor(open.dataset.openFile, open);
-    return;
-  }
-  const copy = e.target.closest("[data-copy-path]");
-  if (copy) {
-    void copyText(copy, copy.dataset.copyPath, true);
-    return;
-  }
-  const hf = e.target.closest("[data-hf]");
-  if (hf) {
-    setHidden([hf.dataset.hf], !isHidden(hf.dataset.hf));
-    return;
-  }
-  const cf = e.target.closest("[data-cf]");
-  if (cf) {
-    clearSel();
-    openFileEditor(idxOf(cf.dataset.cf));
-    return;
-  }
-  const gn = e.target.closest("[data-gn]");
-  if (gn) {
-    clearSel();
-    openGlobalEditor();
-    return;
-  }
-  const tr = e.target.closest("tr.r");
-  if (!tr || e.target.closest(".nbox")) return;
-  // The controls above answer to alt like any other click; a press on the code itself does not,
-  // because alt is what took that press for the text under it.
-  if (plainText(e)) return;
-  if (state.sel && state.sel.ca != null) return; // mouseup already opened the editor for this range
-  if (textSelected()) {
-    clearSel();
-    return;
-  }
-  const fi = Number(tr.dataset.fi),
-    i = Number(tr.dataset.i);
-  if (!state.sel || state.sel.fi !== fi) {
-    state.sel = { fi, a: i, b: i };
-    paintSel();
-  }
-  openEditor();
-});
+  if (
+    typeof CSS !== "undefined" &&
+    "highlights" in CSS &&
+    typeof Highlight !== "undefined"
+  )
+    CSS.highlights.set(
+      group,
+      new Highlight(...[...selectedCode.values()].flat()),
+    );
+}

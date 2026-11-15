@@ -77,7 +77,7 @@ export async function startWebPlayground(
     new URL("./web-playground.html", import.meta.url),
   ).text();
   const tokens = await Bun.file(
-    new URL("../src/web/styles/tokens.css", import.meta.url),
+    new URL("./playground-tokens.css", import.meta.url),
   ).text();
   options.signal?.throwIfAborted();
   await excludeRelativeOutput(repoRoot, directory);

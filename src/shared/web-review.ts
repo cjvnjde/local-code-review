@@ -1,5 +1,10 @@
 import { webAnnotation, type WebAnnotation } from "./web-annotation.ts";
 import { contextLink, contextRef, type ContextRef } from "./context.ts";
+import {
+  redactionRegions,
+  REDACTION_OMISSION,
+  type CaptureRedaction,
+} from "./redaction.ts";
 
 /** Evidence is immutable; another capture adds an observation rather than replacing the before. */
 export interface WebCapture {
@@ -18,6 +23,8 @@ export interface WebCapture {
   annotation?: WebAnnotation;
   /** Immutable optional evidence; persisted captures keep only their compact subject. */
   context?: ContextRef;
+  /** Irreversible source-pixel masking performed before persistence, not editable drawing. */
+  redaction?: CaptureRedaction;
   /** Annotated PNG retained when editable drawing geometry lives in the context bundle. */
   proposal?: string;
   selector?: string;
@@ -131,7 +138,8 @@ export function webCapture(value: unknown): WebCapture | null {
     );
   const metadata = (
     target: unknown,
-  ): target is Pick<WebCapture, "selector" | "element" | "components"> => {
+  ): target is Record<string, unknown> &
+    Pick<WebCapture, "selector" | "element" | "components"> => {
     if (!record(target)) return false;
     const element = target.element;
     if (
@@ -228,6 +236,21 @@ export function webCapture(value: unknown): WebCapture | null {
       });
     }
   }
+  let redaction: CaptureRedaction | undefined;
+  if (value.redaction !== undefined) {
+    if (!record(value.redaction)) return null;
+    try {
+      const regions = redactionRegions(value.redaction.regions, {
+        width: v.width,
+        height: v.height,
+        dpr: v.dpr,
+      });
+      if (!regions.length) return null;
+      redaction = { regions, omissionReason: REDACTION_OMISSION };
+    } catch {
+      return null;
+    }
+  }
   // Detach and whitelist, including nested records, before asynchronous storage or rendering.
   return JSON.parse(
     JSON.stringify({
@@ -246,6 +269,7 @@ export function webCapture(value: unknown): WebCapture | null {
       ...(annotation ? { annotation } : {}),
       ...(context ? { context } : {}),
       ...(value.proposal ? { proposal: value.proposal } : {}),
+      ...(redaction ? { redaction } : {}),
     }),
   );
 }
@@ -283,6 +307,7 @@ export function compactWebCapture(capture: WebCapture): WebCapture {
     area: capture.area,
     components: [],
     context: capture.context,
+    ...(capture.redaction ? { redaction: capture.redaction } : {}),
     ...(proposal ? { proposal } : {}),
   };
 }
@@ -447,6 +472,11 @@ export function webReviewLines(web: WebReview): string[] {
     ...web.after.map((capture, i) => ({ capture, label: "After " + (i + 1) })),
   ];
   captures.forEach(({ capture: c, label }) => {
+    if (c.redaction)
+      lines.push(
+        "Permanently redacted before saving. " + c.redaction.omissionReason,
+        "",
+      );
     if (c.context) {
       const imageLabel = label.startsWith("After ") ? "After" : label;
       lines.push(

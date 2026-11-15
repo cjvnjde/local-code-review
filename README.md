@@ -2,11 +2,23 @@
 
 Review local Git changes and annotate a running web app. Feedback stays in Markdown, ready for any coding agent.
 
-![Git diff review with an anchored code comment](docs/local-code-review.png)
+[![Current review UI in the Dark theme, with a continuous diff, inline feedback, and the notes sidebar](docs/local-code-review.png)](docs/local-code-review.png)
+
+- Read continuous diffs with syntax highlighting, bookmarks, and resizable file and note panes.
+- Save Markdown notes, suggested changes, images, and replies without leaving the code.
+- Capture a running local app, draw on screenshots, and keep visual feedback in the same review.
+- Choose Light, Dark, Catppuccin Latte, or Catppuccin Mocha—or create your own palette.
+- Continue with any coding agent through review files, or connect one through ACP.
+
+The screenshots show this `v2` branch's React UI. Older releases may still show the
+previous interface; [build from source](#install-or-update-from-source) to use this
+branch. See [development](docs/development.md) for the library stack and architecture.
 
 ## Install
 
 Each release contains one standalone executable, compiled and minified with Bun, with the browser assets embedded. Git is required to review code; Bun and Node.js are not required to run the downloaded executable.
+`lcr licenses` prints the bundled integration licenses, third-party notices, and
+the source-availability link for axe-core; it also works outside a Git repository.
 
 ### Install with mise
 
@@ -50,12 +62,19 @@ xattr -d com.apple.quarantine ./lcr
 With Bun installed, run from the repository root to replace your local executable:
 
 ```sh
+bun install --frozen-lockfile
+bun run build
 mkdir -p ~/.local/bin
-bun build ./src/index.ts --compile --minify --outfile lcr && mv lcr ~/.local/bin/lcr
+mv lcr ~/.local/bin/lcr
 ~/.local/bin/lcr --version
 ```
 
 Keep `~/.local/bin` on your `PATH` to run it as `lcr`. Restart any running lcr instances to use the updated build.
+
+To name the executable `lcr2`, use `bun run build -- --outfile lcr2`.
+The build script compiles Tailwind CSS before embedding the browser assets. Direct
+`bun build ./src/index.ts --compile` skips the Tailwind plugin, causing CSS warnings
+and missing styles. The output remains one standalone executable.
 
 ## Review code
 
@@ -73,69 +92,40 @@ lcr --id checkout              # Continue a named review, even after commits or 
 
 The browser opens at `http://localhost:7777`; if the port is taken, lcr prints the next available address.
 
-1. Click a line, drag a range, or select part of a line to comment. Use a file's **Comment** or the header's **Comment** for broader feedback.
+1. Select a file, then click the plus beside a code line. Click a line number and Shift-click another to comment on a range. Use the file header or **Overall note** for broader feedback.
 2. **Save note** writes that note to `.review/review-<timestamp>.md` without starting an agent. The output directory is ignored by Git.
 3. Ask your agent to address that file. Replies and status changes appear live; keep the conversation going under each note.
 
-## Annotate a web app
+## Themes
 
-Start your app's development server, then run:
+Choose **Settings → Appearance → Theme**. The four built-in palettes cover light
+and dark reading, including diff colors and syntax highlighting.
+
+| Catppuccin Latte                                                                                           | Catppuccin Mocha                                                                                          |
+| ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| [![Code review in the Catppuccin Latte light theme](docs/catppuccin-latte.png)](docs/catppuccin-latte.png) | [![Code review in the Catppuccin Mocha dark theme](docs/catppuccin-mocha.png)](docs/catppuccin-mocha.png) |
+
+Prefer the defaults? Preview [Light](docs/review-light.png) or
+[Dark](docs/local-code-review.png). The header shortcut switches between light and
+dark, keeping the Catppuccin pair when selected.
+
+**Create theme** opens a separate editor with 31 editable colors and a live
+preview. Save a named copy to your user configuration without changing the built-in
+palette or losing your review draft. Your selection persists across restarts.
+See the [theme gallery and editor guide](docs/usage.md#themes-and-custom-colors).
+
+## Annotate a web app
 
 ```sh
 lcr --web http://localhost:3000 --id checkout-ui
-lcr --web http://localhost:3000 main...HEAD  # Visual feedback alongside an explicit diff
 ```
 
-![Live web annotation with a captured selection and review note](docs/web-annotation.png)
+Select an element or area in the running app and write feedback in the embedded
+React editor. Captures and code notes share one Markdown conversation. Requires
+installed Chrome, Chromium, or Edge. See the [web capture guide](docs/web-ui.md)
+for profiles, existing-browser attachment, and capture context.
 
-Click an element or drag an area to comment. Click the **lcr** circle to switch between annotation and normal browsing; hold **Alt** to interact temporarily. Click a capture to add drawings, numbered callouts, highlights, readable labels, or magnified details. Unfinished drawings offer browser-local recovery.
-
-Visual and code notes share the same Markdown review. Captures include screenshots and element metadata; **Capture after** records the result after a fix. Requires an installed Chrome, Chromium, or Edge. [Web annotation guide →](docs/web-ui.md)
-
-For smaller agent prompts, enable **Settings → AI context → Save capture context for on-demand AI reading**. The selected screenshot stays in the review; selectors, styles, and other evidence live in immutable local bundles that agents can read selectively. Selected HTML and full-document screenshots are separate opt-ins. **Formatting options → Add context** also attaches files or text/JSON to any note or reply. [Context storage and retrieval →](docs/usage.md#attach-on-demand-context)
-
-Context also works **without lcr installed or running**. Click a context's ID to copy it; the updated `apply-lcr` skill can find its manifest and read the saved files directly, even without a review Markdown file. `lcr context` remains an optional convenience. The agent needs access to the bundle files, not just the ID.
-
-### Choose a browser profile
-
-| `--browser-profile` | Browser and saved state                                                                                                                                                                      |
-| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `shared` (default)  | Launch a dedicated browser with logins shared across projects and worktrees. State lives at `~/.config/lcr/browser/`, or `$XDG_CONFIG_HOME/lcr/browser/` when `XDG_CONFIG_HOME` is absolute. |
-| `project`           | Launch a dedicated browser using `<output-directory>/.browser/`. Each worktree and output directory keeps separate logins. Existing profiles from older lcr builds remain here.              |
-| `existing`          | Attach to your running Chrome session, using its existing logins and app state. Your personal profile is never copied into the project.                                                      |
-
-One run can own a dedicated profile at a time. Use `project` in separate worktrees or output
-directories for simultaneous dedicated browsers. Shared state also shares cookies between projects;
-choose `project` when you need separate accounts.
-
-### Use your existing Chrome session
-
-1. Start Chrome 144 or newer and enable remote debugging at `chrome://inspect/#remote-debugging`.
-2. Open your app at the exact URL you will pass to `--web`, including its path, query, and fragment.
-3. Run:
-
-   ```sh
-   lcr --web http://localhost:3000 --browser-profile existing
-   ```
-
-4. Allow the connection in Chrome's dialog. lcr waits up to one minute for approval.
-
-lcr reuses the matching tab without reloading it, preserving unfinished forms, scroll position,
-and in-memory app state. If no tab matches, it opens one; if several match, close duplicates or
-use a distinct URL. Each app tab can belong to one lcr review at a time. Stopping lcr removes its
-overlay and leaves Chrome and all tabs open. No AI, extension, or MCP server is required.
-
-Chrome stable's user data directory is discovered automatically. For another installation or
-compatible browser, pass its user data directory, rather than its `Default` or `Profile 1` subdirectory:
-
-```sh
-lcr --web http://localhost:3000 --browser-profile existing --browser-data-dir "/path/to/browser/User Data"
-```
-
-`--no-open` defers attachment until you choose **Open page** in lcr. On macOS, your terminal may
-need access to Chrome under **Privacy & Security → Files & Folders**. Approving the connection
-grants debugging access to your browser; use `shared` or `project` when you prefer a dedicated
-development profile. [Setup, troubleshooting, and profile safety →](docs/web-ui.md#attach-to-your-existing-browser)
+[![Live-page capture with the current floating note editor and a checkout screenshot attached](docs/web-annotation.png)](docs/web-annotation.png)
 
 ## Hand feedback to an agent
 
@@ -275,9 +265,8 @@ See [ACP connections and queue](docs/agent-connections.md) for other agents, con
 permissions and restart recovery.
 
 **Save & ask AI** saves a comment and queues the selected agent; further requests wait until that turn
-ends. **Save note** persists without starting the agent. Without an ACP configuration, only Save is
-offered. Queue state survives restarts, and permissions appear in the page's **Queue** control.
-Working indicators appear beside the agent and on the active note; approval waits are shown separately.
+ends. **Save only** persists without starting the agent. Without an ACP configuration, the editor offers **Save note**. Queue state survives restarts, and permissions appear in the footer's agent queue.
+Queue entries report work and approval states separately from note verdicts.
 
 ## Default settings
 
@@ -293,15 +282,15 @@ Use `~/.config/lcr/config.json`, or `$XDG_CONFIG_HOME/lcr/config.json` when
   "context": 8,
   "browserProfile": "shared",
   "ui": {
-    "enterSaves": true,
-    "foldDel": true
+    "theme": "catppuccin-mocha",
+    "aiContext": true
   }
 }
 ```
 
-With this example, plain `lcr` reviews against `origin/main` without an automatic agent,
-and Enter saves a note while Shift+Enter inserts a newline. The revision must exist in
-the repository; lcr does not fetch it.
+With this example, plain `lcr` reviews against `origin/main` without an automatic
+agent, uses Catppuccin Mocha, and enables on-demand capture context. The revision
+must exist in the repository; lcr does not fetch it.
 
 CLI options override configured defaults. Explicit Git arguments replace `diffArgs`;
 `lcr --worktree` returns to the built-in comparison against `HEAD`. `--no-web` disables
@@ -313,10 +302,12 @@ The optional `browserDataDir` setting selects the user data directory for existi
 it resolves beside `config.json`, while `--browser-data-dir` resolves from the repository root.
 Both accept `~/` paths. These browser settings apply when `--web` or a configured `web` URL is used.
 
-Configured `ui` keys apply again on every server start. Changes in the page stay in browser
-storage and survive page reloads during that run; they never change the config file.
-Preferences omitted from `ui` retain their existing browser persistence.
-See [all configuration fields and precedence](docs/usage.md#configuration).
+Settings changes persist in `lcr/config.json` under that configuration directory,
+preserving startup options and agent profile paths. **Enable AI answers** turns
+new AI dispatches on or off without cancelling existing queued/running work.
+Theme selection also persists as `ui.theme`; panel visibility, viewed marks, and
+drafts remain browser-local. Custom palettes live in the adjacent `lcr/themes/`
+directory.
 
 ## Other options
 
@@ -334,8 +325,9 @@ Unrecognized arguments pass through to `git diff`. Working-tree comparisons incl
 
 ## Documentation
 
-- [Review workflow and controls](docs/usage.md) — notes, images, search, history, shortcuts, and saved conversations.
-- [Web annotation](docs/web-ui.md) — selection tools, drawings, before/after captures, and browser requirements.
+- [Review workflow and controls](docs/usage.md) — notes, images, history, and saved conversations.
+- [Themes and custom colors](docs/usage.md#themes-and-custom-colors) — built-in previews, the live editor, and saved palettes.
+- [Web annotation](docs/web-ui.md) — page selections, captured evidence, and browser requirements.
 - [Agent connections and sequential queue](docs/agent-connections.md).
 - [Development](docs/development.md) — run from source, checks, and standalone builds.
 

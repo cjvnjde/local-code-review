@@ -1,4 +1,5 @@
 import type { ReviewNote } from "../review/thread.ts";
+import type { AgentLaunchSummary } from "../shared/agent-types.ts";
 
 export interface AgentDelivery {
   state: "queued" | "unchanged" | "failed";
@@ -10,6 +11,7 @@ export interface AgentConnection {
   agent: string;
   state: "checking" | "ready" | "unavailable";
   detail: string;
+  launch?: AgentLaunchSummary;
 }
 
 /** A saved reviewer action can wake an agent; file-watch events never do. */

@@ -12,6 +12,7 @@ import {
   saveContext,
   type ContextPartInput,
 } from "./context.ts";
+import { privateCapture, REDACTION_OMISSION } from "../shared/redaction.ts";
 
 const OWN_PARTS = new Set([
   "capture",
@@ -70,7 +71,11 @@ export async function saveWebContext(
   capture: WebCapture,
   extras: ContextPartInput[] = [],
 ): Promise<WebCapture> {
-  const clean = record(capture);
+  const clean = record(
+    capture.redaction
+      ? privateCapture(capture, capture.redaction.regions)
+      : capture,
+  );
   const encoded = JSON.stringify(clean);
   const inherited: ContextPartInput[] = [];
   if (capture.context) {
@@ -124,22 +129,30 @@ export async function saveWebContext(
       label: "Complete capture and editable drawing",
       type: "application/json",
       data: encoded,
+      detail:
+        "Complete historical metadata and drawing geometry; prefer a focused part for ordinary questions.",
     },
     {
       name: "elements",
       label: "Selected elements, selectors and component hints",
       type: "application/json",
       data: JSON.stringify(elements, null, 2),
+      detail:
+        "Target identities and framework/source hints. Verify source hints against the current checkout.",
     },
     {
       name: "styles",
       label: "Selected computed styles",
       type: "application/json",
       data: JSON.stringify(styles, null, 2),
+      detail:
+        "Computed results on selected elements. Use layout and css-rules to investigate their causes.",
     },
     {
       name: "viewport",
-      label: "Captured viewport",
+      label: clean.redaction
+        ? "Permanently redacted viewport"
+        : "Captured viewport",
       type: "image/png",
       attachment: clean.page,
       ...(!clean.page
@@ -151,8 +164,13 @@ export async function saveWebContext(
     },
     {
       name: "selected-area",
-      label: "Original selected area",
+      label: clean.redaction
+        ? "Permanently redacted selected area"
+        : "Original selected area",
       type: "image/png",
+      detail: clean.redaction
+        ? "Source pixels were irreversibly masked before this image was saved; masks are not editable drawing marks."
+        : "Untouched selected-area evidence, not the annotated proposal.",
       attachment: clean.area,
       ...(!clean.area
         ? {
@@ -174,13 +192,40 @@ export async function saveWebContext(
     ...inherited,
     ...extras,
   ];
+  if (clean.redaction) {
+    const safe = ["capture", "viewport", "selected-area", "proposal"];
+    for (let index = 0; index < parts.length; index++) {
+      const part = parts[index]!;
+      if (!safe.includes(part.name))
+        parts[index] = {
+          name: part.name,
+          label: part.label,
+          type: part.type,
+          status: "excluded",
+          detail: REDACTION_OMISSION,
+        };
+    }
+  }
   const label = `${clean.title || new URL(clean.url).pathname} — ${clean.mode}`
     .replace(/\s+/g, " ")
     .slice(0, 200);
   const context = await saveContext(repoRoot, outDir, {
     label,
     at: clean.at,
-    source: { url: clean.url, title: clean.title, captureAt: clean.at },
+    source: {
+      url: clean.url,
+      title: clean.title,
+      captureAt: clean.at,
+      target: [
+        clean.element?.attributes.role || clean.element?.tag || clean.mode,
+        clean.element?.attributes["aria-label"],
+        clean.components[0]?.name,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+        .replace(/\s+/g, " ")
+        .slice(0, 240),
+    },
     parts,
   });
   return { ...clean, context };

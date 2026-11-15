@@ -59,11 +59,14 @@ export function watchTree(
 /**
  * Watches one directory that may not exist yet — the output directory is only created by the first
  * save — and keeps trying until it does.
+ * An empty filename announces a catch-up after attachment: changes made while the directory was
+ * unwatched have no native event to replay, so consumers must read their current state once.
  */
 export function watchDir(
   dir: string,
   onChange: (file: string) => void,
   delay = 120,
+  ignore: (file: string) => boolean = () => false,
 ): Watcher {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let retry: ReturnType<typeof setInterval> | null = null;
@@ -72,6 +75,8 @@ export function watchDir(
   let closed = false;
 
   const fire = (file: string) => {
+    // Ignore before debouncing so internal activity cannot replace a real review event.
+    if (file && ignore(file)) return;
     last = file;
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => {
@@ -88,6 +93,7 @@ export function watchDir(
       if (attach() && retry) {
         clearInterval(retry);
         retry = null;
+        fire("");
       }
     }, 1000);
   };

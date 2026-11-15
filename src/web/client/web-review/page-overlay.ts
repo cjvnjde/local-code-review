@@ -1,3 +1,5 @@
+import type { Theme } from "../../../shared/themes.ts";
+
 /** Runs in the reviewed page. Keep this function self-contained: its compiled source is injected by CDP. */
 export function installPageReview(config: {
   key: string;
@@ -5,6 +7,7 @@ export function installPageReview(config: {
   origin: string;
   reviewUrl: string;
   ownerKey?: string;
+  theme?: Theme;
 }) {
   const win = globalThis as any;
   if (
@@ -95,7 +98,7 @@ export function installPageReview(config: {
     frameEditingOriginal = false,
     replyDraftId = "",
     pendingReply = false;
-  let dockPosition = { x: innerWidth - 578, y: 18 },
+  let dockPosition = { x: innerWidth - 458, y: 18 },
     dockPress: {
       id: number;
       x: number;
@@ -103,19 +106,39 @@ export function installPageReview(config: {
       origin: { x: number; y: number };
     } | null = null;
   let dockSize: { width: number; height: number } | null = null;
+  let frameHeight = 0;
+  const notifications = new Map<
+    string,
+    { node: HTMLElement; timer?: number }
+  >();
   let resizePress: {
     id: number;
     x: number;
     y: number;
-    width: number;
-    height: number;
+    edge: string;
+    bounds: { x: number; y: number; width: number; height: number };
   } | null = null;
-  let annotationOpen = false;
+  let annotationOpen = false,
+    imagePreviewOpen = false;
   let expanded = false,
-    suppressLauncherClick = false;
+    suppressLauncherClick = false,
+    temporaryBrowse = false;
+  let addingCapture: { mode: string; multiple: boolean } | null = null;
   let selected: Element[] = [],
     selectionUrl = location.href,
     multiple = false;
+  let redactions: { x: number; y: number; width: number; height: number }[] =
+    [];
+  let redactionView = "";
+  const currentRedactionView = () =>
+    JSON.stringify([
+      location.href,
+      innerWidth,
+      innerHeight,
+      devicePixelRatio,
+      scrollX,
+      scrollY,
+    ]);
   let inspectBase: Element | null = null,
     inspectDepth = 0;
   type FrozenTarget = {
@@ -150,56 +173,134 @@ export function installPageReview(config: {
     y: number;
     origin: { x: number; y: number };
     moved: boolean;
-    held: boolean;
-    timer: ReturnType<typeof setTimeout>;
   } | null = null;
   const reviewOrigin = new URL(config.reviewUrl).origin;
   const host = document.createElement("div");
   host.id = config.key;
   if (config.ownerKey) host.dataset.lcrOwner = config.ownerKey;
+  host.dataset.lcrOverlay = "";
   host.style.cssText =
-    "position:fixed;inset:0;z-index:2147483647;pointer-events:none";
+    "position:fixed;inset:0;z-index:2147483647;pointer-events:none;overflow:auto;overflow-anchor:none;overscroll-behavior:contain;scroll-behavior:auto";
   const root = host.attachShadow({ mode: "open" });
+  function applyTheme(theme?: Theme) {
+    if (!theme || (theme.mode !== "light" && theme.mode !== "dark")) return;
+    const aliases = {
+      panel: "popover",
+      panel2: "card",
+      crust: "background",
+      hover: "accent",
+      edge: "border",
+      ink: "foreground",
+      "ink-dim": "muted-foreground",
+      accent: "primary",
+      "primary-ink": "primary-foreground",
+      mark: "warning",
+      focus: "ring",
+    } as const;
+    for (const [alias, key] of Object.entries(aliases)) {
+      const color = theme.colors?.[key];
+      if (typeof color === "string" && /^#[\da-f]{6}$/i.test(color))
+        host.style.setProperty(`--${alias}`, color);
+    }
+    host.style.colorScheme = theme.mode;
+  }
+  applyTheme(config.theme);
   root.innerHTML = `<style>
-    :host{all:initial;--fs-body:13px;--fs-small:11px;--tap:32px;--tap-lg:30px;--icon:16px;--row:36px;--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--radius-sm:4px;--radius-md:8px;--bar-height:calc(var(--tap-lg) + var(--space-2)*2);--panel:#1e1e2e;--panel2:#181825;--crust:#11111b;--hover:#45475a;--edge:#313244;--ink:#cdd6f4;--ink-dim:#a6adc8;--accent:#89b4fa;--sel:#89b4fa24;--mark:#f9e2af;color:var(--ink);font:var(--fs-body)/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif}
+    :host{all:initial;--fs-body:13px;--fs-small:11px;--tap:32px;--tap-lg:30px;--icon:16px;--row:36px;--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--radius-sm:4px;--radius-md:8px;--bar-height:calc(var(--tap-lg) + var(--space-2)*2);--panel:#222228;--panel2:#18181c;--crust:#111114;--hover:#2a2a32;--edge:#2b2b33;--ink:#e8e8ed;--ink-dim:#91919f;--accent:#b0a0ff;--primary-ink:#19142e;--focus:#b0a0ff;--sel:color-mix(in srgb,var(--accent) 14%,transparent);--mark:#e3b341;color:var(--ink);font:var(--fs-body)/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif}
     *{box-sizing:border-box}button,a{font:inherit}button,.review-link{min-width:var(--tap-lg);min-height:var(--tap-lg);border:0;background:transparent;color:inherit;border-radius:var(--radius-sm);padding:var(--space-1) var(--space-2);cursor:pointer}
-    button:hover,.review-link:hover{background:var(--hover)}button:focus-visible,.review-link:focus-visible,.head b:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}button:disabled{opacity:.55;cursor:wait}button[aria-pressed=true]{background:var(--sel);color:var(--accent)}.review-link{text-decoration:none}
-    .launcher{pointer-events:auto;position:fixed;left:var(--space-4);bottom:var(--space-4);width:calc(var(--tap) + var(--space-3));height:calc(var(--tap) + var(--space-3));padding:0;border-radius:50%;background:var(--panel2);font-weight:700;touch-action:none;cursor:grab;box-shadow:0 4px 24px #0005}
-    .launcher:active{cursor:grabbing}
-    .launcher[aria-pressed=true]{background:var(--accent);color:var(--crust);box-shadow:0 0 0 var(--space-1) var(--sel),0 4px 24px #0005}
-    .mode-state{position:absolute;bottom:calc(-1 * var(--space-1));left:50%;transform:translateX(-50%);padding:0 var(--space-1);border-radius:var(--radius-sm);background:var(--panel);color:var(--ink-dim);font-size:var(--fs-small);line-height:var(--space-4)}
-    .launcher[aria-pressed=true] .mode-state{background:var(--panel);color:var(--accent)}
-    .bar{pointer-events:auto;position:fixed;display:flex;gap:var(--space-1);align-items:center;padding:var(--space-2);border:0;border-radius:var(--radius-md);background:var(--panel2);box-shadow:0 4px 24px #0005;max-width:calc(100vw - var(--space-3)*2);max-height:calc(100dvh - var(--space-3)*2);overflow:auto;flex-wrap:wrap}
-    .brand{font-weight:700;padding:0 var(--space-2);color:var(--accent)}
+    button:hover,.review-link:hover{background:var(--hover)}button:focus-visible,.review-link:focus-visible,.head b:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}button:disabled{opacity:.55;cursor:wait}button[aria-pressed=true]{background:var(--sel);color:var(--accent)}.review-link{text-decoration:none}
+    .launcher{pointer-events:auto;position:fixed;left:var(--space-4);bottom:var(--space-4);display:flex;align-items:center;gap:var(--space-1);height:44px;max-width:calc(100vw - 24px);padding:var(--space-1);border-radius:var(--radius-md);background:var(--panel2);font-weight:700;box-shadow:0 4px 24px #0005}
+    .launcher [data-launcher]{touch-action:none;cursor:grab;border-left:1px solid var(--edge);border-radius:0 var(--radius-sm) var(--radius-sm) 0}
+    .launcher [data-launcher]:active{cursor:grabbing}.launcher button[aria-pressed=true]{background:var(--accent);color:var(--primary-ink)}
+    .mode-state{white-space:nowrap}
+    .bar{pointer-events:auto;position:fixed;display:flex;gap:var(--space-1);align-items:center;padding:var(--space-2);border:0;border-radius:var(--radius-md);background:var(--panel2);box-shadow:0 4px 24px #0005;width:280px;max-width:calc(100vw - var(--space-3)*2);max-height:calc(100dvh - 80px);overflow:auto;flex-wrap:wrap}
+    .bar [data-mode],.bar [data-multiple]{width:100%;text-align:left;display:flex;align-items:baseline;gap:var(--space-2)}.bar small{font-size:var(--fs-small);color:var(--ink-dim);font-weight:400}.bar [data-notes]{width:100%;text-align:left;color:var(--ink-dim)}
     .outline{position:fixed;pointer-events:none;border:2px solid var(--accent);background:var(--sel);border-radius:var(--radius-sm);display:none}
-    .label{position:absolute;bottom:100%;left:0;white-space:nowrap;padding:2px var(--space-2);border-radius:var(--radius-sm) var(--radius-sm) 0 0;background:var(--accent);color:var(--crust);font-size:var(--fs-small)}
-    .dock{pointer-events:auto;position:fixed;right:var(--space-4);top:var(--space-4);height:calc(100dvh - 96px);width:min(560px,calc(100vw - var(--space-3)*2));max-width:calc(100vw - var(--space-3)*2);max-height:calc(100dvh - var(--space-3)*2);background:var(--panel2);border:0;box-shadow:0 8px 32px #0006;border-radius:var(--radius-md);display:flex;flex-direction:column;overflow:hidden}
+    .label{position:absolute;bottom:100%;left:0;white-space:nowrap;padding:2px var(--space-2);border-radius:var(--radius-sm) var(--radius-sm) 0 0;background:var(--accent);color:var(--primary-ink);font-size:var(--fs-small)}
+    .dock{pointer-events:auto;position:absolute;right:var(--space-4);top:var(--space-4);height:540px;width:min(440px,calc(100vw - var(--space-3)*2));max-width:calc(100vw - var(--space-3)*2);background:var(--panel2);border:0;box-shadow:0 8px 32px #0006;border-radius:var(--radius-md);display:flex;flex-direction:column;overflow:hidden;overflow-anchor:none}
     .dock.minimized{height:auto}.dock.minimized .content{position:absolute;top:100%;left:0;right:0;flex:none;height:var(--content-height);visibility:hidden;pointer-events:none}
     .resize{position:absolute;right:0;bottom:0;width:var(--tap-lg);height:var(--tap-lg);padding:0;border:0;border-radius:var(--radius-sm) 0 0 0;background:transparent;cursor:nwse-resize;touch-action:none;display:grid;place-items:center;color:var(--ink-dim)}
     .resize svg{width:var(--icon);height:var(--icon);pointer-events:none}.resize:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}.dock.minimized .resize{display:none}
-    .resize:is(:hover,:focus-visible)::before{content:attr(title);position:absolute;right:var(--space-2);bottom:100%;width:calc(var(--tap) * 9);max-width:calc(100vw - var(--space-4)*2);padding:var(--space-2);border:1px solid var(--edge);border-radius:var(--radius-sm);background:var(--panel);color:var(--ink);font-size:var(--fs-small);pointer-events:none;cursor:default}
-    .bar[hidden],.dock[hidden],.selection-tools[hidden]{display:none}.head{display:flex;flex:none;align-items:center;gap:var(--space-1);min-height:var(--bar-height);padding:var(--space-2) var(--space-3);background:var(--panel);cursor:move;touch-action:none;user-select:none}.head b{display:flex;align-items:center;flex:1;min-width:0;min-height:var(--tap-lg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-radius:var(--radius-sm)}.head button,.head .review-link{flex:none}.head button{width:var(--tap-lg);padding:0}.head .review-link{display:inline-flex;align-items:center;color:var(--ink-dim)}.content{display:flex;flex-direction:column;flex:1;min-height:0;overflow:auto}.content iframe{width:100%;flex:1;min-height:0;border:0;background:var(--panel2)}.status,.error{padding:var(--space-3) var(--space-4);margin:0}
-    .dock.annotating .head,.dock.annotating .resize{display:none}
-    .dock.annotating{border:0;border-radius:0;box-shadow:none;max-width:none;max-height:none}
-    .dock.annotating~.launcher,.dock.annotating~.bar{display:none}
+    .resize-edge{min-width:0;min-height:0;border-radius:0;z-index:1}.resize-edge:is(:hover,:focus-visible){background:var(--sel)}.resize-edge::before{display:none}
+    .resize-edge[data-resize=e],.resize-edge[data-resize=w]{top:var(--tap-lg);bottom:var(--tap-lg);width:6px;height:auto;cursor:ew-resize}.resize-edge[data-resize=w]{left:0;right:auto}
+    .resize-edge[data-resize=n],.resize-edge[data-resize=s]{left:var(--space-2);right:var(--tap-lg);width:auto;height:6px;cursor:ns-resize}.resize-edge[data-resize=n]{top:0;bottom:auto}
+    .bar[hidden],.dock[hidden],.selection-tools[hidden]{display:none}.head{display:flex;flex:none;align-items:center;gap:var(--space-1);min-height:var(--bar-height);padding:var(--space-2) var(--space-3);background:var(--panel);cursor:move;touch-action:none;user-select:none}.head b{display:block;flex:1;min-width:0;min-height:var(--tap-lg);line-height:var(--tap-lg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-radius:var(--radius-sm)}.head button,.head .review-link{flex:none}.head button{width:var(--tap-lg);padding:0}.head .review-link{display:inline-flex;align-items:center;color:var(--ink-dim)}.head svg{width:var(--icon);height:var(--icon);pointer-events:none}.content{display:flex;flex-direction:column;flex:1;min-height:0}.content iframe{display:block;width:100%;flex:1;min-height:0;border:0;background:var(--panel2)}.status,.error{padding:var(--space-3) var(--space-4);margin:0}
+    .head select{flex:none;min-width:0;max-width:118px;height:var(--tap-lg);border:1px solid var(--edge);border-radius:var(--radius-sm);padding:0 var(--space-1);background:var(--panel2);color:var(--ink);font:inherit;cursor:pointer;touch-action:auto}.head select:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}.head [hidden]{display:none}
+    .dock.fullscreen .head,.dock.fullscreen .resize{display:none}
+    .dock.fullscreen{position:fixed;border:0;border-radius:0;box-shadow:none;max-width:none}
+    .dock.fullscreen~.launcher,.dock.fullscreen~.bar{display:none}
     .pin{pointer-events:auto;position:fixed;display:grid;place-items:center;border-radius:50%;background:var(--mark);border:0;box-shadow:0 2px 8px #0007;color:var(--crust);font-weight:700;padding:0;width:var(--tap);height:var(--tap)}.pin:hover{background:var(--mark);color:var(--crust);box-shadow:0 0 0 2px var(--crust),0 2px 8px #0007}.draft-pin{outline:2px dashed var(--accent);outline-offset:2px}
     .selected{position:fixed;pointer-events:none;border:2px solid var(--accent);background:var(--sel);border-radius:var(--radius-sm)}
     .selection-tools{pointer-events:auto;position:fixed;bottom:var(--space-4);left:50%;transform:translateX(-50%);display:flex;flex-wrap:wrap;gap:var(--space-2);align-items:center;padding:var(--space-2);border:0;border-radius:var(--radius-md);background:var(--panel2);box-shadow:0 4px 24px #0005;max-width:calc(100vw - var(--space-3)*2)}[data-write]{background:var(--accent);color:var(--crust)}[data-write]:hover{background:var(--accent);color:var(--crust)}
     .error{color:#f38ba8;white-space:pre-wrap}
     .frozen-page{position:fixed;inset:0;pointer-events:auto;max-width:none!important;max-height:none!important;user-select:none;touch-action:none}
     .freeze-status{pointer-events:auto;position:fixed;top:var(--space-4);left:50%;transform:translateX(-50%);display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2);padding:var(--space-2);border:1px solid var(--accent);border-radius:var(--radius-md);background:var(--panel2);max-width:calc(100vw - var(--space-3)*2);box-shadow:0 4px 24px #0005}.freeze-status[hidden]{display:none}
+    .capture-prompt{pointer-events:auto;position:fixed;top:72px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:var(--space-2);max-width:calc(100vw - 24px);padding:var(--space-2) var(--space-3);background:var(--panel2);border:1px solid var(--accent);border-radius:var(--radius-md);box-shadow:0 4px 24px #0005}.capture-prompt[hidden]{display:none}
+    .notifications{position:fixed;right:var(--space-4);bottom:var(--space-4);z-index:3;display:flex;flex-direction:column;gap:var(--space-2);width:360px;max-width:calc(100vw - var(--space-4)*2);pointer-events:none}.notification{pointer-events:auto;display:flex;gap:var(--space-2);padding:var(--space-3);border:1px solid var(--edge);border-radius:var(--radius-md);background:var(--panel);color:var(--ink);box-shadow:0 4px 24px #0005;overflow-wrap:anywhere}.notification div{flex:1;min-width:0}.notification p{margin:0}.notification p+p{margin-top:var(--space-1);color:var(--ink-dim)}.notification button{align-self:start;flex:none}
+    @media(max-width:600px){.selection-tools{bottom:72px}.launcher{font-size:12px}}
   </style><div class="outline"><span class="label"></span></div><div class="selections"></div><div class="pins"></div>
   <div class="freeze-status" hidden role="status"><span data-freeze-status></span><button data-resume>Resume · Ctrl+Shift+F</button></div>
+  <div class="capture-prompt" hidden role="status"><span data-capture-instruction></span><button data-cancel-capture>Cancel · Esc</button></div>
   <div class="selection-tools" hidden><span data-selection-count></span><button data-write>Write note</button><button data-clear>Clear</button></div>
-  <div class="dock" hidden><div class="head"><b tabindex="0" title="Drag to move; arrow keys move the note window"></b><a class="review-link" data-panel-review target="lcr-review" rel="noopener">Review ↗</a><button type="button" data-minimize aria-label="Minimize note panel" aria-expanded="true">−</button><button type="button" data-close aria-label="Close note panel">×</button></div><div class="content"></div><button type="button" class="resize" data-resize aria-label="Resize note panel" title="Drag to resize; arrow keys resize; Shift moves farther"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 13 13 3M8 13l5-5M12 13l1-1"/></svg></button></div>
-  <button class="launcher" data-launcher aria-label="Selection mode" aria-pressed="true" aria-expanded="false"><span>lcr</span><span class="mode-state" aria-hidden="true">ON</span></button>
-  <div class="bar" hidden><span class="brand">lcr · UI</span><button data-mode="browse">Browse</button><button data-mode="element" aria-pressed="true" title="Hover for dimensions; click an element to inspect and comment; Alt + wheel picks parents; Shift-click selects multiple; drag selects an area">Element</button><button data-mode="block" title="Click a containing layout block; Shift-click to select multiple; drag to select an area">Block</button><button data-multiple aria-pressed="false" title="Collect elements for one note, then choose Write note">Multiple</button><button data-mode="area">Area</button><button data-mode="point">Point</button><button data-notes>Notes · 0</button><a class="review-link" data-review target="lcr-review" rel="noopener">Review ↗</a></div>`;
-  (document.body || document.documentElement).append(host);
+  <div class="dock" hidden><div class="head"><b tabindex="0" title="Drag to move; arrow keys move the note window"></b><select data-triage aria-label="Note triage" hidden></select><a class="review-link" data-panel-review target="lcr-review" rel="noopener" aria-label="Open full review" title="Open full review"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 3h6v6M10 14 21 3M21 14v7H3V3h7"/></svg></a><button type="button" data-minimize aria-label="Minimize note panel" title="Minimize note panel" aria-expanded="true">−</button><button type="button" data-close aria-label="Close note panel" title="Close note panel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg></button></div><div class="content"></div><button type="button" class="resize" data-resize="se" aria-label="Resize note panel" title="Drag to resize; arrow keys resize; Shift moves farther"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 13 13 3M8 13l5-5M12 13l1-1"/></svg></button>${(["n", "e", "s", "w"] as const).map((edge, i) => `<button type="button" class="resize resize-edge" data-resize="${edge}" aria-label="Resize note panel from ${["top", "right", "bottom", "left"][i]}" title="Drag to resize; arrow keys resize; Shift moves farther"></button>`).join("")}</div>
+  <div class="launcher" role="group" aria-label="Page review mode"><button data-browse aria-pressed="false" title="Use page controls normally">Browse</button><button data-annotate aria-pressed="true" title="Select page content to capture for a note; hold Alt to browse temporarily">Annotate</button><button data-launcher aria-label="Capture targeting: Element" aria-expanded="false" aria-controls="capture-tools" title="Choose capture target; drag to move"><span class="mode-state">Element</span><span aria-hidden="true"> ▾</span></button></div>
+  <div class="bar" id="capture-tools" role="group" aria-label="Capture targeting" hidden><button data-mode="element" aria-pressed="true" title="Hover for dimensions; Alt + wheel picks parents; Shift-click selects multiple; drag selects an area">Element <small>One element</small></button><button data-mode="block" aria-pressed="false" title="Select the containing layout section">Block <small>Containing section</small></button><button data-multiple aria-pressed="false" title="Collect elements for one note, then choose Write note">Multiple <small>Several elements, one note</small></button><button data-mode="area" aria-pressed="false" title="Drag a rectangle to capture an area">Area <small>Drag a rectangle</small></button><button data-mode="point" aria-pressed="false" title="Click a point to capture its surroundings">Point <small>Click a location</small></button><button data-freeze title="Freeze the current view · Ctrl+Shift+F">Freeze view</button><button data-notes>Notes · 0 ↗</button></div><section class="notifications" aria-label="Notifications"></section>`;
+  // A transformed body must not become the containing block of the overlay.
+  document.documentElement.append(host);
+  const redactButton = document.createElement("button");
+  redactButton.dataset.mode = "redact";
+  redactButton.setAttribute("aria-pressed", "false");
+  redactButton.textContent = "Redact · draw privacy regions";
+  redactButton.title =
+    "Mask pixels before capture or freeze. Not an editable drawing.";
+  root
+    .querySelector(".bar")!
+    .insertBefore(redactButton, root.querySelector("[data-freeze]"));
+  const privacyLayer = document.createElement("div");
+  privacyLayer.className = "privacy-regions";
+  const privacyControls = document.createElement("section");
+  privacyControls.setAttribute("aria-label", "Pre-capture privacy");
+  privacyControls.style.cssText =
+    "position:fixed;bottom:16px;left:16px;max-width:360px;padding:12px;background:var(--panel2);color:var(--ink);border:1px solid var(--accent);border-radius:8px;pointer-events:auto";
+  root.append(privacyLayer, privacyControls);
+  function renderPrivacy() {
+    privacyLayer.replaceChildren();
+    privacyControls.replaceChildren();
+    privacyControls.hidden = mode !== "redact" && !redactions.length;
+    redactButton.disabled = !!frozen || freezing || busy;
+    const description = document.createElement("p");
+    description.textContent = frozen
+      ? "Frozen evidence is already saved. Resume and select masks before a new freeze; saved evidence is not retroactively sanitized."
+      : "Drag rectangles in Redact mode, then choose Area or Element to capture. Black pixels are permanently removed before saving. DOM/text/style/diagnostic and full-page context are omitted. Earlier evidence is unchanged.";
+    privacyControls.append(description);
+    redactions.forEach((region, index) => {
+      const mask = document.createElement("div");
+      mask.style.cssText = `position:fixed;left:${region.x}px;top:${region.y}px;width:${region.width}px;height:${region.height}px;background:#000;border:1px solid #fff;box-sizing:border-box;pointer-events:none`;
+      privacyLayer.append(mask);
+      const remove = document.createElement("button");
+      remove.textContent = `Remove region ${index + 1}`;
+      remove.disabled = !!frozen || freezing || busy;
+      remove.onclick = () => {
+        redactions.splice(index, 1);
+        if (!redactions.length) redactionView = "";
+        renderPrivacy();
+      };
+      privacyControls.append(remove);
+    });
+    if (mode === "redact") {
+      const done = document.createElement("button");
+      done.textContent = "Done · select capture area";
+      done.onclick = () => setMode("area");
+      privacyControls.append(done);
+    }
+  }
+  renderPrivacy();
   const $ = (s: string) => root.querySelector(s) as HTMLElement;
   const dock = $(".dock"),
     content = $(".content"),
     outline = $(".outline");
-  const launcher = $("[data-launcher]"),
+  const launcher = $(".launcher"),
+    targeting = $("[data-launcher]"),
     bar = $(".bar");
   const positionKey = "lcr:launcher:" + config.reviewUrl;
   let launcherPosition = { x: 18, y: innerHeight - 62 };
@@ -209,15 +310,26 @@ export function installPageReview(config: {
       launcherPosition = saved;
   } catch {}
   function positionLauncher() {
-    const size = launcher.offsetWidth;
+    const width = launcher.offsetWidth,
+      height = launcher.offsetHeight;
     launcherPosition.x = Math.max(
       12,
-      Math.min(innerWidth - size - 12, launcherPosition.x),
+      Math.min(innerWidth - width - 12, launcherPosition.x),
     );
-    launcherPosition.y = Math.max(
-      12,
-      Math.min(innerHeight - size - 12, launcherPosition.y),
-    );
+    launcherPosition.y =
+      innerWidth <= 600 && (!dock.hidden || selected.length > 0)
+        ? innerHeight - height - 12
+        : Math.max(12, Math.min(innerHeight - height - 12, launcherPosition.y));
+    if (innerWidth > 600 && selected.length) {
+      const tools = $(".selection-tools").getBoundingClientRect();
+      if (
+        launcherPosition.x < tools.right &&
+        launcherPosition.x + width > tools.left &&
+        launcherPosition.y < tools.bottom &&
+        launcherPosition.y + height > tools.top
+      )
+        launcherPosition.y = Math.max(12, tools.top - height - 8);
+    }
     launcher.style.left = launcherPosition.x + "px";
     launcher.style.top = launcherPosition.y + "px";
     launcher.style.bottom = "auto";
@@ -232,12 +344,14 @@ export function installPageReview(config: {
         12,
         Math.min(
           innerHeight - bar.offsetHeight - 12,
-          above >= 12 ? above : launcherPosition.y + size + 8,
+          above >= 12 ? above : launcherPosition.y + height + 8,
         ),
       ) + "px";
   }
   function positionDock() {
-    if (annotationOpen) {
+    const fullscreen = annotationOpen || imagePreviewOpen;
+    dock.classList.toggle("fullscreen", fullscreen);
+    if (fullscreen) {
       dock.style.left = "0";
       dock.style.right = "auto";
       dock.style.top = "0";
@@ -247,30 +361,62 @@ export function installPageReview(config: {
     }
     const width = Math.max(
       1,
-      Math.min(dockSize?.width ?? 560, innerWidth - 24),
+      Math.min(dockSize?.width ?? 440, innerWidth - 24),
     );
-    const expandedHeight = Math.max(
+    const headHeight = $(".head").offsetHeight || 50;
+    // Content grows downward; only explicit resizing or viewport changes move the anchor.
+    const placementHeight = Math.max(
       1,
-      Math.min(dockSize?.height ?? innerHeight - 96, innerHeight - 24),
+      Math.min(
+        dockSize?.height ?? 540,
+        innerHeight - (innerWidth <= 600 ? 80 : 24),
+      ),
     );
-    const height = minimized ? $(".head").offsetHeight || 50 : expandedHeight;
+    const expandedHeight = Math.max(frameHeight + headHeight, placementHeight);
     dockPosition.x = Math.max(
       12,
       Math.min(innerWidth - width - 12, dockPosition.x),
     );
     dockPosition.y = Math.max(
       12,
-      Math.min(innerHeight - height - 12, dockPosition.y),
+      Math.min(
+        innerHeight -
+          (minimized ? headHeight : placementHeight) -
+          (innerWidth <= 600 ? 68 : 12),
+        dockPosition.y,
+      ),
     );
     dock.style.left = dockPosition.x + "px";
     dock.style.right = "auto";
     dock.style.top = dockPosition.y + "px";
     dock.style.width = width + "px";
     dock.style.height = minimized ? "auto" : expandedHeight + "px";
+    positionLauncher();
   }
-  function resizeDock(width: number, height: number) {
-    const maxWidth = Math.max(1, innerWidth - dockPosition.x - 12),
-      maxHeight = Math.max(1, innerHeight - dockPosition.y - 12);
+  function resizeDock(
+    width: number,
+    height: number,
+    edge = "se",
+    bounds = {
+      ...dockPosition,
+      width: dock.offsetWidth,
+      height: dock.offsetHeight,
+    },
+  ) {
+    const west = edge.includes("w"),
+      north = edge.includes("n");
+    const right = bounds.x + bounds.width,
+      bottom = bounds.y + bounds.height;
+    const maxWidth = Math.max(
+        1,
+        west ? right - 12 : innerWidth - bounds.x - 12,
+      ),
+      maxHeight = Math.max(
+        1,
+        north
+          ? bottom - 12
+          : innerHeight - bounds.y - (innerWidth <= 600 ? 68 : 12),
+      );
     const css = getComputedStyle(host);
     dockSize = {
       width: Math.max(
@@ -281,6 +427,10 @@ export function installPageReview(config: {
         Math.min(parseFloat(css.getPropertyValue("--row")) * 10, maxHeight),
         Math.min(height, maxHeight),
       ),
+    };
+    dockPosition = {
+      x: west ? right - dockSize.width : bounds.x,
+      y: north ? bottom - dockSize.height : bounds.y,
     };
     positionDock();
   }
@@ -307,16 +457,71 @@ export function installPageReview(config: {
       reviewOrigin,
     );
   }
+  function dismissNotification(key: string) {
+    const item = notifications.get(key);
+    if (!item) return;
+    clearTimeout(item.timer);
+    item.node.remove();
+    notifications.delete(key);
+  }
+  function notify(message: Record<string, unknown>) {
+    if (
+      (typeof message.id !== "string" && typeof message.id !== "number") ||
+      typeof message.title !== "string" ||
+      !message.title
+    )
+      return;
+    const token = activeToken;
+    const source = frame?.contentWindow;
+    const key = JSON.stringify([token, message.id]);
+    dismissNotification(key);
+    const node = document.createElement("div");
+    node.className = "notification";
+    node.setAttribute("role", message.kind === "error" ? "alert" : "status");
+    const text = document.createElement("div");
+    const title = document.createElement("p");
+    title.textContent = message.title;
+    text.append(title);
+    if (typeof message.description === "string" && message.description) {
+      const description = document.createElement("p");
+      description.textContent = message.description;
+      text.append(description);
+    }
+    const dismiss = (automatic: boolean) => {
+      dismissNotification(key);
+      if (token === activeToken && source === frame?.contentWindow)
+        tellFrame("notification-dismiss", { id: message.id, automatic });
+    };
+    const button = document.createElement("button");
+    button.type = "button";
+    button.setAttribute("aria-label", "Dismiss notification");
+    button.textContent = "×";
+    button.onclick = () => dismiss(false);
+    node.append(text, button);
+    $(".notifications").append(node);
+    const duration =
+      typeof message.duration === "number" &&
+      Number.isFinite(message.duration) &&
+      message.duration > 0
+        ? message.duration
+        : 6000;
+    notifications.set(key, {
+      node,
+      ...(message.duration === Infinity
+        ? {}
+        : { timer: window.setTimeout(() => dismiss(true), duration) }),
+    });
+  }
   function hideTools() {
     expanded = false;
     bar.hidden = true;
-    launcher.setAttribute("aria-expanded", "false");
+    targeting.setAttribute("aria-expanded", "false");
   }
   function expand(value: boolean) {
     if (value === expanded) return;
     expanded = value;
     bar.hidden = !value;
-    launcher.setAttribute("aria-expanded", String(value));
+    targeting.setAttribute("aria-expanded", String(value));
     positionLauncher();
   }
   function rpc(action: string, payload: any = {}): Promise<any> {
@@ -348,16 +553,34 @@ export function installPageReview(config: {
     node.textContent = e instanceof Error ? e.message : String(e);
   }
   function close(discard = false) {
-    if (
-      !discard &&
-      frameDirty &&
-      !confirm("Discard the note changes you are writing?")
-    )
+    if (!discard && frameDirty) {
+      if (!content.querySelector("[data-discard-prompt]")) {
+        const prompt = document.createElement("div");
+        prompt.className = "error";
+        prompt.setAttribute("data-discard-prompt", "");
+        const label = document.createElement("span");
+        label.textContent = "Discard the open note changes? ";
+        const keep = document.createElement("button");
+        keep.textContent = "Keep editing";
+        keep.onclick = () => prompt.remove();
+        const discardButton = document.createElement("button");
+        discardButton.textContent = "Discard note";
+        discardButton.onclick = () => close(true);
+        prompt.append(label, keep, discardButton);
+        content.prepend(prompt);
+      }
       return false;
+    }
+    content.querySelector("[data-discard-prompt]")?.remove();
     if (frameKind === "draft" && activeToken)
       void rpc("discard", { draftId: activeToken }).catch(() => {});
     panelGeneration++;
+    addingCapture = null;
+    $(".capture-prompt").hidden = true;
+    $("[data-write]").textContent = "Write note";
     frame = null;
+    frameHeight = 0;
+    host.scrollTop = 0;
     activeToken = "";
     frameKind = "";
     pendingWeb = undefined;
@@ -370,7 +593,7 @@ export function installPageReview(config: {
     pendingReply = false;
     resizePress = null;
     annotationOpen = false;
-    dock.classList.remove("annotating");
+    imagePreviewOpen = false;
     dock.hidden = true;
     content.textContent = "";
     minimize(false);
@@ -398,14 +621,7 @@ export function installPageReview(config: {
     start = null;
     hovering = null;
     outline.style.display = "none";
-    launcher.setAttribute("aria-pressed", String(mode !== "browse"));
-    $(".mode-state").textContent = mode === "browse" ? "OFF" : "ON";
-    launcher.title =
-      "Selection " +
-      (mode === "browse"
-        ? "off — use the page normally"
-        : "on — " + mode + " targeting") +
-      ". Click to toggle; hold for tools; drag to move. Hold Alt to use the page temporarily. Ctrl+Shift+F freezes a hovered view for annotation.";
+    updateLauncher();
     root
       .querySelectorAll("[data-mode]")
       .forEach((b) =>
@@ -415,20 +631,93 @@ export function installPageReview(config: {
         ),
       );
     pins();
+    renderPrivacy();
+  }
+  function updateLauncher() {
+    const targetMode = mode === "browse" ? selectionMode : mode;
+    const label = multiple
+      ? "Multiple"
+      : targetMode[0].toUpperCase() + targetMode.slice(1);
+    targeting.setAttribute("aria-label", "Capture targeting: " + label);
+    $(".mode-state").textContent = label;
+    const browsing =
+      mode === "browse" || (temporaryBrowse && !frozen && !freezing);
+    $("[data-browse]").setAttribute("aria-pressed", String(browsing));
+    $("[data-annotate]").setAttribute("aria-pressed", String(!browsing));
+    $("[data-capture-instruction]").textContent =
+      mode === "browse"
+        ? "Choose Annotate to add a capture."
+        : multiple
+          ? "Select elements, then choose Add capture."
+          : mode === "area"
+            ? "Drag an area to add a capture."
+            : mode === "point"
+              ? "Click a point to add a capture."
+              : "Click " +
+                (mode === "block" ? "a block" : "an element") +
+                " or drag an area to add a capture.";
+    positionLauncher();
+  }
+  function finishAddCapture() {
+    if (!addingCapture) return;
+    const previous = addingCapture;
+    addingCapture = null;
+    $(".capture-prompt").hidden = true;
+    $("[data-write]").textContent = "Write note";
+    if (mode !== previous.mode) setMode(previous.mode);
+    else {
+      clearSelections();
+      hideTools();
+      start = null;
+      hovering = null;
+      outline.style.display = "none";
+    }
+    multiple = previous.multiple;
+    $("[data-multiple]").setAttribute("aria-pressed", String(multiple));
+    updateLauncher();
+    minimize(false);
+    frame?.focus({ preventScroll: true });
+  }
+  function addCapture() {
+    if (
+      !frame ||
+      !activeToken ||
+      addingCapture ||
+      busy ||
+      freezing ||
+      frameSaving ||
+      frameEditingOriginal ||
+      annotationOpen ||
+      imagePreviewOpen
+    )
+      return;
+    addingCapture = { mode, multiple };
+    if (mode === "browse") setMode(selectionMode);
+    else clearSelections();
+    hideTools();
+    minimize(true);
+    $(".capture-prompt").hidden = false;
+    ($("[data-cancel-capture]") as HTMLButtonElement).disabled = false;
+    $("[data-write]").textContent = "Add capture";
+    updateLauncher();
+    $("[data-cancel-capture]").focus({ preventScroll: true });
   }
   function freezeControls() {
     $(".freeze-status").hidden = !frozen && !freezing;
     $("[data-freeze-status]").textContent = freezing
       ? "Freezing view…"
-      : "Frozen view · drag an area to comment";
+      : "Frozen view · already saved. Resume to set privacy masks before a new freeze.";
     ($("[data-resume]") as HTMLButtonElement).disabled = freezing;
+    ($("[data-freeze]") as HTMLButtonElement).disabled = freezing;
+    $("[data-freeze]").textContent = frozen ? "Resume page" : "Freeze view";
     root
       .querySelectorAll<HTMLButtonElement>(
-        '[data-mode="element"],[data-mode="block"],[data-multiple]',
+        '[data-mode="element"],[data-mode="block"],[data-mode="redact"],[data-multiple]',
       )
       .forEach((button) => {
         button.disabled = !!frozen || freezing;
       });
+    renderPrivacy();
   }
   function resume(next = frozen?.mode) {
     if (!frozen) return;
@@ -441,7 +730,8 @@ export function installPageReview(config: {
     void rpc("resume", { id: previous.id }).catch(() => {});
   }
   async function toggleFreeze() {
-    if (busy || freezing || frameSaving || annotationOpen) return;
+    if (busy || freezing || frameSaving || annotationOpen || imagePreviewOpen)
+      return;
     if (frozen) {
       resume();
       return;
@@ -456,7 +746,7 @@ export function installPageReview(config: {
     tellFrame("capturing", { busy: true });
     let id = "";
     try {
-      const settings = await rpc("context-settings", {});
+      const settings = await currentContextSettings();
       // Snapshot DOM hints and optional HTML before inserting the frozen image.
       const capture = captureContext(
         areaCapture({
@@ -905,28 +1195,569 @@ export function installPageReview(config: {
     aiContext: boolean;
     contextHtml: boolean;
     contextFullPage: boolean;
+    contextDiagnostics: boolean;
   };
+  type ContextPart = { data: string; truncated: boolean };
+  let contextSettings: CaptureSettings | undefined,
+    contextRevision = 0,
+    interactionClipped = false,
+    lastScrollAt = 0;
+  const interactionEvents: { at: string; type: string; selector?: string }[] =
+    [];
+  function configureContext(settings: CaptureSettings) {
+    contextRevision++;
+    contextSettings = {
+      aiContext: settings?.aiContext === true,
+      contextHtml: settings?.contextHtml === true,
+      contextFullPage: settings?.contextFullPage === true,
+      contextDiagnostics: settings?.contextDiagnostics === true,
+    };
+    if (!contextSettings.aiContext || !contextSettings.contextDiagnostics) {
+      interactionEvents.length = 0;
+      interactionClipped = false;
+      lastScrollAt = 0;
+    }
+  }
+  async function currentContextSettings() {
+    const revision = contextRevision;
+    const settings = await rpc("context-settings", {});
+    if (contextRevision === revision) configureContext(settings);
+    return contextSettings!;
+  }
+  const contextExclusions =
+    "No form values, editable content, keystrokes, props/state, storage, cookies, URL data, embedded documents or overlay actions. Identity uses existing capture selectors and explicit semantic labels only.";
+  function contextElement(el: Element) {
+    return (
+      el !== host &&
+      !host.contains(el) &&
+      el.getRootNode() !== root &&
+      !el.closest(
+        "script,style,noscript,template,iframe,object,embed,[hidden],[inert],[aria-hidden=true]",
+      ) &&
+      el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })
+    );
+  }
+  function contextSelector(el: Element): string {
+    // Bound the sibling enumeration performed by the shared selector builder.
+    for (
+      let node: Element | null = el, depth = 0;
+      node && depth < 12;
+      node = node.parentElement, depth++
+    ) {
+      if (
+        (node.parentElement?.children.length ?? 0) > 2500 ||
+        node.id.length > 256 ||
+        (node.getAttribute("data-testid")?.length ?? 0) > 256 ||
+        (node.getAttribute("class")?.length ?? 0) > 1024 ||
+        node.classList.length > 40
+      )
+        return "";
+    }
+    const value = selector(el);
+    return value.length <= 1024 ? value : "";
+  }
+  function contextIdentity(el: Element | null) {
+    if (!el || !contextElement(el)) return undefined;
+    const value = contextSelector(el);
+    return value ? { selector: value, tag: el.localName } : undefined;
+  }
+  function pruneInteractions(now: number) {
+    while (
+      interactionEvents.length &&
+      Date.parse(interactionEvents[0]!.at) < now - 60000
+    )
+      interactionEvents.shift();
+  }
+  function recordInteraction(event: Event) {
+    if (
+      !contextSettings?.aiContext ||
+      !contextSettings.contextDiagnostics ||
+      !event.isTrusted ||
+      event.composedPath().includes(host) ||
+      busy ||
+      freezing ||
+      frozen ||
+      suspended
+    )
+      return;
+    const navigation = ["pageshow", "popstate", "hashchange"].includes(
+      event.type,
+    );
+    if (
+      !navigation &&
+      mode !== "browse" &&
+      !(event instanceof MouseEvent && event.altKey)
+    )
+      return;
+    const now = Date.now();
+    if (navigation) {
+      interactionEvents.length = 0;
+      interactionClipped = false;
+    }
+    if (event.type === "scroll") {
+      if (now - lastScrollAt < 250) return;
+      lastScrollAt = now;
+    }
+    const el = event.target instanceof Element ? event.target : null;
+    const identity = el ? contextIdentity(el) : undefined;
+    if (el && !identity) return;
+    pruneInteractions(now);
+    if (interactionEvents.length === 50) {
+      interactionEvents.shift();
+      interactionClipped = true;
+    }
+    interactionEvents.push({
+      at: new Date(now).toISOString(),
+      type: event.type,
+      ...(identity ? { selector: identity.selector } : {}),
+    });
+  }
+  function layoutContext(
+    capture: { rect: CaptureRect },
+    elements: Element[],
+  ): ContextPart {
+    const limits = {
+      nodes: 40,
+      targets: 20,
+      ancestorsPerTarget: 6,
+      siblingsPerTarget: 4,
+      scannedElements: 500,
+      bytes: 128 * 1024,
+    };
+    const nodes: {
+      id: string;
+      selector: string;
+      relation: "target" | "ancestor" | "sibling";
+      targets: string[];
+      tag: string;
+      role?: string;
+      name?: string;
+      rect: CaptureRect;
+      styles: Record<string, string>;
+      states: Record<string, boolean | string>;
+    }[] = [];
+    const byElement = new Map<Element, (typeof nodes)[number]>();
+    const targets: Element[] = [];
+    let truncated = false,
+      excluded = 0;
+    const properties = [
+      "display",
+      "position",
+      "box-sizing",
+      "width",
+      "height",
+      "min-width",
+      "max-width",
+      "min-height",
+      "max-height",
+      "top",
+      "right",
+      "bottom",
+      "left",
+      "margin",
+      "padding",
+      "border-width",
+      "border-style",
+      "border-color",
+      "border-radius",
+      "color",
+      "background-color",
+      "font-family",
+      "font-size",
+      "font-weight",
+      "line-height",
+      "white-space",
+      "text-align",
+      "flex-direction",
+      "flex-wrap",
+      "flex-grow",
+      "flex-shrink",
+      "flex-basis",
+      "align-items",
+      "align-content",
+      "align-self",
+      "justify-content",
+      "justify-items",
+      "justify-self",
+      "gap",
+      "row-gap",
+      "column-gap",
+      "order",
+      "grid-template-columns",
+      "grid-template-rows",
+      "grid-auto-flow",
+      "grid-auto-columns",
+      "grid-auto-rows",
+      "grid-column",
+      "grid-row",
+      "overflow-x",
+      "overflow-y",
+      "z-index",
+      "isolation",
+      "opacity",
+      "transform",
+      "transform-origin",
+      "contain",
+      "container-type",
+      "visibility",
+      "pointer-events",
+    ];
+    function add(
+      el: Element,
+      relation: (typeof nodes)[number]["relation"],
+      target: string,
+    ) {
+      if (!contextElement(el)) {
+        excluded++;
+        return;
+      }
+      const previous = byElement.get(el);
+      if (previous) {
+        if (!previous.targets.includes(target)) previous.targets.push(target);
+        if (relation === "target") previous.relation = relation;
+        return;
+      }
+      if (nodes.length === limits.nodes) {
+        truncated = true;
+        return;
+      }
+      const key = contextSelector(el);
+      if (!key) {
+        excluded++;
+        truncated = true;
+        return;
+      }
+      const css = getComputedStyle(el),
+        styles: Record<string, string> = {};
+      const variables = new Set<string>();
+      for (const name of properties) {
+        const value = css.getPropertyValue(name);
+        if (value.length > 256) {
+          truncated = true;
+          continue;
+        }
+        if (value && !/url\s*\(|https?:|data:|content\s*:/i.test(value))
+          styles[name] = value;
+        const inline = (el as HTMLElement).style?.getPropertyValue(name) ?? "";
+        if (inline.length > 512) {
+          truncated = true;
+          continue;
+        }
+        for (const match of inline.matchAll(/var\(\s*(--[\w-]+)/g)) {
+          if (variables.size === 12) {
+            truncated = true;
+            break;
+          }
+          variables.add(match[1]!);
+        }
+      }
+      for (const name of variables) {
+        const value = css.getPropertyValue(name).trim();
+        // Only resolved numeric/color tokens, never arbitrary custom-property strings.
+        if (
+          value.length <= 128 &&
+          /^(?:[-+.\d%\s,/#()]|px|rem|em|vh|vw|vmin|vmax|ch|ex|deg|rad|fr|auto|none|rgb|rgba|hsl|hsla|[a-fA-F])+$/i.test(
+            value,
+          )
+        )
+          styles[name] = value;
+        else excluded++;
+      }
+      const states: Record<string, boolean | string> = {};
+      for (const name of [
+        "expanded",
+        "pressed",
+        "selected",
+        "checked",
+        "disabled",
+        "modal",
+      ]) {
+        const value = el.getAttribute("aria-" + name);
+        if (value === "true" || value === "false" || value === "mixed")
+          states[name] = value;
+      }
+      if (el.localName === "dialog" || el.localName === "details")
+        states.open = el.hasAttribute("open");
+      const editable = el.closest(
+        "input,textarea,select,option,[contenteditable]:not([contenteditable=false])",
+      );
+      const label = editable
+        ? null
+        : el.getAttribute("aria-label") ||
+          el.getAttribute("alt") ||
+          el.getAttribute("title");
+      const role = el.getAttribute("role");
+      if ((label?.length ?? 0) > 160) truncated = true;
+      const bounds = el.getBoundingClientRect();
+      const node: (typeof nodes)[number] = {
+        id: `n${nodes.length + 1}`,
+        selector: key,
+        relation,
+        targets: [target],
+        tag: el.localName,
+        ...(role && /^[a-z -]{1,80}$/.test(role) ? { role } : {}),
+        ...(label ? { name: label.slice(0, 160) } : {}),
+        rect: {
+          x: bounds.x,
+          y: bounds.y,
+          width: bounds.width,
+          height: bounds.height,
+        },
+        styles,
+        states,
+      };
+      byElement.set(el, node);
+      nodes.push(node);
+    }
+    if (elements.length) {
+      for (let i = 0; i < Math.min(elements.length, limits.targets); i++) {
+        const el = elements[i]!;
+        if (contextElement(el)) targets.push(el);
+        else excluded++;
+      }
+      if (elements.length > limits.targets) truncated = true;
+    } else {
+      const walker = document.createTreeWalker(
+        document.body || document.documentElement,
+        NodeFilter.SHOW_ELEMENT,
+      );
+      let visited = 0,
+        node: Node | null;
+      while ((node = walker.nextNode())) {
+        if (
+          ++visited > limits.scannedElements ||
+          targets.length === limits.targets
+        ) {
+          truncated = true;
+          break;
+        }
+        const el = node as Element,
+          bounds = el.getBoundingClientRect(),
+          r = capture.rect;
+        if (
+          bounds.width > 0 &&
+          bounds.height > 0 &&
+          bounds.right > r.x &&
+          bounds.bottom > r.y &&
+          bounds.x < r.x + r.width &&
+          bounds.y < r.y + r.height &&
+          contextElement(el)
+        )
+          targets.push(el);
+      }
+    }
+    // Add targets before their neighbors so a large neighborhood cannot displace them.
+    for (const el of targets) {
+      const key = contextSelector(el);
+      if (key) add(el, "target", key);
+      else {
+        truncated = true;
+        excluded++;
+      }
+    }
+    for (const el of targets) {
+      const key = contextSelector(el);
+      if (!key) continue;
+      let ancestor = el.parentElement;
+      for (
+        let depth = 0;
+        ancestor && depth < limits.ancestorsPerTarget;
+        depth++, ancestor = ancestor.parentElement
+      )
+        add(ancestor, "ancestor", key);
+      if (ancestor) truncated = true;
+      let before = el.previousElementSibling,
+        after = el.nextElementSibling;
+      for (let i = 0; i < limits.siblingsPerTarget / 2; i++) {
+        if (before) {
+          add(before, "sibling", key);
+          before = before.previousElementSibling;
+        }
+        if (after) {
+          add(after, "sibling", key);
+          after = after.nextElementSibling;
+        }
+      }
+      if (before || after) truncated = true;
+    }
+    const payload = {
+      version: 1,
+      coordinateSpace: "capture viewport CSS pixels",
+      nodes,
+      limits,
+      exclusions:
+        contextExclusions +
+        " No text-content names or arbitrary CSS/attributes; custom properties cover only inline var() references with numeric/color values. Area targets use bounded DOM-order intersection, not exhaustive hit testing.",
+      excludedNodes: excluded,
+    };
+    const encoder = new TextEncoder();
+    let data = JSON.stringify(payload);
+    while (encoder.encode(data).length > limits.bytes && nodes.length) {
+      nodes.pop();
+      truncated = true;
+      data = JSON.stringify(payload);
+    }
+    return { data, truncated };
+  }
+  function environmentContext(): ContextPart {
+    let truncated = false,
+      scanned = 0,
+      hovered: Element | null = null;
+    const states: {
+      selector: string;
+      tag: string;
+      dialog: boolean;
+      expanded: boolean;
+    }[] = [];
+    const walker = document.createTreeWalker(
+      document.body || document.documentElement,
+      NodeFilter.SHOW_ELEMENT,
+    );
+    let node: Node | null;
+    while ((node = walker.nextNode())) {
+      if (++scanned > 500) {
+        truncated = true;
+        break;
+      }
+      const el = node as Element;
+      if (!contextElement(el)) continue;
+      if (el.matches(":hover")) hovered = el;
+      const dialog = el.matches(
+        "dialog[open],[role=dialog],[role=alertdialog]",
+      );
+      const expanded = el.getAttribute("aria-expanded") === "true";
+      if (!dialog && !expanded) continue;
+      if (states.length === 20) {
+        truncated = true;
+        continue;
+      }
+      const identity = contextIdentity(el);
+      if (identity) states.push({ ...identity, dialog, expanded });
+      else truncated = true;
+    }
+    const bounded = (value: string, limit = 256) => {
+      if (value.length > limit) truncated = true;
+      return value.slice(0, limit);
+    };
+    const viewport = window.visualViewport;
+    const build = document
+      .querySelector('meta[name="lcr-build-id"]')
+      ?.getAttribute("content");
+    const declaredTheme = document.documentElement.getAttribute("data-theme");
+    const data = JSON.stringify({
+      version: 1,
+      at: new Date().toISOString(),
+      browser: {
+        userAgent: bounded(navigator.userAgent, 512),
+        platform: bounded(navigator.platform),
+      },
+      locale: bounded(navigator.language),
+      timezone: bounded(Intl.DateTimeFormat().resolvedOptions().timeZone),
+      documentLang: bounded(document.documentElement.lang),
+      theme: {
+        colorScheme: bounded(
+          getComputedStyle(document.documentElement).colorScheme,
+        ),
+        declared:
+          declaredTheme && /^[a-zA-Z0-9_-]{1,80}$/.test(declaredTheme)
+            ? declaredTheme
+            : null,
+        classHints: ["light", "dark"].filter((name) =>
+          document.documentElement.classList.contains(name),
+        ),
+      },
+      media: {
+        dark: matchMedia("(prefers-color-scheme: dark)").matches,
+        reducedMotion: matchMedia("(prefers-reduced-motion: reduce)").matches,
+        forcedColors: matchMedia("(forced-colors: active)").matches,
+      },
+      viewport: { width: innerWidth, height: innerHeight, devicePixelRatio },
+      visualViewport: viewport
+        ? {
+            width: viewport.width,
+            height: viewport.height,
+            offsetLeft: viewport.offsetLeft,
+            offsetTop: viewport.offsetTop,
+            scale: viewport.scale,
+          }
+        : null,
+      zoom: {
+        status: "partial",
+        detail:
+          "Visual viewport scale and device pixel ratio only; desktop zoom is not independently available.",
+      },
+      focused: contextIdentity(document.activeElement) ?? null,
+      hovered: contextIdentity(hovered) ?? null,
+      visibleStates: states,
+      appBuild: build
+        ? {
+            status: "captured",
+            source: 'meta[name="lcr-build-id"]',
+            id: bounded(build),
+          }
+        : {
+            status: "unavailable",
+            detail: "No explicit lcr-build-id meta value.",
+          },
+      limits: { scannedElements: 500, visibleStates: 20 },
+      exclusions:
+        contextExclusions +
+        " Focus/hover can be unavailable; hovered identity and visible states cover only the bounded document scan, not embedded/shadow documents.",
+    });
+    return { data, truncated };
+  }
   function captureContext<T extends { rect: CaptureRect; mode: string }>(
     capture: T,
     elements: Element[],
     settings: CaptureSettings,
     scope = "selection",
   ) {
+    if (redactions.length && redactionView !== currentRedactionView())
+      throw new Error(
+        "The page moved or resized after privacy regions were selected. Remove them and select fresh regions before capture or freeze.",
+      );
     const result = {
       ...capture,
+      ...(redactions.length
+        ? { redactions: redactions.map((r) => ({ ...r })) }
+        : {}),
       contextSettings: {
         aiContext: settings.aiContext === true,
         contextHtml: settings.contextHtml === true,
         contextFullPage: settings.contextFullPage === true,
+        contextDiagnostics: settings.contextDiagnostics === true,
       },
       contextHtml: undefined as
         { data: string; truncated: boolean } | undefined,
+      contextLayout: undefined as ContextPart | undefined,
+      contextEnvironment: undefined as ContextPart | undefined,
+      contextInteractions: undefined as ContextPart | undefined,
     };
-    if (
-      !result.contextSettings.aiContext ||
-      !result.contextSettings.contextHtml
-    )
-      return result;
+    configureContext(settings);
+    if (redactions.length) return result;
+    if (!result.contextSettings.aiContext) return result;
+    try {
+      result.contextLayout = layoutContext(capture, elements);
+    } catch {}
+    try {
+      result.contextEnvironment = environmentContext();
+    } catch {}
+    if (result.contextSettings.contextDiagnostics) {
+      pruneInteractions(Date.now());
+      result.contextInteractions = {
+        data: JSON.stringify({
+          version: 1,
+          events: interactionEvents,
+          windowMs: 60000,
+          limit: 50,
+          coverage:
+            "Trusted click/focusin/scroll events in browse mode and Alt-assisted clicks since explicit opt-in; scroll sampled at 250ms. Trusted pageshow/popstate/hashchange reset history. Programmatic trusted focus/scroll may be included. No history before installation, iframe/shadow internals, pushState interception or cross-document persistence.",
+          exclusions: contextExclusions,
+        }),
+        truncated: interactionClipped,
+      };
+    }
+    if (!result.contextSettings.contextHtml) return result;
     try {
       const nodes: { selector: string; rect: CaptureRect; html: string }[] = [];
       const encoder = new TextEncoder();
@@ -1121,8 +1952,13 @@ export function installPageReview(config: {
       [0.1, 0.9],
       [0.9, 0.9],
     ];
-    let node: Node | null;
-    while (selections.length < 100 && (node = walker.nextNode())) {
+    let node: Node | null,
+      visited = 0;
+    while (
+      selections.length < 100 &&
+      visited++ < 2500 &&
+      (node = walker.nextNode())
+    ) {
       const el = node as Element,
         b = el.getBoundingClientRect();
       const x = Math.max(r.x, b.x),
@@ -1174,6 +2010,7 @@ export function installPageReview(config: {
     });
     $(".selection-tools").hidden = !selected.length;
     $("[data-selection-count]").textContent = selected.length + " selected";
+    positionLauncher();
     pins();
   }
   function clearSelections() {
@@ -1219,6 +2056,8 @@ export function installPageReview(config: {
     content.textContent = "";
     activeToken = token;
     frameKind = kind;
+    frameHeight = 0;
+    $("[data-triage]").hidden = true;
     ($("[data-panel-review]") as HTMLAnchorElement).href =
       config.reviewUrl +
       (kind === "note"
@@ -1272,18 +2111,28 @@ export function installPageReview(config: {
       web,
       ...(pendingReply ? { reply: true, draftId: replyDraftId } : {}),
     });
+    updateHeader();
+    void refresh().catch(() => {});
+  }
+  function updateHeader() {
+    if (!frameKind) return;
+    const index = notes.findIndex((note) => note.id === activeToken);
+    const title =
+      frameKind === "draft"
+        ? "New web note"
+        : (frameEditingOriginal ? "Edit web note" : "Web note") +
+          (index >= 0 ? " " + (index + 1) : "");
+    const web =
+      frameKind === "draft" || pendingReply
+        ? draftWeb
+        : index >= 0
+          ? notes[index].web
+          : null;
     const count = web ? 1 + (web.additional?.length || 0) : 0;
     $(".head b").textContent =
-      (pendingReply
-        ? "Follow-up"
-        : frameKind === "draft"
-          ? "New note"
-          : "Note") +
-      " · " +
-      count +
-      " selection" +
-      (count === 1 ? "" : "s");
-    void refresh().catch(() => {});
+      title +
+      (pendingReply ? " · Reply" : "") +
+      (count > 1 ? " · " + count + " captures" : "");
   }
   async function removeSelection(index: number, key: string, draftId?: string) {
     if (!frame || !activeToken) return;
@@ -1338,11 +2187,12 @@ export function installPageReview(config: {
     status.textContent = "Capturing page and selected area…";
     if (!appending) {
       dock.hidden = false;
-      $(".head b").textContent = "New visual note";
+      $(".head b").textContent = "New web note";
       minimize(false);
       content.append(status);
     }
     busy = true;
+    ($("[data-cancel-capture]") as HTMLButtonElement).disabled = true;
     tellFrame("capturing", { busy: true });
     try {
       const capture = {
@@ -1357,7 +2207,7 @@ export function installPageReview(config: {
       };
       capturingSelection = capture;
       pins();
-      const settings = await rpc("context-settings", {});
+      const settings = await currentContextSettings();
       const result = await rpc("capture", {
         capture: frozen
           ? capture
@@ -1402,6 +2252,8 @@ export function installPageReview(config: {
     } finally {
       busy = false;
       if (generation === panelGeneration) {
+        ($("[data-cancel-capture]") as HTMLButtonElement).disabled = false;
+        finishAddCapture();
         capturingSelection = null;
         pins();
         tellFrame("capturing", { busy: false });
@@ -1419,20 +2271,67 @@ export function installPageReview(config: {
       message.token !== activeToken
     )
       return;
-    if (message.action === "dirty") {
+    if (message.action === "notification") {
+      notify(message);
+      return;
+    }
+    if (message.action === "notification-dismiss") {
+      dismissNotification(JSON.stringify([activeToken, message.id]));
+      return;
+    }
+    if (message.action === "header") {
+      const triage = $("[data-triage]") as HTMLSelectElement;
+      if (Array.isArray(message.options)) {
+        triage.replaceChildren();
+        for (const option of message.options) {
+          if (
+            typeof option?.value !== "string" ||
+            typeof option?.label !== "string"
+          )
+            continue;
+          const item = document.createElement("option");
+          item.value = option.value;
+          item.textContent = option.label;
+          triage.append(item);
+        }
+      }
+      triage.hidden = !triage.options.length;
+      triage.value = typeof message.triage === "string" ? message.triage : "";
+      triage.disabled = message.disabled === true;
+    } else if (
+      message.action === "content-size" &&
+      Number.isFinite(message.height) &&
+      message.height >= 0 &&
+      message.height !== frameHeight
+    ) {
+      frameHeight = Math.ceil(message.height);
+      positionDock();
+    } else if (message.action === "dirty") {
       if (typeof message.dirty === "boolean") frameDirty = message.dirty;
       if (typeof message.saving === "boolean") frameSaving = message.saving;
       if (typeof message.editOriginal === "boolean")
         frameEditingOriginal = message.editOriginal;
       if (typeof message.draftId === "string") replyDraftId = message.draftId;
+      updateHeader();
+    } else if (message.action === "evidence-changed") {
+      draftWeb = message.web;
+      pins();
+      updateHeader();
     } else if (
       message.action === "annotation" &&
       typeof message.open === "boolean"
     ) {
       annotationOpen = message.open;
-      dock.classList.toggle("annotating", annotationOpen);
       if (!annotationOpen) pendingWeb = undefined;
       positionDock();
+    } else if (
+      message.action === "image-preview" &&
+      typeof message.open === "boolean"
+    ) {
+      imagePreviewOpen = message.open;
+      positionDock();
+    } else if (message.action === "add-capture") {
+      addCapture();
     } else if (message.action === "freeze") {
       void toggleFreeze();
     } else if (message.action === "ready") {
@@ -1458,7 +2357,7 @@ export function installPageReview(config: {
       pendingWeb = undefined;
       draftWeb = null;
       pins();
-      $(".head b").textContent = "Note";
+      updateHeader();
     } else if (message.action === "close") {
       frameDirty = false;
       close();
@@ -1649,8 +2548,12 @@ export function installPageReview(config: {
     };
     const reopen = () => {
       if (dock.hidden) return;
+      if (addingCapture) {
+        if (!busy && !freezing) finishAddCapture();
+        return;
+      }
       minimize(false);
-      frame?.focus();
+      frame?.focus({ preventScroll: true });
     };
     const draw = (
       capture: any,
@@ -1658,6 +2561,7 @@ export function installPageReview(config: {
       label: string,
       open: () => void,
       draft = false,
+      active = false,
     ) => {
       if (capture.url !== location.href) return;
       const targets = (["element", "block"].includes(capture.mode) &&
@@ -1677,6 +2581,16 @@ export function installPageReview(config: {
               }
             : null);
         if (!r) continue;
+        if (active) {
+          const block = document.createElement("div");
+          block.className = "selected";
+          block.dataset.activeCapture = "";
+          block.style.left = r.x + "px";
+          block.style.top = r.y + "px";
+          block.style.width = r.width + "px";
+          block.style.height = r.height + "px";
+          container.append(block);
+        }
         const point = c.mode === "point";
         add(
           point
@@ -1699,7 +2613,17 @@ export function installPageReview(config: {
     if (!frozen)
       notes.forEach((n, i) =>
         [n.web.before, ...(n.web.additional || [])].forEach((capture: any) =>
-          draw(capture, String(i + 1), n.body, () => showNote(n.id)),
+          draw(
+            capture,
+            String(i + 1),
+            n.body,
+            () => showNote(n.id),
+            false,
+            frameKind === "note" &&
+              activeToken === n.id &&
+              !dock.hidden &&
+              !minimized,
+          ),
         ),
       );
     if (draftWeb)
@@ -1725,16 +2649,41 @@ export function installPageReview(config: {
     if (!n || busy || !close()) return;
     hideTools();
     clearSelections();
+    const place = locate(n.web.before);
+    if (
+      place &&
+      (place.rect.x < 0 ||
+        place.rect.y < 0 ||
+        place.rect.x + place.rect.width > innerWidth ||
+        place.rect.y + place.rect.height > innerHeight)
+    ) {
+      if (place.el)
+        place.el.scrollIntoView({
+          block: "nearest",
+          inline: "nearest",
+          behavior: "instant",
+        });
+      else
+        scrollBy({
+          left: place.rect.x + place.rect.width / 2 - innerWidth / 2,
+          top: place.rect.y + place.rect.height / 2 - innerHeight / 2,
+          behavior: "instant",
+        });
+    }
     dock.hidden = false;
-    $(".head b").textContent = "Visual note " + (notes.indexOf(n) + 1);
+    $(".head b").textContent = "Web note " + (notes.indexOf(n) + 1);
     minimize(false);
     showFrame("note", id);
+    updateHeader();
+    pins();
   }
   async function refresh() {
     const result = await rpc("notes");
     if (disposed) return;
     notes = result.notes;
-    $("[data-notes]").textContent = "Notes · " + notes.length;
+    applyTheme(result.theme);
+    $("[data-notes]").textContent = "Notes · " + notes.length + " ↗";
+    updateHeader();
     pins();
   }
   root.querySelectorAll("[data-mode]").forEach(
@@ -1744,6 +2693,14 @@ export function installPageReview(config: {
         setMode((b as HTMLElement).dataset.mode!);
       }),
   );
+  $("[data-browse]").onclick = () => setMode("browse");
+  $("[data-annotate]").onclick = () => {
+    if (mode === "browse") setMode(selectionMode);
+  };
+  $("[data-freeze]").onclick = () => void toggleFreeze();
+  $("[data-cancel-capture]").onclick = () => {
+    if (!busy && !freezing) finishAddCapture();
+  };
   $("[data-multiple]").onclick = () => {
     hideTools();
     const value = !multiple;
@@ -1751,6 +2708,7 @@ export function installPageReview(config: {
     multiple = value;
     $("[data-multiple]").setAttribute("aria-pressed", String(value));
     hideTools();
+    updateLauncher();
   };
   $("[data-notes]").onclick = () => {
     hideTools();
@@ -1760,7 +2718,7 @@ export function installPageReview(config: {
     if (!busy && !freezing) resume();
   };
   root
-    .querySelectorAll<HTMLAnchorElement>("[data-review],[data-panel-review]")
+    .querySelectorAll<HTMLAnchorElement>("[data-panel-review]")
     .forEach((link) => {
       link.href = config.reviewUrl;
       link.onclick = (e) => {
@@ -1779,10 +2737,20 @@ export function installPageReview(config: {
   $("[data-close]").onclick = () => {
     close(true);
   };
-  $("[data-minimize]").onclick = () => minimize(!minimized);
+  $("[data-minimize]").onclick = () => {
+    if (addingCapture) {
+      if (!busy && !freezing) finishAddCapture();
+    } else minimize(!minimized);
+  };
+  ($("[data-triage]") as HTMLSelectElement).onchange = (event) => {
+    tellFrame("triage", {
+      triage: (event.currentTarget as HTMLSelectElement).value,
+    });
+  };
   const head = $(".head");
   head.onpointerdown = (e) => {
-    if (e.button !== 0 || (e.target as Element).closest("button,a")) return;
+    if (e.button !== 0 || (e.target as Element).closest("button,a,select"))
+      return;
     dockPress = {
       id: e.pointerId,
       x: e.clientX,
@@ -1820,47 +2788,67 @@ export function installPageReview(config: {
     dockPosition.y += delta[e.key][1] * step;
     positionDock();
   };
-  const resize = $("[data-resize]");
-  resize.onpointerdown = (e) => {
-    if (e.button !== 0 || minimized) return;
-    resizePress = {
-      id: e.pointerId,
-      x: e.clientX,
-      y: e.clientY,
-      width: dock.offsetWidth,
-      height: dock.offsetHeight,
-    };
-    resize.setPointerCapture(e.pointerId);
-    e.preventDefault();
-  };
-  resize.onpointermove = (e) => {
-    if (!resizePress || resizePress.id !== e.pointerId) return;
-    resizeDock(
-      resizePress.width + e.clientX - resizePress.x,
-      resizePress.height + e.clientY - resizePress.y,
-    );
-  };
-  resize.onpointerup =
-    resize.onpointercancel =
-    resize.onlostpointercapture =
-      (e) => {
-        if (resizePress?.id === e.pointerId) resizePress = null;
+  for (const resize of root.querySelectorAll<HTMLButtonElement>(
+    "[data-resize]",
+  )) {
+    const edge = resize.dataset.resize!;
+    const dx = edge.includes("w") ? -1 : edge.includes("e") ? 1 : 0;
+    const dy = edge.includes("n") ? -1 : edge.includes("s") ? 1 : 0;
+    resize.onpointerdown = (e) => {
+      if (e.button !== 0 || minimized || annotationOpen || imagePreviewOpen)
+        return;
+      resizePress = {
+        id: e.pointerId,
+        x: e.clientX,
+        y: e.clientY,
+        edge,
+        bounds: {
+          ...dockPosition,
+          width: dock.offsetWidth,
+          height: dock.offsetHeight,
+        },
       };
-  resize.onkeydown = (e) => {
-    const delta: { [key: string]: [number, number] } = {
-      ArrowLeft: [-1, 0],
-      ArrowRight: [1, 0],
-      ArrowUp: [0, -1],
-      ArrowDown: [0, 1],
+      resize.setPointerCapture(e.pointerId);
+      e.preventDefault();
     };
-    if (!delta[e.key]) return;
-    e.preventDefault();
-    const step = e.shiftKey ? 40 : 10;
-    resizeDock(
-      dock.offsetWidth + delta[e.key][0] * step,
-      dock.offsetHeight + delta[e.key][1] * step,
-    );
-  };
+    resize.onpointermove = (e) => {
+      if (
+        !resizePress ||
+        resizePress.id !== e.pointerId ||
+        resizePress.edge !== edge
+      )
+        return;
+      resizeDock(
+        resizePress.bounds.width + (e.clientX - resizePress.x) * dx,
+        resizePress.bounds.height + (e.clientY - resizePress.y) * dy,
+        edge,
+        resizePress.bounds,
+      );
+    };
+    resize.onpointerup =
+      resize.onpointercancel =
+      resize.onlostpointercapture =
+        (e) => {
+          if (resizePress?.id === e.pointerId) resizePress = null;
+        };
+    resize.onkeydown = (e) => {
+      const delta: { [key: string]: [number, number] } = {
+        ArrowLeft: [-1, 0],
+        ArrowRight: [1, 0],
+        ArrowUp: [0, -1],
+        ArrowDown: [0, 1],
+      };
+      if (!delta[e.key] || minimized || annotationOpen || imagePreviewOpen)
+        return;
+      e.preventDefault();
+      const step = e.shiftKey ? 40 : 10;
+      resizeDock(
+        dock.offsetWidth + delta[e.key][0] * step * dx,
+        dock.offsetHeight + delta[e.key][1] * step * dy,
+        edge,
+      );
+    };
+  }
   $("[data-write]").onclick = () => {
     if (selected.length)
       void choose(selected[0], rect(selected[0]), mode, [...selected]);
@@ -1873,7 +2861,7 @@ export function installPageReview(config: {
     )
       hideTools();
   });
-  launcher.onpointerdown = (e) => {
+  targeting.onpointerdown = (e) => {
     if (e.button !== 0 || launcherPress) return;
     suppressLauncherClick = false;
     const press = {
@@ -1882,29 +2870,17 @@ export function installPageReview(config: {
       y: e.clientY,
       origin: { ...launcherPosition },
       moved: false,
-      held: false,
-      timer: setTimeout(() => {
-        if (launcherPress !== press || press.moved) return;
-        press.held = true;
-        expand(true);
-      }, 450),
     };
     launcherPress = press;
-    launcher.setPointerCapture(e.pointerId);
+    targeting.setPointerCapture(e.pointerId);
     e.preventDefault();
   };
-  launcher.onpointermove = (e) => {
-    if (
-      !launcherPress ||
-      e.pointerId !== launcherPress.id ||
-      launcherPress.held
-    )
-      return;
+  targeting.onpointermove = (e) => {
+    if (!launcherPress || e.pointerId !== launcherPress.id) return;
     const dx = e.clientX - launcherPress.x,
       dy = e.clientY - launcherPress.y;
     if (Math.hypot(dx, dy) > 6) {
       launcherPress.moved = true;
-      clearTimeout(launcherPress.timer);
     }
     if (!launcherPress.moved) return;
     launcherPosition = {
@@ -1915,35 +2891,35 @@ export function installPageReview(config: {
   };
   function endLauncher(cancelled = false) {
     if (!launcherPress) return;
-    clearTimeout(launcherPress.timer);
-    suppressLauncherClick =
-      cancelled || launcherPress.moved || launcherPress.held;
+    suppressLauncherClick = cancelled || launcherPress.moved;
     launcherPress = null;
     try {
       sessionStorage.setItem(positionKey, JSON.stringify(launcherPosition));
     } catch {}
   }
-  launcher.onpointerup = (e) => {
+  targeting.onpointerup = (e) => {
     if (e.pointerId === launcherPress?.id) endLauncher();
   };
-  launcher.onpointercancel = launcher.onlostpointercapture = (e) => {
+  targeting.onpointercancel = targeting.onlostpointercapture = (e) => {
     if (e.pointerId === launcherPress?.id) endLauncher(true);
   };
-  launcher.onclick = (e) => {
+  targeting.onclick = (e) => {
     const suppressed = suppressLauncherClick;
     suppressLauncherClick = false;
     if (suppressed && e.detail !== 0) return;
-    hideTools();
-    setMode(mode === "browse" ? selectionMode : "browse");
+    expand(!expanded);
   };
-  launcher.oncontextmenu = (e) => {
+  targeting.oncontextmenu = (e) => {
     e.preventDefault();
     expand(true);
   };
-  launcher.onkeydown = (e) => {
+  targeting.onkeydown = (e) => {
     if (e.key === "ArrowDown") {
       e.preventDefault();
       expand(true);
+      bar
+        .querySelector<HTMLButtonElement>("button")
+        ?.focus({ preventScroll: true });
     }
   };
   function areaRect(a: any, x: number, y: number) {
@@ -1971,7 +2947,10 @@ export function installPageReview(config: {
         )
           start.area = true;
         if (start.area) {
-          paint(areaRect(start, e.clientX, e.clientY), "Area");
+          paint(
+            areaRect(start, e.clientX, e.clientY),
+            mode === "redact" ? "Privacy region" : "Area",
+          );
           return;
         }
         return;
@@ -2004,7 +2983,7 @@ export function installPageReview(config: {
         y: e.clientY,
         id: e.pointerId,
         el,
-        area: mode === "area",
+        area: mode === "area" || mode === "redact",
         multiple: multiple || e.shiftKey,
       };
     },
@@ -2026,6 +3005,22 @@ export function installPageReview(config: {
       )
         return;
       stop(e);
+      if (mode === "redact") {
+        if (frozen || redactions.length >= 100) return;
+        if (redactions.length && redactionView !== currentRedactionView()) {
+          error(
+            new Error(
+              "Remove existing privacy regions after moving or resizing the page, then select them again.",
+            ),
+          );
+          return;
+        }
+        redactionView = currentRedactionView();
+        redactions.push(areaRect(a, e.clientX, e.clientY));
+        outline.style.display = "none";
+        renderPrivacy();
+        return;
+      }
       if (mode === "point") {
         void choose(
           frozen ? null : target(e) || a.el,
@@ -2082,6 +3077,8 @@ export function installPageReview(config: {
     true,
   );
   listen(window, "blur", () => {
+    temporaryBrowse = false;
+    updateLauncher();
     start = null;
     dockPress = null;
     resizePress = null;
@@ -2112,11 +3109,17 @@ export function installPageReview(config: {
         return;
       }
       if (e.key === "Alt") {
+        temporaryBrowse = true;
+        updateLauncher();
         start = null;
         outline.style.display = "none";
       }
       if (e.key === "Escape") {
         stop(e);
+        if (addingCapture) {
+          if (!busy && !freezing) finishAddCapture();
+          return;
+        }
         if (freezing) return;
         if (expanded) {
           hideTools();
@@ -2146,6 +3149,11 @@ export function installPageReview(config: {
     },
     true,
   );
+  listen(window, "keyup", (e) => {
+    if (e.key !== "Alt") return;
+    temporaryBrowse = false;
+    updateLauncher();
+  });
   let scheduled = false,
     pinsFrame = 0;
   function schedulePins() {
@@ -2195,10 +3203,11 @@ export function installPageReview(config: {
   function dispose() {
     if (disposed) return;
     disposed = true;
+    interactionEvents.length = 0;
     lifecycle.abort();
     clearInterval(refreshTimer);
+    for (const key of notifications.keys()) dismissNotification(key);
     cancelAnimationFrame(pinsFrame);
-    if (launcherPress) clearTimeout(launcherPress.timer);
     for (const call of pending.values()) {
       clearTimeout(call.timer);
       call.reject(new Error("The review connection closed."));
@@ -2210,6 +3219,7 @@ export function installPageReview(config: {
   }
   win[ownerKey] = config.key;
   win[config.key] = {
+    configureContext,
     dispose,
     suspend(value: boolean) {
       suspended = value;
@@ -2229,6 +3239,9 @@ export function installPageReview(config: {
       result.ok
         ? call.resolve(result.value)
         : call.reject(new Error(result.error));
+    },
+    privacyState() {
+      return { active: redactions.length > 0, frozen: !!frozen };
     },
     async visible(value: boolean) {
       host.style.visibility = value ? "visible" : "hidden";
@@ -2267,11 +3280,13 @@ export function installPageReview(config: {
       const n = notes.find((n) => n.id === id);
       if (!n) throw new Error("That UI note no longer exists.");
       if (busy || !close()) return;
-      const p = locate(n.web.before);
-      if (p?.el) p.el.scrollIntoView({ block: "center" });
       showNote(id);
     },
     async prepare(c: any) {
+      if (c.redaction)
+        throw new Error(
+          "Select new privacy regions before capturing this redacted page again.",
+        );
       resume();
       const grouped = ["element", "block"].includes(c.mode) && c.selections;
       const captures = grouped || [c],
@@ -2295,7 +3310,7 @@ export function installPageReview(config: {
           behavior: "instant",
         });
       await new Promise((resolve) => requestAnimationFrame(resolve));
-      const settings = await rpc("context-settings", {});
+      const settings = await currentContextSettings();
       if (grouped)
         return captureContext(
           selectionCapture(elements, c.mode),
@@ -2321,6 +3336,22 @@ export function installPageReview(config: {
       );
     },
   };
+  for (const type of [
+    "click",
+    "focusin",
+    "scroll",
+    "pageshow",
+    "popstate",
+    "hashchange",
+  ])
+    listen(window, type, recordInteraction, { capture: true, passive: true });
+  const initialContextRevision = contextRevision;
+  void rpc("context-settings", {})
+    .then((settings) => {
+      if (!disposed && contextRevision === initialContextRevision)
+        configureContext(settings);
+    })
+    .catch(() => {});
   setMode(mode);
   positionLauncher();
   void refresh().catch(error);

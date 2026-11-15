@@ -11,6 +11,38 @@ describe("UI settings schema", () => {
     });
   });
 
+  test("theme preferences accept safe IDs without requiring the theme to remain installed", () => {
+    expect(parseUiSettings({ theme: "missing-custom-theme" })).toEqual({
+      theme: "missing-custom-theme",
+    });
+    for (const theme of [
+      "",
+      "../dark",
+      "/dark",
+      "dark.json",
+      "Dark",
+      "a".repeat(81),
+      null,
+      1,
+    ])
+      expect(() => parseUiSettings({ theme })).toThrow("ui.theme");
+  });
+
+  test("inline note width defaults to compact and accepts only the offered choices", () => {
+    expect(DEFAULT_UI_SETTINGS.noteWidth).toBe("compact");
+    for (const noteWidth of ["compact", "full"]) {
+      expect(parseUiSettings({ noteWidth })).toEqual({ noteWidth });
+      expect(
+        parseUiSettings({ noteWidth, lineNumbers: false, ntFold: true }),
+      ).toEqual({ noteWidth, lineNumbers: false, ntFold: true });
+    }
+    for (const noteWidth of ["", "wide", "Full width", null, false, 1])
+      expect(() => parseUiSettings({ noteWidth })).toThrow("ui.noteWidth");
+    expect(parseUiSettings({ lineNumbers: false })).not.toHaveProperty(
+      "noteWidth",
+    );
+  });
+
   test("accepts exactly the choices offered by the numeric controls", () => {
     for (const limit of [0, 500, 900, 1800])
       expect(parseUiSettings({ limit })).toEqual({ limit });
@@ -78,6 +110,7 @@ describe("UI settings schema", () => {
       "hideDeleted",
       "foldDel",
       "enterSaves",
+      "capturedCodeOpen",
       "navHidden",
       "ntFold",
       "bmFold",
@@ -107,5 +140,26 @@ describe("UI settings schema", () => {
     const parsed = parseUiSettings({ disabledHide: input.disabledHide });
     parsed.disabledHide!.push("generated/");
     expect(input.disabledHide).toEqual(["dist/", "*.snap"]);
+  });
+
+  test("bounds stored strings and preference arrays without coercing their entries", () => {
+    for (const field of ["hide", "editor"]) {
+      expect(parseUiSettings({ [field]: "x".repeat(16384) })).toEqual({
+        [field]: "x".repeat(16384),
+      });
+      expect(() => parseUiSettings({ [field]: "x".repeat(16385) })).toThrow();
+    }
+    expect(
+      parseUiSettings({ disabledHide: Array(1000).fill("dist/") }).disabledHide,
+    ).toHaveLength(1000);
+    expect(() =>
+      parseUiSettings({ disabledHide: Array(1001).fill("dist/") }),
+    ).toThrow();
+    expect(() =>
+      parseUiSettings({ disabledHide: ["x".repeat(16385)] }),
+    ).toThrow();
+    expect(() =>
+      parseUiSettings({ navWidth: Number.MAX_SAFE_INTEGER + 1 }),
+    ).toThrow();
   });
 });

@@ -1,9 +1,37 @@
+import {
+  converter,
+  modeRgb,
+  modeHwb,
+  modeLab,
+  modeLch,
+  modeOklab,
+  modeOklch,
+  modeP3,
+  parse,
+  useMode,
+} from "culori/fn";
+
+for (const mode of [
+  modeRgb,
+  modeHwb,
+  modeLab,
+  modeLch,
+  modeOklab,
+  modeOklch,
+  modeP3,
+])
+  useMode(mode);
+const toRgb = converter("rgb");
+
 export interface ColorLiteral {
   from: number;
   to: number;
   value: string;
-  /** Validated, opaque or alpha-bearing sRGB hex; safe for a CSS color property. */
+  /** Clipped sRGB preview, not a replacement for the original color space. */
   hex: string;
+  css: string;
+  outOfGamut: boolean;
+  modern: boolean;
 }
 
 const NUMBER = /^[+-]?(?:\d*\.\d+|\d+\.?\d*)(?:e[+-]?\d+)?(%?)$/i;
@@ -21,7 +49,7 @@ function number(value: string, scale: number, none: boolean): number | null {
 }
 
 /** CSS literal syntax only: no named colors, variables, URLs, calc(), or arbitrary style text. */
-export function parseColor(value: string): string | null {
+function parseLegacyColor(value: string): string | null {
   const hex = /^#([\da-f]{3}|[\da-f]{4}|[\da-f]{6}|[\da-f]{8})$/i.exec(value);
   if (hex) {
     const body = hex[1]!.toLowerCase();
@@ -95,11 +123,99 @@ export function parseColor(value: string): string | null {
     (alpha === undefined ? "" : byte(clamp(opacity) * 255))
   );
 }
+export interface ColorPreview {
+  hex: string;
+  css: string;
+  outOfGamut: boolean;
+  modern: boolean;
+}
+
+/** Restrict input before Culori parsing: never accept CSS expressions or custom profiles. */
+export function colorPreview(value: string): ColorPreview | null {
+  const legacy = parseLegacyColor(value);
+  if (legacy)
+    return { hex: legacy, css: value, outOfGamut: false, modern: false };
+  const fn = /^(oklch|oklab|lab|lch|hwb|color)\(([^()]*)\)$/i.exec(value);
+  if (!fn) return null;
+  const name = fn[1]!.toLowerCase();
+  let body = fn[2]!.trim().toLowerCase();
+  if (name === "color") {
+    if (!/^display-p3\s/.test(body)) return null;
+    body = body.replace(/^display-p3\s+/, "");
+  }
+  const split = body.split("/");
+  if (split.length > 2) return null;
+  const channels = split[0]!.trim().split(/\s+/);
+  if (channels.length !== 3) return null;
+  const hueIndex =
+    name === "hwb" ? 0 : name === "lch" || name === "oklch" ? 2 : -1;
+  for (let i = 0; i < channels.length; i++) {
+    const channel = channels[i]!;
+    if (channel === "none") continue;
+    if (i === hueIndex) {
+      const angle = ANGLE.exec(channel);
+      if (!angle || !Number.isFinite(Number(angle[1]))) return null;
+    } else if (number(channel, 1, false) === null) return null;
+  }
+  if (
+    name === "hwb" &&
+    channels.slice(1).some((v) => v !== "none" && !v.endsWith("%"))
+  )
+    return null;
+  if (split.length === 2 && number(split[1]!.trim(), 1, true) === null)
+    return null;
+  // Missing CSS channels resolve to zero for a standalone swatch, not interpolation.
+  const parsed = parse(value.toLowerCase().replace(/\bnone\b/g, "0"));
+  if (!parsed) return null;
+  if (
+    Object.values(parsed).some(
+      (n) => typeof n === "number" && !Number.isFinite(n),
+    )
+  )
+    return null;
+  const rgb = toRgb(parsed);
+  if (!rgb || ![rgb.r, rgb.g, rgb.b, rgb.alpha ?? 1].every(Number.isFinite))
+    return null;
+  const outOfGamut = [rgb.r, rgb.g, rgb.b].some(
+    (n) => n < -0.00001 || n > 1.00001,
+  );
+  return {
+    hex:
+      "#" +
+      [rgb.r, rgb.g, rgb.b].map((n) => byte(n * 255)).join("") +
+      (split.length === 2 ? byte(clamp(rgb.alpha ?? 1) * 255) : ""),
+    css: value,
+    outOfGamut,
+    modern: true,
+  };
+}
+
+/** Validates a literal and returns its (possibly gamut-clipped) sRGB preview. */
+export function parseColor(value: string): string | null {
+  return colorPreview(value)?.hex ?? null;
+}
+
+/** An opacity edit must not silently convert a modern color to sRGB. */
+export function colorWithAlpha(value: string, alpha: number): string | null {
+  const preview = colorPreview(value);
+  if (!preview || !Number.isFinite(alpha) || alpha < 0 || alpha > 1)
+    return null;
+  if (!preview.modern) return preview.hex.slice(0, 7) + byte(alpha * 255);
+  return (
+    value.slice(0, value.indexOf("(") + 1) +
+    value
+      .slice(value.indexOf("(") + 1, -1)
+      .split("/")[0]!
+      .trim() +
+    ` / ${Number(alpha.toFixed(4))})`
+  );
+}
 
 /** Offsets refer to the unmodified input, including fenced code and Markdown punctuation. */
 export function findColors(source: string): ColorLiteral[] {
   const result: ColorLiteral[] = [];
-  const candidates = /#[\da-z]+|(?:rgba?|hsla?)\([^()]*\)/gi;
+  const candidates =
+    /#[\da-z]+|(?:rgba?|hsla?|oklch|oklab|lab|lch|hwb|color)\([^()]*\)/gi;
   let match: RegExpExecArray | null;
   while ((match = candidates.exec(source))) {
     const from = match.index,
@@ -117,8 +233,8 @@ export function findColors(source: string): ColorLiteral[] {
       /url\([ \t]*["']?$/i.test(prefix)
     )
       continue;
-    const hex = parseColor(match[0]);
-    if (hex) result.push({ from, to, value: match[0], hex });
+    const preview = colorPreview(match[0]);
+    if (preview) result.push({ from, to, value: match[0], ...preview });
   }
   return result;
 }

@@ -180,9 +180,9 @@ function validateManifest(value: unknown, id: string): ContextManifest {
       Array.isArray(manifest.source) ||
       Object.entries(manifest.source).some(
         ([key, value]) =>
-          !["url", "title", "captureAt"].includes(key) ||
+          !["url", "title", "captureAt", "target"].includes(key) ||
           typeof value !== "string" ||
-          value.length > 16384,
+          value.length > (key === "target" ? 240 : 16384),
       )
     )
       throw new Error("Invalid context source metadata.");

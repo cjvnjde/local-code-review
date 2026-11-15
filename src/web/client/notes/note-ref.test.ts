@@ -1,13 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import {
+  filePathIn,
+  fileRef,
   insertRef,
   noteByRef,
+  matchingFiles,
   plainRefs,
+  referenceAt,
   refIn,
   refLabel,
   refOf,
   refToken,
 } from "./note-ref.ts";
+import type { DiffFile } from "../../../shared/review-types.ts";
 
 // Notes as the page holds them: the anchors say which kind of note it is, the id carries its tail.
 const line = (tail: string, file = "src/cli.ts", label = "42") => ({
@@ -298,5 +303,97 @@ describe("reference boundaries", () => {
     expect(plainRefs("[first](lcr:abc) [second](lcr:def)")).toBe(
       "first second",
     );
+  });
+});
+
+describe("file references", () => {
+  test("paths round-trip through Markdown destinations without interpreting URL syntax", () => {
+    const path = "src/[draft]/café #1 (copy)&!.ts";
+    const token = fileRef(path);
+    expect(token).toBe(
+      "[src/\\[draft\\]/café \\#1 \\(copy\\)\\&\\!.ts](lcr-file:src%2F%5Bdraft%5D%2Fcaf%C3%A9%20%231%20%28copy%29%26%21.ts)",
+    );
+    expect(filePathIn(token.slice(token.indexOf("](") + 2, -1))).toBe(path);
+    expect(plainRefs(token)).toBe(path);
+    expect(refIn("lcr-file:src%2Fapp.ts")).toBe("");
+  });
+
+  test("malformed destinations and other schemes never identify files", () => {
+    for (const url of [
+      "javascript:alert(1)",
+      "file:///tmp/a.ts",
+      "https://example.com/src/app.ts",
+      "lcr-file:",
+      "lcr-file:%ZZ",
+      "lcr-file:src%00app.ts",
+      "lcr-file:src%0Aapp.ts",
+    ])
+      expect(filePathIn(url)).toBe("");
+  });
+
+  test("suggestions tolerate path typos but never search file contents", () => {
+    const file = (path: string, text: string): DiffFile => ({
+      path,
+      status: "modified",
+      rows: [{ t: "ctx", text }],
+      added: 0,
+      removed: 0,
+      hash: "",
+    });
+    const files = [
+      file("src/components/composer.tsx", "needle-only-in-content"),
+      file("src/app.ts", "composer.tsx"),
+    ];
+    expect(
+      matchingFiles(files, "compoer.tsx").map((item) => item.path),
+    ).toEqual(["src/components/composer.tsx"]);
+    expect(matchingFiles(files, "ap.ts").map((item) => item.path)).toContain(
+      "src/app.ts",
+    );
+    expect(matchingFiles(files, "needle-only-in-content")).toEqual([]);
+    expect(matchingFiles(files, "")).toBe(files);
+  });
+
+  test("editing an existing @ token replaces its suffix while preserving surrounding prose", () => {
+    const body = "See @old/path.ts next";
+    const completion = referenceAt(body, 8)!;
+    expect(completion).toEqual({
+      kind: "file",
+      from: 4,
+      to: 16,
+      query: "old",
+    });
+    const result = insertRef(
+      body,
+      completion.from,
+      completion.to,
+      fileRef("src/app.ts"),
+    );
+    expect(result.value).toBe("See [src/app.ts](lcr-file:src%2Fapp.ts) next");
+    expect(result.value.slice(result.caret)).toBe(" next");
+    const parenthesized = "See (@old/path.ts), next";
+    const inside = referenceAt(parenthesized, 9)!;
+    expect(
+      insertRef(parenthesized, inside.from, inside.to, fileRef("src/app.ts"))
+        .value,
+    ).toBe("See ( [src/app.ts](lcr-file:src%2Fapp.ts)), next");
+  });
+
+  test("triggers respect word boundaries and selections without changing # references", () => {
+    expect(referenceAt("@", 1)).toEqual({
+      kind: "file",
+      from: 0,
+      to: 1,
+      query: "",
+    });
+    expect(referenceAt("See #abc123", 11)).toEqual({
+      kind: "note",
+      from: 4,
+      to: 11,
+      query: "abc123",
+    });
+    expect(referenceAt("person@example.com", 18)).toBeNull();
+    expect(referenceAt("\\@src", 5)).toBeNull();
+    expect(referenceAt("@src", 1, 4)).toBeNull();
   });
 });

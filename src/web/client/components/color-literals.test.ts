@@ -1,7 +1,17 @@
 import { describe, expect, test } from "bun:test";
-import { findColors, parseColor, replaceColor } from "./color-literals.ts";
-import { mdHtml } from "./markdown.ts";
-import { state } from "../app/state.ts";
+import {
+  colorPreview,
+  colorWithAlpha,
+  findColors,
+  parseColor,
+  replaceColor,
+} from "./color-literals.ts";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { Markdown } from "./markdown.tsx";
+import { ReviewReferences } from "../notes/references.tsx";
+const mdHtml = (body: string) =>
+  renderToStaticMarkup(createElement(Markdown, { body }));
 
 describe("CSS color literals", () => {
   test("short, long, and alpha hex values normalize without losing alpha", () => {
@@ -126,7 +136,7 @@ describe("CSS color literals", () => {
   });
 
   test("alpha hex is not mistaken for a missing note, but real note references win", () => {
-    expect(mdHtml("Color #aabbccdd")).toBe("<p>Color #aabbccdd</p>");
+    expect(mdHtml("Color #aabbccdd")).not.toContain("unavailable");
     const note = {
       id: "src/color.css|n1|n1|#aabbccdd",
       file: "src/color.css",
@@ -137,11 +147,120 @@ describe("CSS color literals", () => {
       end: 1,
       body: "Keep reference ownership",
     };
-    state.notes.set(note.id, note);
-    try {
-      expect(mdHtml("See #aabbccdd")).toContain('class="nref"');
-    } finally {
-      state.notes.delete(note.id);
+    const html = renderToStaticMarkup(
+      createElement(ReviewReferences, {
+        notes: [
+          {
+            ...note,
+            id: note.id,
+            key: "",
+            status: "pending",
+            detail: "",
+            messages: [],
+          },
+        ],
+        files: [],
+        followFile: () => {},
+        follow: () => {},
+        children: createElement(Markdown, { body: "See #aabbccdd" }),
+      }),
+    );
+    expect(html).toContain("src/color.css:1");
+  });
+});
+
+describe("modern CSS literals", () => {
+  test("Culori converts supported spaces and preserves original spelling and alpha", () => {
+    for (const [value, expected] of [
+      ["oklch(100% 0 0)", "#ffffff"],
+      ["oklab(0 0 0 / 50%)", "#00000080"],
+      ["lab(0% 0 0)", "#000000"],
+      ["lch(0 0 0 / 0)", "#00000000"],
+      ["hwb(120 0% 0% / .5)", "#00ff0080"],
+      ["color(display-p3 1 0 0 / 25%)", "#ff000040"],
+      ["OKLCH(none none none / none)", "#00000000"],
+      ["color(display-p3 none 0 0)", "#000000"],
+    ]) {
+      expect(parseColor(value!)).toBe(expected!);
+      expect(colorPreview(value!)?.css).toBe(value!);
     }
+    for (const value of [
+      "oklch(.6 .2 .5turn)",
+      "lch(50% 20 200grad)",
+      "lab(50% -20% 20%)",
+      "oklab(60% .1 -.1)",
+    ])
+      expect(parseColor(value)).toMatch(/^#[0-9a-f]{6}$/);
+  });
+
+  test("wide gamut previews are explicitly clipped, not rewritten originals", () => {
+    const literal = "color(display-p3 1 0 0 / .25)";
+    expect(colorPreview(literal)).toEqual({
+      hex: "#ff000040",
+      css: literal,
+      outOfGamut: true,
+      modern: true,
+    });
+    const source = `Keep ${literal} exactly.`;
+    const target = findColors(source)[0]!;
+    expect(target.value).toBe(literal);
+    expect(replaceColor(source, target, target.value)?.value).toBe(source);
+    expect(colorWithAlpha(literal, 0.5)).toBe("color(display-p3 1 0 0 / 0.5)");
+    expect(colorWithAlpha("OKLCH(60% .2 30)", 0)).toBe("OKLCH(60% .2 30 / 0)");
+    expect(colorWithAlpha("#abc", 0.5)).toBe("#aabbcc80");
+    expect(colorWithAlpha(literal, NaN)).toBeNull();
+    expect(colorWithAlpha(literal, 2)).toBeNull();
+  });
+
+  test("rejects arbitrary CSS, relative colors, custom profiles and nonfinite channels", () => {
+    for (const value of [
+      "oklch(var(--l) .2 30)",
+      "oklch(from red l c h)",
+      "oklch(50% .2 30);color:red",
+      "oklch(50%, .2, 30)",
+      "oklch(50% .2 30 /)",
+      "oklch(50% .2 30 / .5 / .2)",
+      "oklch(1e999 .2 30)",
+      "oklch(.5 .2 10%)",
+      "lab(50% 1deg 0)",
+      "hwb(0 20 20)",
+      "hwb(0 20% 20% / var(--alpha))",
+      "color(--custom 1 0 0)",
+      "color(display-p3 1 0 0 / Infinity)",
+      "color(display-p3 1 0 0) url(x)",
+      "color(display-p3 calc(1) 0 0)",
+      "url(oklch(.5 .2 30))",
+      " oklch(.5 .2 30) ",
+      "oklch(.5 .2 30)junk",
+    ])
+      expect(parseColor(value)).toBeNull();
+  });
+
+  test("modern token boundaries, Markdown, insertion and stale offsets remain safe", () => {
+    const literal = "oklch(60% .2 30 / .5)";
+    const source = `Keep **${literal}**, and \`lab(50% 0 0)\`.`;
+    const found = findColors(source);
+    expect(found.map((color) => color.value)).toEqual([
+      literal,
+      "lab(50% 0 0)",
+    ]);
+    for (const color of found)
+      expect(source.slice(color.from, color.to)).toBe(color.value);
+    expect(
+      findColors(
+        `my-${literal} ${literal}tail /${literal} é${literal} https://e.test/${literal}`,
+      ),
+    ).toEqual([]);
+    expect(findColors(`url("${literal}") [target](${literal})`)).toEqual([]);
+    const target = found[0]!;
+    expect(
+      replaceColor("prefix " + source, target, "color(display-p3 1 0 0)"),
+    ).toBeNull();
+    expect(replaceColor(source, target, "hwb(120 0% 0%)")?.value).toBe(
+      "Keep **hwb(120 0% 0%)**, and `lab(50% 0 0)`.",
+    );
+    expect(
+      replaceColor("word", { from: 4, to: 4, value: "" }, literal)?.value,
+    ).toBe(`word ${literal}`);
   });
 });

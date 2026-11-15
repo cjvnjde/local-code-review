@@ -1,23 +1,69 @@
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
+import { z } from "zod";
 import type { CliOptions } from "../shared/review-types.ts";
-import { parseUiSettings, type UiSettings } from "../shared/settings.ts";
+import {
+  parseUiSettings,
+  uiSettingsPatchSchema,
+  type UiSettings,
+} from "../shared/settings.ts";
 import { localWebUrl } from "../shared/web-review.ts";
 
-export interface StartupSettings {
-  acp?: string | null;
-  port?: number;
-  outDir?: string;
-  context?: number;
-  open?: boolean;
-  id?: string;
-  web?: string;
-  browserProfile?: CliOptions["browserProfile"];
-  browserDataDir?: string;
-  diffArgs?: string[];
-  ui?: Partial<UiSettings>;
-}
+const configString = z.string().max(32768);
+const directory = configString
+  .min(1)
+  .refine(
+    (value) => !value.startsWith("-") && !value.includes("\0"),
+    "Must be a directory without NUL characters or a leading dash.",
+  );
+export const startupSettingsSchema = z.strictObject({
+  acp: configString
+    .refine(
+      (value) => !!value.trim() && !value.includes("\0"),
+      "Must be a non-empty profile path.",
+    )
+    .nullable()
+    .optional(),
+  port: z.number().int().min(0).max(65535).optional(),
+  outDir: directory.optional(),
+  context: z.number().int().nonnegative().optional(),
+  open: z.boolean().optional(),
+  id: configString.optional(),
+  web: configString
+    .transform((value, ctx) => {
+      try {
+        return localWebUrl(value);
+      } catch {
+        ctx.addIssue({
+          code: "custom",
+          message: "Must be a localhost HTTP(S) URL without credentials.",
+        });
+        return z.NEVER;
+      }
+    })
+    .optional(),
+  browserProfile: z.enum(["shared", "project", "existing"]).optional(),
+  browserDataDir: directory
+    .refine((value) => !!value.trim(), "Must be a non-empty directory.")
+    .optional(),
+  diffArgs: z
+    .custom<unknown[]>(
+      (value) => Array.isArray(value) && value.length <= 1024,
+      "Must be an array of at most 1024 arguments.",
+    )
+    .pipe(
+      z.array(
+        configString.refine(
+          (value) => !value.includes("\0"),
+          "Must not contain NUL characters.",
+        ),
+      ),
+    )
+    .optional(),
+  ui: uiSettingsPatchSchema.optional(),
+});
+export type StartupSettings = z.infer<typeof startupSettingsSchema>;
 
 /** User-owned settings only: repositories cannot supply startup or agent configuration. */
 export function userConfigFile(
@@ -64,112 +110,67 @@ export async function loadUserSettings(
     if (explicitAgent) return {};
     throw new Error(`Expected a settings object in ${settingsFile}.`);
   }
-  const settings: StartupSettings = {};
-  function invalid(key: string, expected: string): never {
+  // An explicit agent selection ignores only this legacy field, not invalid unrelated defaults.
+  if (explicitAgent) delete (value as Record<string, unknown>).acp;
+  const parsed = startupSettingsSchema.safeParse(value);
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0]!;
+    if (issue.code === "unrecognized_keys" && !issue.path.length)
+      throw new Error(
+        `Unknown lcr setting "${issue.keys[0]}" in ${settingsFile}.`,
+      );
     throw new Error(
-      `The ${key} setting in ${settingsFile} must be ${expected}.`,
+      `The ${issue.path.join(".")} setting in ${settingsFile}: ${issue.message}`,
     );
   }
-  for (const [key, entry] of Object.entries(value)) {
-    switch (key) {
-      case "acp":
-        if (explicitAgent) break;
-        if (entry === null) settings.acp = null;
-        else if (
-          typeof entry === "string" &&
-          entry.trim() &&
-          !entry.includes("\0")
-        )
-          settings.acp = path.resolve(
-            path.dirname(settingsFile),
-            expandHome(entry.trim()),
-          );
-        else invalid(key, "a non-empty profile path or null");
-        break;
-      case "port":
-        if (
-          typeof entry !== "number" ||
-          !Number.isInteger(entry) ||
-          entry < 0 ||
-          entry > 65535
-        )
-          invalid(key, "an integer from 0 to 65535");
-        settings.port = entry;
-        break;
-      case "context":
-        if (typeof entry !== "number" || !Number.isInteger(entry) || entry < 0)
-          invalid(key, "a non-negative integer");
-        settings.context = entry;
-        break;
-      case "outDir":
-        if (
-          typeof entry !== "string" ||
-          !entry ||
-          entry.startsWith("-") ||
-          entry.includes("\0")
-        )
-          invalid(
-            key,
-            "a non-empty directory without NUL characters or a leading dash",
-          );
-        settings.outDir = entry;
-        break;
-      case "open":
-        if (typeof entry !== "boolean") invalid(key, "a boolean");
-        settings.open = entry;
-        break;
-      case "id":
-        if (typeof entry !== "string") invalid(key, "a string");
-        settings.id = entry;
-        break;
-      case "web":
-        if (typeof entry !== "string") invalid(key, "a localhost HTTP(S) URL");
-        try {
-          settings.web = localWebUrl(entry);
-        } catch {
-          invalid(key, "a localhost HTTP(S) URL without credentials");
-        }
-        break;
-      case "diffArgs":
-        if (
-          !Array.isArray(entry) ||
-          !entry.every((arg) => typeof arg === "string" && !arg.includes("\0"))
-        )
-          invalid(key, "an array of strings without NUL characters");
-        settings.diffArgs = entry;
-        break;
-      case "browserProfile":
-        if (entry !== "shared" && entry !== "project" && entry !== "existing")
-          invalid(key, '"shared", "project", or "existing"');
-        settings.browserProfile = entry;
-        break;
-      case "browserDataDir":
-        if (
-          typeof entry !== "string" ||
-          !entry.trim() ||
-          entry.includes("\0") ||
-          entry.startsWith("-")
-        )
-          invalid(key, "a non-empty browser user data directory path");
-        settings.browserDataDir = path.resolve(
-          path.dirname(settingsFile),
-          expandHome(entry),
-        );
-        break;
-      case "ui":
-        try {
-          settings.ui = parseUiSettings(entry);
-        } catch (error) {
-          throw new Error(
-            `Invalid ui setting in ${settingsFile}: ${(error as Error).message}`,
-          );
-        }
-        break;
-      default:
-        throw new Error(`Unknown lcr setting "${key}" in ${settingsFile}.`);
-    }
-  }
+  const settings = parsed.data;
+  if (typeof settings.acp === "string")
+    settings.acp = path.resolve(
+      path.dirname(settingsFile),
+      expandHome(settings.acp.trim()),
+    );
+  if (settings.browserDataDir !== undefined)
+    settings.browserDataDir = path.resolve(
+      path.dirname(settingsFile),
+      expandHome(settings.browserDataDir),
+    );
   return settings;
+}
+
+/** Merge UI preferences without rewriting startup paths or dropping external edits. */
+export async function saveUiSettings(
+  patch: Partial<UiSettings>,
+  settingsFile = userConfigFile(),
+): Promise<void> {
+  const validated = parseUiSettings(patch);
+  let current: Record<string, unknown> = {};
+  try {
+    const value: unknown = JSON.parse(await readFile(settingsFile, "utf8"));
+    if (!value || typeof value !== "object" || Array.isArray(value))
+      throw new Error("Expected a settings object.");
+    current = value as Record<string, unknown>;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT")
+      throw new Error(
+        `Could not save lcr settings at ${settingsFile}: ${(error as Error).message}`,
+      );
+  }
+  const ui = { ...parseUiSettings(current.ui ?? {}), ...validated };
+  await mkdir(path.dirname(settingsFile), { recursive: true });
+  const temporary = `${settingsFile}.${crypto.randomUUID()}.tmp`;
+  try {
+    await writeFile(
+      temporary,
+      JSON.stringify({ ...current, ui }, null, 2) + "\n",
+      {
+        mode: 0o600,
+        flag: "wx",
+      },
+    );
+    await rename(temporary, settingsFile);
+  } finally {
+    await rm(temporary, { force: true });
+  }
 }
 
 /** CLI paths are repo-relative; loaded defaults are already absolute beside their settings file. */

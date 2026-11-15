@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   matchRanges,
+  matchesCodeFacet,
   searchDocuments,
   searchExcerpt,
   searchHtml,
@@ -45,6 +46,51 @@ const docs = () =>
   );
 
 describe("review search", () => {
+  test("code facets retain other result kinds and keep both-side jump anchors", () => {
+    const documents = docs();
+    const nonCode = documents.filter((result) => result.kind !== "code");
+    for (const facet of ["added", "removed", "context"] as const) {
+      const filtered = documents.filter((result) =>
+        matchesCodeFacet(result, facet),
+      );
+      expect(filtered.filter((result) => result.kind !== "code")).toEqual(
+        nonCode,
+      );
+      expect(
+        filtered
+          .filter((result) => result.kind === "code")
+          .map((result) => result.row),
+      ).toEqual(
+        facet === "added"
+          ? ["n11"]
+          : facet === "removed"
+            ? ["o11"]
+            : ["n10", "n500"],
+      );
+    }
+    expect(
+      documents.filter((result) => matchesCodeFacet(result, "all")),
+    ).toEqual(documents);
+  });
+
+  test("triage is searchable independently of note text and status", () => {
+    const results = searchReview(
+      searchDocuments(
+        [],
+        [{ ...note, triage: "blocker" }],
+        new Map(),
+        new Map(),
+      ),
+      "blocker",
+    );
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({
+      kind: "note",
+      noteId: note.id,
+      label: "Triage",
+    });
+  });
+
   test("finds code on both sides and surrounding context without hunk headers", () => {
     expect(searchReview(docs(), "freshValue").map((r) => r.kind)).toEqual([
       "code",
@@ -52,6 +98,7 @@ describe("review search", () => {
     expect(searchReview(docs(), "staleValue").map((r) => r.kind)).toEqual([
       "code",
       "note",
+      "note", // Fuzzy match of “stale value”, after the two literal hits.
     ]);
     expect(searchReview(docs(), "nearby")[0].row).toBe("n10");
     expect(searchReview(docs(), "heading not searchable")).toEqual([]);
@@ -364,5 +411,80 @@ describe("review search", () => {
     expect(hits.map((r) => r.row)).toEqual(["o7", "n7", "n9"]);
     expect(hits[0]?.context).toBe("-old target\n+new target\n context target");
     expect(hits.every((r) => r.path === "both.ts")).toBe(true);
+  });
+
+  test("fuzzy code and conversation hits retain navigation and matching excerpts", () => {
+    const documents = searchDocuments(
+      [
+        {
+          path: "src/renderer.ts",
+          rows: [
+            { t: "add", n: 42, text: "const renderer = createRenderer();" },
+          ],
+        },
+      ],
+      [
+        {
+          id: "n",
+          file: "src/renderer.ts",
+          body: "Keep the renderer responsive.",
+        },
+      ],
+      new Map([
+        ["n", [{ role: "agent", body: "x".repeat(400) + " renderer fixed" }]],
+      ]),
+      new Map(),
+    );
+    const hits = searchReview(documents, "rendrer");
+    expect(hits.find((hit) => hit.kind === "code")).toMatchObject({
+      path: "src/renderer.ts",
+      row: "n42",
+    });
+    expect(hits.find((hit) => hit.label === "Note")?.noteId).toBe("n");
+    const reply = hits.find((hit) => hit.kind === "reply")!;
+    expect(reply).toMatchObject({ noteId: "n", message: 0 });
+    expect(searchExcerpt(reply.text, "rendrer", 90, reply.ranges)).toContain(
+      "renderer fixed",
+    );
+  });
+
+  test("literal matches keep source order ahead of fuzzy hits", () => {
+    const documents = [
+      { kind: "note" as const, path: "", text: "renderar", label: "Fuzzy" },
+      { kind: "code" as const, path: "a.ts", text: "renderer", label: "First" },
+      {
+        kind: "reply" as const,
+        path: "a.ts",
+        text: "renderer",
+        label: "Second",
+      },
+    ];
+    expect(searchReview(documents, "renderer").map((hit) => hit.label)).toEqual(
+      ["First", "Second", "Fuzzy"],
+    );
+  });
+
+  test("a fuzzy filename does not return every row and still combines with code terms", () => {
+    const documents = searchDocuments(
+      [
+        {
+          path: "src/renderer.ts",
+          rows: [
+            { t: "ctx", n: 1, o: 1, text: "const unrelated = true;" },
+            { t: "add", n: 2, text: "const output = responsiveLayout();" },
+          ],
+        },
+      ],
+      [],
+      new Map(),
+      new Map(),
+    );
+    expect(
+      searchReview(documents, "rendrer.ts").map((hit) => hit.kind),
+    ).toEqual(["file"]);
+    expect(searchReview(documents, "rendrer.ts responiveLayout")).toMatchObject(
+      [{ kind: "code", row: "n2", path: "src/renderer.ts" }],
+    );
+    expect(searchReview(documents, "zz")).toEqual([]);
   });
 });

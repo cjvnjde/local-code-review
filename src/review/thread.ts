@@ -1,4 +1,8 @@
-import type { NoteStatusKind, ReviewComment } from "../shared/review-types.ts";
+import type {
+  MessageRole,
+  NoteStatusKind,
+  ReviewComment,
+} from "../shared/review-types.ts";
 import {
   webReview,
   webReviewLines,
@@ -57,41 +61,12 @@ import {
  * it stays inside the reply — and the next save escapes it, which settles the file for good.
  */
 
-export type MessageRole = "reviewer" | "agent";
-
-export interface ReviewMessage {
-  role: MessageRole;
-  /** ISO stamp from the marker; empty when the writer left it out. */
-  at: string;
-  body: string;
-}
-
-/** One note as the review file holds it: the page's fields, plus what the agent wrote back. */
-export interface ReviewNote {
-  id: string;
-  /** `<file>:<label>` heading text, used to match a status when the id marker was lost. */
-  key: string;
-  /** Empty for a note about the review as a whole, which belongs to no file. */
-  file: string;
-  /** Line label such as `42` or `12:7-14`; empty for a note on the whole file. */
-  label: string;
-  scope?: "file" | "global";
-  side?: "new" | "old";
-  start: number;
-  end: number;
-  ca?: number;
-  cb?: number;
-  snippet?: string;
-  image?: ImageRegion;
-  web?: WebReview;
-  code?: string;
-  body: string;
-  status: NoteStatusKind;
-  detail: string;
-  messages: ReviewMessage[];
-  /** `<review file>#<note id>` of the note this one continues, for a note carried in from an earlier review. */
-  from?: string;
-}
+export type {
+  MessageRole,
+  ReviewMessage,
+  ReviewNote,
+} from "../shared/review-types.ts";
+import type { ReviewMessage, ReviewNote } from "../shared/review-types.ts";
 
 export interface ReviewDoc {
   range: string;
@@ -130,6 +105,9 @@ const MARKER = /<!--\s*lcr:(.+?)\s*-->/;
 const FROM = /^<!--\s*lcr:from\s+(.+?)\s*-->\s*$/;
 const WEB = /^<!-- lcr:web (.+) -->$/;
 const IMAGE = /^<!-- lcr:image (.+) -->$/;
+/** A sealed, human-readable classification; ordinary "Triage:" prose remains prose. */
+const TRIAGE =
+  /^Triage: (blocker|bug|suggestion|question) <!-- lcr:triage -->$/;
 const MESSAGE =
   /^\*\*(Reviewer|Agent)\*\*\s*(?:<!--\s*lcr:m\s*([^>]*?)\s*-->\s*)?$/i;
 const STATUS = /^\s*status\s*:\s*(.+?)\s*$/i;
@@ -207,6 +185,7 @@ function dangerous(line: string): boolean {
     MESSAGE.test(line) ||
     SNIPPET.test(line) ||
     FROM.test(line) ||
+    TRIAGE.test(line) ||
     IMAGE.test(line) ||
     WEB.test(line) ||
     END.test(line)
@@ -504,6 +483,15 @@ function readOpening(note: ReviewNote, lines: string[]): void {
 
   for (let at = 0; at < lines.length; at++) {
     const line = lines[at] as string;
+    const triage =
+      !open &&
+      !note.triage &&
+      !body.some((entry) => entry.trim()) &&
+      TRIAGE.exec(line);
+    if (triage) {
+      note.triage = triage[1] as ReviewNote["triage"];
+      continue;
+    }
     const web =
       !open &&
       !note.web &&
@@ -597,22 +585,27 @@ function readOpening(note: ReviewNote, lines: string[]): void {
   note.body = trimBlock(unescapeLines(body));
 }
 
+/**
+ * Match the anchor suffix from the right: paths may themselves contain pipes and anchor-like names.
+ * Older ids omit the stable reference, and character offsets are optional in either format.
+ */
+const NOTE_ANCHOR =
+  /^(.*)\|([no]\d+|\*|@)\|([no]\d+|\*|@)(?:\|(\d+)-(\d+))?(?:\|#[^|]+)?$/;
+
 /** Path, label, and line range, taken from the id when it is there and from the heading when not. */
 function locate(note: ReviewNote, key: string): void {
-  const parts = note.id ? note.id.split("|") : [];
-  if (parts.length >= 3) {
-    note.file = parts[0] as string;
-    const range = parts.slice(3).find((part) => /^\d+-\d+$/.test(part));
-    if (range) {
-      const [ca, cb] = range.split("-");
-      note.ca = Number(ca);
-      note.cb = Number(cb);
+  const anchor = NOTE_ANCHOR.exec(note.id);
+  if (anchor) {
+    note.file = anchor[1]!;
+    if (anchor[4] != null) {
+      note.ca = Number(anchor[4]);
+      note.cb = Number(anchor[5]);
     }
-    if (parts[1] === "*") note.scope = "file";
-    if (parts[1] === GLOBAL_ANCHOR) note.scope = "global";
-    note.start = lineOf(parts[1] as string);
-    note.end = lineOf(parts[2] as string);
-    if ((parts[1] as string).startsWith("o")) note.side = "old";
+    if (anchor[2] === "*") note.scope = "file";
+    if (anchor[2] === GLOBAL_ANCHOR) note.scope = "global";
+    note.start = lineOf(anchor[2]!);
+    note.end = lineOf(anchor[3]!);
+    if (anchor[2]!.startsWith("o")) note.side = "old";
   }
 
   // A heading alone only says "overall" when no id contradicts it: a file may be called anything.
@@ -624,7 +617,7 @@ function locate(note: ReviewNote, key: string): void {
     note.end = 0;
     return;
   }
-  if (WHOLE_FILE.test(key)) {
+  if (note.scope === "file" || WHOLE_FILE.test(key)) {
     note.scope = "file";
     note.file = note.file || key.replace(WHOLE_FILE, "").trim();
     note.label = "";
@@ -745,6 +738,7 @@ export function noteFromComment(comment: ReviewComment): ReviewNote {
     messages: [],
   };
   if (comment.scope) note.scope = comment.scope;
+  if (comment.triage) note.triage = comment.triage;
   if (comment.scope === "global") {
     note.start = 0;
     note.end = 0;
@@ -806,6 +800,7 @@ export function renderNote(note: ReviewNote): string[] {
       ? " (line numbers before the change)"
       : "";
   const out = [`### ${headingKey(note)}${side}${marker}`, ""];
+  if (note.triage) out.push(`Triage: ${note.triage} <!-- lcr:triage -->`, "");
   if (note.from)
     out.push(`<!-- lcr:from ${note.from.replace(/[<>]/g, "")} -->`, "");
   if (note.web) out.push(...webReviewLines(note.web));

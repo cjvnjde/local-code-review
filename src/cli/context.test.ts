@@ -1,5 +1,12 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -73,6 +80,80 @@ test("inspect and paginated reads scope to an explicit review, and binary reads 
   ).rejects.toThrow("missing");
 });
 
+test("HTML and full-page evidence are independently addressable without reading sibling payloads", async () => {
+  const { root, review } = await fixture();
+  await mkdir(path.join(root, "images"));
+  const image = new Uint8Array([137, 80, 78, 71]);
+  await writeFile(path.join(root, "images/full-page.png"), image);
+  const ref = await saveContext(root, ".", {
+    label: "Independent page evidence",
+    parts: [
+      {
+        name: "full-page-html",
+        label: "Page HTML",
+        type: "text/html",
+        data: "<main>Saved HTML only</main>",
+      },
+      {
+        name: "full-page",
+        label: "Full-page screenshot",
+        type: "image/png",
+        attachment: "images/full-page.png",
+      },
+      {
+        name: "capture",
+        label: "Complete capture",
+        type: "application/json",
+        data: '{"private":"Unrequested capture metadata"}',
+      },
+    ],
+  });
+  await rm(path.join(root, "context", ref.id, "capture.part"));
+  await rm(path.join(root, "images/full-page.png"));
+  const manifest = JSON.parse(
+    await runContextCli(["inspect", ref.id, "--review", review]),
+  );
+  expect(manifest.parts.map((part: { name: string }) => part.name)).toEqual([
+    "full-page-html",
+    "full-page",
+    "capture",
+  ]);
+  expect(JSON.stringify(manifest)).not.toContain("Saved HTML only");
+  expect(JSON.stringify(manifest)).not.toContain(
+    "Unrequested capture metadata",
+  );
+  const html = JSON.parse(
+    await runContextCli([
+      "read",
+      ref.id,
+      "--review",
+      review,
+      "--part",
+      "full-page-html",
+    ]),
+  );
+  expect(html.content).toBe("<main>Saved HTML only</main>");
+  expect(html.part.name).toBe("full-page-html");
+  expect(html.nextOffset).toBeNull();
+  await rm(path.join(root, "context", ref.id, "full-page-html.part"));
+  await writeFile(path.join(root, "images/full-page.png"), image);
+  const screenshot = JSON.parse(
+    await runContextCli([
+      "read",
+      `context/${ref.id}/manifest.json`,
+      "--review",
+      review,
+      "--part",
+      "full-page",
+    ]),
+  );
+  expect(new Uint8Array(await readFile(screenshot.path))).toEqual(image);
+  expect(screenshot.type).toBe("image/png");
+  expect(screenshot.part.name).toBe("full-page");
+  expect(screenshot.content).toBeUndefined();
+  expect(screenshot.totalBytes).toBe(image.byteLength);
+});
+
 test("CLI errors reject ambiguous options and unavailable resources", async () => {
   const { ref, review } = await fixture();
   const cases = [
@@ -132,4 +213,163 @@ test("entry dispatch works offline outside Git and ignores even malformed startu
       clearTimeout(timeout);
     }
   }
+});
+
+test("offline JSON projections retain ancestors, select after filtering, and page the selected view", async () => {
+  const { root, review } = await fixture();
+  const ref = await saveContext(root, ".", {
+    label: "Layout",
+    parts: [
+      {
+        name: "layout",
+        label: "Layout",
+        type: "application/json",
+        data: JSON.stringify({
+          nodes: [
+            {
+              selector: "#card",
+              targets: ["#card"],
+              styles: { gap: "8px", "--space": "🙂", display: "flex" },
+            },
+            { selector: "main", targets: ["#card"], styles: { gap: "16px" } },
+            { selector: "#other", targets: ["#other"], styles: { gap: "0px" } },
+          ],
+        }),
+      },
+    ],
+  });
+  const args = ["read", ref.id, "--review", review, "--part", "layout"];
+  const selected = JSON.parse(
+    await runContextCli([
+      ...args,
+      "--selector",
+      "#card",
+      "--property",
+      "gap",
+      "--select",
+      "/nodes",
+    ]),
+  );
+  expect(JSON.parse(selected.content)).toEqual([
+    { selector: "#card", targets: ["#card"], styles: { gap: "8px" } },
+    { selector: "main", targets: ["#card"], styles: { gap: "16px" } },
+  ]);
+  expect(selected.projection).toMatchObject({
+    selector: "#card",
+    property: "gap",
+    select: "/nodes",
+  });
+  const unicode = [
+    ...args,
+    "--property",
+    "--space",
+    "--select",
+    "/nodes/0/styles/--space",
+  ];
+  const page = JSON.parse(
+    await runContextCli([...unicode, "--offset", "1", "--limit", "4"]),
+  );
+  expect(page.content).toBe("🙂");
+  expect(page.totalBytes).toBe(6);
+  expect(page.nextOffset).toBe(5);
+  await expect(runContextCli([...unicode, "--offset", "2"])).rejects.toThrow(
+    "UTF-8",
+  );
+  await expect(runContextCli([...unicode, "--offset", "7"])).rejects.toThrow(
+    "within",
+  );
+  const full = JSON.parse(await runContextCli(args));
+  expect(full.projection).toBeUndefined();
+  const rootView = JSON.parse(await runContextCli([...args, "--select", ""]));
+  expect(JSON.parse(rootView.content)).toEqual(JSON.parse(full.content));
+  await expect(
+    runContextCli([...args, "--select", "/constructor"]),
+  ).rejects.toThrow("does not exist");
+  await expect(
+    runContextCli([...args, "--since", "2026-11-15T00:00:00Z"]),
+  ).rejects.toThrow("events array");
+  await expect(
+    runContextCli(["inspect", ref.id, "--review", review, "--select", ""]),
+  ).rejects.toThrow("only to context read");
+});
+
+test("CLI filters cannot bypass part types or saved-byte integrity", async () => {
+  const { root, ref, review } = await fixture();
+  for (const part of ["text", "file"]) {
+    await expect(
+      runContextCli([
+        "read",
+        ref.id,
+        "--review",
+        review,
+        "--part",
+        part,
+        "--select",
+        "",
+      ]),
+    ).rejects.toThrow("application/json part");
+  }
+  const json = await saveContext(root, ".", {
+    label: "Integrity",
+    parts: [
+      {
+        name: "json",
+        label: "JSON",
+        type: "application/json",
+        data: '{"public":"safe","private":"excluded"}',
+      },
+    ],
+  });
+  const manifest = JSON.parse(
+    await readFile(
+      path.join(root, "context", json.id, "manifest.json"),
+      "utf8",
+    ),
+  );
+  await writeFile(
+    path.join(root, "context", json.id, manifest.parts[0].file),
+    '{"public":"evil","private":"excluded"}',
+  );
+  await expect(
+    runContextCli([
+      "read",
+      json.id,
+      "--review",
+      review,
+      "--part",
+      "json",
+      "--select",
+      "/public",
+    ]),
+  ).rejects.toThrow();
+});
+
+test("projection cannot follow a saved-part symlink outside the review", async () => {
+  const { root, review } = await fixture();
+  const data = '{"public":"safe"}';
+  const ref = await saveContext(root, ".", {
+    label: "Contained",
+    parts: [{ name: "json", label: "JSON", type: "application/json", data }],
+  });
+  const manifest = JSON.parse(
+    await readFile(path.join(root, "context", ref.id, "manifest.json"), "utf8"),
+  );
+  const part = path.join(root, "context", ref.id, manifest.parts[0].file);
+  const outside = await mkdtemp(path.join(tmpdir(), "lcr-context-outside-"));
+  roots.push(outside);
+  await writeFile(path.join(outside, "evidence.json"), data);
+  await rm(part);
+  await symlink(path.join(outside, "evidence.json"), part);
+  await expect(
+    runContextCli([
+      "read",
+      ref.id,
+      "--review",
+      review,
+      "--part",
+      "json",
+      "--select",
+      "/public",
+    ]),
+  ).rejects.toThrow();
 });

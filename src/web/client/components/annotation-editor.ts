@@ -7,9 +7,7 @@ import {
   type WebAnnotation,
 } from "../../../shared/web-annotation.ts";
 import {
-  drawMark,
   editHandle,
-  hitMark,
   insertPathNode,
   markBounds,
   markHandles,
@@ -18,17 +16,34 @@ import {
   smoothNode,
   type AnnotationHandle,
 } from "./annotation-geometry.ts";
-import { attachSrc, upload } from "./attach.ts";
-import { SVG, state } from "../app/state.ts";
+import {
+  attachmentSrc as attachSrc,
+  uploadImage as upload,
+} from "./attachments.ts";
+import {
+  mountDrawingEditor,
+  type DrawingControlsModel,
+  type DrawingTool,
+} from "./annotation-controls.tsx";
+import { pressureStroke } from "./annotation-pressure.ts";
+import {
+  createAnnotationScene,
+  type AnnotationScene,
+  type AnnotationSceneModel,
+} from "./annotation-scene.tsx";
 import {
   registerView,
   setView,
   setViews,
 } from "../navigation/ui-navigation.ts";
-import { closeImagePreviewForDrawing } from "./image-preview.ts";
+import {
+  closeImagePreviewForDrawing,
+  imageEditorOwners,
+} from "./image-preview.ts";
 import {
   createAnnotationDraftStore,
   type AnnotationDraft,
+  type AnnotationDraftStore,
 } from "./annotation-draft.ts";
 
 /** Pixels and optional drawing data, independent of where the image was captured. */
@@ -38,9 +53,10 @@ export interface AnnotationSource {
   /** Captured CSS width preserves tool sizing for high-DPI browser screenshots. */
   cssWidth?: number;
   key?: string;
+  applyLabel?: "Use drawing" | "Save drawing";
 }
 
-type Tool = AnnotationMark["tool"] | "select" | "pan";
+type Tool = DrawingTool;
 type PathMark = Extract<AnnotationMark, { tool: "path" }>;
 type Gesture = {
   id: number;
@@ -97,15 +113,19 @@ export function openAnnotation(
   route: string,
   capture: AnnotationSource,
   apply: (annotation: WebAnnotation | null) => Promise<void>,
+  scope: { repo: string; read: string } = { repo: location.origin, read: "" },
+  owner?: HTMLElement | null,
 ): Promise<void> {
   if (active) {
-    document
-      .querySelector<HTMLDialogElement>("[data-annotation-editor]")
-      ?.focus();
+    document.querySelector<HTMLElement>("[data-annotation-editor]")?.focus();
     return active;
   }
   const replacePreview = closeImagePreviewForDrawing();
-  active = editAnnotation(route, capture, apply);
+  try {
+    active = editAnnotation(route, capture, apply, scope, owner);
+  } catch (reason) {
+    return Promise.reject(reason);
+  }
   setViews({ annotation: route, image: null }, { replace: replacePreview });
   return active;
 }
@@ -114,6 +134,8 @@ function editAnnotation(
   route: string,
   capture: AnnotationSource,
   apply: (annotation: WebAnnotation | null) => Promise<void>,
+  scope: { repo: string; read: string } = { repo: location.origin, read: "" },
+  owner?: HTMLElement | null,
 ): Promise<void> {
   const { promise, resolve } = Promise.withResolvers<void>();
   const previous =
@@ -148,7 +170,7 @@ function editAnnotation(
     fill = false,
     fillColor = "#eab308",
     wrap = 240,
-    background = true,
+    background = false,
     backgroundColor = "#ffffff",
     textOutline = false,
     textLeader = false,
@@ -199,96 +221,30 @@ function editAnnotation(
   } catch {}
   let lastState = "",
     sourceScale = 1;
-  const dialog = document.createElement("dialog");
-  dialog.dataset.annotationEditor = "";
-  dialog.setAttribute("aria-label", "Draw on screenshot");
-  dialog.setAttribute("aria-describedby", "annotation-help");
-  dialog.innerHTML = `<div class="annotation-tools" role="toolbar" aria-label="Drawing tools">
-        <div class="annotation-group" role="group" aria-label="Tools">
-          <button type="button" data-tool="select" aria-pressed="false" aria-label="Select and edit drawings" data-tooltip="Select / resize / edit points">${SVG.cursor}</button>
-          <button type="button" data-tool="pan" aria-pressed="false" aria-label="Pan image" data-tooltip="Hand / pan image">${SVG.hand}</button>
-          <button type="button" data-tool="pen" aria-pressed="true" aria-label="Draw with pen" data-tooltip="Pen">${SVG.edit}</button>
-          <button type="button" data-tool="highlighter" aria-pressed="false" aria-label="Highlight screenshot" data-tooltip="Highlighter">${SVG.highlighter}</button>
-          <button type="button" data-tool="arrow" aria-pressed="false" aria-label="Draw an arrow" data-tooltip="Arrow">${SVG.open}</button>
-          <button type="button" data-tool="rectangle" aria-pressed="false" aria-label="Draw a rectangle" data-tooltip="Rectangle">${SVG.box}</button>
-          <button type="button" data-tool="ellipse" aria-pressed="false" aria-label="Draw a circle or ellipse" data-tooltip="Circle / ellipse (Shift for circle)">${SVG.circle}</button>
-          <button type="button" data-tool="triangle" aria-pressed="false" aria-label="Draw a triangle" data-tooltip="Triangle">${SVG.triangle}</button>
-          <button type="button" data-tool="line" aria-pressed="false" aria-label="Draw a line" data-tooltip="Line">${SVG.line}</button>
-          <button type="button" data-tool="path" aria-pressed="false" aria-label="Draw a vector path" data-tooltip="Path: click points; drag for curves">${SVG.path}</button>
-          <button type="button" data-tool="text" aria-pressed="false" aria-label="Add text" data-tooltip="Text">${SVG.text}</button>
-          <button type="button" data-tool="callout" aria-pressed="false" aria-label="Add numbered callout" data-tooltip="Numbered callout: click for badge; drag to point">${SVG.callout}</button>
-          <button type="button" data-tool="magnifier" aria-pressed="false" aria-label="Magnify screenshot detail" data-tooltip="Magnify: drag over original detail">${SVG.magnifier}</button>
-        </div>
-        <button type="button" class="annotation-color" data-command="colors" aria-label="Drawing color" aria-haspopup="dialog" aria-expanded="false" aria-controls="annotation-colors" data-tooltip="Drawing color"></button>
-        <div class="annotation-properties">
-          <label data-property="width" data-tooltip="Stroke width"><span aria-hidden="true">${SVG.minus}</span><input type="number" data-field="width" min="1" max="${LIMITS.maxWidth}" step="1" value="3" aria-label="Stroke width in image pixels"></label>
-          <label data-property="smoothing" data-tooltip="Pen smoothing — new strokes only"><span aria-hidden="true">${SVG.sliders}</span><input type="range" data-field="smoothing" min="0" max="100" step="10" value="0" aria-label="Pen smoothing"><output class="annotation-smoothing">0%</output></label>
-          <label data-property="radius" data-tooltip="Corner radius" hidden><span aria-hidden="true">${SVG.box}</span><input type="number" data-field="radius" min="0" step="1" value="8" aria-label="Rectangle corner radius in image pixels"></label>
-          <label data-property="size" data-tooltip="Text size" hidden><span aria-hidden="true">${SVG.text}</span><input type="number" data-field="size" min="1" max="${LIMITS.maxTextSize}" step="1" value="20" aria-label="Text size in image pixels"></label>
-          <label data-property="opacity" hidden data-tooltip="Highlight / fill opacity"><span>Opacity</span><input type="range" data-field="opacity" min="0" max="100" step="5" value="30" aria-label="Highlight or fill opacity"></label>
-          <label data-property="fill" hidden><input type="checkbox" data-field="fill" aria-label="Fill shape">Fill<input type="color" data-field="fill-color" value="#eab308" aria-label="Shape fill color"></label>
-          <label data-property="wrap" hidden data-tooltip="Text wrapping width in image pixels"><span>Wrap</span><input type="number" data-field="wrap" min="1" max="${LIMITS.maxDimension}" value="240" aria-label="Text wrapping width"></label>
-          <label data-property="background" hidden><input type="checkbox" data-field="background" checked aria-label="Text background">Background<input type="color" data-field="background-color" value="#ffffff" aria-label="Text background color"></label>
-          <label data-property="text-outline" hidden><input type="checkbox" data-field="text-outline" aria-label="Outline text">Outline</label>
-          <label data-property="text-leader" hidden><input type="checkbox" data-field="text-leader" aria-label="Connect text to target">Leader</label>
-          <label data-property="label" hidden><input type="text" data-field="label" maxlength="200" placeholder="Callout label" aria-label="Callout label"></label>
-          <label data-property="scale" hidden><span>Magnify</span><input type="number" data-field="scale" min="1" max="8" step="0.5" value="3" aria-label="Detail magnification"></label>
-          <button type="button" data-command="edit-text" aria-label="Edit text in place" data-tooltip="Edit text in place" hidden>${SVG.edit}</button>
-          <label data-property="mark" hidden><select data-field="mark" aria-label="Select an editable drawing"><option value="-1">No drawing selected</option></select></label>
-          <button type="button" data-command="delete" aria-label="Delete selected drawing" data-tooltip="Delete selected drawing" hidden>${SVG.trash}</button>
-          <button type="button" data-command="visibility" aria-label="Hide selected drawing" data-tooltip="Hide selected drawing (preview only)" hidden>${SVG.eye}</button>
-        </div>
-        <div class="annotation-group" data-path-tools role="group" aria-label="Path editing" hidden>
-          <button type="button" data-command="finish-path" aria-label="Finish open path" data-tooltip="Finish path (Enter)">${SVG.check}</button>
-          <button type="button" data-command="close-path" aria-label="Close path" data-tooltip="Close / open path">${SVG.box}</button>
-          <button type="button" data-command="smooth-node" aria-label="Smooth selected path point" data-tooltip="Smooth point">${SVG.path}</button>
-          <button type="button" data-command="corner-node" aria-label="Make selected path point a corner" data-tooltip="Corner point">${SVG.triangle}</button>
-          <button type="button" data-command="delete-node" aria-label="Delete selected path point" data-tooltip="Delete point">${SVG.trash}</button>
-        </div>
-        <div class="annotation-group" role="group" aria-label="History">
-          <button type="button" data-command="undo" aria-label="Undo drawing" data-tooltip="Undo (⌘/Ctrl Z)">${SVG.reply}</button>
-          <button type="button" data-command="redo" aria-label="Redo drawing" data-tooltip="Redo (⌘/Ctrl Shift Z)">${SVG.ref}</button>
-          <button type="button" data-command="clear" aria-label="Clear all drawings" data-tooltip="Clear all drawings">${SVG.trash}</button>
-        </div>
-        <button type="button" data-command="original" aria-label="Show original screenshot" aria-pressed="false" data-tooltip="Show original (hold O); preview only">${SVG.eyeOff}</button>
-        <div class="annotation-group annotation-zoom-tools" role="group" aria-label="Zoom">
-          <button type="button" data-command="out" aria-label="Zoom out" data-tooltip="Zoom out (−)">${SVG.minus}</button>
-          <button type="button" data-command="actual" class="annotation-zoom" aria-label="Actual image size" data-tooltip="100% (1)">100%</button>
-          <button type="button" data-command="in" aria-label="Zoom in" data-tooltip="Zoom in (+)">${SVG.plus}</button>
-          <button type="button" data-command="fit" aria-label="Fit image" data-tooltip="Fit image (0)">${SVG.fit}</button>
-        </div>
-        <div class="annotation-group annotation-commit" role="group" aria-label="Finish drawing">
-          <button type="button" data-command="apply" class="annotation-apply" aria-label="Apply drawing" data-tooltip="Apply drawing">${SVG.check}</button>
-          <button type="button" data-command="cancel" aria-label="Close drawing editor" data-tooltip="Close drawing editor (Esc)">${SVG.x}</button>
-        </div>
-      </div>
-      <div id="annotation-colors" class="annotation-colors" popover="auto" role="dialog" aria-label="Drawing colors">
-        <div class="annotation-palette" role="group" aria-label="Saved drawing colors"></div>
-        <label>Custom color <input type="color" data-field="color" value="${color}" aria-label="Custom drawing color"></label>
-      </div>
-      <div class="annotation-recovery" role="status" hidden><span>Unfinished drawing found.</span><button type="button" data-command="restore-draft">Restore draft</button><button type="button" data-command="discard-draft">Discard draft</button></div>
-      <p id="annotation-help" class="annotation-help">Select a drawing to resize it using handles. Drag line endpoints or path points and curve handles. Double-click a path segment to add a point. Path tool: click points, drag for curves, Enter or double-click to finish; click the first point to close. Shift draws squares and circles. Escape cancels an active gesture or unfinished path. White margins are drawing space, not page context. Wheel to zoom; Space and drag to pan.</p>
-      <div class="annotation-viewport"><div class="annotation-surface"><canvas tabindex="0" aria-label="Screenshot drawing canvas. Select to resize or edit points. Path: click points, drag for curves, Enter to finish."></canvas><div class="annotation-source-outline" aria-hidden="true"></div><label class="annotation-text-label" hidden><textarea data-field="text" rows="2" maxlength="${LIMITS.maxText}" aria-label="Text to draw" placeholder="Type your label"></textarea></label></div></div>
-      <div class="annotation-feedback"><div class="annotation-message" role="status" aria-live="polite">Loading original screenshot…</div>
-        <div class="annotation-error" role="alert" hidden></div><button type="button" data-command="retry" hidden>Retry image load</button></div>`;
-  const find = <T extends Element>(selector: string) =>
-    dialog.querySelector<T>(selector)!;
-  const canvas = find<HTMLCanvasElement>("canvas"),
-    viewport = find<HTMLElement>(".annotation-viewport");
-  const surface = find<HTMLElement>(".annotation-surface"),
-    outline = find<HTMLElement>(".annotation-source-outline");
-  const message = find<HTMLElement>(".annotation-message"),
-    error = find<HTMLElement>(".annotation-error");
-  const markSelect = find<HTMLSelectElement>('[data-field="mark"]'),
-    text = find<HTMLTextAreaElement>('[data-field="text"]');
-  const field = (name: string) =>
-    find<HTMLInputElement>('[data-field="' + name + '"]');
-  const button = (name: string) =>
-    find<HTMLButtonElement>('[data-command="' + name + '"]');
-  const colorPopup = find<HTMLElement>(".annotation-colors");
-  const context = canvas.getContext("2d");
-  let draftStore: ReturnType<typeof createAnnotationDraftStore> | null = null;
+  let discard = false,
+    errorMessage = "",
+    statusMessage = "",
+    retry = false;
+  let penMode: "classic" | "pressure" = "classic";
+  let draftStore: AnnotationDraftStore | null = null;
   let recoverable: AnnotationDraft | null = null;
+  const view = mountDrawingEditor(controlsModel(), {
+    command: runCommand,
+    tool: chooseTool,
+    property: setProperty,
+    textInput: onTextInput,
+    textBlur: onTextBlur,
+  });
+  const { dialog, canvas, viewport, surface, outline, text, textLabel } =
+    view.elements;
+  let scene: AnnotationScene;
+  try {
+    scene = createAnnotationScene(canvas);
+  } catch (reason) {
+    view.destroy();
+    throw reason;
+  }
+  if (owner) imageEditorOwners.set(dialog, owner);
   function persistDraft() {
     if (!draftStore || recoverable || closed || saving) return;
     const result =
@@ -322,146 +278,69 @@ function editAnnotation(
     }
   }
   function fail(reason: unknown) {
-    error.textContent =
-      reason instanceof Error ? reason.message : String(reason);
-    error.hidden = false;
+    errorMessage = reason instanceof Error ? reason.message : String(reason);
+    view.render(controlsModel());
   }
   function clearError() {
-    error.hidden = true;
-    error.textContent = "";
+    errorMessage = "";
+    view.render(controlsModel());
+  }
+  function controlsModel(): DrawingControlsModel {
+    const current = marks[selected];
+    return {
+      tool,
+      current,
+      selected,
+      selectedNode,
+      marks,
+      hidden,
+      colors,
+      values: {
+        color,
+        width: stroke,
+        radius,
+        size,
+        opacity: Math.round(opacity * 100),
+        fill,
+        "fill-color": fillColor,
+        wrap: Math.round(wrap),
+        background,
+        "background-color": backgroundColor,
+        "text-outline": textOutline,
+        "text-leader": textLeader,
+        scale: insetScale,
+        smoothing,
+        label: current?.tool === "callout" ? current.label : "",
+        "pen-mode":
+          current?.tool === "pen"
+            ? current.stroke
+              ? "pressure"
+              : "classic"
+            : penMode,
+      },
+      busy: loading || saving || !!recoverable,
+      loading,
+      saving,
+      undo: !!undo.length || !!pathDraft,
+      redo: !!redo.length && !pathDraft,
+      dirty: !!pathDraft || JSON.stringify(marks) !== initial,
+      hasImage: !!image,
+      original: original || heldOriginal,
+      path: pathDraft ?? (current?.tool === "path" ? current : null),
+      pathDraft: !!pathDraft,
+      recoverable: !!recoverable,
+      discard,
+      zoom,
+      applyLabel: capture.applyLabel ?? "Use drawing",
+      error: errorMessage,
+      retry,
+      message: statusMessage,
+    };
   }
   function sync() {
-    const busy = loading || saving || !!recoverable;
-    dialog
-      .querySelectorAll<
-        | HTMLButtonElement
-        | HTMLInputElement
-        | HTMLTextAreaElement
-        | HTMLSelectElement
-      >("button,input,textarea,select")
-      .forEach((el) => {
-        el.disabled =
-          busy &&
-          !(
-            el instanceof HTMLButtonElement &&
-            ((el.dataset.command === "cancel" && !saving) ||
-              (!loading &&
-                !saving &&
-                ["restore-draft", "discard-draft"].includes(
-                  el.dataset.command ?? "",
-                )))
-          );
-      });
-    button("redo").disabled = busy || !redo.length || !!pathDraft;
-    button("clear").disabled = busy || (!marks.length && !pathDraft);
-    button("undo").disabled = busy || (!undo.length && !pathDraft);
-    button("delete").disabled = busy || selected < 0;
-    button("apply").disabled = busy || !image;
-    button("in").disabled = busy || zoom >= 8;
-    button("out").disabled = busy || zoom <= 0.01;
-    const applyLabel = saving
-      ? "Applying drawing…"
-      : marks.length || pathDraft
-        ? "Apply drawing"
-        : "Apply without drawings";
-    button("apply").setAttribute("aria-label", applyLabel);
-    button("apply").dataset.tooltip = applyLabel;
-    button("apply").toggleAttribute("data-dirty", dirty());
-    button("colors").style.setProperty("--annotation-color", color);
-    dialog
-      .querySelectorAll<HTMLButtonElement>("[data-tool]")
-      .forEach((el) =>
-        el.setAttribute("aria-pressed", String(el.dataset.tool === tool)),
-      );
-    dialog
-      .querySelectorAll<HTMLButtonElement>("[data-color]")
-      .forEach((el) =>
-        el.setAttribute(
-          "aria-pressed",
-          String(el.dataset.color === color.toLowerCase()),
-        ),
-      );
-    field("color").value = color;
-    field("width").value = String(stroke);
-    field("radius").value = String(radius);
-    field("size").value = String(size);
-    field("opacity").value = String(Math.round(opacity * 100));
-    field("fill").checked = fill;
-    field("fill-color").value = fillColor;
-    field("wrap").value = String(Math.round(wrap));
-    field("background").checked = background;
-    field("background-color").value = backgroundColor;
-    field("text-outline").checked = textOutline;
-    field("text-leader").checked = textLeader;
-    field("scale").value = String(insetScale);
-    field("smoothing").value = String(smoothing);
-    field("smoothing").setAttribute("aria-valuetext", smoothing + "%");
-    find<HTMLOutputElement>(".annotation-smoothing").value = smoothing + "%";
-    const current = marks[selected];
-    const activeTool = current?.tool ?? tool;
-    find<HTMLElement>('[data-property="width"]').hidden =
-      activeTool === "text" || activeTool === "select" || activeTool === "pan";
-    find<HTMLElement>('[data-property="radius"]').hidden =
-      activeTool !== "rectangle";
-    const filledTool = ["rectangle", "ellipse", "triangle", "path"].includes(
-      activeTool,
-    );
-    for (const property of [
-      "wrap",
-      "background",
-      "text-outline",
-      "text-leader",
-    ])
-      find<HTMLElement>('[data-property="' + property + '"]').hidden =
-        activeTool !== "text";
-    find<HTMLElement>('[data-property="fill"]').hidden = !filledTool;
-    find<HTMLElement>('[data-property="opacity"]').hidden =
-      activeTool !== "highlighter" && !filledTool;
-    find<HTMLElement>('[data-property="label"]').hidden =
-      activeTool !== "callout";
-    find<HTMLElement>('[data-property="scale"]').hidden =
-      activeTool !== "magnifier";
-    field("label").value = current?.tool === "callout" ? current.label : "";
-    find<HTMLElement>('[data-property="size"]').hidden = ![
-      "text",
-      "callout",
-    ].includes(activeTool);
-    find<HTMLElement>('[data-property="mark"]').hidden = !marks.length;
-    find<HTMLElement>('[data-property="smoothing"]').hidden = ![
-      "pen",
-      "highlighter",
-    ].includes(tool);
-    button("colors").hidden = tool === "pan";
-    button("edit-text").hidden = current?.tool !== "text";
-    button("visibility").hidden = selected < 0;
-    const invisible = !!current && hidden.has(current);
-    button("visibility").innerHTML = invisible ? SVG.eyeOff : SVG.eye;
-    button("visibility").setAttribute(
-      "aria-label",
-      invisible ? "Show selected drawing" : "Hide selected drawing",
-    );
-    button("visibility").dataset.tooltip =
-      (invisible ? "Show" : "Hide") + " selected drawing (preview only)";
-    button("original").setAttribute(
-      "aria-pressed",
-      String(original || heldOriginal),
-    );
-    find<HTMLElement>(".annotation-recovery").hidden = !recoverable;
+    if (closed) return;
+    view.render(controlsModel());
     syncTextEditor();
-    button("delete").hidden = selected < 0;
-    const path = pathDraft ?? (current?.tool === "path" ? current : null);
-    find<HTMLElement>("[data-path-tools]").hidden = !path;
-    button("finish-path").hidden = !pathDraft;
-    button("finish-path").disabled =
-      busy || !pathDraft || pathDraft.nodes.length < 2;
-    button("close-path").disabled = busy || !path || path.nodes.length < 3;
-    button("close-path").setAttribute("aria-pressed", String(!!path?.closed));
-    for (const command of ["smooth-node", "corner-node", "delete-node"])
-      button(command).disabled = busy || !!pathDraft || selectedNode < 0;
-    message.hidden = !pathDraft;
-    message.textContent = pathDraft
-      ? "Path: click to add points; drag for curves. Enter finishes, first point closes, Escape discards."
-      : "";
     canvas.style.cursor =
       space || tool === "pan"
         ? "grab"
@@ -471,24 +350,6 @@ function editAnnotation(
             ? "text"
             : "crosshair";
     emit();
-  }
-  function refreshMarks() {
-    markSelect.replaceChildren(new Option("No drawing selected", "-1"));
-    marks.forEach((mark, i) =>
-      markSelect.add(
-        new Option(
-          i +
-            1 +
-            " · " +
-            (mark.tool === "callout"
-              ? "Callout " + mark.number + (mark.label ? ": " + mark.label : "")
-              : mark.tool) +
-            (hidden.has(mark) ? " (hidden)" : ""),
-          String(i),
-        ),
-      ),
-    );
-    markSelect.value = String(selected);
   }
   function select(index: number) {
     if (index !== selected) selectedNode = -1;
@@ -519,7 +380,6 @@ function editAnnotation(
         fill = false;
       if (mark.tool === "magnifier") insetScale = mark.scale;
     }
-    markSelect.value = String(selected);
     sync();
     paint();
   }
@@ -543,7 +403,6 @@ function editAnnotation(
     const current = marks[selected];
     if (current?.tool === "rectangle") radius = current.radius;
     if (current?.tool === "text") size = current.size;
-    refreshMarks();
     sync();
     paint();
     persistDraft();
@@ -574,20 +433,15 @@ function editAnnotation(
     hidden.clear();
     textEditing = false;
     selected = -1;
-    refreshMarks();
     sync();
     paint();
     persistDraft();
   }
-  const measure = (value: string, fontSize: number) => {
-    if (!context) return value.length * fontSize;
-    context.font = fontSize + "px sans-serif";
-    return context.measureText(value).width;
-  };
+  const measure = scene.measure;
   const bounds = (mark: AnnotationMark) => markBounds(mark, measure);
   const handles = (mark: AnnotationMark) => markHandles(mark, measure);
   function syncTextEditor() {
-    const label = find<HTMLElement>(".annotation-text-label");
+    const label = textLabel;
     const mark = marks[selected];
     const at = pendingText ?? (mark?.tool === "text" ? mark.at : null);
     label.hidden =
@@ -692,110 +546,33 @@ function editAnnotation(
     selectedNode = -1;
     updatePath({ ...mark, nodes });
   }
-  function render(ctx: CanvasRenderingContext2D, guides: boolean) {
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, width, height);
-    if (image) ctx.drawImage(image, padding, padding);
-    if (guides && (original || heldOriginal)) return;
-    const source = image ? { image, padding } : undefined;
-    marks.forEach((mark, i) => {
-      if (
-        (!gesture?.move || i !== gesture.index) &&
-        (!guides ||
-          (!hidden.has(mark) &&
-            !(textEditing && i === selected && mark.tool === "text")))
-      )
-        drawMark(ctx, mark, sourceScale, source);
-    });
-    if (pathDraft && !gesture?.path)
-      drawMark(ctx, pathDraft, sourceScale, source);
-    if (gesture) drawMark(ctx, gesture.mark, sourceScale, source);
-    if (guides && selected >= 0 && !hidden.has(marks[selected]!)) {
-      const current = gesture?.move ? gesture.mark : marks[selected]!;
-      const b = bounds(current);
-      ctx.save();
-      ctx.strokeStyle = "#2563eb";
-      ctx.lineWidth = 1 / zoom;
-      ctx.setLineDash([5 / zoom, 4 / zoom]);
-      ctx.strokeRect(
-        b.x - 4 / zoom,
-        b.y - 4 / zoom,
-        b.width + 8 / zoom,
-        b.height + 8 / zoom,
-      );
-      ctx.setLineDash([]);
-      if (tool === "select") {
-        if (current.tool === "path") {
-          for (const node of current.nodes) {
-            for (const control of [node.in, node.out]) {
-              if (!control) continue;
-              ctx.beginPath();
-              ctx.moveTo(node.x, node.y);
-              ctx.lineTo(control.x, control.y);
-              ctx.stroke();
-            }
-          }
-        }
-        for (const handle of handles(current)) {
-          const r = (handle.kind === "control" ? 3 : 4) / zoom;
-          ctx.fillStyle =
-            handle.kind === "node" && handle.index === selectedNode
-              ? "#2563eb"
-              : "#ffffff";
-          ctx.beginPath();
-          if (handle.kind === "control")
-            ctx.arc(handle.x, handle.y, r, 0, Math.PI * 2);
-          else ctx.rect(handle.x - r, handle.y - r, 2 * r, 2 * r);
-          ctx.fill();
-          ctx.stroke();
-        }
-      }
-      ctx.restore();
-    }
-    if (guides && (gesture?.path || pathDraft)) {
-      const path = gesture?.path ? (gesture.mark as PathMark) : pathDraft!;
-      ctx.save();
-      ctx.strokeStyle = "#2563eb";
-      ctx.fillStyle = "#ffffff";
-      ctx.lineWidth = 1 / zoom;
-      for (const node of path.nodes) {
-        for (const control of [node.in, node.out]) {
-          if (!control) continue;
-          ctx.beginPath();
-          ctx.moveTo(node.x, node.y);
-          ctx.lineTo(control.x, control.y);
-          ctx.stroke();
-        }
-        ctx.fillRect(node.x - 4 / zoom, node.y - 4 / zoom, 8 / zoom, 8 / zoom);
-        ctx.strokeRect(
-          node.x - 4 / zoom,
-          node.y - 4 / zoom,
-          8 / zoom,
-          8 / zoom,
-        );
-      }
-      ctx.restore();
-    }
-    if (guides && pendingText) {
-      ctx.save();
-      ctx.strokeStyle = "#2563eb";
-      ctx.lineWidth = 1 / zoom;
-      ctx.beginPath();
-      ctx.moveTo(pendingText.x - 6 / zoom, pendingText.y);
-      ctx.lineTo(pendingText.x + 6 / zoom, pendingText.y);
-      ctx.moveTo(pendingText.x, pendingText.y - 6 / zoom);
-      ctx.lineTo(pendingText.x, pendingText.y + 6 / zoom);
-      ctx.stroke();
-      ctx.restore();
-    }
+  function sceneModel(): AnnotationSceneModel {
+    return {
+      image: image!,
+      width,
+      height,
+      padding,
+      sourceScale,
+      zoom,
+      marks,
+      hidden,
+      original: original || heldOriginal,
+      textEditing,
+      selected,
+      selectedNode,
+      selecting: tool === "select",
+      gesture,
+      pathDraft,
+      pendingText,
+    };
   }
   function paint() {
-    if (paintFrame || !image || !context || closed) return;
+    if (paintFrame || !image || closed) return;
     paintFrame = requestAnimationFrame(() => {
       paintFrame = 0;
       if (closed) return;
       try {
-        render(context, true);
+        scene.render(sceneModel());
       } catch (reason) {
         fail(reason);
       }
@@ -821,15 +598,13 @@ function editAnnotation(
     canvas.style.height = height * zoom + "px";
     surface.style.width = width * zoom + "px";
     surface.style.height = height * zoom + "px";
+    surface.style.setProperty("--annotation-padding", padding * zoom + "px");
     Object.assign(outline.style, {
       left: padding * zoom + "px",
       top: padding * zoom + "px",
       width: image.naturalWidth * zoom + "px",
       height: image.naturalHeight * zoom + "px",
     });
-    button("actual").textContent = Math.round(zoom * 100) + "%";
-    button("in").disabled = loading || saving || zoom >= 8;
-    button("out").disabled = loading || saving || zoom <= 0.01;
     if (fit) {
       viewport.scrollLeft = 0;
       viewport.scrollTop = 0;
@@ -839,6 +614,7 @@ function editAnnotation(
       viewport.scrollTop += after.top + y * zoom - at.y;
     }
     syncTextEditor();
+    sync();
     paint();
   }
   function fit() {
@@ -859,9 +635,14 @@ function editAnnotation(
       true,
     );
   }
+  let resizeFrame = 0;
   const resize = new ResizeObserver(() => {
-    if (fitted) fit();
-    if (colorPopup.matches(":popover-open")) positionColors();
+    if (!fitted || resizeFrame) return;
+    // Fitting also updates the toolbar; finish resize delivery before changing layout.
+    resizeFrame = requestAnimationFrame(() => {
+      resizeFrame = 0;
+      if (fitted) fit();
+    });
   });
   viewport.addEventListener(
     "wheel",
@@ -960,6 +741,11 @@ function editAnnotation(
               ? "text"
               : "crosshair";
     }
+  }
+  function samplePressure(event: PointerEvent) {
+    return Number.isFinite(event.pressure)
+      ? Math.max(0, Math.min(1, event.pressure))
+      : 0.5;
   }
   function point(event: PointerEvent): AnnotationPoint {
     const rect = canvas.getBoundingClientRect();
@@ -1065,14 +851,15 @@ function editAnnotation(
     }
     if (tool === "select") {
       const current = marks[selected];
-      let handle = current && !hidden.has(current) && handleAt(current, at);
+      let handle =
+        current && !hidden.has(current) ? handleAt(current, at) : undefined;
       const index = handle
         ? selected
-        : marks.findLastIndex(
-            (mark) =>
-              !hidden.has(mark) &&
-              hitMark(mark, at, 8 / zoom, measure, sourceScale),
-          );
+        : (() => {
+            // Tool/style changes may have happened since the last animation frame.
+            scene.render(sceneModel());
+            return scene.hit(at);
+          })();
       select(index);
       textEditing = false;
       syncTextEditor();
@@ -1140,6 +927,14 @@ function editAnnotation(
               width: stroke,
               points: [at],
               ...(tool === "highlighter" ? { opacity } : {}),
+              ...(tool === "pen" && penMode === "pressure"
+                ? {
+                    stroke: pressureStroke(
+                      event.pointerType === "pen" ? "pointer" : "simulated",
+                      samplePressure(event),
+                    ),
+                  }
+                : {}),
             } as AnnotationMark)
           : tool === "callout"
             ? {
@@ -1194,7 +989,6 @@ function editAnnotation(
                   };
       selected = -1;
       selectedNode = -1;
-      refreshMarks();
       sync();
       gesture = {
         id: event.pointerId,
@@ -1284,6 +1078,8 @@ function editAnnotation(
         x: last.x + (at.x - last.x) * weight,
         y: last.y + (at.y - last.y) * weight,
       });
+      if (gesture.mark.tool === "pen" && gesture.mark.stroke)
+        gesture.mark.stroke.pressures.push(samplePressure(event));
     } else if (gesture.mark.tool !== "text" && gesture.mark.tool !== "path") {
       let end = at;
       if (
@@ -1386,8 +1182,16 @@ function editAnnotation(
         at = point(event),
         last = points[points.length - 1]!;
       if (Math.hypot(at.x - last.x, at.y - last.y) > 0.5) {
-        if (done.points + points.length < LIMITS.maxPoints) points.push(at);
-        else points[points.length - 1] = at;
+        if (done.points + points.length < LIMITS.maxPoints) {
+          points.push(at);
+          if (done.mark.tool === "pen" && done.mark.stroke)
+            done.mark.stroke.pressures.push(samplePressure(event));
+        } else {
+          points[points.length - 1] = at;
+          if (done.mark.tool === "pen" && done.mark.stroke)
+            done.mark.stroke.pressures[points.length - 1] =
+              samplePressure(event);
+        }
       }
     }
     if (done.move) {
@@ -1455,6 +1259,11 @@ function editAnnotation(
     }
   });
   function changeProperty(name: string, value: string) {
+    if (name === "pen-mode") {
+      if (selected < 0) penMode = value === "pressure" ? "pressure" : "classic";
+      sync();
+      return;
+    }
     const numeric = Number(value);
     if (name === "smoothing") {
       smoothing = Math.max(
@@ -1532,7 +1341,10 @@ function editAnnotation(
       if (mark.tool === "highlighter" && name === "opacity")
         next = { ...mark, opacity };
       if (
-        ["rectangle", "ellipse", "triangle", "path"].includes(mark.tool) &&
+        (mark.tool === "rectangle" ||
+          mark.tool === "ellipse" ||
+          mark.tool === "triangle" ||
+          mark.tool === "path") &&
         ["fill", "fill-color", "opacity"].includes(name)
       )
         next = {
@@ -1586,45 +1398,36 @@ function editAnnotation(
       );
     } else sync();
   }
-  dialog.addEventListener("change", (event) => {
-    const target = event.target as HTMLInputElement;
-    if (!target.dataset.field || loading || saving || recoverable) return;
-    if (target.dataset.field === "mark") {
+  function setProperty(name: string, value: string) {
+    if (loading || saving || recoverable) return;
+    if (name === "mark") {
       pendingText = null;
       tool = "select";
-      select(Number(target.value));
-    } else {
-      changeProperty(
-        target.dataset.field,
-        target.type === "checkbox" ? String(target.checked) : target.value,
-      );
-      if (target.dataset.field === "color") {
-        const value = target.value.toLowerCase();
-        colors = [
-          ...new Set([
-            ...PALETTE,
-            ...colors
-              .filter((c) => !PALETTE.includes(c) && c !== value)
-              .slice(-7),
-            value,
-          ]),
-        ];
-        try {
-          localStorage.setItem(
-            COLORS_KEY,
-            JSON.stringify(colors.filter((c) => !PALETTE.includes(c))),
-          );
-        } catch {}
-        renderColors();
-        colorPopup.hidePopover();
-      }
+      select(Number(value));
+      return;
     }
-  });
-  field("smoothing").addEventListener("input", () => {
-    if (!loading && !saving)
-      changeProperty("smoothing", field("smoothing").value);
-  });
-  text.addEventListener("input", () => {
+    changeProperty(name, value);
+    if (name === "color") {
+      const color = value.toLowerCase();
+      colors = [
+        ...new Set([
+          ...PALETTE,
+          ...colors
+            .filter((c) => !PALETTE.includes(c) && c !== color)
+            .slice(-7),
+          color,
+        ]),
+      ];
+      try {
+        localStorage.setItem(
+          COLORS_KEY,
+          JSON.stringify(colors.filter((c) => !PALETTE.includes(c))),
+        );
+      } catch {}
+      sync();
+    }
+  }
+  function onTextInput() {
     if (loading || saving) return;
     if (pendingText && text.value.trim()) {
       commit([...marks, newText(pendingText)], marks.length);
@@ -1632,63 +1435,23 @@ function editAnnotation(
       changeProperty("text", text.value);
     syncTextEditor();
     persistDraft();
-  });
-  text.addEventListener("blur", () => {
+  }
+  function onTextBlur() {
+    if (closed) return;
     const mark = marks[selected];
     if (mark?.tool === "text" && !text.value.trim()) text.value = mark.text;
     textEditing = false;
     syncTextEditor();
     paint();
-  });
-  field("label").addEventListener("input", () => {
-    if (!loading && !saving && !recoverable)
-      changeProperty("label", field("label").value);
-  });
-  const palette = find<HTMLElement>(".annotation-palette");
-  function renderColors() {
-    palette.replaceChildren();
-    colors.forEach((value) => {
-      const swatch = document.createElement("button");
-      swatch.type = "button";
-      swatch.dataset.color = value;
-      swatch.style.setProperty("--annotation-color", value);
-      swatch.setAttribute("aria-label", "Use color " + value);
-      swatch.dataset.tooltip = "Color " + value;
-      swatch.setAttribute("aria-pressed", String(value === color));
-      palette.append(swatch);
-    });
   }
-  function positionColors() {
-    const at = button("colors").getBoundingClientRect(),
-      box = colorPopup.getBoundingClientRect();
-    colorPopup.style.left =
-      Math.max(0, Math.min(innerWidth - box.width, at.left)) + "px";
-    colorPopup.style.top =
-      (at.bottom + box.height <= innerHeight
-        ? at.bottom
-        : Math.max(0, at.top - box.height)) + "px";
-  }
-  colorPopup.addEventListener("toggle", () =>
-    button("colors").setAttribute(
-      "aria-expanded",
-      String(colorPopup.matches(":popover-open")),
-    ),
-  );
-  renderColors();
   function canLeave(next: string | null) {
     if (saving) return false;
     if (next === route || !(dirty() || gesture || pendingText)) return true;
-    if (
-      !window.confirm(
-        "Discard your drawing changes? The original screenshot will be kept.",
-      )
-    )
-      return false;
-    clearDraft();
-    return true;
+    discard = true;
+    sync();
+    return false;
   }
   function close(record = false) {
-    dialog.close();
     finish();
     if (record) setView("annotation", null, { close: true });
   }
@@ -1696,7 +1459,7 @@ function editAnnotation(
     if (canLeave(null)) close(true);
   }
   async function save() {
-    if (loading || saving || recoverable || !image || !context) return;
+    if (loading || saving || recoverable || !image) return;
     cancelGesture();
     if (pathDraft) {
       finishPath();
@@ -1721,37 +1484,15 @@ function editAnnotation(
           throw new Error(
             "The drawing exceeds the supported annotation limits. Reduce its size or remove drawings and try again.",
           );
-        // Export separately so selection handles and the editor's screenshot outline never enter the PNG.
-        const output = document.createElement("canvas");
-        output.width = width;
-        output.height = height;
-        const ctx = output.getContext("2d");
-        if (!ctx) throw new Error("The browser could not create a PNG canvas.");
-        let blob: Blob;
-        try {
-          render(ctx, false);
-          const encoded = Promise.withResolvers<Blob>();
-          output.toBlob(
-            (result) =>
-              result
-                ? encoded.resolve(result)
-                : encoded.reject(
-                    new Error(
-                      "The browser could not encode this drawing as PNG.",
-                    ),
-                  ),
-            "image/png",
-          );
-          blob = await encoded.promise;
-        } finally {
-          output.width = 0;
-          output.height = 0;
-        }
+        // Export the same Konva scene without guides or preview-only visibility settings.
+        const blob = await scene.export(sceneModel());
         const encoded = encodeImageDrawing(
           new Uint8Array(await blob.arrayBuffer()),
           { source: capture.image, annotation: proposal },
         );
-        const ref = await upload(new Blob([encoded], { type: "image/png" }));
+        const ref = await upload(
+          new Blob([new Uint8Array(encoded).buffer], { type: "image/png" }),
+        );
         const annotation = webAnnotation({ ...proposal, image: ref });
         if (!annotation)
           throw new Error(
@@ -1769,45 +1510,51 @@ function editAnnotation(
       if (!closed) sync();
     }
   }
-  dialog.addEventListener("click", (event) => {
-    const target = (event.target as Element).closest<HTMLButtonElement>(
-      "button",
-    );
-    if (!target || target.disabled) return;
-    if (target.dataset.command === "cancel") {
+  function chooseTool(next: Tool) {
+    if (loading || saving || recoverable) return;
+    canvas.focus({ preventScroll: true });
+    cancelGesture();
+    if (pathDraft) {
+      if (pathDraft.nodes.length >= 2) finishPath();
+      else pathDraft = null;
+    }
+    pendingText = null;
+    const previousTool = tool;
+    tool = next;
+    textEditing = false;
+    if (tool === "highlighter") {
+      stroke = Math.min(LIMITS.maxWidth, Math.round(24 * sourceScale));
+      color = "#eab308";
+    } else if (previousTool === "highlighter") {
+      stroke = Math.min(
+        LIMITS.maxWidth,
+        Math.max(1, Math.round(3 * sourceScale)),
+      );
+    }
+    select(tool === "select" ? selected : -1);
+    persistDraft();
+  }
+  function runCommand(command: string) {
+    if (command === "cancel") {
       requestClose();
       return;
     }
     if (loading || saving) return;
-    if (target.dataset.tool) {
-      cancelGesture();
-      if (pathDraft) {
-        if (pathDraft.nodes.length >= 2) finishPath();
-        else pathDraft = null;
-      }
-      pendingText = null;
-      const previousTool = tool;
-      tool = target.dataset.tool as Tool;
-      textEditing = false;
-      if (tool === "highlighter") {
-        stroke = Math.min(LIMITS.maxWidth, Math.round(24 * sourceScale));
-        color = "#eab308";
-      } else if (previousTool === "highlighter") {
-        stroke = Math.min(
-          LIMITS.maxWidth,
-          Math.max(1, Math.round(3 * sourceScale)),
-        );
-      }
-      select(tool === "select" ? selected : -1);
-      persistDraft();
+    if (recoverable && !["restore-draft", "discard-draft"].includes(command))
       return;
-    }
-    if (target.dataset.color) {
-      changeProperty("color", target.dataset.color);
-      colorPopup.hidePopover();
-      return;
-    }
-    switch (target.dataset.command) {
+    switch (command) {
+      case "retry":
+        void load();
+        break;
+      case "keep-editing":
+        discard = false;
+        sync();
+        canvas.focus({ preventScroll: true });
+        break;
+      case "discard-changes":
+        clearDraft();
+        close(true);
+        break;
       case "restore-draft": {
         if (!recoverable) break;
         const draft = recoverable;
@@ -1821,7 +1568,6 @@ function editAnnotation(
         textEditing = !!pendingText;
         selected = -1;
         hidden.clear();
-        refreshMarks();
         sync();
         paint();
         break;
@@ -1836,7 +1582,6 @@ function editAnnotation(
         if (!mark) break;
         if (hidden.has(mark)) hidden.delete(mark);
         else hidden.add(mark);
-        refreshMarks();
         sync();
         paint();
         break;
@@ -1869,12 +1614,10 @@ function editAnnotation(
         const mark = marks[selected];
         if (mark?.tool === "path" && selectedNode >= 0)
           updatePath(
-            smoothNode(
-              mark,
-              selectedNode,
-              target.dataset.command === "smooth-node",
-              { width, height },
-            ),
+            smoothNode(mark, selectedNode, command === "smooth-node", {
+              width,
+              height,
+            }),
           );
         break;
       }
@@ -1896,10 +1639,6 @@ function editAnnotation(
         cancelGesture();
         commit(marks.filter((_, i) => i !== selected));
         break;
-      case "colors":
-        colorPopup.togglePopover();
-        if (colorPopup.matches(":popover-open")) positionColors();
-        break;
       case "in":
         setZoom(zoom * 1.25);
         break;
@@ -1916,15 +1655,15 @@ function editAnnotation(
         void save();
         break;
     }
-  });
+  }
   function onKey(event: KeyboardEvent) {
     if (closed) return;
     // Capture at the window before note/page shortcut handlers can consume Escape or save/undo.
     if (event.key === "Escape") {
       event.preventDefault();
       event.stopImmediatePropagation();
-      if (colorPopup.matches(":popover-open")) colorPopup.hidePopover();
-      else if (textEditing) {
+      if (view.closePopup()) return;
+      if (textEditing) {
         textEditing = false;
         sync();
         paint();
@@ -1944,11 +1683,34 @@ function editAnnotation(
       target instanceof HTMLTextAreaElement ||
       target instanceof HTMLSelectElement ||
       target.isContentEditable;
+    // Let Base UI handle roving focus, slider keys, and native field editing.
+    // Global canvas shortcuts must not intercept a focused control's activation.
+    if (
+      target.closest("button, input, textarea, select, [role=slider]") &&
+      [
+        "ArrowLeft",
+        "ArrowRight",
+        "ArrowUp",
+        "ArrowDown",
+        "Home",
+        "End",
+        "PageUp",
+        "PageDown",
+        "Enter",
+        " ",
+      ].includes(event.key)
+    )
+      return;
     if (recoverable) {
       if (event.key !== "Tab") event.stopImmediatePropagation();
       return;
     }
-    if (!typing && event.key === "Enter" && pathDraft) {
+    if (
+      !typing &&
+      !target.closest("button") &&
+      event.key === "Enter" &&
+      pathDraft
+    ) {
       event.preventDefault();
       event.stopImmediatePropagation();
       if (!loading && !saving) finishPath();
@@ -1968,7 +1730,7 @@ function editAnnotation(
       paint();
       return;
     }
-    if (!typing && event.code === "Space") {
+    if (!typing && !target.closest("button") && event.code === "Space") {
       event.preventDefault();
       event.stopImmediatePropagation();
       space = true;
@@ -2019,10 +1781,6 @@ function editAnnotation(
     }
     if (event.key !== "Tab") event.stopImmediatePropagation();
   }
-  dialog.addEventListener("cancel", (event) => {
-    event.preventDefault();
-    requestClose();
-  });
   function finish() {
     if (closed) return;
     closed = true;
@@ -2032,15 +1790,16 @@ function editAnnotation(
     cancelGesture();
     cancelAnimationFrame(paintFrame);
     resize.disconnect();
+    cancelAnimationFrame(resizeFrame);
     window.removeEventListener("keydown", onKey, true);
     window.removeEventListener("keyup", onKeyUp, true);
     window.removeEventListener("blur", onBlur);
     window.removeEventListener("pagehide", persistDraft);
     document.removeEventListener("visibilitychange", onVisibility);
     image = null;
-    canvas.width = 0;
-    canvas.height = 0;
-    dialog.remove();
+    imageEditorOwners.delete(dialog);
+    scene.destroy();
+    view.destroy();
     emit();
     if (previous?.isConnected) {
       previous.focus({ preventScroll: true });
@@ -2064,17 +1823,13 @@ function editAnnotation(
     }
     resolve();
   }
-  dialog.addEventListener("close", finish, { once: true });
   async function load() {
     loading = true;
     clearError();
-    button("retry").hidden = true;
-    message.hidden = false;
-    message.textContent = "Loading original screenshot…";
+    retry = false;
+    statusMessage = "Loading original screenshot…";
     sync();
     try {
-      if (!context)
-        throw new Error("This browser does not support a 2D drawing canvas.");
       if (!capture.image)
         throw new Error(
           "Point selections contain metadata only, with no screenshot to draw on.",
@@ -2129,8 +1884,7 @@ function editAnnotation(
           "The saved drawing does not match the original screenshot or exceeds supported limits.",
         );
       image = source;
-      canvas.width = width;
-      canvas.height = height;
+      scene.render(sceneModel());
       stroke = Math.min(
         LIMITS.maxWidth,
         Math.max(1, Math.round(3 * sourceScale)),
@@ -2145,8 +1899,8 @@ function editAnnotation(
         try {
           draftStore = createAnnotationDraftStore(
             {
-              repo: state.repo || location.origin,
-              read: state.reviewId ? "#" + state.reviewId : state.range,
+              repo: scope.repo,
+              read: scope.read,
               route,
               source:
                 capture.key ??
@@ -2168,26 +1922,20 @@ function editAnnotation(
           );
         }
       }
-      message.textContent = "";
-      message.hidden = true;
+      statusMessage = "";
       fit();
       paint();
     } catch (reason) {
       if (!closed) {
         fail(reason);
-        message.textContent =
-          "Original screenshot could not be opened for drawing.";
-        button("retry").hidden = false;
+        statusMessage = "Original screenshot could not be opened for drawing.";
+        retry = true;
       }
     } finally {
       loading = false;
       if (!closed) sync();
     }
   }
-  button("retry").addEventListener("click", () => {
-    if (!loading && !saving) void load();
-  });
-  document.body.append(dialog);
   window.addEventListener("keydown", onKey, true);
   window.addEventListener("keyup", onKeyUp, true);
   window.addEventListener("blur", onBlur);
@@ -2196,10 +1944,8 @@ function editAnnotation(
     if (document.visibilityState === "hidden") persistDraft();
   }
   document.addEventListener("visibilitychange", onVisibility);
-  refreshMarks();
-  sync();
   try {
-    dialog.showModal();
+    sync();
     activeEditor = { route, canLeave, close };
     resize.observe(viewport);
     void load();

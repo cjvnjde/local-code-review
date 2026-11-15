@@ -1,3 +1,4 @@
+import type { NoteTriage } from "../../../shared/review-types.ts";
 import {
   webReview,
   webReviewLines,
@@ -23,6 +24,7 @@ export interface HistoryNote {
   snippet: string;
   code: string;
   body: string;
+  triage?: NoteTriage;
   status: string;
   detail: string;
   messages: { role: string; at: string; body: string }[];
@@ -81,13 +83,18 @@ export function historySnapshot(file: string, notes: any[]): HistorySnapshot {
         snippet: text(n.snippet),
         code: text(n.code),
         body: text(n.body),
+        ...(["blocker", "bug", "suggestion", "question"].includes(n.triage)
+          ? { triage: n.triage as NoteTriage }
+          : {}),
         status: text(n.status) || "pending",
         detail: text(n.detail),
-        messages: (Array.isArray(n.messages) ? n.messages : []).map((m) => ({
-          role: text(m.role),
-          at: text(m.at),
-          body: text(m.body),
-        })),
+        messages: (Array.isArray(n.messages) ? n.messages : []).map(
+          (m: { role?: unknown; at?: unknown; body?: unknown }) => ({
+            role: text(m.role),
+            at: text(m.at),
+            body: text(m.body),
+          }),
+        ),
         ...(webReview(n.web) ? { web: webReview(n.web)! } : {}),
         ...(imageRegion(n.image) ? { image: imageRegion(n.image)! } : {}),
       }))
@@ -110,6 +117,7 @@ export function historyChanges(
     else if (!b) kinds.push("Note removed");
     else {
       if (a.body !== b.body) kinds.push("Question edited");
+      if (a.triage !== b.triage) kinds.push("Triage changed");
       if (a.status !== b.status || a.detail !== b.detail)
         kinds.push("Status changed");
       if (JSON.stringify(a.messages) !== JSON.stringify(b.messages)) {
@@ -172,6 +180,7 @@ export function historyText(
   const text = (n: HistoryNote) =>
     [
       n.file + (n.label ? ":" + n.label : ""),
+      ...(n.triage ? [`Triage: ${n.triage}`] : []),
       ...(n.web ? webReviewLines(n.web).slice(2) : []),
       ...(n.image ? imageRegionLines(n.image).slice(2) : []),
       n.body,

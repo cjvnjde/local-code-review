@@ -15,6 +15,10 @@ import {
 } from "./managed-agent.ts";
 import { createSession } from "../review/session.ts";
 import { reviewerRevision } from "./agent-queue.ts";
+import {
+  createReviewRoundStore,
+  type ReviewRoundStore,
+} from "../review/rounds.ts";
 const fixture = path.join(import.meta.dir, "fixtures/acp-agent.ts");
 const roots: string[] = [];
 const agents: ManagedAgent[] = [];
@@ -39,7 +43,10 @@ const comment = (name: string, body = "Question " + name) => ({
   label: "1",
   code: "+line",
 });
-async function setup(mode = "") {
+async function setup(
+  mode = "",
+  rounds?: (root: string) => Pick<ReviewRoundStore, "capture">,
+) {
   const root = mkdtempSync(path.join(tmpdir(), "lcr-managed-"));
   roots.push(root);
   const session = createSession(root, ".review", "HEAD");
@@ -55,6 +62,7 @@ async function setup(mode = "") {
     outDir: ".review",
     directory: path.join(root, "git-state"),
     config,
+    rounds: rounds?.(root),
     notify() {},
   };
   const make = () => {
@@ -307,6 +315,77 @@ test("real ACP streams can include progress prose before a final explicit verdic
   ).toBeUndefined();
 });
 
+test.each(["blocker", "bug", "suggestion", "question"] as const)(
+  "ACP accepts optional %s triage in any response key order",
+  (triage) => {
+    expect(
+      acpAnswer(
+        `Investigated.\n\`\`\`json\n${JSON.stringify({ triage, body: "Evidence.", status: "answered" })}\n\`\`\``,
+      ),
+    ).toEqual({ triage, body: "Evidence.", status: "answered" });
+  },
+);
+
+test.each(["applied", "", null, 1, {}, ["bug"]].map((triage) => ({ triage })))(
+  "invalid ACP triage %j does not discard the answer",
+  ({ triage }) => {
+    expect(
+      acpAnswer(
+        JSON.stringify({ status: "answered", triage, body: "Evidence." }),
+      ),
+    ).toEqual({ status: "answered", body: "Evidence." });
+  },
+);
+
+test.each(["triage", "triage-blocked"])(
+  "%s routes classification only from a completed managed turn",
+  async (mode) => {
+    const f = await setup(mode);
+    const note = await f.send("classification");
+    await until(() => f.started(1));
+    f.release(1);
+    await until(() => ["completed", "blocked"].includes(f.tasks()[0].state));
+    const restarted = createSession(f.root, ".review", "HEAD");
+    await restarted.adoptNewest();
+    const restored = (await restarted.read()).notes[0]!;
+    expect(restored.triage).toBe(mode === "triage" ? "question" : undefined);
+    expect(restored.body).toBe(note.body);
+    expect(restored.code).toBe(note.code);
+    expect(restored.messages[0]!.body).toBe("Fixture answer 1");
+  },
+);
+
+test("a cancelled managed turn cannot classify its note", async () => {
+  const f = await setup("triage");
+  await f.send("cancelled");
+  await until(() => f.started(1));
+  await f.agent.control("cancel", f.tasks()[0].id);
+  await until(() => f.tasks()[0].state === "cancelled");
+  const restored = (await f.session.read()).notes[0]!;
+  expect(restored.status).toBe("pending");
+  expect(restored.triage).toBeUndefined();
+});
+
+test.each(["assigned", "cleared"] as const)(
+  "managed classification preserves a previously %s category",
+  async (change) => {
+    const f = await setup("triage");
+    const saved = await f.session.save({
+      comments: [{ ...comment("classified"), triage: "bug" }],
+    });
+    const note = saved.changed[0]!;
+    await f.agent.publish(f.session.file, [note]);
+    await until(() => f.started(1));
+    if (change === "cleared")
+      await f.session.save({ comments: [comment("classified")] });
+    f.release(1);
+    await until(() => f.tasks()[0].state === "completed");
+    expect((await f.session.read()).notes[0]!.triage).toBe(
+      change === "assigned" ? "bug" : undefined,
+    );
+  },
+);
+
 test("cancelling while the pre-dispatch file read is pending never starts the task", async () => {
   const f = await setup();
   await f.agent.control("pause");
@@ -535,4 +614,93 @@ test("queued work for a different ACP profile blocks dispatch until explicitly c
   expect(
     changed.snapshot().tasks.map((task: { state: string }) => task.state),
   ).toEqual(["cancelled", "completed"]);
+});
+
+test("connection status exposes only safe configured launch fields before connecting", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "lcr-launch-status-"));
+  roots.push(root);
+  const agent = createManagedAgent({
+    repoRoot: root,
+    outDir: ".review",
+    directory: path.join(root, "git-state"),
+    session: createSession(root, ".review", "HEAD"),
+    config: {
+      name: "Codex",
+      command: "codex-acp",
+      args: [],
+      env: {
+        CODEX_CONFIG: JSON.stringify({
+          model: "gpt-5.2-codex",
+          model_reasoning_effort: "high",
+          api_key: "private-token",
+        }),
+        INITIAL_AGENT_MODE: "workspace-write",
+        CODEX_API_KEY: "private-token",
+      },
+    },
+    notify() {},
+  });
+  agents.push(agent);
+  expect(agent.status!().launch).toEqual({
+    adapter: "codex",
+    model: "gpt-5.2-codex",
+    thinking: "high",
+    permissions: "Initial mode: workspace-write",
+  });
+  expect(JSON.stringify(agent.status!())).not.toContain("private-token");
+  expect(agent.status!().state).toBe("unavailable");
+});
+
+test("agent handoff persists the actual baseline and task/note association before dispatch", async () => {
+  let store!: ReviewRoundStore;
+  const f = await setup("", (root) => {
+    store = createReviewRoundStore({
+      repoRoot: root,
+      outDir: ".review",
+      listFiles: async () => ["a.ts"],
+    });
+    return store;
+  });
+  writeFileSync(path.join(f.root, "a.ts"), "before handoff\n");
+  const note = await f.send("baseline");
+  await until(() => f.started(1));
+  const rounds = await store.list();
+  expect(rounds).toHaveLength(1);
+  expect(rounds[0]!.baseline).toBe("ready");
+  expect(rounds[0]!.taskId).toBe(f.tasks()[0].id);
+  expect(rounds[0]!.notes[0]!.noteId).toBe(note.id);
+  writeFileSync(path.join(f.root, "a.ts"), "agent changed this\n");
+  const comparison = await store.compare(rounds[0]!.id);
+  expect(comparison.files[0]!.patch).toContain("-before handoff");
+  f.release(1);
+  await until(() => f.tasks()[0].state === "completed");
+  expect((await store.compare(rounds[0]!.id)).verification.state).toBe(
+    "unverified",
+  );
+});
+
+test("failed baseline capture persists honest failure and does not dispatch an ACP prompt", async () => {
+  let store!: ReviewRoundStore;
+  const f = await setup("", (root) => {
+    store = createReviewRoundStore({
+      repoRoot: root,
+      outDir: ".review",
+      listFiles: async () => {
+        throw new Error("Unavailable repository inventory");
+      },
+    });
+    return store;
+  });
+  await f.send("failed-baseline");
+  await until(() => f.tasks()[0].state === "error");
+  expect(f.started(1)).toBe(false);
+  expect(f.tasks()[0].detail).toContain("baseline capture failed");
+  expect((await store.list())[0]!.baseline).toBe("failed");
+  expect(
+    f
+      .rpc()
+      .some(
+        (message: { method: string }) => message.method === "session/prompt",
+      ),
+  ).toBe(false);
 });

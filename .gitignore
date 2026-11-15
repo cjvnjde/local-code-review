@@ -12,3 +12,10 @@
 # Logs and Windows metadata
 *.log
 Thumbs.db
+
+# Development dependencies and build output
+node_modules/
+/build/
+/dist/
+/test-results/
+/playwright-report/

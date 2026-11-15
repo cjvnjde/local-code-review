@@ -1,4 +1,6 @@
-import { clip, rowKey } from "../app/state.ts";
+import { rowKey } from "../diff/model.ts";
+const clip = (text: string, max: number) =>
+  text.length > max ? text.slice(0, max - 1) + "…" : text;
 
 /* ---------- bookmarks: places in the diff worth coming back to ---------- */
 /** One bookmark per row, so where it sits is its key: toggling reads it straight off the row. */

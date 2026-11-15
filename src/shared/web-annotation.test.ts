@@ -98,6 +98,87 @@ const rejectsMark = (mark: unknown) => {
   expect(webCapture({ ...capture(), annotation: input })).toBeNull();
 };
 
+describe("opt-in pressure pen metadata", () => {
+  const pen = (): Extract<AnnotationMark, { tool: "pen" }> => ({
+    tool: "pen",
+    color: "#123456",
+    width: 12,
+    points: [
+      { x: 20, y: 20 },
+      { x: 50, y: 60 },
+    ],
+    stroke: {
+      algorithm: "perfect-freehand",
+      version: 1,
+      libraryVersion: "1.2.3",
+      pressure: "pointer",
+      pressures: [0, 1],
+      thinning: 0.65,
+      smoothing: 0.5,
+      streamline: 0.5,
+      taperStart: 1,
+      taperEnd: 1,
+    },
+  });
+  test("keeps classic pen and highlighter data unchanged and detaches pressure arrays", () => {
+    const classic: AnnotationMark = {
+      tool: "pen",
+      color: "#123456",
+      width: 2,
+      points: [point()],
+    };
+    const highlighter: AnnotationMark = {
+      ...classic,
+      tool: "highlighter",
+      opacity: 0.25,
+    };
+    const pressure = pen();
+    const input = annotation([classic, highlighter, pressure]);
+    const clean = webAnnotation(input)!;
+    expect(clean).toEqual(input);
+    pressure.stroke!.pressures[0] = 0.8;
+    expect(clean.marks[2]).toEqual(pen());
+    const simulated = pen();
+    simulated.stroke!.pressure = "simulated";
+    expect(webAnnotation(annotation([simulated]))?.marks[0]).toEqual(simulated);
+  });
+  test("rejects unknown algorithms, versions and unbounded pressure/options", () => {
+    const malformed = [
+      { algorithm: "other" },
+      { version: 2 },
+      { libraryVersion: "2.0.0" },
+      { pressure: "hardware" },
+      { pressures: [] },
+      { pressures: [0] },
+      { pressures: [0, 1, 0] },
+      { pressures: [NaN, 1] },
+      { pressures: [0, Infinity] },
+      { pressures: [-0.01, 1] },
+      { pressures: [0, 1.01] },
+      { pressures: ["0", 1] },
+      { thinning: NaN },
+      { thinning: -1.01 },
+      { thinning: 1.01 },
+      { smoothing: -0.01 },
+      { smoothing: Infinity },
+      { smoothing: 1.01 },
+      { streamline: -1 },
+      { streamline: NaN },
+      { streamline: 2 },
+      { taperStart: -1 },
+      { taperStart: Infinity },
+      { taperStart: 17 },
+      { taperEnd: -1 },
+      { taperEnd: NaN },
+      { taperEnd: 17 },
+    ];
+    for (const fields of malformed) {
+      const mark = pen();
+      rejectsMark({ ...mark, stroke: { ...mark.stroke, ...fields } });
+    }
+  });
+});
+
 describe("editable vector annotation schema", () => {
   test("retains old marks and exact open/closed path, reversed box and padded-edge geometry", () => {
     const input = annotation(allMarks());

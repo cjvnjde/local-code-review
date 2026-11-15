@@ -1,6 +1,6 @@
 /* ---------- word-level diff: pair del/add runs, keep only the middle that really changed ---------- */
 const WORDY = (c: string | null | undefined) => c != null && /[\w$]/.test(c);
-function diffRange(o, n) {
+function diffRange(o: string, n: string) {
   if (o === n) return null;
   const m = Math.min(o.length, n.length);
   let s = 0;
@@ -9,14 +9,14 @@ function diffRange(o, n) {
   while (t < m - s && o[o.length - 1 - t] === n[n.length - 1 - t]) t++;
   const longest = Math.max(o.length, n.length);
   if (longest && (s + t) / longest < 0.2) return null; // barely related — colour the whole line instead
-  const grow = (str, a, b) => {
+  const grow = (str: string, a: number, b: number) => {
     while (a > 0 && WORDY(str[a - 1]) && WORDY(str[a])) a--;
     while (b < str.length && WORDY(str[b - 1]) && WORDY(str[b])) b++;
     return a < b ? [a, b] : null;
   };
   return { o: grow(o, s, o.length - t), n: grow(n, s, n.length - t) };
 }
-function sim(o, n) {
+function sim(o: string, n: string) {
   if (o === n) return 1;
   const m = Math.min(o.length, n.length);
   let s = 0;

@@ -1,33 +1,14 @@
 import { constants } from "node:fs";
-import {
-  link,
-  lstat,
-  mkdir,
-  open,
-  readFile,
-  realpath,
-  unlink,
-} from "node:fs/promises";
+import { link, lstat, mkdir, open, realpath, unlink } from "node:fs/promises";
 import path from "node:path";
 import { imageType } from "../git/blob.ts";
 
 /**
- * Pictures the reviewer puts into a note. Some things are quicker shown than described — this control
- * sits over that one, this render is wrong here — and a screenshot is already in the clipboard by the
- * time the thought is finished, so a note takes one the way it takes prose.
- *
- * They are kept beside the review file they belong to, in one directory under the output directory,
- * and pointed at from the note as the ordinary Markdown image `![alt](images/<name>)`. That is the
- * whole of what is written down: the link resolves against the review file the way every relative
- * link in a Markdown document does, so the agent reading the file can open the picture, and so can
- * an editor previewing it, without either being told anything about lcr.
- *
- * A name is the hash of the bytes under it. The same screenshot pasted into three notes is therefore
- * one file the three of them point at, and a name never means two different pictures — which is what
- * lets the page cache one for good rather than fetching it again on every repaint.
+ * Attachments live beside the review file and use ordinary relative Markdown links. Images retain
+ * their existing hash names; other files include a bounded, filesystem-safe original filename.
+ * Neither file contents nor filenames are interpreted as context or executable browser content.
  */
-
-/** Where the pictures are kept, relative to the review output directory. */
+/** Where attachments are kept, relative to the review output directory. */
 export const ATTACH_DIR = "images";
 
 /** How a note points at one: relative to the review file it stands beside, not to the repository. */
@@ -39,7 +20,7 @@ export const attachRef = (name: string) => `${ATTACH_DIR}/${name}`;
  */
 export const ATTACH_MAX_BYTES = 12 * 1024 * 1024;
 
-/** What each type is written down as. A type with no extension here is not something lcr will keep. */
+/** Image media types that can be previewed; all other types are kept as downloadable files. */
 const EXTENSIONS: Record<string, string> = {
   "image/png": "png",
   "image/jpeg": "jpg",
@@ -72,27 +53,29 @@ export function attachExtension(type: string): string {
  */
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
-/**
- * Keeps one picture and answers the name it is kept under, or empty for a type or a size that is not
- * kept. Content-addressed, so writing the same bytes again is writing the same file: a reviewer who
- * pastes one screenshot into two notes leaves one picture behind, and the second write is the first
- * one's content all over again rather than a second copy of it.
- */
+/** Keeps exact bytes under an immutable name, returning empty only when the size limit is exceeded. */
 export async function saveAttachment(
   repoRoot: string,
   outDir: string,
   bytes: Uint8Array,
   type: string,
+  filename = "attachment",
 ): Promise<string> {
   const extension = attachExtension(type);
-  if (!extension || !bytes.byteLength || bytes.byteLength > ATTACH_MAX_BYTES)
-    return "";
+  if (bytes.byteLength > ATTACH_MAX_BYTES) return "";
   bytes = new Uint8Array(bytes);
   const digest = new Bun.CryptoHasher("sha256")
     .update(bytes)
     .digest("hex")
     .slice(0, 16);
-  const name = `${digest}.${extension}`;
+  const label =
+    filename
+      .split(/[\\/]/)
+      .pop()!
+      .replace(/[^A-Za-z0-9._-]/g, "_")
+      .replace(/^[._-]+/, "")
+      .slice(0, 120) || "attachment";
+  const name = extension ? `${digest}.${extension}` : `${digest}-${label}`;
   const output = path.resolve(repoRoot, outDir);
   const created = await mkdir(output, { recursive: true });
   if (created && process.platform !== "win32") {
@@ -114,7 +97,7 @@ export async function saveAttachment(
     (await lstat(directory)).isSymbolicLink() ||
     (await realpath(directory)) !== directory
   )
-    throw new Error("Image directory must not cross symlinks.");
+    throw new Error("Attachment directory must not cross symlinks.");
   const target = path.join(directory, name);
   const temporary = path.join(directory, `.pending-${crypto.randomUUID()}`);
   const file = await open(temporary, "wx", 0o600);
@@ -129,7 +112,7 @@ export async function saveAttachment(
       (await lstat(directory)).isSymbolicLink() ||
       (await realpath(directory)) !== directory
     )
-      throw new Error("Image directory must not cross symlinks.");
+      throw new Error("Attachment directory must not cross symlinks.");
     try {
       await link(temporary, target);
     } catch (error) {
@@ -142,7 +125,7 @@ export async function saveAttachment(
         const info = await existing.stat();
         if (!info.isFile() || info.size !== bytes.byteLength)
           throw new Error(
-            "Existing image content does not match its immutable name.",
+            "Existing attachment content does not match its immutable name.",
           );
         const saved = await existing.readFile();
         if (
@@ -151,7 +134,7 @@ export async function saveAttachment(
           )
         )
           throw new Error(
-            "Existing image content does not match its immutable name.",
+            "Existing attachment content does not match its immutable name.",
           );
       } finally {
         await existing.close();
@@ -177,11 +160,7 @@ export async function saveAttachment(
   return name;
 }
 
-/**
- * One picture back, from images/, assets/, or directly beside the review. Safe names and a realpath
- * containment check bound the read to the output directory, including when a link crosses a symlink.
- * A missing picture is an absence rather than a failure.
- */
+/** Reads only bounded attachment files, never arbitrary siblings of the review or symlink escapes. */
 export async function readAttachment(
   repoRoot: string,
   outDir: string,
@@ -192,8 +171,14 @@ export async function readAttachment(
     name,
   );
   if (!match || !NAME.test(match[2]!)) return null;
-  const type = imageType(match[2]!);
-  if (!type) return null;
+  const image = imageType(match[2]!);
+  if (
+    !image &&
+    !["images/", "assets/"].includes(match[1] ?? "") &&
+    !/^[a-f0-9]{16}-[A-Za-z0-9][A-Za-z0-9._-]{0,119}$/.test(name)
+  )
+    return null;
+  const type = image || "application/octet-stream";
   const root = await realpath(path.resolve(repoRoot, outDir)).catch(() => "");
   if (!root) return null;
   const directory = match[1] === "./" ? "" : (match[1] ?? `${ATTACH_DIR}/`);
@@ -207,6 +192,18 @@ export async function readAttachment(
     path.isAbsolute(relative)
   )
     return null;
-  const bytes = await readFile(target).catch(() => null);
-  return bytes ? { bytes: new Uint8Array(bytes), type } : null;
+  const file = await open(
+    target,
+    constants.O_RDONLY | constants.O_NOFOLLOW,
+  ).catch(() => null);
+  if (!file) return null;
+  try {
+    const info = await file.stat();
+    if (!info.isFile() || info.size > ATTACH_MAX_BYTES) return null;
+    return { bytes: new Uint8Array(await file.readFile()), type };
+  } catch {
+    return null;
+  } finally {
+    await file.close();
+  }
 }

@@ -12,7 +12,11 @@ import {
   wipeImageMismatch,
   wipeMismatch,
 } from "./capture-comparison.ts";
-import { webCaptureHtml } from "./web-capture.ts";
+import { renderToStaticMarkup } from "react-dom/server";
+import { createElement } from "react";
+import { WebEvidence } from "./evidence.tsx";
+const webCaptureHtml = (value: unknown) =>
+  renderToStaticMarkup(createElement(WebEvidence, { value }));
 
 const before: WebCapture = {
   url: "http://localhost:3000/checkout",
@@ -52,6 +56,15 @@ describe("capture comparison eligibility", () => {
     ).not.toBeNull();
     expect(
       wipeImageMismatch({ width: 0, height: 0 }, { width: 0, height: 0 }),
+    ).not.toBeNull();
+    expect(
+      wipeImageMismatch(
+        { width: Infinity, height: 80 },
+        { width: Infinity, height: 80 },
+      ),
+    ).not.toBeNull();
+    expect(
+      wipeImageMismatch({ width: 1.5, height: 80 }, { width: 1.5, height: 80 }),
     ).not.toBeNull();
   });
   test("different URL, missing screenshots and the same evidence are not pairs", () => {
@@ -119,6 +132,17 @@ describe("capture comparison eligibility", () => {
     expect(JSON.stringify(pairs)).not.toContain("proposal.png");
     expect(pairs.evidence[2]!.label).toContain("selection 2");
   });
+  test("an incompatible choice keeps capture selectors available with an honest error", () => {
+    const html = webCaptureHtml({
+      before,
+      after: [{ ...after, url: before.url + "?other" }],
+    });
+    expect(html).toContain("Before capture");
+    expect(html).toContain("After capture");
+    expect(html).toContain(
+      "Two original screenshots of the same URL are required.",
+    );
+  });
 });
 
 describe("sealed conversation captures", () => {
@@ -154,28 +178,22 @@ describe("sealed conversation captures", () => {
 });
 
 describe("Point capture presentation", () => {
-  test("metadata-only Point retains metadata and removal without images or drawing", () => {
+  test("metadata-only Point remains readable without generating an image", () => {
     const point = {
       ...before,
       mode: "point" as const,
       page: undefined,
       area: undefined,
     };
-    const html = webCaptureHtml({ before: point, after: [] }, true);
-    expect(html).toContain("metadata only");
-    expect(html).toContain("Selection metadata");
-    expect(html).toContain("data-web-remove");
+    const html = webCaptureHtml({ before: point, after: [] });
+    expect(html).toContain(before.url);
     expect(html).not.toContain("<img");
-    expect(html).not.toContain("data-web-annotate");
-    expect(html).not.toContain("Page screenshot");
   });
   test("legacy Point screenshots remain readable and separate from proposal images", () => {
     const html = webCaptureHtml({
       before: { ...before, mode: "point" },
       after: [],
     });
-    expect(html).toContain("name=before.png");
-    expect(html).toContain("Page screenshot");
-    expect(html).not.toContain("metadata only");
+    expect(html).toContain("ref=images%2Fbefore.png");
   });
 });

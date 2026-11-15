@@ -1,42 +1,68 @@
+import { responseBytes } from "./response-bytes.ts";
 import type { Server } from "bun";
 import path from "node:path";
 import page from "../web/shell.html";
-import {
-  ATTACH_MAX_BYTES,
-  attachExtension,
-  attachRef,
-} from "../review/attach.ts";
+import { ATTACH_MAX_BYTES, attachRef } from "../review/attach.ts";
 import { mediaType } from "../git/blob.ts";
 import { fingerprint } from "../git/diff.ts";
 import { currentBranch } from "../git/commands.ts";
 import type { Hub } from "./events.ts";
 import type { GhostGroup, ReviewInfo } from "../review/history.ts";
-import type { ReviewSession } from "../review/session.ts";
+import { ReviewChangedError, type ReviewSession } from "../review/session.ts";
 import type { ReviewNote } from "../review/thread.ts";
 import type {
   DiffFile,
   DiffRow,
   NoteStatus,
   ReviewComment,
-  ReviewSubmission,
 } from "../shared/review-types.ts";
 import { VERSION } from "../version.ts";
 import type { AgentAdapter } from "../agent/agent-connection.ts";
 import {
-  webAnnotationTarget,
   WebAnnotationInvalid,
   WebSelectionConflict,
 } from "../shared/web-review.ts";
-import { webAnnotation } from "../shared/web-annotation.ts";
 import {
   DEFAULT_UI_SETTINGS,
   parseUiSettings,
+  uiSettingsPatchSchema,
   type UiSettings,
 } from "../shared/settings.ts";
 import { contextRequestAllowed, contextRoute } from "./context.ts";
+import {
+  BUILTIN_THEMES,
+  type Theme,
+  type ThemeCatalog,
+  type ThemeDraft,
+} from "../shared/themes.ts";
+import { RequestInputError, readJsonRequest } from "./request.ts";
+import {
+  JSON_LIMITS,
+  annotationRequestSchema,
+  importRequestSchema,
+  noteRequestSchema,
+  openFileRequestSchema,
+  queueRequestSchema,
+  replyRequestSchema,
+  reviewRequestSchema,
+  selectionRequestSchema,
+  submitRequestSchema,
+  themeRequestSchema,
+  webDraftRequestSchema,
+  webNoteRequestSchema,
+  webOpenRequestSchema,
+  webReviewRequestSchema,
+} from "./request-schemas.ts";
+import {
+  createReviewRoundStore,
+  ReviewRoundError,
+  type ReviewRoundStore,
+} from "../review/rounds.ts";
+import { reviewToolsRoute } from "./review-tools.ts";
 
 export interface ServerOptions {
   web?: import("../web-review/controller.ts").WebReviewController;
+  rounds?: ReviewRoundStore;
   port: number;
   repoRoot: string;
   outDir: string;
@@ -52,9 +78,13 @@ export interface ServerOptions {
   getContext: (path: string, start: number, end: number) => Promise<DiffRow[]>;
   /** One side of one file as bytes, for media content a binary diff prints no lines of. */
   readBlob: (side: "old" | "new", path: string) => Promise<Uint8Array | null>;
-  /** Keeps one picture the reviewer attached to a note; answers the name it is kept under. */
-  saveAttachment: (bytes: Uint8Array, type: string) => Promise<string>;
-  /** One of those pictures back, for the page drawing the note that points at it. */
+  /** Keeps exact attachment bytes beside the review and returns their immutable filename. */
+  saveAttachment: (
+    bytes: Uint8Array,
+    type: string,
+    filename?: string,
+  ) => Promise<string>;
+  /** Reads a bounded file from the review's attachment locations. */
   readAttachment: (
     name: string,
   ) => Promise<{ bytes: Uint8Array; type: string } | null>;
@@ -71,6 +101,7 @@ export interface ServerOptions {
   importNote: (
     from: { file: string; id: string },
     comment: ReviewComment,
+    expectedReview: string,
   ) => Promise<ReviewNote | null>;
   /** The one review file this run is talking through. */
   session: ReviewSession;
@@ -78,8 +109,11 @@ export interface ServerOptions {
   hub: Hub;
   /** Optional ACP connection that queues saved reviewer feedback for managed work. */
   agent?: AgentAdapter;
-  /** File-configured defaults, reapplied for each run without writing the user's configuration. */
+  /** Effective defaults read from the user's configuration. */
   uiDefaults?: Partial<UiSettings>;
+  saveUiSettings?: (patch: Partial<UiSettings>) => Promise<void>;
+  getThemes?: () => Promise<ThemeCatalog>;
+  saveTheme?: (draft: ThemeDraft) => Promise<{ theme: Theme; file: string }>;
 }
 
 /**
@@ -165,15 +199,25 @@ function isPortTaken(error: unknown): boolean {
 }
 
 function serve(options: ServerOptions, port: number) {
+  const rounds =
+    options.rounds ??
+    createReviewRoundStore({
+      repoRoot: options.repoRoot,
+      outDir: options.outDir,
+    });
   // Browser storage is partitioned in an editor embedded under the reviewed app's origin.
   // Editors can open before a full review tab, so this run starts with effective file defaults.
   const runId = crypto.randomUUID();
   const defaults = parseUiSettings(options.uiDefaults ?? {});
   let settings: UiSettings = { ...DEFAULT_UI_SETTINGS, ...defaults };
+  let settingsWrites = Promise.resolve();
   const contextToken = crypto.randomUUID();
+  const getThemes = () =>
+    options.getThemes?.() ??
+    Promise.resolve({ themes: BUILTIN_THEMES, directory: "", errors: [] });
   options.web?.configureContext(settings);
   options.agent?.contextMode?.(settings.aiContext);
-  const server = Bun.serve({
+  const server: Server<undefined> = Bun.serve<undefined>({
     port,
     hostname: "127.0.0.1",
     routes: {
@@ -199,8 +243,66 @@ function serve(options: ServerOptions, port: number) {
           url.pathname.startsWith("/api/ai-context/")
         )
           return contextRoute(request, options, contextToken, server.port!);
+        if (
+          url.pathname === "/api/review-rounds" ||
+          url.pathname.startsWith("/api/review-rounds/") ||
+          url.pathname === "/api/web/accessibility" ||
+          url.pathname === "/api/web/accessibility/notes"
+        ) {
+          server.timeout(request, 120);
+          return await reviewToolsRoute(
+            request,
+            url,
+            options,
+            rounds,
+            server.port!,
+          );
+        }
         if (url.pathname === "/api/events")
           return events(options, request, server);
+        if (url.pathname === "/api/themes") {
+          if (!contextRequestAllowed(request, server.port!))
+            return Response.json(
+              { error: "Access themes from the review origin." },
+              { status: 403 },
+            );
+          const headers = { "cache-control": "no-store" };
+          if (request.method === "GET")
+            return Response.json(await getThemes(), { headers });
+          if (request.method !== "POST")
+            return new Response("method not allowed", {
+              status: 405,
+              headers: { allow: "GET, POST" },
+            });
+          if (!isJsonRequest(request))
+            return Response.json(
+              { error: "JSON body required." },
+              { status: 415 },
+            );
+          let draft: ThemeDraft;
+          try {
+            draft = await readJsonRequest(
+              request,
+              themeRequestSchema,
+              JSON_LIMITS.theme,
+            );
+          } catch (error) {
+            return Response.json(
+              { error: (error as Error).message },
+              {
+                status: error instanceof RequestInputError ? error.status : 400,
+              },
+            );
+          }
+          if (!options.saveTheme)
+            return Response.json(
+              { error: "Theme storage is not configured for this server." },
+              { status: 503 },
+            );
+          const saved = await options.saveTheme(draft);
+          options.hub.emit({ type: "settings" });
+          return Response.json(saved, { status: 201, headers });
+        }
         if (url.pathname === "/api/settings") {
           if (!contextRequestAllowed(request, server.port!))
             return Response.json(
@@ -223,21 +325,40 @@ function serve(options: ServerOptions, port: number) {
               { error: "JSON body required." },
               { status: 415 },
             );
-          const payload = await readJson(request);
+          let patch: Partial<UiSettings>;
+          let selectedTheme: Theme | undefined;
           try {
-            if (JSON.stringify(payload).length > 32768)
-              throw new Error("Settings object is too large.");
-            settings = { ...settings, ...parseUiSettings(payload) };
-          } catch {
+            patch = await readJsonRequest(
+              request,
+              uiSettingsPatchSchema,
+              JSON_LIMITS.settings,
+            );
+            if (patch.theme !== undefined) {
+              selectedTheme = (await getThemes()).themes.find(
+                (theme) => theme.id === patch.theme,
+              );
+              if (!selectedTheme)
+                throw new Error(`Unknown theme ID: ${patch.theme}`);
+            }
+          } catch (error) {
             return Response.json(
-              { error: "A valid settings object is required." },
-              { status: 400 },
+              { error: (error as Error).message },
+              {
+                status: error instanceof RequestInputError ? error.status : 400,
+              },
             );
           }
-          options.web?.configureContext(settings);
-          options.agent?.contextMode?.(settings.aiContext);
-          options.hub.emit({ type: "settings" });
-          return Response.json({ ok: true }, { headers });
+          const write = settingsWrites.then(async () => {
+            await options.saveUiSettings?.(patch);
+            settings = { ...settings, ...patch };
+            options.web?.configureContext(settings);
+            if (selectedTheme) options.web?.configureTheme?.(selectedTheme);
+            options.agent?.contextMode?.(settings.aiContext);
+            options.hub.emit({ type: "settings" });
+          });
+          settingsWrites = write.catch(() => {});
+          await write;
+          return Response.json({ ok: true, settings }, { headers });
         }
         if (url.pathname === "/api/agent/queue") {
           if (!options.agent?.control)
@@ -266,24 +387,15 @@ function serve(options: ServerOptions, port: number) {
               { error: "Use queue controls from the review page." },
               { status: 403 },
             );
-          const payload = (await readJson(request)) as {
-            action?: unknown;
-            id?: unknown;
-            option?: unknown;
-          } | null;
-          if (
-            typeof payload?.action !== "string" ||
-            (payload.id !== undefined && typeof payload.id !== "string") ||
-            (payload.option !== undefined && typeof payload.option !== "string")
-          )
-            return Response.json(
-              { error: "A queue action is required." },
-              { status: 400 },
-            );
+          const payload = await readJsonRequest(
+            request,
+            queueRequestSchema,
+            JSON_LIMITS.control,
+          );
           await options.agent.control(
             payload.action,
-            payload.id as string | undefined,
-            payload.option as string | undefined,
+            payload.id,
+            payload.option,
           );
           return Response.json(agentState(options));
         }
@@ -329,35 +441,13 @@ function serve(options: ServerOptions, port: number) {
               { error: "Open this action from the review page." },
               { status: 403 },
             );
-          const payload = (await readJson(request)) as {
-            id?: unknown;
-            draftId?: unknown;
-            target?: unknown;
-            annotation?: unknown;
-          } | null;
-          const target = webAnnotationTarget(payload?.target);
-          const annotation =
-            payload?.annotation === null
-              ? null
-              : webAnnotation(payload?.annotation);
-          const hasNote = payload?.id !== undefined,
-            hasDraft = payload?.draftId !== undefined;
-          if (
-            !payload ||
-            hasNote === hasDraft ||
-            !target ||
-            (payload.annotation !== null && !annotation) ||
-            (hasNote && (typeof payload.id !== "string" || !payload.id)) ||
-            (hasDraft &&
-              (typeof payload.draftId !== "string" || !payload.draftId))
-          )
-            return Response.json(
-              {
-                error:
-                  "A draft or note id, expected capture target and valid annotation are required.",
-              },
-              { status: 400 },
-            );
+          const payload = await readJsonRequest(
+            request,
+            annotationRequestSchema,
+            JSON_LIMITS.annotation,
+          );
+          const { target, annotation } = payload;
+          const hasDraft = payload.draftId !== undefined;
           if (hasDraft) {
             if (
               !options.web ||
@@ -408,32 +498,11 @@ function serve(options: ServerOptions, port: number) {
               { error: "Open this action from the review page." },
               { status: 403 },
             );
-          const payload = (await readJson(request)) as {
-            id?: unknown;
-            draftId?: unknown;
-            index?: unknown;
-            key?: unknown;
-          } | null;
-          if (
-            !payload ||
-            (payload.id !== undefined) === (payload.draftId !== undefined) ||
-            (payload.id !== undefined &&
-              (typeof payload.id !== "string" || !payload.id)) ||
-            (payload.draftId !== undefined &&
-              (typeof payload.draftId !== "string" || !payload.draftId)) ||
-            typeof payload.index !== "number" ||
-            !Number.isInteger(payload.index) ||
-            payload.index < 0 ||
-            payload.index > 100 ||
-            typeof payload.key !== "string"
-          )
-            return Response.json(
-              {
-                error:
-                  "A note or draft id, selection index and expected key are required.",
-              },
-              { status: 400 },
-            );
+          const payload = await readJsonRequest(
+            request,
+            selectionRequestSchema,
+            JSON_LIMITS.control,
+          );
           if (typeof payload.draftId === "string") {
             if (
               !options.web ||
@@ -528,39 +597,40 @@ function serve(options: ServerOptions, port: number) {
               { status: 403 },
             );
           server.timeout(request, 0); // Browser startup and capture own their bounded timeouts.
-          const payload = (await readJson(request)) as {
-            id?: unknown;
-            draftId?: unknown;
-          } | null;
           if (url.pathname === "/api/web/draft") {
             if (request.method !== "DELETE")
               return new Response("method not allowed", { status: 405 });
-            if (typeof payload?.draftId !== "string")
-              return Response.json(
-                { error: "A draft id is required." },
-                { status: 400 },
-              );
+            const payload = await readJsonRequest(
+              request,
+              webDraftRequestSchema,
+              JSON_LIMITS.control,
+            );
             await options.web.discardDraft(payload.draftId);
             return Response.json({ ok: true });
           }
           if (url.pathname === "/api/web") {
+            await readJsonRequest(
+              request,
+              webOpenRequestSchema,
+              JSON_LIMITS.control,
+            );
             await options.web.open();
             return Response.json(options.web.status());
           }
           if (url.pathname === "/api/web/review") {
-            if (payload?.id !== undefined && typeof payload.id !== "string")
-              return Response.json(
-                { error: "A note id must be a string." },
-                { status: 400 },
-              );
+            const payload = await readJsonRequest(
+              request,
+              webReviewRequestSchema,
+              JSON_LIMITS.control,
+            );
             await options.web.review(payload?.id);
             return Response.json({ ok: true });
           }
-          if (typeof payload?.id !== "string")
-            return Response.json(
-              { error: "A note id is required." },
-              { status: 400 },
-            );
+          const payload = await readJsonRequest(
+            request,
+            webNoteRequestSchema,
+            JSON_LIMITS.control,
+          );
           if (url.pathname === "/api/web/focus") {
             await options.web.focus(payload.id);
             return Response.json({ ok: true });
@@ -588,7 +658,14 @@ function serve(options: ServerOptions, port: number) {
           });
         }
         if (url.pathname === "/api/blob") return blob(options, request, url);
-        if (url.pathname === "/api/attach") return attach(options, request);
+        if (url.pathname === "/api/attach") {
+          if (!contextRequestAllowed(request, server.port!))
+            return Response.json(
+              { error: "Attach files from the review origin." },
+              { status: 403 },
+            );
+          return attach(options, request);
+        }
         if (url.pathname === "/api/attachment")
           return attachment(options, request, url);
         if (url.pathname === "/api/open-file") {
@@ -605,18 +682,13 @@ function serve(options: ServerOptions, port: number) {
               { error: "JSON body required." },
               { status: 415 },
             );
-          const payload = (await readJson(request)) as {
-            path?: unknown;
-            editor?: unknown;
-          } | null;
-          const path = typeof payload?.path === "string" ? payload.path : "";
-          const editor =
-            typeof payload?.editor === "string" ? payload.editor.trim() : "";
-          if (!path)
-            return Response.json(
-              { error: "A file path is required." },
-              { status: 400 },
-            );
+          const payload = await readJsonRequest(
+            request,
+            openFileRequestSchema,
+            JSON_LIMITS.control,
+          );
+          const path = payload.path;
+          const editor = payload.editor?.trim() ?? "";
           const file = (await options.getDiff()).find(
             (entry) => entry.path === path,
           );
@@ -640,12 +712,12 @@ function serve(options: ServerOptions, port: number) {
           if (request.method === "GET") {
             // Statuses ride along: a reply and the verdict it explains are written in the same pass,
             // so the page must not have to ask for the diff again to see one of them.
-            const [doc, statuses] = await Promise.all([
-              options.session.read(),
+            const [{ file, doc }, statuses] = await Promise.all([
+              options.session.snapshot(),
               options.getStatuses(),
             ]);
             return Response.json({
-              file: options.session.shownFile,
+              file,
               notes: doc.notes,
               statuses,
               ...agentState(options),
@@ -669,16 +741,11 @@ function serve(options: ServerOptions, port: number) {
                 { error: "JSON body required." },
                 { status: 415 },
               );
-            const payload = (await readJson(request)) as {
-              file?: unknown;
-            } | null;
-            const file =
-              payload && typeof payload.file === "string" ? payload.file : "";
-            if (!file)
-              return Response.json(
-                { error: "A review file name is required." },
-                { status: 400 },
-              );
+            const { file } = await readJsonRequest(
+              request,
+              reviewRequestSchema,
+              JSON_LIMITS.control,
+            );
             // Queued behind any save in flight, so its tail cannot write into the file just left.
             const opened = await options.session.run(() =>
               options.session.adoptFile(file),
@@ -706,33 +773,22 @@ function serve(options: ServerOptions, port: number) {
                 { error: "JSON body required." },
                 { status: 415 },
               );
-            const payload = (await readJson(request)) as {
-              id?: unknown;
-              at?: unknown;
-              body?: unknown;
-              ask?: boolean;
-            } | null;
-            if (!payload)
-              return Response.json(
-                { error: "A JSON body is required." },
-                { status: 400 },
-              );
-            const id = typeof payload.id === "string" ? payload.id : "";
-            const at = typeof payload.at === "string" ? payload.at : "";
-            const body =
-              typeof payload.body === "string" ? payload.body.trim() : "";
-            if (!id || !body)
-              return Response.json(
-                { error: "A note id and a message are required." },
-                { status: 400 },
-              );
+            const payload = await readJsonRequest(
+              request,
+              replyRequestSchema,
+              JSON_LIMITS.reply,
+            );
+            const { id } = payload;
+            const at = payload.at ?? "";
+            const body = payload.body.trim();
             if (request.method === "PUT" && !at) {
               return Response.json(
                 { error: "A message stamp is required." },
                 { status: 400 },
               );
             }
-            const review = options.session.file;
+            const target = reviewTarget(request, options.session);
+            const review = path.basename(target);
             const note =
               request.method === "POST"
                 ? await options.session.reply(id, body, review)
@@ -743,15 +799,15 @@ function serve(options: ServerOptions, port: number) {
                 { status: 404 },
               );
             console.log(
-              `\n  ${request.method === "POST" ? "replied" : "reworded a reply"} on ${note.key} in ${options.session.shownFile}\n`,
+              `\n  ${request.method === "POST" ? "replied" : "reworded a reply"} on ${note.key} in ${target}\n`,
             );
-            options.hub.emit({ type: "review", file: options.session.file });
+            options.hub.emit({ type: "review", file: review });
             const delivery =
-              payload.ask === false
+              !settings.aiAnswers || payload.ask === false
                 ? undefined
                 : await options.agent?.publish(review, [note]);
             return Response.json({
-              file: options.session.shownFile,
+              file: target,
               note,
               ...agentState(options),
               ...(delivery ? { delivery } : {}),
@@ -766,7 +822,8 @@ function serve(options: ServerOptions, port: number) {
                 { status: 400 },
               );
             }
-            const review = options.session.file;
+            const target = reviewTarget(request, options.session);
+            const review = path.basename(target);
             const note = await options.session.dropReply(id, at, review);
             if (!note)
               return Response.json(
@@ -774,11 +831,9 @@ function serve(options: ServerOptions, port: number) {
                 { status: 404 },
               );
             await options.agent?.revise?.(review, note);
-            console.log(
-              `\n  took a reply back on ${note.key} in ${options.session.shownFile}\n`,
-            );
-            options.hub.emit({ type: "review", file: options.session.file });
-            return Response.json({ file: options.session.shownFile, note });
+            console.log(`\n  took a reply back on ${note.key} in ${target}\n`);
+            options.hub.emit({ type: "review", file: review });
+            return Response.json({ file: target, note });
           }
           return new Response("method not allowed", {
             status: 405,
@@ -791,36 +846,17 @@ function serve(options: ServerOptions, port: number) {
               { error: "JSON body required." },
               { status: 415 },
             );
-          const payload = (await readJson(request)) as {
-            comment?: ReviewComment;
-            retry?: boolean;
-            replace?: boolean;
-            ask?: boolean;
-          } | null;
-          const comment = payload?.comment;
-          if (
-            !comment ||
-            typeof comment.id !== "string" ||
-            !comment.id ||
-            typeof comment.file !== "string" ||
-            typeof comment.body !== "string" ||
-            !comment.body.trim() ||
-            !Number.isInteger(comment.start) ||
-            !Number.isInteger(comment.end) ||
-            comment.start < 0 ||
-            comment.end < comment.start
-          ) {
-            return Response.json(
-              {
-                error:
-                  "A complete note with an id, body, file and line range is required.",
-              },
-              { status: 400 },
-            );
-          }
+          const payload = await readJsonRequest(
+            request,
+            noteRequestSchema,
+            JSON_LIMITS.note,
+          );
+          const { comment } = payload;
           const { file, changed, removed } = await options.session.save(
             { comments: [comment] },
             payload?.replace === true,
+            payload.preserveTriage === true,
+            reviewTarget(request, options.session),
           );
           for (const old of removed) await options.agent?.withdraw?.(old);
           const review = path.basename(file);
@@ -832,7 +868,7 @@ function serve(options: ServerOptions, port: number) {
                 )
               : [];
           const delivery =
-            payload?.ask === false
+            !settings.aiAnswers || payload?.ask === false
               ? undefined
               : await options.agent?.publish(review, notify);
           options.hub.emit({ type: "review", file: review });
@@ -851,11 +887,10 @@ function serve(options: ServerOptions, port: number) {
               { error: "A note id is required." },
               { status: 400 },
             );
-          const review = options.session.file;
+          const review = path.basename(reviewTarget(request, options.session));
           const removed = await options.session.remove(ids, review);
           if (removed) await options.agent?.withdraw?.(review, ids);
-          if (removed)
-            options.hub.emit({ type: "review", file: options.session.file });
+          if (removed) options.hub.emit({ type: "review", file: review });
           return Response.json({ removed });
         }
         if (url.pathname === "/api/submit" && request.method === "POST") {
@@ -864,20 +899,17 @@ function serve(options: ServerOptions, port: number) {
               { error: "JSON body required." },
               { status: 415 },
             );
-          const payload = (await readJson(
+          const payload = await readJsonRequest(
             request,
-          )) as Partial<ReviewSubmission> | null;
-          if (!payload)
-            return Response.json(
-              { error: "A JSON body is required." },
-              { status: 400 },
-            );
-          const submission = {
-            comments: Array.isArray(payload.comments) ? payload.comments : [],
-          };
+            submitRequestSchema,
+            JSON_LIMITS.submission,
+          );
+          const submission = { comments: payload.comments };
           const { file, removed, changed } = await options.session.save(
             submission,
-            (payload as { replace?: unknown }).replace === true,
+            payload.replace === true,
+            false,
+            reviewTarget(request, options.session),
           );
           console.log(
             `\n  saved ${file}  (${submission.comments.length} notes)`,
@@ -892,10 +924,9 @@ function serve(options: ServerOptions, port: number) {
             );
           options.hub.emit({ type: "review", file: options.session.file });
           for (const old of removed) await options.agent?.withdraw?.(old);
-          const delivery = await options.agent?.publish(
-            path.basename(file),
-            changed,
-          );
+          const delivery = settings.aiAnswers
+            ? await options.agent?.publish(path.basename(file), changed)
+            : undefined;
           return Response.json({
             file,
             count: submission.comments.length,
@@ -913,34 +944,20 @@ function serve(options: ServerOptions, port: number) {
               { error: "JSON body required." },
               { status: 415 },
             );
-          const payload = (await readJson(request)) as {
-            from?: { file?: unknown; id?: unknown };
-            comment?: unknown;
-          } | null;
-          const file =
-            typeof payload?.from?.file === "string" ? payload.from.file : "";
-          const id =
-            typeof payload?.from?.id === "string" ? payload.from.id : "";
-          const comment =
-            payload?.comment && typeof payload.comment === "object"
-              ? (payload.comment as ReviewComment)
-              : null;
-          if (
-            !file ||
-            !id ||
-            !comment ||
-            typeof comment.id !== "string" ||
-            typeof comment.body !== "string"
-          ) {
-            return Response.json(
-              {
-                error:
-                  "A source review, a note id, and a comment are required.",
-              },
-              { status: 400 },
-            );
-          }
-          const note = await options.importNote({ file, id }, comment);
+          const payload = await readJsonRequest(
+            request,
+            importRequestSchema,
+            JSON_LIMITS.note,
+          );
+          const {
+            from: { file, id },
+            comment,
+          } = payload;
+          const note = await options.importNote(
+            { file, id },
+            comment,
+            reviewTarget(request, options.session),
+          );
           if (!note) {
             return Response.json(
               { error: "That note is no longer in its review file." },
@@ -984,6 +1001,16 @@ function serve(options: ServerOptions, port: number) {
         }
         return new Response("not found", { status: 404 });
       } catch (error) {
+        if (error instanceof ReviewChangedError)
+          return Response.json({ error: error.message }, { status: 409 });
+        if (
+          error instanceof RequestInputError ||
+          error instanceof ReviewRoundError
+        )
+          return Response.json(
+            { error: error.message },
+            { status: error.status },
+          );
         console.error(error);
         const message = error instanceof Error ? error.message : String(error);
         return Response.json(
@@ -1064,7 +1091,7 @@ async function blob(
       { error: "That file could not be read." },
       { status: 404 },
     );
-  return new Response(request.method === "HEAD" ? null : bytes, {
+  return new Response(request.method === "HEAD" ? null : responseBytes(bytes), {
     headers: {
       "content-type": type,
       "content-length": String(bytes.byteLength),
@@ -1077,12 +1104,7 @@ async function blob(
   });
 }
 
-/**
- * Takes one picture into the review: the bytes come up as the body, the type as the header, and what
- * goes back is the name the note is to point at. Nothing about the note is known here — a picture is
- * kept the moment it is pasted, before the note it belongs to is written, let alone saved — so what
- * this answers is a name and the reviewer's prose is what makes anything of it.
- */
+/** Uploads raw attachment bytes before the note itself is saved. */
 async function attach(
   options: ServerOptions,
   request: Request,
@@ -1094,27 +1116,54 @@ async function attach(
     });
   }
   const type = request.headers.get("content-type") ?? "";
-  if (!attachExtension(type)) {
+  let filename: string;
+  try {
+    filename = decodeURIComponent(
+      request.headers.get("x-attachment-name") ?? "attachment",
+    );
+  } catch {
     return Response.json(
-      { error: "That is not an image lcr can keep." },
-      { status: 415 },
+      { error: "Invalid attachment filename." },
+      { status: 400 },
     );
   }
-  const bytes = new Uint8Array(await request.arrayBuffer());
-  if (!bytes.byteLength)
-    return Response.json({ error: "That image is empty." }, { status: 400 });
-  if (bytes.byteLength > ATTACH_MAX_BYTES) {
+  if (Number(request.headers.get("content-length")) > ATTACH_MAX_BYTES)
     return Response.json(
-      {
-        error: `That image is ${Math.round(bytes.byteLength / 1e6)}MB; the limit is ${Math.round(ATTACH_MAX_BYTES / 1e6)}MB.`,
-      },
+      { error: "That file exceeds the 12 MiB attachment limit." },
       { status: 413 },
     );
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  const reader = request.body?.getReader();
+  if (reader) {
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        size += value.byteLength;
+        if (size > ATTACH_MAX_BYTES) {
+          await reader.cancel();
+          return Response.json(
+            { error: "That file exceeds the 12 MiB attachment limit." },
+            { status: 413 },
+          );
+        }
+        chunks.push(value);
+      }
+    } finally {
+      reader.releaseLock();
+    }
   }
-  const name = await options.saveAttachment(bytes, type);
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  const name = await options.saveAttachment(bytes, type, filename);
   if (!name)
     return Response.json(
-      { error: "That image could not be kept." },
+      { error: "That file could not be kept." },
       { status: 415 },
     );
   console.log(`\n  attached ${attachRef(name)} in ${options.outDir}/\n`);
@@ -1162,19 +1211,42 @@ async function attachment(
       headers: { etag: tag, "cache-control": "no-cache" },
     });
   }
-  return new Response(request.method === "HEAD" ? null : found.bytes, {
-    headers: {
-      "content-type": found.type,
-      "content-length": String(found.bytes.byteLength),
-      etag: tag,
-      "cache-control": immutable
-        ? "public, max-age=31536000, immutable"
-        : "no-cache",
-      // Only ever drawn into an <img>, where nothing runs; this is for the tab that opens one directly.
-      "content-security-policy": "default-src 'none'; sandbox",
-      "x-content-type-options": "nosniff",
+  const download =
+    url.searchParams.has("download") ||
+    !/^image\/(?:png|jpeg|gif|webp|avif|bmp|apng|x-icon|vnd\.microsoft\.icon)$/i.test(
+      found.type,
+    );
+  const filename =
+    name
+      .split("/")
+      .pop()!
+      .replace(/^[a-f0-9]{16}-/, "")
+      .replace(/[^A-Za-z0-9._-]/g, "_") || "attachment";
+  return new Response(
+    request.method === "HEAD" ? null : responseBytes(found.bytes),
+    {
+      headers: {
+        // SVG decoding needs its image MIME; attachment disposition still prevents active navigation.
+        "content-type":
+          found.type === "image/svg+xml"
+            ? found.type
+            : download
+              ? "application/octet-stream"
+              : found.type,
+        ...(download
+          ? { "content-disposition": `attachment; filename="${filename}"` }
+          : {}),
+        "content-length": String(found.bytes.byteLength),
+        etag: tag,
+        "cache-control": immutable
+          ? "public, max-age=31536000, immutable"
+          : "no-cache",
+        // Uploads never receive script execution, including SVG images opened directly.
+        "content-security-policy": "default-src 'none'; sandbox",
+        "x-content-type-options": "nosniff",
+      },
     },
-  });
+  );
 }
 
 /**
@@ -1184,7 +1256,7 @@ async function attachment(
 function events(
   options: ServerOptions,
   request: Request,
-  server: Server,
+  server: Server<undefined>,
 ): Response {
   // A quiet review is the normal case, and a connection that sends nothing reads to the runtime as
   // idle: left at the ten-second default it would be cut and reopened all day, and the heartbeat
@@ -1234,6 +1306,22 @@ function missing(method: string): string {
 function plural(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? "" : "s"}`;
 }
+/** A stale tab must never apply a mutation to another tab's selected conversation. */
+function reviewTarget(request: Request, session: ReviewSession): string {
+  const header = request.headers.get("x-lcr-review");
+  if (header === null)
+    throw new RequestInputError(
+      "Review identity is required. Reload the review before saving.",
+    );
+  let expected: string;
+  try {
+    expected = decodeURIComponent(header);
+  } catch {
+    throw new RequestInputError("Invalid review identity.");
+  }
+  if (expected !== session.shownFile) throw new ReviewChangedError();
+  return expected;
+}
 
 function isJsonRequest(request: Request): boolean {
   return (
@@ -1243,14 +1331,4 @@ function isJsonRequest(request: Request): boolean {
       ?.trim()
       .toLowerCase() === "application/json"
   );
-}
-
-/** The parsed object a request carries, or null for a body that is not a JSON object. */
-async function readJson(request: Request): Promise<unknown | null> {
-  try {
-    const parsed = await request.json();
-    return parsed && typeof parsed === "object" ? parsed : null;
-  } catch {
-    return null;
-  }
 }

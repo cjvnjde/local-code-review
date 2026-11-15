@@ -38,8 +38,9 @@ export async function listReviews(
   try {
     const names = await readdir(path.resolve(repoRoot, outDir));
     return names.filter((name) => REVIEW_FILE.test(name)).sort();
-  } catch {
-    return [];
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
   }
 }
 

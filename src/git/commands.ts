@@ -15,9 +15,11 @@ export async function runGit(
   args: string[],
   cwd?: string,
   input?: string,
+  env?: Record<string, string>,
 ): Promise<string> {
   const process = Bun.spawn(["git", ...args], {
     cwd,
+    env: env ? { ...Bun.env, ...env } : undefined,
     stdin: input === undefined ? "ignore" : new Blob([input]),
     stdout: "pipe",
     stderr: "pipe",

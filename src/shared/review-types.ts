@@ -38,12 +38,16 @@ export interface NoteStatus {
   source: string;
 }
 
+/** Note classification, chosen by the reviewer or filled in by an agent when unclassified. */
+export type NoteTriage = "blocker" | "bug" | "suggestion" | "question";
+
 export interface ReviewComment {
   /** Stable anchor id, also written into the review file so statuses can be matched back. */
   id?: string;
   /** Empty for a note about the review as a whole, which belongs to no file. */
   file: string;
   body: string;
+  triage?: NoteTriage;
   start: number;
   end: number;
   label?: string;
@@ -91,4 +95,41 @@ export interface CliOptions {
   /** Read-only discovery of an existing browser's user data directory. */
   browserDataDir?: string;
   diffArgs: string[];
+}
+
+export type MessageRole = "reviewer" | "agent";
+
+export interface ReviewMessage {
+  role: MessageRole;
+  /** ISO stamp from the marker; empty when the writer left it out. */
+  at: string;
+  body: string;
+}
+
+/** One note as the review file holds it: the page's fields, plus what the agent wrote back. */
+export interface ReviewNote {
+  id: string;
+  /** `<file>:<label>` heading text, used to match a status when the id marker was lost. */
+  key: string;
+  /** Empty for a note about the review as a whole, which belongs to no file. */
+  file: string;
+  /** Line label such as `42` or `12:7-14`; empty for a note on the whole file. */
+  label: string;
+  scope?: "file" | "global";
+  side?: "new" | "old";
+  start: number;
+  end: number;
+  ca?: number;
+  cb?: number;
+  snippet?: string;
+  image?: ImageRegion;
+  web?: import("./web-review.ts").WebReview;
+  code?: string;
+  body: string;
+  triage?: NoteTriage;
+  status: NoteStatusKind;
+  detail: string;
+  messages: ReviewMessage[];
+  /** `<review file>#<note id>` of the note this one continues, for a note carried in from an earlier review. */
+  from?: string;
 }

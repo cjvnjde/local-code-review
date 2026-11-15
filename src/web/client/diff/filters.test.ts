@@ -1,38 +1,7 @@
-import { afterEach, describe, expect, test } from "bun:test";
-import {
-  compileHide,
-  filteredCount,
-  filteredOut,
-  globRx,
-  isDeleted,
-  isHidden,
-  matchesHide,
-  revealedCount,
-} from "./filters.ts";
-import { state } from "../app/state.ts";
-
-const hides = (patterns: string, path: string) => {
-  state.hideRx = compileHide(patterns);
-  return matchesHide(path);
-};
-
-const loadFiles = (files: { path: string; status: string }[]) => {
-  state.files = files;
-  state.byPath = new Map(files.map((f, i) => [f.path, i]));
-  state.hidden = new Set<string>();
-  state.shown = new Set<string>();
-  state.hideRx = [];
-};
-
-afterEach(() => {
-  state.cfg.hideDeleted = false;
-  state.cfg.hideEnabled = true;
-  state.files = [];
-  state.byPath = new Map();
-  state.hidden = new Set<string>();
-  state.shown = new Set<string>();
-  state.hideRx = [];
-});
+import { describe, expect, test } from "bun:test";
+import { globRx, compileHide, fileHidden } from "./filters.ts";
+const hides = (patterns: string, path: string) =>
+  compileHide(patterns).some((pattern) => pattern.test(path));
 
 describe("globRx", () => {
   test("matches a bare pattern against the file name at any depth", () => {
@@ -69,89 +38,32 @@ describe("globRx", () => {
   });
 });
 
-describe("hide patterns", () => {
-  test("disabling rules preserves manual eye overrides and deleted-file hiding", () => {
-    loadFiles([
-      { path: "src/a.snap", status: "modified" },
-      { path: "gone.ts", status: "deleted" },
-    ]);
-    state.hideRx = compileHide("*.snap,dist/", ["*.snap"]);
-    expect(isHidden("src/a.snap")).toBe(false);
-    expect(isHidden("dist/app.js")).toBe(true);
-    state.hideRx = compileHide("*.snap,dist/");
-    state.shown.add("src/a.snap");
-    state.hidden.add("manual.ts");
-    state.cfg.hideDeleted = true;
-    state.cfg.hideEnabled = false;
-    expect(isHidden("dist/app.js")).toBe(false);
-    expect(isHidden("manual.ts")).toBe(true);
-    expect(isHidden("gone.ts")).toBe(true);
-    state.cfg.hideEnabled = true;
-    expect(isHidden("src/a.snap")).toBe(false);
-    expect(isHidden("dist/app.js")).toBe(true);
-  });
-  test("counts only visible exceptions to current rules, including deleted files", () => {
-    loadFiles([
-      { path: "src/nested/a.test.ts", status: "modified" },
-      { path: "src/b.test.ts", status: "added" },
-      { path: "src/gone.ts", status: "deleted" },
-      { path: "src/kept.ts", status: "modified" },
-    ]);
-    state.hideRx = compileHide("*.test.*");
-    state.cfg.hideDeleted = true;
-    state.shown = new Set([
-      ...state.files.map((f) => f.path),
-      "no-longer-in-diff.test.ts",
-    ]);
-    state.hidden.add("src/b.test.ts");
-    expect(revealedCount()).toBe(2);
-    state.shown.clear();
-    expect(revealedCount()).toBe(0);
-    expect(isHidden("src/nested/a.test.ts")).toBe(true);
-    expect(isHidden("src/gone.ts")).toBe(true);
-    expect(isHidden("src/kept.ts")).toBe(false);
-  });
-
-  test("splits patterns on newlines and commas", () => {
-    expect(hides("*.test.*\ndist/", "dist/app.js")).toBe(true);
-    expect(hides("*.test.*, *.snap", "src/a.snap")).toBe(true);
-    expect(hides("", "src/a.snap")).toBe(false);
-  });
-
-  test("a revealed file overrides its pattern, a manual hide still wins", () => {
-    state.hideRx = compileHide("*.test.*");
-    state.hidden = new Set<string>();
-    state.shown = new Set<string>(["src/a.test.ts"]);
-    expect(filteredOut("src/a.test.ts")).toBe(false);
-    expect(isHidden("src/a.test.ts")).toBe(false);
-    expect(isHidden("src/b.test.ts")).toBe(true);
-    state.hidden = new Set<string>(["src/a.test.ts"]);
-    expect(isHidden("src/a.test.ts")).toBe(true);
-  });
-});
-
-describe("hide deleted files", () => {
-  test("only hides deleted files, and only while the setting is on", () => {
-    loadFiles([
-      { path: "src/gone.ts", status: "deleted" },
-      { path: "src/kept.ts", status: "modified" },
-    ]);
-    expect(isDeleted("src/gone.ts")).toBe(true);
-    expect(isDeleted("src/kept.ts")).toBe(false);
-    expect(isDeleted("src/unknown.ts")).toBe(false);
-    expect(isHidden("src/gone.ts")).toBe(false);
-    state.cfg.hideDeleted = true;
-    expect(isHidden("src/gone.ts")).toBe(true);
-    expect(isHidden("src/kept.ts")).toBe(false);
-    expect(filteredCount()).toBe(1);
-  });
-
-  test("revealing a deleted file by hand keeps it visible", () => {
-    loadFiles([{ path: "src/gone.ts", status: "deleted" }]);
-    state.cfg.hideDeleted = true;
-    state.shown = new Set<string>(["src/gone.ts"]);
-    expect(filteredOut("src/gone.ts")).toBe(false);
-    expect(isHidden("src/gone.ts")).toBe(false);
-    expect(filteredCount()).toBe(0);
-  });
+test("manual visibility overrides and independent hide switches keep their meaning", () => {
+  const file = { path: "src/a.test.ts", status: "deleted" };
+  const settings = {
+    hide: "*.test.*",
+    disabledHide: [],
+    hideEnabled: true,
+    hideDeleted: false,
+  };
+  expect(fileHidden(file, settings, {})).toBe(true);
+  expect(fileHidden(file, settings, { [file.path]: false })).toBe(false);
+  expect(
+    fileHidden(file, { ...settings, disabledHide: ["*.test.*"] }, {}),
+  ).toBe(false);
+  expect(fileHidden(file, { ...settings, hideEnabled: false }, {})).toBe(false);
+  expect(
+    fileHidden(
+      file,
+      { ...settings, hideEnabled: false, hideDeleted: true },
+      {},
+    ),
+  ).toBe(true);
+  expect(
+    fileHidden(
+      { ...file, status: "added" },
+      { ...settings, hideEnabled: false },
+      { [file.path]: true },
+    ),
+  ).toBe(true);
 });

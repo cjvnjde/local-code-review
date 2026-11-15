@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { renderMarkdown } from "./render.ts";
 import { noteFromComment, parseReview, renderNote } from "./thread.ts";
 import type { ReviewComment } from "../shared/review-types.ts";
+import { mintNoteId } from "../shared/note-id.ts";
 
 const write = (comments: ReviewComment[]) =>
   renderMarkdown({ range: "HEAD", notes: comments.map(noteFromComment) });
@@ -17,7 +18,160 @@ const comment: ReviewComment = {
   code: "+  const tmpValue = load();",
 };
 
+describe("note triage metadata", () => {
+  test.each(["blocker", "bug", "suggestion", "question"] as const)(
+    "round-trips %s without confusing captured code or prose with metadata",
+    (triage) => {
+      const literal = "Triage: question <!-- lcr:triage -->";
+      const original = {
+        ...comment,
+        triage,
+        body: `${literal}\n\nTriage: bug\n\n\`\`\`text\n${literal}\n\`\`\``,
+        code: `+${literal}`,
+      };
+      const markdown = write([original]);
+      expect(markdown).toContain(`Triage: ${triage} <!-- lcr:triage -->`);
+      const parsed = parseReview(markdown).notes[0]!;
+      expect(parsed).toMatchObject(original);
+      expect(
+        parseReview(renderMarkdown({ range: "HEAD", notes: [parsed] }))
+          .notes[0],
+      ).toEqual(parsed);
+    },
+  );
+
+  test("old notes and ordinary triage prose remain unclassified", () => {
+    for (const body of [
+      "Triage: blocker",
+      "Triage: bug <!-- lcr:triage -->",
+      "No label.",
+    ]) {
+      const parsed = parseReview(write([{ ...comment, body }])).notes[0]!;
+      expect(parsed.triage).toBeUndefined();
+      expect(parsed.body).toBe(body);
+    }
+  });
+
+  test.each(["code", "file", "global"] as const)(
+    "manual classification before %s evidence preserves the conversation",
+    (scope) => {
+      const original = noteFromComment(
+        scope === "code"
+          ? comment
+          : {
+              ...comment,
+              id: scope === "global" ? "|@|@|#a1" : "src/app.ts|*|*|#a1",
+              scope,
+              file: scope === "global" ? "" : comment.file,
+              start: 0,
+              end: 0,
+              code: undefined,
+            },
+      );
+      original.messages.push(
+        { role: "reviewer", at: "first", body: "Please explain the evidence." },
+        { role: "agent", at: "second", body: "Here is the explanation." },
+      );
+      const markdown = renderMarkdown({ range: "HEAD", notes: [original] });
+      const classified = markdown.replace(
+        /(^### .+\n\n)/m,
+        "$1Triage: question <!-- lcr:triage -->\n\n",
+      );
+      const parsed = parseReview(classified).notes[0]!;
+      expect(parsed).toEqual({ ...original, triage: "question" });
+      expect(
+        parseReview(renderMarkdown({ range: "HEAD", notes: [parsed] }))
+          .notes[0],
+      ).toEqual(parsed);
+    },
+  );
+
+  test("agent messages containing a sealed triage line remain messages", () => {
+    const note = noteFromComment({ ...comment, triage: "bug" });
+    note.messages.push({
+      role: "agent",
+      at: "now",
+      body: "Triage: blocker <!-- lcr:triage -->",
+    });
+    const parsed = parseReview(renderMarkdown({ range: "HEAD", notes: [note] }))
+      .notes[0]!;
+    expect(parsed.triage).toBe("bug");
+    expect(parsed.messages).toEqual(note.messages);
+  });
+});
+
 describe("parseReview", () => {
+  test.each([
+    "src/a|b.ts",
+    "src/with|pipes/nested/a|b.ts",
+    "src/a|n1|n2|0-9|#ref|*|*|@|@",
+    "src/a|n1|n2",
+  ])("round-trips anchor suffixes without truncating %s", (file) => {
+    const anchors: ReviewComment[] = [
+      { ...comment, file, start: 1, end: 1, label: "1", id: `${file}|n1|n1` },
+      {
+        ...comment,
+        file,
+        start: 4,
+        end: 5,
+        label: "4-5:3-8",
+        side: "old",
+        ca: 2,
+        cb: 8,
+        id: `${file}|o4|o5|2-8`,
+      },
+      {
+        file,
+        body: "Whole-file feedback.",
+        start: 0,
+        end: 0,
+        scope: "file",
+        id: `${file}|*|*`,
+      },
+    ];
+    for (const source of anchors) {
+      for (const ref of ["", "|#auditpipe"]) {
+        const saved = { ...source, id: source.id + ref };
+        const parsed = parseReview(write([saved]));
+        expect(parsed.notes).toHaveLength(1);
+        expect(parsed.notes[0]).toMatchObject(saved);
+        expect(parseReview(renderMarkdown(parsed)).notes).toEqual(parsed.notes);
+      }
+    }
+  });
+
+  test("keeps the minted wire format and complete pipe path", () => {
+    const file = "src/a|b.ts";
+    const id = mintNoteId(file, "n12", "n12", 6, 14);
+    expect(id).toMatch(/^src\/a\|b\.ts\|n12\|n12\|6-14\|#[0-9a-f]{32}$/);
+    const saved = { ...comment, file, id, label: "12:7-14", ca: 6, cb: 14 };
+    expect(parseReview(write([saved])).notes[0]).toMatchObject(saved);
+  });
+
+  test.each(["|@|@", "|@|@|#legacy"])(
+    "preserves the overall anchor %s",
+    (id) => {
+      const saved: ReviewComment = {
+        id,
+        file: "",
+        body: "Overall feedback.",
+        scope: "global",
+        start: 0,
+        end: 0,
+      };
+      expect(parseReview(write([saved])).notes[0]).toMatchObject(saved);
+    },
+  );
+
+  test("does not treat unvalidated pipe components as anchors", () => {
+    const saved = {
+      ...comment,
+      file: "src/a|b.ts",
+      id: "src/a|not-an-anchor|n12|#legacy",
+    };
+    expect(parseReview(write([saved])).notes[0]).toMatchObject(saved);
+  });
+
   test("reads a note back with everything the page put into it", () => {
     const doc = parseReview(
       write([

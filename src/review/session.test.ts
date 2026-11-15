@@ -1,10 +1,23 @@
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  readFile,
+  readdir,
+  rename,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { listReviews } from "./output.ts";
 import { renderMarkdown } from "./render.ts";
-import { createSession, matchesContext } from "./session.ts";
+import {
+  createSession,
+  matchesContext,
+  ReviewChangedError,
+} from "./session.ts";
+import { writeReviewFile } from "./lock.ts";
 import { noteFromComment, parseReview } from "./thread.ts";
 import type { ReviewComment } from "../shared/review-types.ts";
 import { reviewerRevision } from "../agent/agent-queue.ts";
@@ -41,6 +54,53 @@ const read = async (dir: string, file: string) =>
   parseReview(await readFile(path.join(dir, file), "utf8"));
 
 describe("createSession", () => {
+  test("triage changes and clearing persist across restarts without resubmitting or altering answered notes", async () => {
+    const dir = await workspace();
+    const session = createSession(dir, ".", "HEAD");
+    const comment = {
+      ...note("a|n12|n12|#triage"),
+      triage: "blocker" as const,
+    };
+    const { file } = await session.save({ comments: [comment] });
+    const doc = await read(dir, file);
+    const saved = doc.notes[0]!;
+    saved.status = "applied";
+    saved.detail = "Fixed safely";
+    saved.messages.push({
+      role: "agent",
+      at: "now",
+      body: "Applied the change.",
+    });
+    await writeFile(path.join(dir, file), renderMarkdown(doc), "utf8");
+    const workRevision = reviewerRevision(saved);
+
+    const relabeled = await session.save({
+      comments: [{ ...comment, triage: "question" }],
+    });
+    expect(relabeled.changed).toEqual([]);
+    const restarted = createSession(dir, ".", "HEAD");
+    await restarted.adoptNewest();
+    const restored = (await read(dir, file)).notes[0]!;
+    expect(restored).toMatchObject({
+      triage: "question",
+      status: "applied",
+      detail: "Fixed safely",
+    });
+    expect(restored.messages).toEqual(saved.messages);
+    expect(reviewerRevision(restored)).toBe(workRevision);
+    await restarted.reply(comment.id!, "Thanks for fixing it.");
+    expect((await read(dir, file)).notes[0]!.triage).toBe("question");
+
+    const cleared = await restarted.save({
+      comments: [{ ...comment, triage: undefined }],
+    });
+    expect(cleared.changed).toEqual([]);
+    const final = (await read(dir, file)).notes[0]!;
+    expect(final.triage).toBeUndefined();
+    expect(final.messages[0]).toEqual(saved.messages[0]);
+    expect(final.status).toBe("applied");
+  });
+
   test("screenshot regions survive replies, edits and restarts; deletion removes only the chosen region", async () => {
     const dir = await workspace(),
       session = createSession(dir, ".review", "HEAD");
@@ -704,7 +764,7 @@ describe("reopening and continuing", () => {
     session.startFresh();
 
     const carried = await session.import(
-      note("a|n30|n30|#9", "Rename this."),
+      { ...note("a|n30|n30|#9", "Rename this."), triage: "suggestion" },
       [{ role: "agent", at: "", body: "Renamed the local, not the field." }],
       "review-2026-01-01T00-00-00.md#a|n12|n12|#1",
     );
@@ -715,6 +775,7 @@ describe("reopening and continuing", () => {
       id: "a|n30|n30|#9",
       body: "Rename this.",
       status: "pending",
+      triage: "suggestion",
       from: "review-2026-01-01T00-00-00.md#a|n12|n12|#1",
     });
     expect(doc.notes[0]!.messages).toEqual([
@@ -894,6 +955,115 @@ describe("serialized conversation mutations", () => {
 });
 
 describe("submitted revision ownership", () => {
+  test("agent classification persists without changing evidence, reviewer content or the thread", async () => {
+    const dir = await workspace();
+    const session = createSession(dir, ".", "HEAD");
+    const a = note("a|n12|n12|#triage");
+    await session.save({ comments: [a] });
+    await session.reply(a.id!, "Explain the behavior.");
+    const submitted = (await session.read()).notes[0]!;
+    const result = await session.answerRevision(
+      session.file,
+      a.id!,
+      "The implementation is deliberate.",
+      reviewerRevision(submitted),
+      "answered",
+      "question",
+    );
+    expect(result).toMatchObject({
+      ...a,
+      triage: "question",
+      status: "answered",
+    });
+    expect(result!.messages[0]).toEqual(submitted.messages[0]);
+    expect(result!.messages[1]!.body).toBe("The implementation is deliberate.");
+    const restarted = createSession(dir, ".", "HEAD");
+    await restarted.adoptNewest();
+    expect((await restarted.read()).notes[0]).toEqual(result);
+  });
+
+  test.each(["blocker", "bug", "suggestion", "question"] as const)(
+    "a concurrent reviewer %s category wins over an agent classification",
+    async (triage) => {
+      const dir = await workspace();
+      const session = createSession(dir, ".", "HEAD");
+      const a = note("a|n12|n12|#triage");
+      await session.save({ comments: [a] });
+      const revision = reviewerRevision((await session.read()).notes[0]!);
+      const changed = await session.save({ comments: [{ ...a, triage }] });
+      expect(changed.changed).toEqual([]);
+      const result = await session.answerRevision(
+        session.file,
+        a.id!,
+        "Answered.",
+        revision,
+        "answered",
+        "bug",
+      );
+      expect(result).toMatchObject({ ...a, triage, status: "answered" });
+      expect(result!.messages[0]!.body).toBe("Answered.");
+      expect((await session.read()).notes[0]).toEqual(result);
+    },
+  );
+
+  test.each(["managed", "manual"] as const)(
+    "a stale editor save preserves %s classification and explicit reviewer changes still win",
+    async (source) => {
+      const dir = await workspace();
+      const session = createSession(dir, ".", "HEAD");
+      const a = note("a|n12|n12|#triage");
+      await session.save({ comments: [a] });
+      const submitted = (await session.read()).notes[0]!;
+      if (source === "managed") {
+        await session.answerRevision(
+          session.file,
+          a.id!,
+          "Explained.",
+          reviewerRevision(submitted),
+          "answered",
+          "question",
+        );
+      } else {
+        submitted.triage = "question";
+        await writeFile(
+          path.join(dir, session.file),
+          renderMarkdown({ range: "HEAD", notes: [submitted] }),
+          "utf8",
+        );
+      }
+      const classified = (await session.read()).notes[0]!;
+      const saved = await session.save({ comments: [a] }, false, true);
+      expect(saved.changed).toEqual([]);
+      const restarted = createSession(dir, ".", "HEAD");
+      await restarted.adoptNewest();
+      expect((await restarted.read()).notes[0]).toEqual(classified);
+      await restarted.save({ comments: [{ ...a, triage: "suggestion" }] });
+      expect((await restarted.read()).notes[0]!.triage).toBe("suggestion");
+      await restarted.save({ comments: [a] });
+      const cleared = (await restarted.read()).notes[0]!;
+      expect(cleared.triage).toBeUndefined();
+      expect(cleared.messages).toEqual(classified.messages);
+      expect(cleared.status).toBe(classified.status);
+      await restarted.save(
+        { comments: [{ ...a, triage: "suggestion" }] },
+        false,
+        true,
+      );
+      expect((await restarted.read()).notes[0]!.triage).toBeUndefined();
+    },
+  );
+
+  test("preserving existing triage still accepts a category on a new note", async () => {
+    const dir = await workspace();
+    const session = createSession(dir, ".", "HEAD");
+    await session.save(
+      { comments: [{ ...note("a|n12|n12|#new"), triage: "bug" }] },
+      false,
+      true,
+    );
+    expect((await session.read()).notes[0]!.triage).toBe("bug");
+  });
+
   test("an unchanged submission receives its verdict and clears the previous detail", async () => {
     const dir = await workspace();
     const session = createSession(dir, ".", "HEAD");
@@ -935,8 +1105,10 @@ describe("submitted revision ownership", () => {
         "Old result.",
         revision,
         "applied",
+        "bug",
       );
       expect(result!.status).toBe("pending");
+      expect(result!.triage).toBeUndefined();
       expect(result!.messages.at(-1)).toMatchObject({ role: "agent" });
       expect(result!.messages.at(-1)!.body).toContain(revision.slice(0, 12));
       expect(result!.messages.at(-1)!.body).toContain("Old result.");
@@ -1142,5 +1314,316 @@ describe("reviewer evidence change detection", () => {
       parseReview(await readFile(path.join(dir, "private.md"), "utf8"))
         .notes[0]!.messages,
     ).toEqual([]);
+  });
+});
+
+describe("shared review transactions", () => {
+  test("independent sessions merge concurrent saves against the same fresh file", async () => {
+    const dir = await workspace();
+    const first = createSession(dir, ".", "HEAD");
+    const second = createSession(dir, ".", "HEAD");
+    const initial = note("seed|n12|n12|#seed");
+    await first.save({ comments: [initial] });
+    await second.adoptFile(first.file);
+    const a = note("a|n12|n12|#a"),
+      b = note("b|n12|n12|#b");
+    const saved = await Promise.all([
+      first.save({ comments: [a] }),
+      second.save({ comments: [b] }),
+    ]);
+    expect(saved.map((result) => result.file)).toEqual([
+      first.file,
+      first.file,
+    ]);
+    expect((await first.read()).notes.map((entry) => entry.id).sort()).toEqual(
+      [initial.id!, a.id!, b.id!].sort(),
+    );
+  });
+
+  test("symlink aliases share the lock for replies, answers and removals", async () => {
+    const root = await workspace();
+    const dir = path.join(root, "reviews"),
+      alias = path.join(root, "alias");
+    const first = createSession(root, dir, "HEAD");
+    const a = note("a|n12|n12|#a"),
+      b = note("b|n12|n12|#b");
+    await first.save({ comments: [a, b] });
+    await symlink(dir, alias, "dir");
+    const second = createSession(root, alias, "HEAD");
+    await second.adoptFile(first.file);
+    await Promise.all([
+      first.reply(a.id!, "Reviewer follow-up."),
+      second.answer(first.file, a.id!, "Agent response.", "answered"),
+      first.remove(b.id!),
+      second.save({ comments: [note("c|n12|n12|#c")] }),
+    ]);
+    const doc = await first.read();
+    expect(doc.notes.map((entry) => entry.id).sort()).toEqual([
+      a.id!,
+      "c|n12|n12|#c",
+    ]);
+    expect(doc.notes[0]!.status).toBe("answered");
+    expect(
+      doc.notes[0]!.messages.map((message) => message.body).sort(),
+    ).toEqual(["Agent response.", "Reviewer follow-up."]);
+  });
+
+  test("new names are minted under the shared lock even within the same second", async () => {
+    const dir = await workspace();
+    const first = createSession(dir, ".", "HEAD"),
+      second = createSession(dir, ".", "HEAD");
+    const clock = spyOn(Date, "now").mockReturnValue(
+      Date.parse("2026-01-01T00:00:00Z"),
+    );
+    try {
+      const [a, b] = await Promise.all([
+        first.save({ comments: [note("a|n12|n12|#a")] }),
+        second.save({ comments: [note("b|n12|n12|#b")] }),
+      ]);
+      expect(a.file).not.toBe(b.file);
+      expect(await listReviews(dir, ".")).toEqual([
+        "review-2026-01-01T00-00-00.md",
+        "review-2026-01-01T00-00-01.md",
+      ]);
+      expect((await read(dir, a.file)).notes[0]!.id).toBe("a|n12|n12|#a");
+      expect((await read(dir, b.file)).notes[0]!.id).toBe("b|n12|n12|#b");
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  test("another process waits for a transaction and merges the file published before release", async () => {
+    const dir = await workspace();
+    const session = createSession(dir, ".", "HEAD");
+    const seed = note("seed|n12|n12|#seed"),
+      parent = note("parent|n12|n12|#parent");
+    const childNote = note("child|n12|n12|#child");
+    await session.save({ comments: [seed] });
+    const file = session.file;
+    const blocked = Promise.withResolvers<void>();
+    let child: Bun.Subprocess<"ignore", "ignore", "pipe"> | undefined;
+    let errors: Promise<string> | undefined;
+    try {
+      await session.run(async () => {
+        child = Bun.spawn(
+          [
+            process.execPath,
+            "--eval",
+            `
+          import { lock } from ${JSON.stringify(import.meta.resolve("proper-lockfile"))};
+          import { createSession } from ${JSON.stringify(import.meta.resolve("./session.ts"))};
+          const dir = ${JSON.stringify(dir)};
+          let blocked = false;
+          try {
+            const release = await lock(dir, { lockfilePath: dir + "/.lcr.lock" });
+            await release();
+          } catch (error) {
+            if (error.code !== "ELOCKED") throw error;
+            blocked = true;
+          }
+          if (!blocked) throw new Error("The parent transaction did not hold the shared lock.");
+          const session = createSession(dir, ".", "HEAD");
+          if (!await session.adoptFile(${JSON.stringify(file)})) throw new Error("Review missing.");
+          process.send({ type: "blocked" });
+          await session.save({ comments: [${JSON.stringify(childNote)}] });
+          process.disconnect();
+        `,
+          ],
+          {
+            stdin: "ignore",
+            stdout: "ignore",
+            stderr: "pipe",
+            ipc(message) {
+              if (message?.type === "blocked") blocked.resolve();
+            },
+          },
+        );
+        errors = new Response(child.stderr).text();
+        void child.exited.then(async (code) => {
+          blocked.reject(
+            new Error(
+              `Child exited (${code}) before reporting contention: ${await errors}`,
+            ),
+          );
+        });
+        await blocked.promise;
+        // run() is also the transaction used by callers that delete or switch reviews.
+        // Publish new content while the child has demonstrated contention on this exact lock.
+        const doc = await read(dir, file);
+        doc.notes.push(noteFromComment(parent));
+        await writeReviewFile(path.join(dir, file), renderMarkdown(doc));
+      });
+      const code = await child!.exited;
+      if (code !== 0) throw new Error(await errors);
+      expect((await session.read()).notes.map((entry) => entry.id)).toEqual([
+        seed.id!,
+        parent.id!,
+        childNote.id!,
+      ]);
+    } finally {
+      if (child && child.exitCode === null) child.kill();
+      if (child) await child.exited;
+    }
+  });
+
+  test("a missing current file is an error, not an empty review to overwrite", async () => {
+    const dir = await workspace();
+    const session = createSession(dir, ".", "HEAD");
+    await session.save({ comments: [note("a|n12|n12|#a")] });
+    const file = session.file,
+      backup = path.join(dir, "saved.md");
+    const before = await readFile(path.join(dir, file), "utf8");
+    await rename(path.join(dir, file), backup);
+    await expect(
+      session.save({ comments: [note("b|n12|n12|#b")] }),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+    expect(await listReviews(dir, ".")).toEqual([]);
+    expect(await readFile(backup, "utf8")).toBe(before);
+    await rename(backup, path.join(dir, file));
+    // The failed read released the shared lock and did not poison the local queue.
+    await session.reply("a|n12|n12|#a", "Still usable.");
+    expect((await session.read()).notes[0]!.messages[0]!.body).toBe(
+      "Still usable.",
+    );
+  });
+
+  test("unreadable review discovery is not treated as an empty output directory", async () => {
+    const dir = await workspace();
+    await writeFile(path.join(dir, "not-a-directory"), "keep");
+    await expect(listReviews(dir, "not-a-directory")).rejects.toMatchObject({
+      code: "ENOTDIR",
+    });
+  });
+});
+
+describe("review origin ownership", () => {
+  test("an empty origin permits only the first save and stale requests cannot prune reviews", async () => {
+    const dir = await workspace();
+    const session = createSession(dir, ".review", "HEAD");
+    expect(await session.snapshot()).toEqual({
+      file: "",
+      doc: { range: "HEAD", notes: [] },
+    });
+    const saved = await session.save(
+      { comments: [note("a|n12|n12|#a")] },
+      false,
+      false,
+      "",
+    );
+    const before = await readFile(path.join(dir, saved.file), "utf8");
+    await expect(
+      session.save({ comments: [note("b|n12|n12|#b")] }, true, false, ""),
+    ).rejects.toBeInstanceOf(ReviewChangedError);
+    await expect(
+      session.import(note("c|n12|n12|#c"), [], "", ""),
+    ).rejects.toBeInstanceOf(ReviewChangedError);
+    expect(await readFile(path.join(dir, saved.file), "utf8")).toBe(before);
+    await expect(
+      session.save({ comments: [] }, false, false, session.file),
+    ).rejects.toBeInstanceOf(ReviewChangedError);
+    expect((await session.snapshot()).file).toBe(saved.file);
+  });
+
+  test("queued saves and imports validate origin after a review switch and snapshots stay paired", async () => {
+    const dir = await workspace();
+    const session = createSession(dir, ".review", "HEAD");
+    const a = note("a|n12|n12|#a"),
+      b = note("b|n12|n12|#b");
+    const first = await session.save({ comments: [a] });
+    session.startFresh();
+    const second = await session.save({ comments: [b] });
+    await session.adoptFile(path.basename(first.file));
+    const before = await Promise.all(
+      [first, second].map(({ file }) => readFile(path.join(dir, file), "utf8")),
+    );
+    const original = session.snapshot();
+    const switched = session.run(() =>
+      session.adoptFile(path.basename(second.file)),
+    );
+    const staleSave = expect(
+      session.save({ comments: [a] }, true, false, first.file),
+    ).rejects.toBeInstanceOf(ReviewChangedError);
+    const staleImport = expect(
+      session.import(a, [], "source", first.file),
+    ).rejects.toThrow("Reopen the review");
+    const current = session.snapshot();
+    await Promise.all([switched, staleSave, staleImport]);
+    expect(await original).toMatchObject({
+      file: first.file,
+      doc: { notes: [{ id: a.id }] },
+    });
+    expect(await current).toMatchObject({
+      file: second.file,
+      doc: { notes: [{ id: b.id }] },
+    });
+    expect(
+      await Promise.all(
+        [first, second].map(({ file }) =>
+          readFile(path.join(dir, file), "utf8"),
+        ),
+      ),
+    ).toEqual(before);
+    await session.import(a, [], "source", second.file);
+    expect((await session.read()).notes.map((entry) => entry.id)).toEqual([
+      b.id!,
+      a.id!,
+    ]);
+  });
+
+  test("absolute output origins are compared exactly as shown", async () => {
+    const dir = await workspace();
+    const session = createSession(dir, path.join(dir, "reviews"), "HEAD");
+    const saved = await session.save(
+      { comments: [note("a|n12|n12|#a")] },
+      false,
+      false,
+      "",
+    );
+    expect(path.isAbsolute(saved.file)).toBe(true);
+    await expect(
+      session.save(
+        { comments: [] },
+        false,
+        false,
+        path.relative(dir, saved.file),
+      ),
+    ).rejects.toBeInstanceOf(ReviewChangedError);
+    await session.save(
+      { comments: [note("b|n12|n12|#b")] },
+      false,
+      false,
+      saved.file,
+    );
+    expect((await session.read()).notes).toHaveLength(2);
+  });
+
+  test("named agent responses still reach their original review after switching", async () => {
+    const dir = await workspace();
+    const session = createSession(dir, ".review", "HEAD");
+    const a = note("a|n12|n12|#a");
+    await session.save({ comments: [a] });
+    const original = session.file;
+    const revision = reviewerRevision((await session.read()).notes[0]!);
+    session.startFresh();
+    const current = await session.save({ comments: [a] });
+    const before = await readFile(path.join(dir, current.file), "utf8");
+    await Promise.all([
+      session.answer(original, a.id!, "An ordinary agent answer."),
+      session.answerRevision(
+        original,
+        a.id!,
+        "The submitted answer.",
+        revision,
+        "applied",
+      ),
+    ]);
+    const answered = (await session.readNote(original, a.id!))!;
+    expect(answered.messages.map((message) => message.body)).toEqual([
+      "An ordinary agent answer.",
+      "The submitted answer.",
+    ]);
+    expect(answered.status).toBe("applied");
+    expect(await readFile(path.join(dir, current.file), "utf8")).toBe(before);
+    expect(session.shownFile).toBe(current.file);
   });
 });
