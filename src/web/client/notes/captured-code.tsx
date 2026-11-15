@@ -18,7 +18,7 @@ export function CapturedCode({
       </summary>
       <pre
         aria-label={label}
-        className="mt-1 max-h-48 overflow-auto py-1 text-xs"
+        className="mt-1 whitespace-pre-wrap [overflow-wrap:anywhere] py-1 text-xs"
       >
         <Code value={value} language="diff" />
       </pre>

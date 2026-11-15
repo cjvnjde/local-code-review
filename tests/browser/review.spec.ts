@@ -242,14 +242,24 @@ test("compiled executable reviews changes, preserves drafts, and continues the M
   ).toContain("Please rename this greeting.\nKeep the scope local.");
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await savedCard
-    .getByRole("button", { name: "Note actions", exact: true })
-    .click();
-  await page
-    .getByRole("menuitem", { name: "Copy note reference", exact: true })
+    .getByRole("button", { name: "Copy note reference", exact: true })
     .click();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
     `#${(await savedCard.getAttribute("data-note-id"))!.split("|#").at(-1)}`,
   );
+  await expect(savedCard.getByRole("status")).toHaveCount(0);
+  const savedReview = await (
+    await page.request.get(`${url}/api/review`)
+  ).json();
+  await page
+    .getByRole("button", { name: "Copy review path", exact: true })
+    .click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    savedReview.file,
+  );
+  await expect(
+    page.locator('[data-sonner-toast][data-type="success"]'),
+  ).toHaveCount(0);
   expect((await addedCode.boundingBox())!.x).toBe(codeLeft);
   await expect(addedCode).toHaveText("  return 'hello world';");
   const inlineCard = readingPane.getByRole("article");
@@ -432,7 +442,7 @@ test("compiled executable reviews changes, preserves drafts, and continues the M
   expect(errors).toEqual([]);
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(
-    page.getByRole("combobox", { name: "Select file" }),
+    page.getByRole("button", { name: "Show file sidebar", exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Close", exact: true }).click();
   expect(
@@ -452,6 +462,86 @@ test("compiled executable reviews changes, preserves drafts, and continues the M
   );
   expect(codeNote.messages).toHaveLength(2);
   expect(codeNote.status).toBe("answered");
+});
+
+test("captured code flows with narrow notes and collapsed captures still seed editable suggestions", async ({
+  page,
+}) => {
+  await page.request.delete(`${url}/api/review`);
+  const replacement = Array.from(
+    { length: 24 },
+    (_, index) => `  const item${index} = "${"long-value-".repeat(12)}";`,
+  ).join("\n");
+  const code = `-  return 'old';\n${replacement
+    .split("\n")
+    .map((line) => `+${line}`)
+    .join("\n")}\n }`;
+  const comment = {
+    id: "src/app.ts|n2|n2|#capturewidth",
+    file: "src/app.ts",
+    start: 2,
+    end: 2,
+    side: "new",
+    code,
+    body: "Review this historical capture.",
+  };
+  const saved = await page.request.post(`${url}/api/note`, {
+    headers: await reviewHeaders(page.request),
+    data: { comment, ask: false },
+  });
+  expect(saved.ok()).toBe(true);
+  await page.setViewportSize({ width: 1280, height: 960 });
+  await page.goto(url);
+  const pane = page.getByRole("region", { name: "Code diff" });
+  const card = pane.locator(`[data-note-id="${comment.id}"]`);
+  const captured = card.getByLabel("Captured code", { exact: true });
+  await expect(captured).toBeHidden();
+  await card.getByRole("button", { name: "Reply", exact: true }).click();
+  const input = card.getByRole("textbox", { name: "Note text", exact: true });
+  await input.fill("Keep this explanation.");
+  await card
+    .getByRole("button", { name: "Suggest change", exact: true })
+    .click();
+  await expect(input).toHaveValue(
+    `Keep this explanation.\n\n\`\`\`suggestion\n${replacement}\n}\n\`\`\`\n`,
+  );
+  await expect(captured).toBeHidden();
+  await card.getByRole("button", { name: "Cancel", exact: true }).click();
+  await card.locator("summary").click();
+  await expect(captured).toBeVisible();
+  await expect
+    .poll(() => captured.evaluate((element) => element.clientHeight))
+    .toBeGreaterThan(192);
+  const inset = () =>
+    card.evaluate((element) => {
+      const pane = element.closest('[aria-label="Code diff"]')!;
+      return (
+        element.getBoundingClientRect().left - pane.getBoundingClientRect().left
+      );
+    });
+  await expect.poll(inset).toBeLessThan(16);
+  expect(
+    await captured.evaluate((element) => ({
+      horizontal: element.scrollWidth > element.clientWidth,
+      vertical: element.scrollHeight > element.clientHeight,
+    })),
+  ).toEqual({ horizontal: false, vertical: false });
+  await page
+    .getByRole("button", { name: "Hide notes panel", exact: true })
+    .click();
+  await expect.poll(inset).toBeGreaterThan(64);
+  await page
+    .getByRole("button", { name: "Show notes panel", exact: true })
+    .click();
+  await expect.poll(inset).toBeLessThan(16);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "Close", exact: true }).click();
+  await expect.poll(inset).toBeLessThan(16);
+  expect(
+    await captured.evaluate(
+      (element) => element.scrollWidth <= element.clientWidth,
+    ),
+  ).toBe(true);
 });
 
 test("classification changes and stale editor saves preserve the latest category", async ({
@@ -1893,9 +1983,7 @@ test("laptop and narrow layouts protect code width without losing file navigatio
   await files.locator('button[title="src/app.ts"]').click();
   await expect(files).toBeHidden();
   await expect(
-    page
-      .getByRole("combobox", { name: "Select file", exact: true })
-      .getByText("src/app.ts", { exact: true }),
+    pane.getByRole("heading", { name: "src/app.ts", exact: true }),
   ).toBeVisible();
   await pane
     .getByRole("button", { name: "Comment on file src/app.ts", exact: true })
@@ -1920,9 +2008,6 @@ test("laptop and narrow layouts protect code width without losing file navigatio
   await expect(files).toBeVisible();
   await page.getByRole("button", { name: "Close files", exact: true }).click();
   await page.setViewportSize({ width: 1440, height: 960 });
-  await expect(
-    page.locator('[aria-label="Review context"]').getByText(/HEAD/),
-  ).toBeVisible();
   await expect(
     page.getByRole("separator", { name: "Resize file sidebar" }),
   ).toBeVisible();

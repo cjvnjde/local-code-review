@@ -89,6 +89,15 @@ describe("React review anchors", () => {
     expect(suggestionBlock("-old\n+new\n kept")).toBe(
       "```suggestion\nnew\nkept\n```",
     );
+    expect(suggestionBlock(makeComment(file, 1, 4).code!)).toBe(
+      "```suggestion\nfunction run() {\n  return 2;\n}\n```",
+    );
+    expect(
+      suggestionBlock("+  const prefix = '+keep';\n+\n+  return prefix;"),
+    ).toBe("```suggestion\n  const prefix = '+keep';\n\n  return prefix;\n```");
+    expect(suggestionBlock("-  return 1;\n-}")).toBe(
+      "```suggestion\n  return 1;\n}\n```",
+    );
     expect(suggestionBlock("+```inside")).toBe(
       "````suggestion\n```inside\n````",
     );

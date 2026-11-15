@@ -40,10 +40,12 @@ export function TriageSelect({
 export function NoteHeader({
   note,
   status,
+  locationAction,
   children,
 }: {
   note: ReviewComment;
   status?: string;
+  locationAction?: ReactNode;
   children?: ReactNode;
 }) {
   const fullLocation = note.web
@@ -72,7 +74,7 @@ export function NoteHeader({
         : status;
   return (
     <header className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b px-2.5 py-1">
-      <div className="flex min-w-0 flex-[1_1_12rem] items-baseline gap-2">
+      <div className="flex min-w-0 flex-[1_1_12rem] items-center gap-1">
         <div
           className="flex min-w-0 items-baseline gap-1 text-xs font-medium"
           title={fullLocation}
@@ -83,6 +85,7 @@ export function NoteHeader({
             <span className="shrink-0 text-muted-foreground">· {lines}</span>
           )}
         </div>
+        {locationAction}
         {statusLabel && (
           <span
             className={cn(

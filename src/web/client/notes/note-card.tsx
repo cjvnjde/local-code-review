@@ -70,9 +70,7 @@ export function NoteCard({
     action.variables?.url === "/api/note" &&
     action.variables?.method === "POST";
   const [removing, setRemoving] = useState<string | null>(null);
-  const [copyResult, setCopyResult] = useState<"copied" | "failed" | null>(
-    null,
-  );
+  const [copyFailed, setCopyFailed] = useState(false);
   const confirmation = useRef<HTMLButtonElement>(null);
   const menuTriggers = useRef(new Map<string, HTMLElement>());
   useEffect(() => {
@@ -109,6 +107,26 @@ export function NoteCard({
   const header = (
     <NoteHeader
       note={note}
+      locationAction={
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-6"
+          aria-label="Copy note reference"
+          title="Copy note reference"
+          disabled={!refOf(note.id)}
+          onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(refToken(note));
+              setCopyFailed(false);
+            } catch {
+              setCopyFailed(true);
+            }
+          }}
+        >
+          <Copy />
+        </Button>
+      }
       status={
         ["pending", "unknown"].includes(note.status) ? undefined : note.status
       }
@@ -153,19 +171,6 @@ export function NoteCard({
         </Button>
       )}
       <ActionMenu trigger={menuTrigger("note", "Note actions")}>
-        <ActionMenuItem
-          disabled={!refOf(note.id)}
-          onClick={async () => {
-            try {
-              await navigator.clipboard.writeText(refToken(note));
-              setCopyResult("copied");
-            } catch {
-              setCopyResult("failed");
-            }
-          }}
-        >
-          <Copy /> Copy note reference
-        </ActionMenuItem>
         {editable && !editor && (
           <ActionMenuItem
             onClick={() =>
@@ -464,24 +469,10 @@ export function NoteCard({
           )}
         </footer>
       )}
-      {copyResult && (
-        <p
-          className={cn(
-            "px-3 py-2 text-xs",
-            copyResult === "failed"
-              ? "text-destructive"
-              : "text-muted-foreground",
-          )}
-          role={copyResult === "failed" ? "alert" : "status"}
-        >
-          {copyResult === "copied" ? (
-            "Note reference copied."
-          ) : (
-            <>
-              Could not copy. Select and copy this reference:{" "}
-              <code className="select-all break-all">{refToken(note)}</code>
-            </>
-          )}
+      {copyFailed && (
+        <p className="px-3 py-2 text-xs text-destructive" role="alert">
+          Could not copy. Select and copy this reference:{" "}
+          <code className="select-all break-all">{refToken(note)}</code>
         </p>
       )}
       {removing && (

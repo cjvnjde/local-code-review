@@ -25,14 +25,11 @@ existing intent-to-add entries. Untracked files are included using a private ind
 ## Read and comment
 
 Scroll through the entire review in one pane; files follow one another in sidebar
-order. The sidebar highlights the file under the top of the pane. Its links and
-the mobile file picker jump within that continuous review instead of replacing it.
+order. The sidebar highlights the file under the top of the pane. Its links jump
+within that continuous review instead of replacing it.
 Only a small window of code and notes is mounted, even for very large diffs.
 File visibility controls appear on row hover or keyboard focus without reserving
 a separate column.
-The context strip keeps the branch, comparison range, and named-review identity
-visible at laptop widths. On compact screens it also shows the selected filename
-in the file picker.
 
 Drag the vertical dividers or their full grip handles to resize the file sidebar
 and conversation pane. Focused dividers also accept arrow keys and Home/End;
@@ -40,8 +37,8 @@ double-click resets that pane's width. Widths and panel visibility survive reloa
 and hide/show toggles, including when the URL points to a note. Restoring that
 location does not reopen a hidden conversation pane; actively following another
 note link can still reveal it. Resizing keeps the current code position and open draft;
-narrow screens retain the file picker and conversation drawer. Below 1280px the
-file sidebar opens as a drawer; below 960px the notes pane also becomes a drawer.
+narrow screens retain file and conversation drawers. Below 1280px the
+file sidebar opens from the header toggle; below 960px the notes pane also becomes a drawer.
 Inline panes keep at least 480px for the diff instead of squeezing code behind
 sidebar controls. Either divider works with the opposite sidebar hidden.
 
@@ -75,6 +72,7 @@ The note nearest the visible top of the diff is highlighted in the sidebar.
 Captured code uses the same disclosure in drafts, inline notes, and full sidebar
 conversations. It starts closed; **Settings → Expand captured code in notes by
 default** opens it by default. Each disclosure can still be toggled independently.
+Expanded captures wrap long lines and grow with their content, without a nested scrollbar.
 Commented code ranges have a subtle edge marker and tint, preserving added/removed
 line colors.
 Note indicators stay in a fixed gutter slot; saving a note never shifts or
@@ -89,8 +87,9 @@ Hover over code to highlight a commentable row and show its gutter affordance.
 Click code or a line number to comment immediately, drag across lines for a range,
 or drag within a line to select specific characters. Shift-click extends a range;
 Alt-drag keeps normal browser text selection for copying. Comments open directly
-below their subject in a compact card aligned with the start of the code text,
-after the gutter. Cards and editors have solid backgrounds and small corner radii;
+below their subject in a compact card. Wide panes align cards with the code text;
+the left inset shrinks with the diff pane's width, down to 8px in narrow panes.
+Cards and editors have solid backgrounds and small corner radii;
 the surrounding area matches the code pane. **Settings → Inline note width →
 Full width** removes the compact width cap. The choice survives reloads and also
 applies to pinned file drafts. Locations and agent outcomes share the identity row.
@@ -104,14 +103,19 @@ below its header button without moving your place in the diff.
 Clicking or focusing elsewhere dismisses it;
 reopening restores the unsaved draft. Reloading retains that draft but leaves the
 popup closed until you click **Overall note**. Panel toggles sit at the two ends of
-the same compact header; change counts and refresh live in the existing footer.
+the same compact header, without a second branch/range row. Change counts and
+refresh live in the footer; the copy icon beside the review path copies that path.
 
 The editor accepts Markdown, including tables, checklists, and fenced code.
 Typed line breaks remain visible in previews, saved notes, and replies.
 The toolbar exposes every formatting action and attachment control as an icon
 button, with titles on hover or keyboard focus. **Write / Preview** are icon
 toggles too; narrow editors wrap the toolbar rather than hiding actions in a menu.
-**Suggest change** inserts a fenced replacement for the captured lines.
+**Suggest change** inserts a fenced replacement for the captured lines, even when
+the capture is collapsed. It keeps added and unchanged lines, drops removed lines,
+and strips only diff prefixes, preserving indentation and blank lines. Deleted-only
+captures use the former code as an editable starting point. Literal backticks are
+protected with a longer fence.
 Drop or paste files, or use **Attach file**, to attach them
 directly to a note or reply (up to 12 MiB each). Files are kept beside the review
 and linked relatively; external images are not loaded.
@@ -209,8 +213,10 @@ returns to the index. Finish an open conversation
 editor before switching views. View preferences survive reloads.
 
 **Resolve / Reopen** and **Note actions** sit in the compact note header.
-Reply stays below the conversation. **Note actions** contains copying the stable
-reference, editing, and deletion; each editable reply has **Reply actions**.
+Reply stays below the conversation. The copy icon beside the note location copies
+its stable reference without a success message. **Note actions** contains editing
+and deletion; each editable reply has **Reply actions**. Copying the footer's review
+path is silent too; copy failures still report an error.
 Your original note and replies are labeled **You**; agent replies and summaries
 have a separate author icon and accent. Agent messages remain the agent's account.
 Unread counts include only incoming agent messages, never your own replies.

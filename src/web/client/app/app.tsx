@@ -21,8 +21,7 @@ import {
 import type { SearchResult } from "../search/search-model.ts";
 import { triageOptions } from "../notes/note-header.tsx";
 import { fileHidden } from "../diff/filters.ts";
-import { rowKey } from "../diff/model.ts";
-import { Eye, EyeOff, ArrowUp, ArrowDown } from "lucide-react";
+import { ArrowUp, ArrowDown, Copy } from "lucide-react";
 import { ReviewReferences } from "../notes/references.tsx";
 import { useUi } from "./ui-preferences.tsx";
 import { useThemes } from "./themes.tsx";
@@ -30,7 +29,6 @@ import { ImageScope } from "../components/images.tsx";
 import { imageEditorOwner } from "../components/image-preview.ts";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  GitBranch,
   GitPullRequest,
   Search,
   Settings2,
@@ -902,38 +900,6 @@ function Workspace({
                   )}
                 </div>
               </header>
-              <div
-                aria-label="Review context"
-                className="flex min-h-8 shrink-0 items-center gap-3 border-b bg-card px-3 py-1 text-xs text-muted-foreground"
-              >
-                <Select
-                  label="Select file"
-                  className="h-8 w-[min(40vw,14rem)] shrink-0 gap-1 px-2 xl:hidden"
-                  value={file?.path || ""}
-                  onValueChange={jumpToFile}
-                  options={files.map((f) => ({ value: f.path, label: f.path }))}
-                />
-                <GitBranch className="hidden size-3.5 shrink-0 sm:block" />
-                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-0.5">
-                  <span className="max-w-48 truncate" title={diff.branch}>
-                    {diff.branch || "Working tree"}
-                  </span>
-                  {diff.id && (
-                    <span
-                      className="max-w-48 truncate font-medium"
-                      title={diff.id}
-                    >
-                      {diff.id}
-                    </span>
-                  )}
-                  <span
-                    className="min-w-0 truncate font-mono"
-                    title={diff.range}
-                  >
-                    {diff.range}
-                  </span>
-                </div>
-              </div>
               {draft && (
                 <DraftReviewNotice
                   draft={draft}
@@ -1608,12 +1574,34 @@ function Workspace({
                   )}{" "}
                   unread
                 </span>
-                <span
-                  className="ml-auto min-w-0 max-w-[30vw] truncate font-mono"
-                  title={review?.file}
-                >
-                  {review?.file || "First save creates a Markdown review"}
-                </span>
+                <div className="ml-auto flex min-w-0 max-w-[30vw] items-center gap-1">
+                  <span
+                    className="min-w-0 select-all truncate font-mono"
+                    title={review?.file}
+                  >
+                    {review?.file || "First save creates a Markdown review"}
+                  </span>
+                  {review?.file && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-6"
+                      aria-label="Copy review path"
+                      title="Copy review path"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(review.file);
+                        } catch {
+                          toast.error(
+                            "Could not copy. Select and copy the review path from the footer.",
+                          );
+                        }
+                      }}
+                    >
+                      <Copy />
+                    </Button>
+                  )}
+                </div>
                 <Button
                   variant="ghost"
                   size="sm"
