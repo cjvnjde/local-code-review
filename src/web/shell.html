@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -14,14 +14,22 @@
         color: var(--foreground);
       }
       ::highlight(lcr-notes) {
-        background-color: #f59e0b33;
-        text-decoration: underline #f59e0b;
+        background-color: color-mix(in srgb, var(--warning) 20%, transparent);
+        text-decoration: underline var(--warning);
       }
       ::highlight(lcr-word-add) {
-        background-color: #22c55e33;
+        background-color: color-mix(
+          in srgb,
+          var(--diff-add-foreground) 20%,
+          transparent
+        );
       }
       ::highlight(lcr-word-del) {
-        background-color: #f43f5e33;
+        background-color: color-mix(
+          in srgb,
+          var(--diff-del-foreground) 20%,
+          transparent
+        );
       }
     </style>
   </head>

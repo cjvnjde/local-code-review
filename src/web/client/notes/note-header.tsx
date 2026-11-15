@@ -50,9 +50,9 @@ export function NoteHeader({
           className={cn(
             "rounded-full border px-2 py-0.5 text-[10px] font-medium",
             ["applied", "answered"].includes(status)
-              ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-500"
+              ? "border-success/25 bg-success/10 text-success"
               : status === "needs-input"
-                ? "border-amber-500/25 bg-amber-500/10 text-amber-500"
+                ? "border-warning/25 bg-warning/10 text-warning"
                 : "text-muted-foreground",
           )}
         >

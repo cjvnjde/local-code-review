@@ -51,7 +51,10 @@ at runtime. There is no frontend server or CDN in the distributed application.
 - `src/web/client/web-review/` contains capture presentation, the embedded React
   editor, and the self-contained page overlay injected through CDP.
 - `src/web/shell.html` imports the complete frontend. `src/web/styles/index.css`
-  defines Tailwind, semantic light/dark tokens, and Markdown styling.
+  defines Tailwind, semantic color tokens, and Markdown/syntax styling.
+- `src/shared/themes.ts` defines the editable color catalog and built-in palettes.
+  Browser theme application/editor live in `src/web/client/app/themes.tsx` and
+  `theme-editor.tsx`; `src/cli/themes.ts` owns validated user-theme files.
 
 Server events invalidate queries instead of mutating DOM or copying server state
 into a second global store. An editor owns a snapshot of its subject and text.

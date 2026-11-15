@@ -59,8 +59,12 @@ export function FileHeader({
         >
           {file.path}
         </h2>
-        <span className="shrink-0 text-xs text-emerald-500">+{file.added}</span>
-        <span className="shrink-0 text-xs text-rose-500">−{file.removed}</span>
+        <span className="shrink-0 text-xs text-diff-add-foreground">
+          +{file.added}
+        </span>
+        <span className="shrink-0 text-xs text-diff-del-foreground">
+          −{file.removed}
+        </span>
         <Button
           size="sm"
           variant={viewed ? "default" : "outline"}

@@ -30,6 +30,13 @@ import {
   type UiSettings,
 } from "../shared/settings.ts";
 import { contextRequestAllowed, contextRoute } from "./context.ts";
+import {
+  BUILTIN_THEMES,
+  parseThemeDraft,
+  type Theme,
+  type ThemeCatalog,
+  type ThemeDraft,
+} from "../shared/themes.ts";
 
 export interface ServerOptions {
   web?: import("../web-review/controller.ts").WebReviewController;
@@ -81,6 +88,8 @@ export interface ServerOptions {
   /** Effective defaults read from the user's configuration. */
   uiDefaults?: Partial<UiSettings>;
   saveUiSettings?: (patch: Partial<UiSettings>) => Promise<void>;
+  getThemes?: () => Promise<ThemeCatalog>;
+  saveTheme?: (draft: ThemeDraft) => Promise<{ theme: Theme; file: string }>;
 }
 
 /**
@@ -173,6 +182,9 @@ function serve(options: ServerOptions, port: number) {
   let settings: UiSettings = { ...DEFAULT_UI_SETTINGS, ...defaults };
   let settingsWrites = Promise.resolve();
   const contextToken = crypto.randomUUID();
+  const getThemes = () =>
+    options.getThemes?.() ??
+    Promise.resolve({ themes: BUILTIN_THEMES, directory: "", errors: [] });
   options.web?.configureContext(settings);
   options.agent?.contextMode?.(settings.aiContext);
   const server = Bun.serve({
@@ -203,6 +215,43 @@ function serve(options: ServerOptions, port: number) {
           return contextRoute(request, options, contextToken, server.port!);
         if (url.pathname === "/api/events")
           return events(options, request, server);
+        if (url.pathname === "/api/themes") {
+          if (!contextRequestAllowed(request, server.port!))
+            return Response.json(
+              { error: "Access themes from the review origin." },
+              { status: 403 },
+            );
+          const headers = { "cache-control": "no-store" };
+          if (request.method === "GET")
+            return Response.json(await getThemes(), { headers });
+          if (request.method !== "POST")
+            return new Response("method not allowed", {
+              status: 405,
+              headers: { allow: "GET, POST" },
+            });
+          if (!isJsonRequest(request))
+            return Response.json(
+              { error: "JSON body required." },
+              { status: 415 },
+            );
+          let draft: ThemeDraft;
+          try {
+            draft = parseThemeDraft(await readBoundedJson(request));
+          } catch (error) {
+            return Response.json(
+              { error: (error as Error).message },
+              { status: 400 },
+            );
+          }
+          if (!options.saveTheme)
+            return Response.json(
+              { error: "Theme storage is not configured for this server." },
+              { status: 503 },
+            );
+          const saved = await options.saveTheme(draft);
+          options.hub.emit({ type: "settings" });
+          return Response.json(saved, { status: 201, headers });
+        }
         if (url.pathname === "/api/settings") {
           if (!contextRequestAllowed(request, server.port!))
             return Response.json(
@@ -225,15 +274,22 @@ function serve(options: ServerOptions, port: number) {
               { error: "JSON body required." },
               { status: 415 },
             );
-          const payload = await readJson(request);
+          let payload: unknown;
           let patch: Partial<UiSettings>;
+          let selectedTheme: Theme | undefined;
           try {
-            if (JSON.stringify(payload).length > 32768)
-              throw new Error("Settings object is too large.");
+            payload = await readBoundedJson(request);
             patch = parseUiSettings(payload);
-          } catch {
+            if (patch.theme !== undefined) {
+              selectedTheme = (await getThemes()).themes.find(
+                (theme) => theme.id === patch.theme,
+              );
+              if (!selectedTheme)
+                throw new Error(`Unknown theme ID: ${patch.theme}`);
+            }
+          } catch (error) {
             return Response.json(
-              { error: "A valid settings object is required." },
+              { error: (error as Error).message },
               { status: 400 },
             );
           }
@@ -241,6 +297,7 @@ function serve(options: ServerOptions, port: number) {
             await options.saveUiSettings?.(patch);
             settings = { ...settings, ...patch };
             options.web?.configureContext(settings);
+            if (selectedTheme) options.web?.configureTheme?.(selectedTheme);
             options.agent?.contextMode?.(settings.aiContext);
             options.hub.emit({ type: "settings" });
           });
@@ -1309,5 +1366,36 @@ async function readJson(request: Request): Promise<unknown | null> {
     return parsed && typeof parsed === "object" ? parsed : null;
   } catch {
     return null;
+  }
+}
+
+/** Limit bytes before JSON parsing, including bodies without Content-Length. */
+async function readBoundedJson(request: Request): Promise<unknown> {
+  const max = 32768;
+  const length = request.headers.get("content-length");
+  if (length && (!/^\d+$/.test(length) || Number(length) > max))
+    throw new Error("JSON body exceeds 32 KiB.");
+  if (!request.body) throw new Error("A JSON object is required.");
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > max) {
+        await reader.cancel();
+        throw new Error("JSON body exceeds 32 KiB.");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  try {
+    return JSON.parse(await new Blob(chunks).text());
+  } catch {
+    throw new Error("A valid JSON object is required.");
   }
 }

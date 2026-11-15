@@ -57,8 +57,8 @@ export function AgentActivityView({
       className={cn(
         "inline-flex min-w-0 items-center gap-1.5",
         activity.tone === "working" && "text-primary",
-        activity.tone === "warning" && "text-amber-600 dark:text-amber-400",
-        activity.tone === "success" && "text-emerald-600 dark:text-emerald-400",
+        activity.tone === "warning" && "text-warning",
+        activity.tone === "success" && "text-success",
         activity.tone === "error" && "text-destructive",
         activity.tone === "muted" && "text-muted-foreground",
         className,

@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, Palette } from "lucide-react";
 import { useUi } from "./ui-preferences.tsx";
 import { hidePatterns } from "../diff/filters.ts";
 import { useQuery } from "@tanstack/react-query";
 import { request, useAction, type AgentState } from "./api.ts";
 import { Button } from "../components/ui/button.tsx";
 import { Select } from "../components/ui/select.tsx";
+import { useThemes } from "./themes.tsx";
 
 const INSTALL_SKILL_COMMAND =
   "npx skills add cjvnjde/local-code-review --skill apply-lcr";
@@ -20,6 +21,7 @@ export function Settings({
   onOpenReview: (file: string) => void;
 }) {
   const ui = useUi();
+  const themes = useThemes();
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">(
     "idle",
   );
@@ -37,6 +39,50 @@ export function Settings({
         Preferences are saved to your lcr config.json in the user configuration
         directory.
       </p>
+      <section className="space-y-3">
+        <h3 className="text-sm font-semibold">Appearance</h3>
+        <div className="flex flex-wrap items-center gap-2">
+          <Select
+            label="Theme"
+            value={themes.theme.id}
+            onValueChange={(theme) => ui.update({ theme })}
+            options={themes.themes.map((theme) => ({
+              value: theme.id,
+              label: `${theme.name} · ${theme.mode}`,
+            }))}
+            className="min-w-48 flex-1"
+          />
+          <Button
+            variant="outline"
+            disabled={themes.loading}
+            onClick={() =>
+              window.open(
+                `/?theme-editor=${encodeURIComponent(themes.theme.id)}`,
+                "_blank",
+                "noopener",
+              )
+            }
+          >
+            <Palette /> Create theme
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Create theme opens a new page with this palette prefilled. Edit
+          colors, choose light or dark, and save an independent copy in your
+          config folder.
+        </p>
+        {themes.unavailable && (
+          <p role="alert" className="text-xs text-destructive">
+            The saved theme “{ui.settings.theme}” is unavailable. Showing Dark;
+            choose another theme or restore its file.
+          </p>
+        )}
+        {themes.errors.map((error) => (
+          <p role="alert" className="text-xs text-destructive" key={error}>
+            {error}
+          </p>
+        ))}
+      </section>
       <section className="space-y-3">
         <h3 className="text-sm font-semibold">Reading and editing</h3>
         {(
@@ -435,7 +481,7 @@ export function AgentPanel({ agent }: { agent: AgentState }) {
           {agent.queue.permissions.map((permission) => (
             <div
               key={permission.id}
-              className="space-y-3 rounded-lg border border-amber-500/30 p-4"
+              className="space-y-3 rounded-lg border border-warning/30 p-4"
             >
               <p className="text-sm">
                 {permission.toolCall?.title || "Agent requests permission"}

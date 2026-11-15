@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@import "highlight.js/styles/github-dark-dimmed.css";
 @import "./drawing.css";
 @source "../client";
 @custom-variant dark (&:where(.dark, .dark *));
@@ -18,7 +17,25 @@
   --primary-foreground: #ffffff;
   --border: #e4e4e7;
   --ring: #9482ef;
+  --overlay: #000000;
   --destructive: #dc2626;
+  --success: #16824a;
+  --warning: #a16207;
+  --diff-add: #e7f5ec;
+  --diff-del: #fbe9ed;
+  --diff-add-foreground: #16824a;
+  --diff-del-foreground: #be123c;
+  --syntax-comment: #757580;
+  --syntax-keyword: #a626a4;
+  --syntax-string: #16824a;
+  --syntax-number: #285cb4;
+  --syntax-function: #285cb4;
+  --syntax-type: #7c3a9e;
+  --syntax-variable: #953800;
+  --syntax-attribute: #0550ae;
+  --syntax-regexp: #0a3069;
+  --syntax-tag: #116329;
+  --syntax-meta: #6e7781;
 }
 .dark {
   color-scheme: dark;
@@ -34,7 +51,25 @@
   --primary-foreground: #19142e;
   --border: #2b2b33;
   --ring: #b0a0ff;
+  --overlay: #000000;
   --destructive: #fb7185;
+  --success: #3fb950;
+  --warning: #e3b341;
+  --diff-add: #13211b;
+  --diff-del: #25151b;
+  --diff-add-foreground: #3fb950;
+  --diff-del-foreground: #f47067;
+  --syntax-comment: #768390;
+  --syntax-keyword: #f47067;
+  --syntax-string: #96d0ff;
+  --syntax-number: #6cb6ff;
+  --syntax-function: #dcbdfb;
+  --syntax-type: #f69d50;
+  --syntax-variable: #f69d50;
+  --syntax-attribute: #6cb6ff;
+  --syntax-regexp: #96d0ff;
+  --syntax-tag: #8ddb8c;
+  --syntax-meta: #768390;
 }
 @theme inline {
   --font-sans:
@@ -55,6 +90,13 @@
   --color-border: var(--border);
   --color-ring: var(--ring);
   --color-destructive: var(--destructive);
+  --color-overlay: var(--overlay);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-diff-add: var(--diff-add);
+  --color-diff-del: var(--diff-del);
+  --color-diff-add-foreground: var(--diff-add-foreground);
+  --color-diff-del-foreground: var(--diff-del-foreground);
 }
 @layer base {
   * {
@@ -90,10 +132,10 @@
   }
 }
 .diff-add {
-  background-color: color-mix(in srgb, #22c55e 9%, transparent);
+  background-color: var(--diff-add);
 }
 .diff-del {
-  background-color: color-mix(in srgb, #f43f5e 9%, transparent);
+  background-color: var(--diff-del);
 }
 .markdown {
   @apply break-words text-sm leading-relaxed;
@@ -179,21 +221,95 @@
 .suggestion > span:not(:first-child) {
   @apply px-2 py-0.5;
 }
-/* Library token colors tuned for the light palette. Source remains escaped by highlight.js. */
-:root:not(.dark) .hljs-keyword,
-:root:not(.dark) .hljs-literal {
-  color: #a626a4;
+/* Source remains escaped by highlight.js; every token uses the active palette. */
+.hljs,
+.hljs-formula,
+.hljs-punctuation,
+.hljs-tag {
+  color: var(--foreground);
 }
-:root:not(.dark) .hljs-string,
-:root:not(.dark) .hljs-addition {
-  color: #16824a;
+.hljs-comment,
+.hljs-quote,
+.hljs-doctag {
+  color: var(--syntax-comment);
 }
-:root:not(.dark) .hljs-title,
-:root:not(.dark) .hljs-number {
-  color: #285cb4;
+.hljs-keyword,
+.hljs-operator,
+.hljs-literal {
+  color: var(--syntax-keyword);
 }
-:root:not(.dark) .hljs-comment {
-  color: #757580;
+.hljs-string,
+.hljs-code,
+.hljs-char,
+.hljs-link {
+  color: var(--syntax-string);
+}
+.hljs-number,
+.hljs-symbol,
+.hljs-bullet {
+  color: var(--syntax-number);
+}
+.hljs-title,
+.hljs-section,
+.hljs-selector-id,
+.hljs-selector-class,
+.hljs-selector-attr,
+.hljs-selector-pseudo {
+  color: var(--syntax-function);
+}
+.hljs-type,
+.hljs-built_in,
+.hljs-title.class_,
+.hljs-title.class_.inherited__ {
+  color: var(--syntax-type);
+}
+.hljs-variable,
+.hljs-params,
+.hljs-subst,
+.hljs-template-variable {
+  color: var(--syntax-variable);
+}
+.hljs-attr,
+.hljs-attribute,
+.hljs-property {
+  color: var(--syntax-attribute);
+}
+.hljs-regexp,
+.hljs-escape {
+  color: var(--syntax-regexp);
+}
+.hljs-name,
+.hljs-selector-tag {
+  color: var(--syntax-tag);
+}
+.hljs-meta {
+  color: var(--syntax-meta);
+}
+.hljs-meta .hljs-keyword {
+  color: var(--syntax-keyword);
+}
+.hljs-meta .hljs-string {
+  color: var(--syntax-string);
+}
+.hljs-template-tag {
+  color: var(--syntax-keyword);
+}
+.hljs-addition {
+  color: var(--diff-add-foreground);
+  background-color: var(--diff-add);
+}
+.hljs-deletion {
+  color: var(--diff-del-foreground);
+  background-color: var(--diff-del);
+}
+.hljs-emphasis {
+  font-style: italic;
+}
+.hljs-strong {
+  font-weight: bold;
+}
+.hljs-link {
+  text-decoration: underline;
 }
 
 [data-selecting-rows="true"] {

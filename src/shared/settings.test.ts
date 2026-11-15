@@ -11,6 +11,23 @@ describe("UI settings schema", () => {
     });
   });
 
+  test("theme preferences accept safe IDs without requiring the theme to remain installed", () => {
+    expect(parseUiSettings({ theme: "missing-custom-theme" })).toEqual({
+      theme: "missing-custom-theme",
+    });
+    for (const theme of [
+      "",
+      "../dark",
+      "/dark",
+      "dark.json",
+      "Dark",
+      "a".repeat(81),
+      null,
+      1,
+    ])
+      expect(() => parseUiSettings({ theme })).toThrow("ui.theme");
+  });
+
   test("accepts exactly the choices offered by the numeric controls", () => {
     for (const limit of [0, 500, 900, 1800])
       expect(parseUiSettings({ limit })).toEqual({ limit });

@@ -34,6 +34,8 @@ import type { WebAnnotation } from "../shared/web-annotation.ts";
 import type { ReviewNote } from "../review/thread.ts";
 import { DEFAULT_UI_SETTINGS } from "../shared/settings.ts";
 import { loadUserSettings, saveUiSettings } from "../cli/config.ts";
+import { loadThemes, saveTheme } from "../cli/themes.ts";
+import { BUILTIN_THEMES, type ThemeDraft } from "../shared/themes.ts";
 import type {
   DiffFile,
   NoteStatus,
@@ -467,6 +469,203 @@ describe("review settings handoff", () => {
       defaults: {},
       settings: DEFAULT_UI_SETTINGS,
     });
+    expect(events).toEqual([]);
+    detach();
+  });
+});
+
+describe("theme security and persistence", () => {
+  const draft: ThemeDraft = {
+    name: "Custom light",
+    mode: "light",
+    extends: "catppuccin-latte",
+    colors: { ...BUILTIN_THEMES[2]!.colors },
+  };
+
+  test("theme saves and selection survive restart without overwriting settings or auto-selecting", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "lcr-theme-api-"));
+    serverRoots.push(root);
+    const file = path.join(root, "config.json");
+    await writeFile(
+      file,
+      JSON.stringify({
+        port: 8123,
+        outDir: "custom-review",
+        ui: { enterSaves: false },
+      }),
+    );
+    const callbacks = {
+      getThemes: () => loadThemes(file),
+      saveTheme: (theme: ThemeDraft) => saveTheme(theme, file),
+      saveUiSettings: (patch: Parameters<typeof saveUiSettings>[0]) =>
+        saveUiSettings(patch, file),
+    };
+    const started = await startTestServer({
+      ...callbacks,
+      uiDefaults: (await loadUserSettings({}, file)).ui,
+    });
+    const events: string[] = [];
+    const detach = started.hub.add((event) => events.push(event));
+    const response = await request(started, "/api/themes", {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: started.base },
+      body: JSON.stringify(draft),
+    });
+    expect(response.status).toBe(201);
+    const saved = await response.json();
+    expect(JSON.parse(await readFile(saved.file, "utf8"))).toEqual(saved.theme);
+    expect(
+      (await (await request(started, "/api/settings")).json()).settings.theme,
+    ).toBe("dark");
+    expect(events).toEqual(['data: {"type":"settings"}\n\n']);
+    expect(
+      (
+        await request(started, "/api/settings", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ theme: saved.theme.id }),
+        })
+      ).status,
+    ).toBe(200);
+    detach();
+    expect(JSON.parse(await readFile(file, "utf8"))).toEqual({
+      port: 8123,
+      outDir: "custom-review",
+      ui: { enterSaves: false, theme: saved.theme.id },
+    });
+    const restarted = await startTestServer({
+      ...callbacks,
+      uiDefaults: (await loadUserSettings({}, file)).ui,
+    });
+    const catalog = await request(restarted, "/api/themes");
+    expect(catalog.headers.get("cache-control")).toBe("no-store");
+    expect(await catalog.json()).toEqual({
+      themes: [...BUILTIN_THEMES, saved.theme],
+      directory: path.join(root, "themes"),
+      errors: [],
+    });
+    expect(
+      (await (await request(restarted, "/api/settings")).json()).settings.theme,
+    ).toBe(saved.theme.id);
+  });
+
+  test("standalone servers list builtins but never pretend a custom save succeeded", async () => {
+    const started = await startTestServer({
+      uiDefaults: { theme: "missing-custom" },
+    });
+    expect(
+      (await (await request(started, "/api/themes")).json()).themes,
+    ).toEqual(BUILTIN_THEMES);
+    expect(
+      (
+        await request(started, "/api/themes", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(draft),
+        })
+      ).status,
+    ).toBe(503);
+    expect(
+      (
+        await request(started, "/api/settings", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ theme: "missing-custom" }),
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await request(started, "/api/settings", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ enterSaves: false }),
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (await (await request(started, "/api/settings")).json()).settings.theme,
+    ).toBe("missing-custom");
+  });
+
+  test("foreign origins and hosts cannot read or mutate themes", async () => {
+    const started = await startTestServer();
+    const forbiddenHeaders: Record<string, string>[] = [
+      { origin: "https://evil.example" },
+      { origin: `http://localhost:${started.server.port}` },
+      { host: `evil.example:${started.server.port}` },
+    ];
+    for (const headers of forbiddenHeaders) {
+      expect((await request(started, "/api/themes", { headers })).status).toBe(
+        403,
+      );
+      expect(
+        (
+          await request(started, "/api/themes", {
+            method: "POST",
+            headers: { ...headers, "content-type": "application/json" },
+            body: JSON.stringify(draft),
+          })
+        ).status,
+      ).toBe(403);
+    }
+  });
+
+  test("malicious JSON and bounded chunked bodies are rejected before persistence", async () => {
+    let saves = 0;
+    const started = await startTestServer({
+      saveTheme: async () => {
+        saves++;
+        throw new Error("Invalid input must never reach persistence.");
+      },
+    });
+    const events: string[] = [];
+    const detach = started.hub.add((event) => events.push(event));
+    for (const body of [
+      "{",
+      "null",
+      "[]",
+      JSON.stringify({ ...draft, id: "../../outside" }),
+      JSON.stringify({ ...draft, extends: "../dark" }),
+      JSON.stringify({
+        ...draft,
+        colors: { ...draft.colors, background: "url(https://evil.example)" },
+      }),
+      JSON.stringify({ ...draft, name: "a".repeat(32769) }),
+    ]) {
+      const response = await request(started, "/api/themes", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body,
+      });
+      expect(response.status).toBe(400);
+      expect((await response.json()).error).toBeTruthy();
+    }
+    const chunks = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(" ".repeat(20000)));
+        controller.enqueue(new TextEncoder().encode(" ".repeat(20000)));
+        controller.close();
+      },
+    });
+    expect(
+      (
+        await request(started, "/api/themes", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: chunks,
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await request(started, "/api/themes", {
+          method: "POST",
+          body: JSON.stringify(draft),
+        })
+      ).status,
+    ).toBe(415);
+    expect(saves).toBe(0);
     expect(events).toEqual([]);
     detach();
   });

@@ -7,6 +7,7 @@ import {
   type ContextSettings,
 } from "../shared/context.ts";
 import type { Hub } from "../server/events.ts";
+import { DEFAULT_THEME, type Theme } from "../shared/themes.ts";
 import {
   launchReviewBrowser,
   type ReviewBrowser,
@@ -74,6 +75,7 @@ export function createWebReview(options: WebReviewOptions) {
   const replyDrafts = new Map<string, string>();
   const draftOwners = new Map<string, string>();
   let contextSettings: ContextSettings = { ...DEFAULT_CONTEXT_SETTINGS };
+  let theme = DEFAULT_THEME;
   type ContextSnapshot = {
     settings: ContextSettings;
     extras: ContextPartInput[];
@@ -589,6 +591,7 @@ export function createWebReview(options: WebReviewOptions) {
     if (name === "notes")
       return {
         notes: (await options.session.read()).notes.filter((n) => n.web),
+        theme,
       };
     if (name === "annotation") {
       const hasDraft = payload.draftId !== undefined,
@@ -919,6 +922,7 @@ export function createWebReview(options: WebReviewOptions) {
             binding,
             origin,
             reviewUrl: options.reviewUrl(),
+            theme,
             ...(options.overlayOwnerKey
               ? { ownerKey: options.overlayOwnerKey }
               : {}),
@@ -984,6 +988,9 @@ export function createWebReview(options: WebReviewOptions) {
     status,
     configureContext(settings: Partial<ContextSettings>) {
       contextSettings = settingsSnapshot(settings);
+    },
+    configureTheme(next: Theme) {
+      theme = next;
     },
     open,
     review(id?: string) {

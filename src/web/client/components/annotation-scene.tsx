@@ -389,7 +389,15 @@ function DrawingMark({
     />
   );
 }
-function PathGuides({ path, zoom }: { path: PathMark; zoom: number }) {
+function PathGuides({
+  path,
+  zoom,
+  ring,
+}: {
+  path: PathMark;
+  zoom: number;
+  ring: string;
+}) {
   return (
     <Group>
       {path.nodes.map((node, i) => (
@@ -400,7 +408,7 @@ function PathGuides({ path, zoom }: { path: PathMark; zoom: number }) {
                 <Line
                   key={side}
                   points={points(node, control)}
-                  stroke="#2563eb"
+                  stroke={ring}
                   strokeWidth={1 / zoom}
                 />
               ),
@@ -417,6 +425,10 @@ function Guides({
   model: AnnotationSceneModel;
   measure: Measure;
 }) {
+  // This scene has its own React root, outside the app's theme provider.
+  const colors = getComputedStyle(document.documentElement);
+  const ring = colors.getPropertyValue("--ring").trim();
+  const background = colors.getPropertyValue("--background").trim();
   const { zoom, selected, gesture } = model;
   const current = gesture?.move ? gesture.mark : model.marks[selected];
   const draft = gesture?.path ? (gesture.mark as PathMark) : model.pathDraft;
@@ -434,23 +446,23 @@ function Guides({
                 height: b.height + 8 / zoom,
               };
             })()}
-            stroke="#2563eb"
+            stroke={ring}
             strokeWidth={1 / zoom}
             dash={[5 / zoom, 4 / zoom]}
           />
           {model.selecting && (
             <Group>
               {current.tool === "path" && (
-                <PathGuides path={current} zoom={zoom} />
+                <PathGuides path={current} zoom={zoom} ring={ring} />
               )}
               {markHandles(current, measure).map((handle, i) => {
                 const r = (handle.kind === "control" ? 3 : 4) / zoom;
                 const fill =
                   handle.kind === "node" && handle.index === model.selectedNode
-                    ? "#2563eb"
-                    : "#ffffff";
+                    ? ring
+                    : background;
                 const style = {
-                  stroke: "#2563eb",
+                  stroke: ring,
                   strokeWidth: 1 / zoom,
                   fill,
                 };
@@ -479,7 +491,7 @@ function Guides({
       )}
       {draft && (
         <Group>
-          <PathGuides path={draft} zoom={zoom} />
+          <PathGuides path={draft} zoom={zoom} ring={ring} />
           {draft.nodes.map((node, i) => (
             <Rect
               key={i}
@@ -487,8 +499,8 @@ function Guides({
               y={node.y - 4 / zoom}
               width={8 / zoom}
               height={8 / zoom}
-              stroke="#2563eb"
-              fill="#ffffff"
+              stroke={ring}
+              fill={background}
               strokeWidth={1 / zoom}
             />
           ))}
@@ -508,7 +520,7 @@ function Guides({
             model.pendingText.x,
             model.pendingText.y + 6 / zoom,
           ]}
-          stroke="#2563eb"
+          stroke={ring}
           strokeWidth={1 / zoom}
         />
       )}

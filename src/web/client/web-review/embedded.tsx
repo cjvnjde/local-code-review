@@ -57,7 +57,6 @@ export function EmbeddedReview({
     }
   }, [evidence.data]);
   useEffect(() => {
-    document.documentElement.classList.add("dark");
     const preview = () => {
       tell("image-preview", {
         open: !!document.querySelector("dialog.image-viewer[open]"),

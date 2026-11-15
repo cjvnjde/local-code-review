@@ -1,3 +1,5 @@
+import type { Theme } from "../../../shared/themes.ts";
+
 /** Runs in the reviewed page. Keep this function self-contained: its compiled source is injected by CDP. */
 export function installPageReview(config: {
   key: string;
@@ -5,6 +7,7 @@ export function installPageReview(config: {
   origin: string;
   reviewUrl: string;
   ownerKey?: string;
+  theme?: Theme;
 }) {
   const win = globalThis as any;
   if (
@@ -160,18 +163,41 @@ export function installPageReview(config: {
   host.style.cssText =
     "position:fixed;inset:0;z-index:2147483647;pointer-events:none";
   const root = host.attachShadow({ mode: "open" });
+  function applyTheme(theme?: Theme) {
+    if (!theme || (theme.mode !== "light" && theme.mode !== "dark")) return;
+    const aliases = {
+      panel: "popover",
+      panel2: "card",
+      crust: "background",
+      hover: "accent",
+      edge: "border",
+      ink: "foreground",
+      "ink-dim": "muted-foreground",
+      accent: "primary",
+      "primary-ink": "primary-foreground",
+      mark: "warning",
+      focus: "ring",
+    } as const;
+    for (const [alias, key] of Object.entries(aliases)) {
+      const color = theme.colors?.[key];
+      if (typeof color === "string" && /^#[\da-f]{6}$/i.test(color))
+        host.style.setProperty(`--${alias}`, color);
+    }
+    host.style.colorScheme = theme.mode;
+  }
+  applyTheme(config.theme);
   root.innerHTML = `<style>
-    :host{all:initial;--fs-body:13px;--fs-small:11px;--tap:32px;--tap-lg:30px;--icon:16px;--row:36px;--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--radius-sm:4px;--radius-md:8px;--bar-height:calc(var(--tap-lg) + var(--space-2)*2);--panel:#1e1e2e;--panel2:#181825;--crust:#11111b;--hover:#45475a;--edge:#313244;--ink:#cdd6f4;--ink-dim:#a6adc8;--accent:#89b4fa;--sel:#89b4fa24;--mark:#f9e2af;color:var(--ink);font:var(--fs-body)/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif}
+    :host{all:initial;--fs-body:13px;--fs-small:11px;--tap:32px;--tap-lg:30px;--icon:16px;--row:36px;--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--radius-sm:4px;--radius-md:8px;--bar-height:calc(var(--tap-lg) + var(--space-2)*2);--panel:#222228;--panel2:#18181c;--crust:#111114;--hover:#2a2a32;--edge:#2b2b33;--ink:#e8e8ed;--ink-dim:#91919f;--accent:#b0a0ff;--primary-ink:#19142e;--focus:#b0a0ff;--sel:color-mix(in srgb,var(--accent) 14%,transparent);--mark:#e3b341;color:var(--ink);font:var(--fs-body)/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif}
     *{box-sizing:border-box}button,a{font:inherit}button,.review-link{min-width:var(--tap-lg);min-height:var(--tap-lg);border:0;background:transparent;color:inherit;border-radius:var(--radius-sm);padding:var(--space-1) var(--space-2);cursor:pointer}
-    button:hover,.review-link:hover{background:var(--hover)}button:focus-visible,.review-link:focus-visible,.head b:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}button:disabled{opacity:.55;cursor:wait}button[aria-pressed=true]{background:var(--sel);color:var(--accent)}.review-link{text-decoration:none}
+    button:hover,.review-link:hover{background:var(--hover)}button:focus-visible,.review-link:focus-visible,.head b:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}button:disabled{opacity:.55;cursor:wait}button[aria-pressed=true]{background:var(--sel);color:var(--accent)}.review-link{text-decoration:none}
     .launcher{pointer-events:auto;position:fixed;left:var(--space-4);bottom:var(--space-4);display:flex;align-items:center;gap:var(--space-2);height:44px;padding:0 var(--space-3);border-radius:var(--radius-md);background:var(--panel2);font-weight:700;touch-action:none;cursor:grab;box-shadow:0 4px 24px #0005}
     .launcher:active{cursor:grabbing}
-    .launcher[aria-pressed=true]{background:var(--accent);color:var(--crust);box-shadow:0 0 0 var(--space-1) var(--sel),0 4px 24px #0005}
+    .launcher[aria-pressed=true]{background:var(--accent);color:var(--primary-ink);box-shadow:0 0 0 var(--space-1) var(--sel),0 4px 24px #0005}
     .mode-state{white-space:nowrap}
     .bar{pointer-events:auto;position:fixed;display:flex;gap:var(--space-1);align-items:center;padding:var(--space-2);border:0;border-radius:var(--radius-md);background:var(--panel2);box-shadow:0 4px 24px #0005;width:280px;max-width:calc(100vw - var(--space-3)*2);max-height:calc(100dvh - var(--space-3)*2);overflow:auto;flex-wrap:wrap}
     .bar [data-toggle]{width:100%;text-align:left;border-bottom:1px solid var(--edge);border-radius:0;padding-bottom:var(--space-2)}.bar [data-notes]{width:100%;text-align:left;color:var(--ink-dim)}
     .outline{position:fixed;pointer-events:none;border:2px solid var(--accent);background:var(--sel);border-radius:var(--radius-sm);display:none}
-    .label{position:absolute;bottom:100%;left:0;white-space:nowrap;padding:2px var(--space-2);border-radius:var(--radius-sm) var(--radius-sm) 0 0;background:var(--accent);color:var(--crust);font-size:var(--fs-small)}
+    .label{position:absolute;bottom:100%;left:0;white-space:nowrap;padding:2px var(--space-2);border-radius:var(--radius-sm) var(--radius-sm) 0 0;background:var(--accent);color:var(--primary-ink);font-size:var(--fs-small)}
     .dock{pointer-events:auto;position:fixed;right:var(--space-4);top:var(--space-4);height:min(540px,calc(100dvh - var(--space-3)*2));width:min(440px,calc(100vw - var(--space-3)*2));max-width:calc(100vw - var(--space-3)*2);max-height:calc(100dvh - var(--space-3)*2);background:var(--panel2);border:0;box-shadow:0 8px 32px #0006;border-radius:var(--radius-md);display:flex;flex-direction:column;overflow:hidden}
     .dock.minimized{height:auto}.dock.minimized .content{position:absolute;top:100%;left:0;right:0;flex:none;height:var(--content-height);visibility:hidden;pointer-events:none}
     .resize{position:absolute;right:0;bottom:0;width:var(--tap-lg);height:var(--tap-lg);padding:0;border:0;border-radius:var(--radius-sm) 0 0 0;background:transparent;cursor:nwse-resize;touch-action:none;display:grid;place-items:center;color:var(--ink-dim)}
@@ -1843,6 +1869,7 @@ export function installPageReview(config: {
     const result = await rpc("notes");
     if (disposed) return;
     notes = result.notes;
+    applyTheme(result.theme);
     $("[data-notes]").textContent = "Notes · " + notes.length + " ↗";
     updateHeader();
     pins();

@@ -5,6 +5,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "../components/ui/tooltip.tsx";
 import { App } from "./app.tsx";
 import { Notifications } from "./notifications.tsx";
+import { UiPreferences } from "./ui-preferences.tsx";
+import { ThemeProvider } from "./themes.tsx";
+import { ThemeEditor } from "./theme-editor.tsx";
 
 class ErrorBoundary extends Component<
   { children: ReactNode },
@@ -43,13 +46,24 @@ const client = new QueryClient({
     mutations: { retry: false },
   },
 });
+const themeEditorBase = new URLSearchParams(location.search).get(
+  "theme-editor",
+);
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ErrorBoundary>
       <QueryClientProvider client={client}>
         <TooltipProvider delay={200}>
-          <App />
-          <Notifications />
+          <UiPreferences>
+            <ThemeProvider>
+              {themeEditorBase === null ? (
+                <App />
+              ) : (
+                <ThemeEditor baseId={themeEditorBase} />
+              )}
+              <Notifications />
+            </ThemeProvider>
+          </UiPreferences>
         </TooltipProvider>
       </QueryClientProvider>
     </ErrorBoundary>

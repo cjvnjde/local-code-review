@@ -15,6 +15,8 @@ import {
   saveUiSettings,
   userConfigFile,
 } from "./cli/config.ts";
+import { loadThemes, saveTheme } from "./cli/themes.ts";
+import { DEFAULT_THEME } from "./shared/themes.ts";
 import {
   diffBase,
   diffRangeLabel,
@@ -158,6 +160,13 @@ async function main() {
           reviewUrl: () => webUrl,
         })
       : undefined;
+    if (web) {
+      const catalog = await loadThemes(configFile);
+      web.configureTheme(
+        catalog.themes.find((theme) => theme.id === settings.ui?.theme) ??
+          DEFAULT_THEME,
+      );
+    }
     server = startServer({
       port: options.port,
       repoRoot,
@@ -167,6 +176,8 @@ async function main() {
       context: options.context,
       uiDefaults: settings.ui,
       saveUiSettings: (patch) => saveUiSettings(patch, configFile),
+      getThemes: () => loadThemes(configFile),
+      saveTheme: (draft) => saveTheme(draft, configFile),
       getDiff: () => getDiff(diffSource),
       getContext: (file, start, end) =>
         getFileContext(diffSource, file, start, end),

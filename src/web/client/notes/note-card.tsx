@@ -81,7 +81,7 @@ export function NoteCard({
         </span>
       )}
       {state.resolved(note) && (
-        <span className="text-[10px] text-emerald-500">Resolved</span>
+        <span className="text-[10px] text-success">Resolved</span>
       )}
     </NoteHeader>
   );

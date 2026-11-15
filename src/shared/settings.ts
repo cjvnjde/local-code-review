@@ -1,6 +1,8 @@
 import { DEFAULT_CONTEXT_SETTINGS, type ContextSettings } from "./context.ts";
+import { DEFAULT_THEME, isThemeId } from "./themes.ts";
 
 export interface UiSettings extends ContextSettings {
+  theme: string;
   aiAnswers: boolean;
   auto: boolean;
   back: boolean;
@@ -26,6 +28,7 @@ export interface UiSettings extends ContextSettings {
 
 export const DEFAULT_UI_SETTINGS: Readonly<UiSettings> = {
   ...DEFAULT_CONTEXT_SETTINGS,
+  theme: DEFAULT_THEME.id,
   aiAnswers: true,
   auto: true,
   back: true,
@@ -62,7 +65,11 @@ export function parseUiSettings(value: unknown): Partial<UiSettings> {
   for (const [key, next] of Object.entries(value)) {
     if (!Object.hasOwn(DEFAULT_UI_SETTINGS, key))
       throw new Error(`unknown ui setting: ${key}`);
-    if (key === "disabledHide") {
+    if (key === "theme") {
+      if (!isThemeId(next))
+        throw new Error("ui.theme must be a valid theme ID");
+      settings.theme = next;
+    } else if (key === "disabledHide") {
       if (
         !Array.isArray(next) ||
         !next.every((item) => typeof item === "string")

@@ -17,7 +17,8 @@ import { fileHidden } from "../diff/filters.ts";
 import { rowKey } from "../diff/model.ts";
 import { Eye, EyeOff, ArrowUp, ArrowDown } from "lucide-react";
 import { ReviewReferences } from "../notes/references.tsx";
-import { UiPreferences, useUi } from "./ui-preferences.tsx";
+import { useUi } from "./ui-preferences.tsx";
+import { useThemes } from "./themes.tsx";
 import { ImageScope } from "../components/images.tsx";
 import { imageEditorOwner } from "../components/image-preview.ts";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -44,7 +45,6 @@ import {
 import {
   useDiff,
   useReview,
-  useLive,
   useAction,
   type DiffResponse,
   type ReviewResponse,
@@ -68,7 +68,6 @@ import { VERSION } from "../../../version.ts";
 export function App() {
   const diff = useDiff();
   const review = useReview();
-  useLive();
   if (!diff.data)
     return (
       <div className="flex h-dvh flex-col items-center justify-center gap-4 text-muted-foreground">
@@ -91,31 +90,24 @@ export function App() {
     );
   if (embedToken)
     return (
-      <UiPreferences>
-        <ImageScope
-          repo={diff.data.repo}
-          read={diff.data.id || diff.data.range}
-        >
-          <EmbeddedReview diff={diff.data} review={review.data} />
-        </ImageScope>
-      </UiPreferences>
+      <ImageScope repo={diff.data.repo} read={diff.data.id || diff.data.range}>
+        <EmbeddedReview diff={diff.data} review={review.data} />
+      </ImageScope>
     );
   return (
-    <UiPreferences>
-      <ImageScope repo={diff.data.repo} read={diff.data.id || diff.data.range}>
-        <Workspace
-          key={`${diff.data.repo}:${diff.data.id || diff.data.range}`}
-          diff={diff.data}
-          review={review.data}
-          error={diff.error?.message || review.error?.message || ""}
-          onRefresh={() => {
-            void diff.refetch();
-            void review.refetch();
-          }}
-          refreshing={diff.isFetching || review.isFetching}
-        />
-      </ImageScope>
-    </UiPreferences>
+    <ImageScope repo={diff.data.repo} read={diff.data.id || diff.data.range}>
+      <Workspace
+        key={`${diff.data.repo}:${diff.data.id || diff.data.range}`}
+        diff={diff.data}
+        review={review.data}
+        error={diff.error?.message || review.error?.message || ""}
+        onRefresh={() => {
+          void diff.refetch();
+          void review.refetch();
+        }}
+        refreshing={diff.isFetching || review.isFetching}
+      />
+    </ImageScope>
   );
 }
 
@@ -162,7 +154,8 @@ function Workspace({
     {},
   );
   const autoViewed = useRef(new Map<string, string>());
-  const [dark, setDark] = useStored("lcr:v2:dark", true);
+  const { theme, toggleMode } = useThemes();
+  const dark = theme.mode === "dark";
   const [navOpen, setNavOpen] = useStored("lcr:v2:sidebar", true);
   const [selected, setSelected] = useState("");
   const [search, setSearch] = useState("");
@@ -233,9 +226,6 @@ function Workspace({
     else if (rect.bottom > parent.bottom - 16)
       pane.scrollTop += rect.bottom - parent.bottom + 16;
   }, [selected, navOpen]);
-  useEffect(() => {
-    document.documentElement.classList.toggle("dark", dark);
-  }, [dark]);
   useEffect(() => {
     const guard = (event: BeforeUnloadEvent) => {
       if (draft && (draftBody(draft) !== (draft.original || "") || busy)) {
@@ -769,7 +759,7 @@ function Workspace({
                   {icon(
                     dark ? "Light theme" : "Dark theme",
                     dark ? <Sun /> : <Moon />,
-                    () => setDark(!dark),
+                    toggleMode,
                   )}
                   {icon("Settings", <Settings2 />, () => setDialog("settings"))}
                 </div>
@@ -799,7 +789,7 @@ function Workspace({
                       variant="ghost"
                       size="sm"
                       className="justify-start"
-                      onClick={() => setDark(!dark)}
+                      onClick={toggleMode}
                     >
                       {dark ? <Sun /> : <Moon />}
                       {dark ? "Light theme" : "Dark theme"}
@@ -1364,15 +1354,15 @@ function Workspace({
               <span className="flex shrink-0 items-center gap-2">
                 <Circle
                   aria-label="Local review"
-                  className="size-2 fill-emerald-500 text-emerald-500"
+                  className="size-2 fill-success text-success"
                 />
                 {files.length} <span className="hidden sm:inline">changed</span>{" "}
                 files
               </span>
-              <span className="shrink-0 text-emerald-500">
+              <span className="shrink-0 text-diff-add-foreground">
                 +{files.reduce((sum, f) => sum + f.added, 0)}
               </span>
-              <span className="shrink-0 text-rose-500">
+              <span className="shrink-0 text-diff-del-foreground">
                 −{files.reduce((sum, f) => sum + f.removed, 0)}
               </span>
               <span className="hidden sm:inline">

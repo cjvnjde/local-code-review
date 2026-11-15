@@ -138,15 +138,18 @@ export function useLive() {
     events.onopen = () => {
       void client.invalidateQueries({ queryKey: ["diff"] });
       void client.invalidateQueries({ queryKey: ["review"] });
+      void client.invalidateQueries({ queryKey: ["settings"] });
+      void client.invalidateQueries({ queryKey: ["themes"] });
     };
     events.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
         if (data.type === "diff")
           void client.invalidateQueries({ queryKey: ["diff"] });
-        else if (data.type === "settings")
+        else if (data.type === "settings") {
           void client.invalidateQueries({ queryKey: ["settings"] });
-        else {
+          void client.invalidateQueries({ queryKey: ["themes"] });
+        } else {
           void client.invalidateQueries({ queryKey: ["review"] });
           void client.invalidateQueries({ queryKey: ["ghosts"] });
         }

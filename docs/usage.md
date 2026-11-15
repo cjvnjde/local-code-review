@@ -115,6 +115,34 @@ to the note; existing replies are not announced when opening a review. Successfu
 note/reply saves stay silent. Disable reply notifications with **Settings → Show
 new agent reply notifications**. Failed actions still report errors.
 
+## Themes and custom colors
+
+**Settings → Appearance → Theme** offers **Light**, **Dark**, **Catppuccin Latte**
+(light), and **Catppuccin Mocha** (dark), plus your saved custom themes. Selection
+is stored as `ui.theme` in your user config and survives restarts. Open pages on
+the same lcr server update together. The header's light/dark shortcut switches
+between Latte and Mocha when using Catppuccin, or between Light and Dark otherwise.
+
+Choose **Create theme** beside the selector to open a separate editor page with
+the selected palette prefilled, leaving your review and note drafts in place.
+Give the copy a name, choose its light/dark color scheme, and edit any of the 31
+colors using a picker or a six-digit hex value. Each field explains its use:
+surfaces, text, controls, status indicators, diff lines, and syntax highlighting.
+The live preview stays separate from the active theme until you save. Light/dark
+sets the browser color scheme; changing it does not replace your chosen colors.
+
+**Save as new theme** creates a JSON file under
+`$XDG_CONFIG_HOME/lcr/themes/`, or `~/.config/lcr/themes/`, and selects it. The editor
+shows the exact saved path. You can select a custom theme and create another copy
+from it. Every copy has its own generated ID and complete palette; `extends`
+records the base theme but does not create a live dependency or overwrite it.
+Invalid colors cannot be saved, failed saves retain your edits, and leaving with
+unsaved changes prompts before discarding them. Invalid theme files are reported
+without hiding the built-in themes.
+
+The palette also colors embedded review editors and live-page capture controls,
+but never changes captured images, image content, or drawing paint colors.
+
 ## Continue the conversation
 
 The conversation pane shows notes for the selected file plus overall notes.

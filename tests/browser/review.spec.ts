@@ -1,6 +1,13 @@
 import { test, expect, chromium } from "@playwright/test";
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  writeFile,
+  readFile,
+  realpath,
+  rm,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createServer } from "node:http";
@@ -2416,4 +2423,167 @@ test("new file comments stay editable while scrolling and saved comments scroll 
       { exact: true },
     ),
   ).not.toBeInViewport();
+});
+
+test("custom themes preserve unsaved colors through refetch and failed saves, then survive standalone restart", async ({
+  page,
+  context,
+}) => {
+  await page.goto(url);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const settings = page.getByRole("dialog", { name: "Settings", exact: true });
+  for (const [name, id, background, mode] of [
+    ["Light", "light", "rgb(250, 250, 250)", "light"],
+    ["Dark", "dark", "rgb(17, 17, 20)", "dark"],
+    ["Catppuccin Mocha", "catppuccin-mocha", "rgb(30, 30, 46)", "dark"],
+    ["Catppuccin Latte", "catppuccin-latte", "rgb(239, 241, 245)", "light"],
+  ]) {
+    await settings
+      .getByRole("combobox", { name: "Theme", exact: true })
+      .click();
+    await page
+      .getByRole("option", { name: `${name} · ${mode}`, exact: true })
+      .click();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", id!);
+    await expect(page.locator("body")).toHaveCSS(
+      "background-color",
+      background!,
+    );
+  }
+  const opened = context.waitForEvent("page");
+  await settings
+    .getByRole("button", { name: "Create theme", exact: true })
+    .click();
+  const editor = await opened;
+  await expect(
+    editor.getByRole("heading", { name: "Theme editor", exact: true }),
+  ).toBeVisible();
+  await expect(
+    editor.getByLabel("Page background", { exact: true }),
+  ).toHaveValue("#eff1f5");
+  await editor
+    .getByLabel("Theme name", { exact: true })
+    .fill("Lavender review");
+  await editor.getByLabel("Primary accent", { exact: true }).fill("#7c3aed");
+  await editor
+    .getByLabel("Added-line background", { exact: true })
+    .fill("#ffeecc");
+  await editor.getByLabel("Keywords", { exact: true }).fill("#123456");
+  await expect(
+    editor.getByRole("region", { name: "Theme preview" }).locator(".diff-add"),
+  ).toHaveCSS("background-color", "rgb(255, 238, 204)");
+  await editor.getByLabel("Page background", { exact: true }).fill("#bad");
+  await expect(
+    editor.getByRole("button", { name: "Save as new theme" }),
+  ).toBeDisabled();
+  await editor.getByLabel("Page background", { exact: true }).fill("#f5f3ff");
+  // A catalog/settings refetch must not replace the snapshot the user is editing.
+  const refetched = editor.waitForResponse(
+    (response) =>
+      response.url().endsWith("/api/themes") &&
+      response.request().method() === "GET",
+  );
+  await page.request.put(`${url}/api/settings`, { data: { theme: "dark" } });
+  await refetched;
+  await expect(
+    editor.getByLabel("Primary accent", { exact: true }),
+  ).toHaveValue("#7c3aed");
+  await editor.route("**/api/themes", async (route) => {
+    if (route.request().method() === "POST") await route.abort("failed");
+    else await route.continue();
+  });
+  await editor.getByRole("button", { name: "Save as new theme" }).click();
+  await expect(editor.getByRole("alert")).toContainText("Could not save theme");
+  await expect(
+    editor.getByLabel("Added-line background", { exact: true }),
+  ).toHaveValue("#ffeecc");
+  await editor.unroute("**/api/themes");
+  const response = editor.waitForResponse(
+    (response) =>
+      response.url().endsWith("/api/themes") &&
+      response.request().method() === "POST",
+  );
+  await editor.getByRole("button", { name: "Save as new theme" }).click();
+  const saved = await (await response).json();
+  await expect(editor.getByRole("status")).toContainText(
+    "Saved “Lavender review”",
+  );
+  expect(saved.file).toBe(
+    path.join(
+      await realpath(path.join(root, "config/lcr/themes")),
+      `${saved.theme.id}.json`,
+    ),
+  );
+  const original = await readFile(saved.file, "utf8");
+  expect(JSON.parse(original)).toMatchObject({
+    name: "Lavender review",
+    mode: "light",
+    extends: "catppuccin-latte",
+    colors: {
+      primary: "#7c3aed",
+      "diff-add": "#ffeecc",
+      "syntax-keyword": "#123456",
+    },
+  });
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-theme",
+    saved.theme.id,
+  );
+  await expect(page.locator("html")).toHaveCSS("color-scheme", "light");
+  await settings.getByRole("button", { name: "Close dialog" }).click();
+  await expect(page.locator(".diff-add").first()).toHaveCSS(
+    "background-color",
+    "rgb(255, 238, 204)",
+  );
+  await expect(page.locator(".hljs-keyword").first()).toHaveCSS(
+    "color",
+    "rgb(18, 52, 86)",
+  );
+  await editor.close();
+  await stop();
+  await launch();
+  await page.goto(url);
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-theme",
+    saved.theme.id,
+  );
+  await expect(page.locator("body")).toHaveCSS(
+    "background-color",
+    "rgb(245, 243, 255)",
+  );
+  await page.goto(`${url}/?theme-editor=${saved.theme.id}`);
+  await expect(page.getByLabel("Primary accent", { exact: true })).toHaveValue(
+    "#7c3aed",
+  );
+  await page
+    .getByLabel("Theme name", { exact: true })
+    .fill("Lavender dark copy");
+  await page
+    .getByRole("combobox", { name: "Color scheme", exact: true })
+    .click();
+  await page.getByRole("option", { name: "Dark", exact: true }).click();
+  await page.getByLabel("Page background", { exact: true }).fill("#202030");
+  await page.getByLabel("Main text", { exact: true }).fill("#eeeeff");
+  await page.getByRole("button", { name: "Save as new theme" }).click();
+  await expect(page.getByRole("status")).toContainText(
+    "Saved “Lavender dark copy”",
+  );
+  await expect(page.locator("html")).toHaveCSS("color-scheme", "dark");
+  expect(await readFile(saved.file, "utf8")).toBe(original);
+  const catalog = await (await page.request.get(`${url}/api/themes`)).json();
+  expect(
+    catalog.themes.find(
+      (theme: { name: string }) => theme.name === "Lavender dark copy",
+    ),
+  ).toMatchObject({
+    mode: "dark",
+    extends: saved.theme.id,
+    colors: { background: "#202030", primary: "#7c3aed" },
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
 });

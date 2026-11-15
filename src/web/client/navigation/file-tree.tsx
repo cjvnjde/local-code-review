@@ -159,7 +159,7 @@ export function FileTree({
               onClick={() => onJump(file.path)}
             >
               {marks[file.path] === file.hash ? (
-                <Check className="size-3 shrink-0 text-emerald-500" />
+                <Check className="size-3 shrink-0 text-success" />
               ) : (
                 <FileCode2 className="size-3 shrink-0 text-muted-foreground" />
               )}
@@ -170,10 +170,10 @@ export function FileTree({
                 className={cn(
                   "shrink-0 font-mono text-[10px]",
                   file.status === "added"
-                    ? "text-emerald-500"
+                    ? "text-diff-add-foreground"
                     : file.status === "deleted"
-                      ? "text-rose-500"
-                      : "text-amber-500",
+                      ? "text-diff-del-foreground"
+                      : "text-warning",
                 )}
               >
                 {file.status[0]!.toUpperCase()}
