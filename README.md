@@ -10,9 +10,8 @@ Review local Git changes and annotate a running web app. Feedback stays in Markd
 - Choose Light, Dark, Catppuccin Latte, or Catppuccin Mocha—or create your own palette.
 - Continue with any coding agent through review files, or connect one through ACP.
 
-The screenshots show this `v2` branch's React UI. Older releases may still show the
-previous interface; [build from source](#install-or-update-from-source) to use this
-branch. See [development](docs/development.md) for the library stack and architecture.
+The screenshots show the React UI included in **v2.0.0**.
+See [development](docs/development.md) for the library stack and architecture.
 
 ## Install
 
@@ -40,7 +39,7 @@ mise upgrade github:cjvnjde/local-code-review
 To pin a release for a project, run this in that project's directory:
 
 ```sh
-mise use github:cjvnjde/local-code-review@1.9.0
+mise use github:cjvnjde/local-code-review@2.0.0
 ```
 
 This writes the version to `mise.toml`; others can run `mise install` to install it. The version is the release tag without its leading `v`. `lcr --version` prints the executable's source build stamp, which is separate from the release version.
