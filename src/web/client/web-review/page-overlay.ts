@@ -110,8 +110,8 @@ export function installPageReview(config: {
     id: number;
     x: number;
     y: number;
-    width: number;
-    height: number;
+    edge: string;
+    bounds: { x: number; y: number; width: number; height: number };
   } | null = null;
   let annotationOpen = false,
     imagePreviewOpen = false;
@@ -216,8 +216,11 @@ export function installPageReview(config: {
     .dock.minimized{height:auto}.dock.minimized .content{position:absolute;top:100%;left:0;right:0;flex:none;height:var(--content-height);visibility:hidden;pointer-events:none}
     .resize{position:absolute;right:0;bottom:0;width:var(--tap-lg);height:var(--tap-lg);padding:0;border:0;border-radius:var(--radius-sm) 0 0 0;background:transparent;cursor:nwse-resize;touch-action:none;display:grid;place-items:center;color:var(--ink-dim)}
     .resize svg{width:var(--icon);height:var(--icon);pointer-events:none}.resize:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}.dock.minimized .resize{display:none}
+    .resize-edge{min-width:0;min-height:0;border-radius:0;z-index:1}.resize-edge:is(:hover,:focus-visible){background:var(--sel)}.resize-edge::before{display:none}
+    .resize-edge[data-resize=e],.resize-edge[data-resize=w]{top:var(--tap-lg);bottom:var(--tap-lg);width:6px;height:auto;cursor:ew-resize}.resize-edge[data-resize=w]{left:0;right:auto}
+    .resize-edge[data-resize=n],.resize-edge[data-resize=s]{left:var(--space-2);right:var(--tap-lg);width:auto;height:6px;cursor:ns-resize}.resize-edge[data-resize=n]{top:0;bottom:auto}
     .resize:is(:hover,:focus-visible)::before{content:attr(title);position:absolute;right:var(--space-2);bottom:100%;width:calc(var(--tap) * 9);max-width:calc(100vw - var(--space-4)*2);padding:var(--space-2);border:1px solid var(--edge);border-radius:var(--radius-sm);background:var(--panel);color:var(--ink);font-size:var(--fs-small);pointer-events:none;cursor:default}
-    .bar[hidden],.dock[hidden],.selection-tools[hidden]{display:none}.head{display:flex;flex:none;align-items:center;gap:var(--space-1);min-height:var(--bar-height);padding:var(--space-2) var(--space-3);background:var(--panel);cursor:move;touch-action:none;user-select:none}.head b{display:flex;align-items:center;flex:1;min-width:0;min-height:var(--tap-lg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-radius:var(--radius-sm)}.head button,.head .review-link{flex:none}.head button{width:var(--tap-lg);padding:0}.head .review-link{display:inline-flex;align-items:center;color:var(--ink-dim)}.content{display:flex;flex-direction:column;flex:1;min-height:0;overflow:auto}.content iframe{width:100%;flex:1;min-height:0;border:0;background:var(--panel2)}.status,.error{padding:var(--space-3) var(--space-4);margin:0}
+    .bar[hidden],.dock[hidden],.selection-tools[hidden]{display:none}.head{display:flex;flex:none;align-items:center;gap:var(--space-1);min-height:var(--bar-height);padding:var(--space-2) var(--space-3);background:var(--panel);cursor:move;touch-action:none;user-select:none}.head b{display:block;flex:1;min-width:0;min-height:var(--tap-lg);line-height:var(--tap-lg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-radius:var(--radius-sm)}.head button,.head .review-link{flex:none}.head button{width:var(--tap-lg);padding:0}.head .review-link{display:inline-flex;align-items:center;color:var(--ink-dim)}.head svg{width:var(--icon);height:var(--icon);pointer-events:none}.content{display:flex;flex-direction:column;flex:1;min-height:0;overflow:auto}.content iframe{width:100%;flex:1;min-height:0;border:0;background:var(--panel2)}.status,.error{padding:var(--space-3) var(--space-4);margin:0}
     .dock.fullscreen .head,.dock.fullscreen .resize{display:none}
     .dock.fullscreen{border:0;border-radius:0;box-shadow:none;max-width:none;max-height:none}
     .dock.fullscreen~.launcher,.dock.fullscreen~.bar{display:none}
@@ -233,7 +236,7 @@ export function installPageReview(config: {
   <div class="freeze-status" hidden role="status"><span data-freeze-status></span><button data-resume>Resume · Ctrl+Shift+F</button></div>
   <div class="capture-prompt" hidden role="status"><span data-capture-instruction></span><button data-cancel-capture>Cancel · Esc</button></div>
   <div class="selection-tools" hidden><span data-selection-count></span><button data-write>Write note</button><button data-clear>Clear</button></div>
-  <div class="dock" hidden><div class="head"><b tabindex="0" title="Drag to move; arrow keys move the note window"></b><a class="review-link" data-panel-review target="lcr-review" rel="noopener">Full review ↗</a><button type="button" data-minimize aria-label="Minimize note panel" aria-expanded="true">−</button><button type="button" data-close aria-label="Close note panel">×</button></div><div class="content"></div><button type="button" class="resize" data-resize aria-label="Resize note panel" title="Drag to resize; arrow keys resize; Shift moves farther"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 13 13 3M8 13l5-5M12 13l1-1"/></svg></button></div>
+  <div class="dock" hidden><div class="head"><b tabindex="0" title="Drag to move; arrow keys move the note window"></b><a class="review-link" data-panel-review target="lcr-review" rel="noopener" aria-label="Open full review" title="Open full review"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 3h6v6M10 14 21 3M21 14v7H3V3h7"/></svg></a><button type="button" data-minimize aria-label="Minimize note panel" title="Minimize note panel" aria-expanded="true">−</button><button type="button" data-close aria-label="Close note panel" title="Close note panel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg></button></div><div class="content"></div><button type="button" class="resize" data-resize="se" aria-label="Resize note panel" title="Drag to resize; arrow keys resize; Shift moves farther"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 13 13 3M8 13l5-5M12 13l1-1"/></svg></button>${(["n", "e", "s", "w"] as const).map((edge, i) => `<button type="button" class="resize resize-edge" data-resize="${edge}" aria-label="Resize note panel from ${["top", "right", "bottom", "left"][i]}" title="Drag to resize; arrow keys resize; Shift moves farther"></button>`).join("")}</div>
   <div class="launcher" role="group" aria-label="Page review mode"><button data-browse aria-pressed="false" title="Use page controls normally">Browse</button><button data-annotate aria-pressed="true" title="Select page content to capture for a note; hold Alt to browse temporarily">Annotate</button><button data-launcher aria-label="Capture targeting: Element" aria-expanded="false" aria-controls="capture-tools" title="Choose capture target; drag to move"><span class="mode-state">Element</span><span aria-hidden="true"> ▾</span></button></div>
   <div class="bar" id="capture-tools" role="group" aria-label="Capture targeting" hidden><button data-mode="element" aria-pressed="true" title="Hover for dimensions; Alt + wheel picks parents; Shift-click selects multiple; drag selects an area">Element <small>One element</small></button><button data-mode="block" aria-pressed="false" title="Select the containing layout section">Block <small>Containing section</small></button><button data-multiple aria-pressed="false" title="Collect elements for one note, then choose Write note">Multiple <small>Several elements, one note</small></button><button data-mode="area" aria-pressed="false" title="Drag a rectangle to capture an area">Area <small>Drag a rectangle</small></button><button data-mode="point" aria-pressed="false" title="Click a point to capture its surroundings">Point <small>Click a location</small></button><p class="capture-help">Hold Alt to browse temporarily. Shift-click adds elements; Alt + wheel picks parents.</p><button data-freeze title="Freeze the current view · Ctrl+Shift+F">Freeze view</button><button data-notes>Notes · 0 ↗</button></div>`;
   (document.body || document.documentElement).append(host);
@@ -379,11 +382,29 @@ export function installPageReview(config: {
     dock.style.height = minimized ? "auto" : expandedHeight + "px";
     positionLauncher();
   }
-  function resizeDock(width: number, height: number) {
-    const maxWidth = Math.max(1, innerWidth - dockPosition.x - 12),
+  function resizeDock(
+    width: number,
+    height: number,
+    edge = "se",
+    bounds = {
+      ...dockPosition,
+      width: dock.offsetWidth,
+      height: dock.offsetHeight,
+    },
+  ) {
+    const west = edge.includes("w"),
+      north = edge.includes("n");
+    const right = bounds.x + bounds.width,
+      bottom = bounds.y + bounds.height;
+    const maxWidth = Math.max(
+        1,
+        west ? right - 12 : innerWidth - bounds.x - 12,
+      ),
       maxHeight = Math.max(
         1,
-        innerHeight - dockPosition.y - (innerWidth <= 600 ? 68 : 12),
+        north
+          ? bottom - 12
+          : innerHeight - bounds.y - (innerWidth <= 600 ? 68 : 12),
       );
     const css = getComputedStyle(host);
     dockSize = {
@@ -395,6 +416,10 @@ export function installPageReview(config: {
         Math.min(parseFloat(css.getPropertyValue("--row")) * 10, maxHeight),
         Math.min(height, maxHeight),
       ),
+    };
+    dockPosition = {
+      x: west ? right - dockSize.width : bounds.x,
+      y: north ? bottom - dockSize.height : bounds.y,
     };
     positionDock();
   }
@@ -2431,6 +2456,7 @@ export function installPageReview(config: {
       label: string,
       open: () => void,
       draft = false,
+      active = false,
     ) => {
       if (capture.url !== location.href) return;
       const targets = (["element", "block"].includes(capture.mode) &&
@@ -2450,6 +2476,16 @@ export function installPageReview(config: {
               }
             : null);
         if (!r) continue;
+        if (active) {
+          const block = document.createElement("div");
+          block.className = "selected";
+          block.dataset.activeCapture = "";
+          block.style.left = r.x + "px";
+          block.style.top = r.y + "px";
+          block.style.width = r.width + "px";
+          block.style.height = r.height + "px";
+          container.append(block);
+        }
         const point = c.mode === "point";
         add(
           point
@@ -2472,7 +2508,17 @@ export function installPageReview(config: {
     if (!frozen)
       notes.forEach((n, i) =>
         [n.web.before, ...(n.web.additional || [])].forEach((capture: any) =>
-          draw(capture, String(i + 1), n.body, () => showNote(n.id)),
+          draw(
+            capture,
+            String(i + 1),
+            n.body,
+            () => showNote(n.id),
+            false,
+            frameKind === "note" &&
+              activeToken === n.id &&
+              !dock.hidden &&
+              !minimized,
+          ),
         ),
       );
     if (draftWeb)
@@ -2498,11 +2544,33 @@ export function installPageReview(config: {
     if (!n || busy || !close()) return;
     hideTools();
     clearSelections();
+    const place = locate(n.web.before);
+    if (
+      place &&
+      (place.rect.x < 0 ||
+        place.rect.y < 0 ||
+        place.rect.x + place.rect.width > innerWidth ||
+        place.rect.y + place.rect.height > innerHeight)
+    ) {
+      if (place.el)
+        place.el.scrollIntoView({
+          block: "nearest",
+          inline: "nearest",
+          behavior: "instant",
+        });
+      else
+        scrollBy({
+          left: place.rect.x + place.rect.width / 2 - innerWidth / 2,
+          top: place.rect.y + place.rect.height / 2 - innerHeight / 2,
+          behavior: "instant",
+        });
+    }
     dock.hidden = false;
     $(".head b").textContent = "Web note " + (notes.indexOf(n) + 1);
     minimize(false);
     showFrame("note", id);
     updateHeader();
+    pins();
   }
   async function refresh() {
     const result = await rpc("notes");
@@ -2609,47 +2677,67 @@ export function installPageReview(config: {
     dockPosition.y += delta[e.key][1] * step;
     positionDock();
   };
-  const resize = $("[data-resize]");
-  resize.onpointerdown = (e) => {
-    if (e.button !== 0 || minimized) return;
-    resizePress = {
-      id: e.pointerId,
-      x: e.clientX,
-      y: e.clientY,
-      width: dock.offsetWidth,
-      height: dock.offsetHeight,
-    };
-    resize.setPointerCapture(e.pointerId);
-    e.preventDefault();
-  };
-  resize.onpointermove = (e) => {
-    if (!resizePress || resizePress.id !== e.pointerId) return;
-    resizeDock(
-      resizePress.width + e.clientX - resizePress.x,
-      resizePress.height + e.clientY - resizePress.y,
-    );
-  };
-  resize.onpointerup =
-    resize.onpointercancel =
-    resize.onlostpointercapture =
-      (e) => {
-        if (resizePress?.id === e.pointerId) resizePress = null;
+  for (const resize of root.querySelectorAll<HTMLButtonElement>(
+    "[data-resize]",
+  )) {
+    const edge = resize.dataset.resize!;
+    const dx = edge.includes("w") ? -1 : edge.includes("e") ? 1 : 0;
+    const dy = edge.includes("n") ? -1 : edge.includes("s") ? 1 : 0;
+    resize.onpointerdown = (e) => {
+      if (e.button !== 0 || minimized || annotationOpen || imagePreviewOpen)
+        return;
+      resizePress = {
+        id: e.pointerId,
+        x: e.clientX,
+        y: e.clientY,
+        edge,
+        bounds: {
+          ...dockPosition,
+          width: dock.offsetWidth,
+          height: dock.offsetHeight,
+        },
       };
-  resize.onkeydown = (e) => {
-    const delta: { [key: string]: [number, number] } = {
-      ArrowLeft: [-1, 0],
-      ArrowRight: [1, 0],
-      ArrowUp: [0, -1],
-      ArrowDown: [0, 1],
+      resize.setPointerCapture(e.pointerId);
+      e.preventDefault();
     };
-    if (!delta[e.key]) return;
-    e.preventDefault();
-    const step = e.shiftKey ? 40 : 10;
-    resizeDock(
-      dock.offsetWidth + delta[e.key][0] * step,
-      dock.offsetHeight + delta[e.key][1] * step,
-    );
-  };
+    resize.onpointermove = (e) => {
+      if (
+        !resizePress ||
+        resizePress.id !== e.pointerId ||
+        resizePress.edge !== edge
+      )
+        return;
+      resizeDock(
+        resizePress.bounds.width + (e.clientX - resizePress.x) * dx,
+        resizePress.bounds.height + (e.clientY - resizePress.y) * dy,
+        edge,
+        resizePress.bounds,
+      );
+    };
+    resize.onpointerup =
+      resize.onpointercancel =
+      resize.onlostpointercapture =
+        (e) => {
+          if (resizePress?.id === e.pointerId) resizePress = null;
+        };
+    resize.onkeydown = (e) => {
+      const delta: { [key: string]: [number, number] } = {
+        ArrowLeft: [-1, 0],
+        ArrowRight: [1, 0],
+        ArrowUp: [0, -1],
+        ArrowDown: [0, 1],
+      };
+      if (!delta[e.key] || minimized || annotationOpen || imagePreviewOpen)
+        return;
+      e.preventDefault();
+      const step = e.shiftKey ? 40 : 10;
+      resizeDock(
+        dock.offsetWidth + delta[e.key][0] * step * dx,
+        dock.offsetHeight + delta[e.key][1] * step * dy,
+        edge,
+      );
+    };
+  }
   $("[data-write]").onclick = () => {
     if (selected.length)
       void choose(selected[0], rect(selected[0]), mode, [...selected]);
@@ -3078,8 +3166,6 @@ export function installPageReview(config: {
       const n = notes.find((n) => n.id === id);
       if (!n) throw new Error("That UI note no longer exists.");
       if (busy || !close()) return;
-      const p = locate(n.web.before);
-      if (p?.el) p.el.scrollIntoView({ block: "center" });
       showNote(id);
     },
     async prepare(c: any) {

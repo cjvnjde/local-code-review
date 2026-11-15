@@ -13,14 +13,17 @@ The overlay in the reviewed page lets you select an element or area. Its editor
 is the same React note editor as the main review, embedded in a frame from the lcr
 server. Write feedback, annotate images or add a suggestion, and save. Captured screenshots
 and element metadata remain in the review file, with pictures stored beside it.
-**Full review** in the window header returns to the complete conversation.
+The external-link icon in the window header opens the full review.
 
-The note window starts compact and can be moved, resized, or minimized. Captures
-use named, aspect-ratio-aware thumbnails; clicking one opens a viewport-wide
-viewer. Closing it restores the window and draft. **Remove capture** is beside
-each editable capture. **Capture details** holds timestamps, element metadata,
-original screenshots, and additional context. The input and save controls stay
-visible while evidence scrolls above them.
+The note window can be moved, resized from any side or its corner, or minimized.
+Capture titles stay on one line with ellipsis; their full titles are available
+on hover. Clicking an editable thumbnail opens the drawing editor directly;
+read-only images open the viewer. Closing either restores the window and draft.
+The bin icon removes a capture. **Capture details** contains nested collapsibles
+for metadata, originals, and context, without nested scroll areas. Classification
+and editor help live in the note header; **Add capture** sits left of Cancel/Save.
+The input and save controls stay visible while evidence scrolls above them.
+Reopening a note scrolls to and highlights its captured block on the page.
 
 The floating launcher keeps **Browse / Annotate** visible. Browse lets you use
 the app normally; Annotate restores targeting. A separate targeting menu selects
@@ -34,16 +37,14 @@ and returns without discarding the draft. Selecting another element directly
 while composing still adds it to the same draft. On a saved note, new captures
 belong to a reply rather than replacing its original evidence.
 
-Choose **Annotate** or **Edit drawing** beside a capture. Common tools stay visible;
-**More tools** holds additional shapes, paths, and magnification. **Show original**
-is directly accessible; hold O for temporary comparison. **Options** controls the
-active tool or selection. The header distinguishes the active tool from the
-selected drawing, with contextual gesture hints. Striped, labelled margins are
-annotation space, not captured page context; these guides are not exported.
-Preview and drawing share bottom-right zoom controls. Undo/redo and completion
-remain accessible in narrow windows. **Use drawing** returns an image to the draft;
-**Save note** still saves the note. **Save drawing** updates an already-saved note.
-Originals and editable drawing data are retained.
+Drawing tools share one compact header with undo/redo, original-view, checkmark,
+and close icons. **More tools** appears only when there is insufficient width.
+Parameters for the active tool or selection appear in a second row; the color
+circle opens the palette. Tooltips and info icons carry explanations and gesture
+help. Hold O to compare the original temporarily. Striped margins are drawing
+space and are not exported. Zoom controls remain bottom-right.
+The checkmark returns an image to the draft, or updates an already-saved drawing;
+**Save note** still saves the note. Originals and editable drawing data are retained.
 
 Compatible original screenshots also offer a **Pixel difference** overlay with changed
 pixel counts and percentages. URL, viewport, DPR, selection geometry, scroll, and
@@ -101,8 +102,8 @@ the full lcr page.
 ## Context
 
 **Settings → Capture context** controls on-demand context bundles, selected HTML,
-and full-page screenshots. These are enabled by default. **Record recent
-interaction and failure metadata** is separately opt-in and off by default.
+and full-page screenshots with HTML/CSS/JS sources. These are enabled by default.
+**Record recent interaction and failure metadata** is separately opt-in and off by default.
 Settings persist in the same user `lcr/config.json` used at startup.
 
 Under **Capture details**, open **Additional context** to see the inventory,
@@ -113,6 +114,11 @@ the full-page image.
 
 Each bundle keeps separate, immutable parts:
 
+- **Full-page sources:** capture-time document HTML plus inline and loaded
+  stylesheet/script sources, stored as inert text evidence. External resources
+  come from the attached browser, not new server-side fetches. Size/deadline limits
+  and unavailable resources are reported per part. Point and privacy-region
+  captures omit these parts; frozen selections reuse their original snapshot.
 - **Layout:** selected targets, up to six ancestors and four nearby siblings per
   target, bounded to 40 nodes. Includes geometry, flex/grid constraints,
   overflow/stacking, selected styles, and explicit semantic labels/states.
@@ -142,12 +148,14 @@ atomic instant. Frozen selections reuse their original evidence rather than
 querying a newer page. Each part reports exclusions, unavailable evidence, or
 truncation; missing evidence never proves that something was absent.
 
-HTML excludes form values, editable/hidden content, scripts, and arbitrary
-props/state. Diagnostics omit typed values, console arguments, exception text,
-headers, bodies, cookies, and storage. URL credentials, queries, and fragments are
-removed from diagnostic/CSS source URLs, but paths and semantic labels may still
-be sensitive. Screenshots are unredacted unless you selected privacy regions before
-capture. Disable unwanted capture and inspect redaction coverage before sharing.
+Selected HTML excludes form values, editable/hidden content, scripts, and arbitrary
+props/state. Full-page HTML/CSS/JS is raw source: it can contain hidden content,
+embedded data, credentials, or application secrets. Disable full-page context
+when that is inappropriate. Diagnostics omit typed values, console arguments,
+exception text, headers, bodies, cookies, and storage. URL credentials, queries,
+and fragments are removed from diagnostic/CSS provenance URLs, but paths and
+semantic labels may still be sensitive. Screenshots are unredacted unless you
+selected privacy regions before capture. Inspect saved evidence before sharing.
 
 ### Select only the evidence needed
 

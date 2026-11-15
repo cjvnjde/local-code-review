@@ -7,6 +7,7 @@ import { launchReviewBrowser } from "../browser/review-browser.ts";
 import { createSession } from "../review/session.ts";
 import { createHub } from "../server/events.ts";
 import { createWebReview } from "./controller.ts";
+import { readContext, readContextPart } from "../review/context.ts";
 
 // Real CDP, real screenshots, real axe and real review persistence; never run unless explicitly enabled.
 test.skipIf(process.env.LCR_TEST_BROWSER !== "1")(
@@ -152,6 +153,16 @@ test.skipIf(process.env.LCR_TEST_BROWSER !== "1")(
       expect(
         web.draft(captured.draftId)?.before.redaction?.regions,
       ).toHaveLength(1);
+      const privateContext = web.draft(captured.draftId)!.before.context!;
+      const privateManifest = await readContext(
+        root,
+        ".review",
+        privateContext.id,
+      );
+      for (const name of ["full-page-html", "full-page-css", "full-page-js"])
+        expect(
+          privateManifest!.parts.find((part) => part.name === name)?.status,
+        ).toBe("excluded");
       expect(JSON.stringify(web.draft(captured.draftId))).not.toContain(
         "SECRET",
       );
@@ -258,6 +269,47 @@ test.skipIf(process.env.LCR_TEST_BROWSER !== "1")(
       expect(
         await js(`${shadow}.querySelector('.privacy-regions').children.length`),
       ).toBe(0);
+      // Frozen source evidence must remain capture-time text after the live DOM changes.
+      await js(
+        `window.captureInput={...captureInput,at:new Date().toISOString(),redactions:[]};document.querySelector('style').textContent+='/* capture-source-before */';const script=document.createElement('script');script.type='application/json';script.textContent='{\"marker\":\"capture-script-before\"}';document.head.append(script);`,
+      );
+      const sourceFreeze = await js("rpc('freeze',{capture:captureInput})");
+      // Direct freeze RPC does not install the overlay canvas; crop its actual PNG.
+      await js(
+        `window[${host}.id].cropFrozen=async({rect})=>{const image=new Image();image.src=${JSON.stringify(sourceFreeze.data)};await image.decode();const canvas=document.createElement('canvas');canvas.width=Math.round(rect.width*devicePixelRatio);canvas.height=Math.round(rect.height*devicePixelRatio);canvas.getContext('2d').drawImage(image,rect.x*devicePixelRatio,rect.y*devicePixelRatio,canvas.width,canvas.height,0,0,canvas.width,canvas.height);return canvas.toDataURL('image/png').split(',')[1]}`,
+      );
+      await js(
+        "document.querySelector('style').textContent+='/* capture-source-after */';document.querySelector('script[type=\"application/json\"]').textContent='{\"marker\":\"capture-script-after\"}'",
+      );
+      const sourceCapture = await js(
+        `rpc('capture',{freezeId:${JSON.stringify(sourceFreeze.id)},capture:captureInput})`,
+      );
+      const sourceContext = web.draft(sourceCapture.draftId)!.before.context!;
+      for (const [name, before, after] of [
+        ["full-page-html", "capture-source-before", "capture-source-after"],
+        ["full-page-css", "capture-source-before", "capture-source-after"],
+        ["full-page-js", "capture-script-before", "capture-script-after"],
+      ]) {
+        const part = await readContextPart(
+          root,
+          ".review",
+          sourceContext.id,
+          name!,
+        );
+        expect(part).not.toBeNull();
+        const text = new TextDecoder().decode(part!.bytes);
+        expect(text).toContain(before!);
+        expect(text).not.toContain(after!);
+      }
+      const pointCapture = await js(
+        `rpc('capture',{freezeId:${JSON.stringify(sourceFreeze.id)},capture:{...captureInput,mode:'point',rect:{x:40,y:60,width:1,height:1}}})`,
+      );
+      const pointContext = web.draft(pointCapture.draftId)!.before.context!;
+      const pointManifest = await readContext(root, ".review", pointContext.id);
+      for (const name of ["full-page-html", "full-page-css", "full-page-js"])
+        expect(
+          pointManifest!.parts.find((part) => part.name === name)?.status,
+        ).toBe("excluded");
     } finally {
       await web.close();
       await owner.close();

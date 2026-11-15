@@ -82,41 +82,14 @@
   gap: var(--space-1);
   min-width: 0;
 }
-.annotation-title {
+.annotation-tool-strip {
   flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  margin: 0;
-  font-size: inherit;
 }
-.annotation-context {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  min-width: 0;
+.annotation-header > [aria-label="History"] {
+  flex: none;
 }
-.annotation-state {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px var(--space-3);
-  min-width: 0;
-  font-size: var(--fs-sm);
-}
-.annotation-active-tool {
-  font-weight: 600;
-}
-.annotation-selection {
-  color: var(--foreground);
-}
-.annotation-common-tools {
-  flex-wrap: wrap;
-  width: fit-content;
-  max-width: 100%;
-  background: var(--muted);
-  border-radius: var(--radius-sm);
+.annotation-tool-strip > .annotation-group {
+  flex: none;
 }
 .annotation-primary-properties {
   min-height: var(--tap-lg);
@@ -129,23 +102,6 @@
   gap: var(--space-1);
   color: var(--foreground);
   white-space: nowrap;
-}
-[data-annotation-editor] .annotation-labeled,
-[data-annotation-editor] .annotation-apply {
-  width: auto;
-  gap: var(--space-1);
-  padding-inline: var(--space-2);
-  white-space: nowrap;
-}
-@media (min-width: 900px) {
-  .annotation-tools {
-    grid-template-columns: auto minmax(0, 1fr);
-    column-gap: var(--space-3);
-  }
-  .annotation-header,
-  .annotation-context {
-    grid-column: 1 / -1;
-  }
 }
 .annotation-properties input,
 .annotation-properties select,
@@ -193,7 +149,7 @@
 }
 .annotation-commit {
   flex: none;
-  margin-left: auto;
+  margin-left: 0;
 }
 [data-annotation-editor] .annotation-apply {
   color: var(--accent-foreground);
@@ -225,8 +181,8 @@
 .annotation-palette button::before {
   content: "";
   display: block;
-  width: var(--icon);
-  height: var(--icon);
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   background: var(--annotation-color);
   box-shadow:
@@ -293,11 +249,6 @@
   background: var(--foreground);
   outline-offset: 4px;
 }
-.annotation-pressure-hint {
-  max-width: 28ch;
-  margin: 0;
-  font-size: 12px;
-}
 .annotation-slider > label {
   white-space: normal;
 }
@@ -309,11 +260,6 @@
   width: 100%;
   gap: var(--space-2);
   padding-inline: var(--space-2);
-}
-.annotation-popover small {
-  margin-left: auto;
-  color: var(--foreground);
-  white-space: nowrap;
 }
 .annotation-secondary-actions {
   margin-top: var(--space-2);
@@ -366,27 +312,9 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.annotation-gesture-hint,
-.annotation-padding-hint {
-  flex: none;
-  margin: 0;
-  padding: var(--space-1) var(--space-3);
-  color: var(--foreground);
+.annotation-help p {
+  margin: 0 0 var(--space-2);
   font-size: var(--fs-sm);
-  line-height: 1.4;
-}
-.annotation-padding-hint {
-  border-bottom: 1px solid var(--border);
-}
-.annotation-help {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
 }
 .annotation-viewport {
   display: flex;

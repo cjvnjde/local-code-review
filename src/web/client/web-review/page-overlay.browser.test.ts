@@ -280,6 +280,37 @@ browserTest(
       );
       const resized = await dockBounds();
       expect(resized.width).toBe(430);
+      for (const [edge, delta] of [
+        ["w", { x: -40, y: 0 }],
+        ["e", { x: 10, y: 0 }],
+        ["n", { x: 0, y: -6 }],
+        ["s", { x: 0, y: 20 }],
+      ] as const) {
+        const before = await dockBounds();
+        const handle = await pinCenter(`[data-resize="${edge}"]`);
+        const end = { x: handle.x + delta.x, y: handle.y + delta.y };
+        await mouse("mouseMoved", handle);
+        await mouse("mousePressed", handle);
+        await mouse("mouseMoved", end, { buttons: 1 });
+        await mouse("mouseReleased", end);
+        const after = await dockBounds();
+        expect(after.width).toBe(
+          before.width + (edge === "w" ? -delta.x : delta.x),
+        );
+        expect(after.height).toBe(
+          before.height + (edge === "n" ? -delta.y : delta.y),
+        );
+        expect(after.x).toBe(before.x + (edge === "w" ? delta.x : 0));
+        expect(after.y).toBe(before.y + (edge === "n" ? delta.y : 0));
+        await mouse("mouseMoved", end);
+        await mouse("mousePressed", end);
+        await mouse("mouseMoved", handle, { buttons: 1 });
+        await mouse("mouseReleased", handle);
+        expect(await dockBounds()).toEqual(before);
+        expect(
+          await js("savedFrame.contentDocument.querySelector('#draft').value"),
+        ).toBe("Keep this draft");
+      }
       await message("annotation", { open: true });
       expect(await dockBounds()).toMatchObject(
         await js("({x:0,y:0,width:innerWidth,height:innerHeight})"),

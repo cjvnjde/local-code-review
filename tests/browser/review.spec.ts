@@ -1467,7 +1467,7 @@ test("bookmarks, full review search, references and context stay usable across n
   ).toBeVisible();
   await card
     .getByRole("button", {
-      name: "Additional context: Debug details · Inspect context",
+      name: "Additional context: Debug details",
       exact: true,
     })
     .click();
@@ -1475,6 +1475,10 @@ test("bookmarks, full review search, references and context stay usable across n
   await expect(
     card.getByText("Some independently readable context", { exact: true }),
   ).toBeVisible();
+  await card.getByRole("button", { name: "Read text", exact: true }).click();
+  await expect(
+    card.getByText("Some independently readable context", { exact: true }),
+  ).toBeHidden();
   // Deletion confirmation belongs to the card; it never invokes a native popup.
   await card.getByRole("button", { name: "Note actions", exact: true }).click();
   await page
@@ -2856,7 +2860,7 @@ test("long lines wrap by default and nowrap scrolling stays inside each file", a
   }
 });
 
-test("live page capture keeps its editor at the bottom and previews images across the viewport", async ({
+test("live page capture keeps its editor fixed and opens drawings directly across the viewport", async ({
   page,
 }) => {
   await stop();
@@ -2921,51 +2925,14 @@ test("live page capture keeps its editor at the bottom and previews images acros
     await input.fill("Keep this draft through fullscreen previews");
     await target.screenshot({ path: "/tmp/lcr-web-composer.png" });
     const panel = (await iframe.boundingBox())!;
-    await frame
-      .getByRole("link", { name: "Preview Checkout target", exact: true })
-      .click();
-    const viewer = frame.locator("dialog.image-viewer");
-    await expect(viewer).toBeVisible();
-    await expect
-      .poll(async () => (await iframe.boundingBox())!.width)
-      .toBe(1200);
-    await expect
-      .poll(async () => (await iframe.boundingBox())!.height)
-      .toBe(900);
-    expect((await viewer.boundingBox())!.width).toBeGreaterThan(1100);
-    const zoom = (await viewer
-      .getByRole("group", { name: "Zoom", exact: true })
-      .boundingBox())!;
-    const viewerBox = (await viewer.boundingBox())!;
-    expect(zoom.y).toBeGreaterThan(viewerBox.y + viewerBox.height - 90);
-    expect(zoom.x).toBeGreaterThan(viewerBox.x + viewerBox.width / 2);
-    expect(zoom.x + zoom.width).toBeLessThanOrEqual(
-      viewerBox.x + viewerBox.width,
-    );
-    expect(zoom.y + zoom.height).toBeLessThanOrEqual(
-      viewerBox.y + viewerBox.height,
-    );
-    await target.screenshot({ path: "/tmp/lcr-web-image-preview.png" });
-    await viewer.getByRole("button", { name: "Close", exact: true }).click();
-    await expect(viewer).toHaveCount(0);
-    await expect.poll(() => iframe.boundingBox()).toEqual(panel);
-    await expect(input).toHaveValue(
-      "Keep this draft through fullscreen previews",
-    );
-    // Browser Back also restores the panel, and a preview can hand over to drawing without shrinking it.
-    await frame
-      .getByRole("link", { name: "Preview Checkout target", exact: true })
-      .click();
-    await expect
-      .poll(async () => (await iframe.boundingBox())!.width)
-      .toBe(1200);
-    await input.evaluate(() => history.back());
-    await expect(viewer).toHaveCount(0);
-    await expect.poll(() => iframe.boundingBox()).toEqual(panel);
-    await frame
-      .getByRole("link", { name: "Preview Checkout target", exact: true })
-      .click();
-    await viewer.getByRole("button", { name: "Annotate", exact: true }).click();
+    await expect(
+      frame.locator("header").getByRole("combobox", { name: "Note triage" }),
+    ).toBeVisible();
+    const captureImage = frame.getByRole("link", {
+      name: "Annotate Checkout target",
+      exact: true,
+    });
+    await captureImage.click();
     const drawing = frame.getByRole("dialog", {
       name: "Draw on screenshot",
       exact: true,
@@ -2974,8 +2941,39 @@ test("live page capture keeps its editor at the bottom and previews images acros
     await expect
       .poll(async () => (await iframe.boundingBox())!.width)
       .toBe(1200);
+    await expect
+      .poll(async () => (await iframe.boundingBox())!.height)
+      .toBe(900);
+    await target.screenshot({ path: "/tmp/lcr-web-drawing-header.png" });
     await drawing
       .getByRole("button", { name: "Close drawing editor", exact: true })
+      .click();
+    await expect(drawing).toHaveCount(0);
+    await expect.poll(() => iframe.boundingBox()).toEqual(panel);
+    await expect(input).toHaveValue(
+      "Keep this draft through fullscreen previews",
+    );
+    await captureImage.click();
+    await expect(drawing).toBeVisible();
+    await drawing.evaluate(() => history.back());
+    await expect(drawing).toHaveCount(0);
+    await expect.poll(() => iframe.boundingBox()).toEqual(panel);
+    await captureImage.click();
+    await drawing.locator('[data-tool="rectangle"]').click();
+    const canvas = (await drawing.locator("canvas").first().boundingBox())!;
+    await target.mouse.move(
+      canvas.x + canvas.width / 2 - 40,
+      canvas.y + canvas.height / 2 - 25,
+    );
+    await target.mouse.down();
+    await target.mouse.move(
+      canvas.x + canvas.width / 2 + 40,
+      canvas.y + canvas.height / 2 + 25,
+    );
+    await target.mouse.up();
+    await target.screenshot({ path: "/tmp/lcr-web-drawing-header.png" });
+    await drawing
+      .getByRole("button", { name: "Use drawing", exact: true })
       .click();
     await expect(drawing).toHaveCount(0);
     await expect.poll(() => iframe.boundingBox()).toEqual(panel);
@@ -3002,7 +3000,7 @@ test("live page capture keeps its editor at the bottom and previews images acros
     );
     await expect(
       frame.getByRole("link", {
-        name: "Preview 2. Secondary action",
+        name: "Annotate 2. Secondary action",
         exact: true,
       }),
     ).toBeVisible();
@@ -3017,7 +3015,7 @@ test("live page capture keeps its editor at the bottom and previews images acros
     ).toBeVisible();
     await expect(
       frame.getByRole("link", {
-        name: "Preview 2. Secondary action",
+        name: "Annotate 2. Secondary action",
         exact: true,
       }),
     ).toHaveCount(0);
@@ -3043,6 +3041,26 @@ test("live page capture keeps its editor at the bottom and previews images acros
     expect(note.web.before.element.text).toBe("Checkout target");
     expect(note.web.before.area).toMatch(/^images\/.+\.png$/);
     expect(note.web.additional[0].element.text).toBe("Secondary action");
+    expect(
+      note.web.before.annotation.marks.some(
+        (mark: { tool: string }) => mark.tool === "rectangle",
+      ),
+    ).toBe(true);
+    await target
+      .getByRole("button", { name: /UI note 1:/ })
+      .first()
+      .click();
+    const reopened = target.frameLocator(
+      'iframe[title="Visual review conversation"]',
+    );
+    await expect(reopened.locator("img").first()).toHaveAttribute(
+      "src",
+      new RegExp(encodeURIComponent(note.web.before.annotation.image)),
+    );
+    await expect(target.locator("[data-active-capture]")).toHaveCount(2);
+    await target
+      .getByRole("button", { name: "Close note panel", exact: true })
+      .click();
     const picture = await page.request.get(
       `${url}/api/attachment?ref=${encodeURIComponent(note.web.before.area)}`,
     );

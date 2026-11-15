@@ -46,18 +46,20 @@ export function AttachmentImage({
       href={src}
       target="_blank"
       rel="noreferrer noopener"
-      aria-label={`Preview ${label}`}
+      aria-label={`${onDraw ? "Annotate" : "Preview"} ${label}`}
       className="block min-w-0 max-w-full"
       onClick={(event) => {
         if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
           return;
         event.preventDefault();
-        openImagePreview(
-          source,
-          label,
-          onDraw,
-          imageEditorOwner(event.currentTarget),
-        );
+        if (onDraw) onDraw();
+        else
+          openImagePreview(
+            source,
+            label,
+            undefined,
+            imageEditorOwner(event.currentTarget),
+          );
       }}
     >
       <img

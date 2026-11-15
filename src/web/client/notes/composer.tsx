@@ -427,6 +427,36 @@ export function Composer({
       />
     </>
   );
+  const editorControls = (
+    <>
+      <Tooltip
+        label={`${settings.enterSaves ? "Enter" : "Shift+Enter"} or Ctrl/Cmd+Enter to submit. ${settings.enterSaves ? "Shift+Enter" : "Enter"} inserts a newline. Type # for a note or @ for a file.`}
+      >
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-7 text-muted-foreground"
+          aria-label="Editor help"
+        >
+          <Info />
+        </Button>
+      </Tooltip>
+      {draft.kind === "note" && (
+        <TriageSelect
+          value={draft.comment.triage}
+          disabled={busy}
+          onChange={(triage) => {
+            const current = latest.current;
+            if (current.kind === "note")
+              onChange({
+                ...current,
+                comment: { ...current.comment, triage },
+              });
+          }}
+        />
+      )}
+    </>
+  );
   const content = (
     <div
       className={`flex min-h-0 flex-col gap-2 ${embedded ? "flex-1 pt-2" : integrated ? "" : "p-2.5"}`}
@@ -450,7 +480,7 @@ export function Composer({
           <CapturedCode value={code} label={`Captured code · ${file}`} />
         )}
         {(!integrated || draft.kind === "reply") && web && (
-          <div className={embedded ? "" : "max-h-56 overflow-auto"}>
+          <div>
             <WebEvidence
               value={web}
               editable={!draft.editing}
@@ -803,32 +833,7 @@ export function Composer({
           </span>
         )}
         <div className="flex flex-wrap items-center gap-2 border-t pt-1.5 [&_button]:h-7">
-          <Tooltip
-            label={`${settings.enterSaves ? "Enter" : "Shift+Enter"} or Ctrl/Cmd+Enter to submit. ${settings.enterSaves ? "Shift+Enter" : "Enter"} inserts a newline. Type # for a note or @ for a file.`}
-          >
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-7 text-muted-foreground"
-              aria-label="Editor help"
-            >
-              <Info />
-            </Button>
-          </Tooltip>
-          {draft.kind === "note" && (
-            <TriageSelect
-              value={draft.comment.triage}
-              disabled={busy}
-              onChange={(triage) => {
-                const current = latest.current;
-                if (current.kind === "note")
-                  onChange({
-                    ...current,
-                    comment: { ...current.comment, triage },
-                  });
-              }}
-            />
-          )}
+          {!embedded && editorControls}
           {onAddCapture && (
             <Button
               size="sm"
@@ -896,6 +901,11 @@ export function Composer({
     >
       {!integrated && !embedded && draft.kind === "note" && (
         <NoteHeader note={draft.comment} status="Draft" />
+      )}
+      {embedded && (
+        <header className="flex shrink-0 items-center justify-end gap-1 border-b px-2.5 py-1">
+          {editorControls}
+        </header>
       )}
       {content}
     </section>

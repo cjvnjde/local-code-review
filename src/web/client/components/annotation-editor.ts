@@ -350,9 +350,7 @@ function editAnnotation(
       applyLabel: capture.applyLabel ?? "Use drawing",
       error: errorMessage,
       retry,
-      message: pathDraft
-        ? "Path: click to add points; drag for curves. Enter finishes, first point closes, Escape discards."
-        : statusMessage,
+      message: statusMessage,
       hint:
         original || heldOriginal
           ? "Original comparison — drawings are hidden, not removed."

@@ -1,5 +1,7 @@
 import {
   createRef,
+  useLayoutEffect,
+  useState,
   type CSSProperties,
   type ReactNode,
   type RefObject,
@@ -32,10 +34,12 @@ import {
   ZoomIn,
   Eye,
   GitBranch,
-  Hash,
+  MessageSquare,
   Slash,
-  ChevronDown,
-  Palette,
+  Ellipsis,
+  Info,
+  SlidersHorizontal,
+  SquareCheck,
 } from "lucide-react";
 import {
   ANNOTATION_LIMITS as LIMITS,
@@ -64,7 +68,7 @@ const TOOLS = {
   arrow: [ArrowUpRight, "Draw an arrow"],
   rectangle: [Square, "Draw a rectangle"],
   text: [Type, "Add text"],
-  callout: [Hash, "Add numbered callout"],
+  callout: [MessageSquare, "Add numbered callout"],
   highlighter: [Highlighter, "Highlight screenshot"],
   ellipse: [Circle, "Draw a circle or ellipse"],
   triangle: [Triangle, "Draw a triangle"],
@@ -73,15 +77,13 @@ const TOOLS = {
   magnifier: [ZoomIn, "Magnify screenshot detail"],
   pan: [Hand, "Pan image"],
 } as const;
-const COMMON: DrawingTool[] = [
+const TOOL_ORDER: DrawingTool[] = [
   "select",
   "pen",
   "arrow",
   "rectangle",
   "text",
   "callout",
-];
-const EXTRA: DrawingTool[] = [
   "highlighter",
   "ellipse",
   "triangle",
@@ -90,7 +92,7 @@ const EXTRA: DrawingTool[] = [
   "magnifier",
   "pan",
 ];
-type Popup = "colors" | "more-tools" | "options" | null;
+type Popup = "colors" | "more-tools" | "options" | "help" | null;
 export interface DrawingControlsModel {
   tool: DrawingTool;
   current?: AnnotationMark;
@@ -155,11 +157,24 @@ function Property({
   max?: number;
   step?: number;
 }) {
-  const caption =
-    name === "width" ? "Width" : name === "size" ? "Text size" : label;
+  const captions: Record<string, string> = {
+    width: "Width",
+    size: "Size",
+    radius: "Corners",
+    wrap: "Wrap",
+    background: "Background",
+    "background-color": "Background color",
+    "text-outline": "Outline",
+    "text-leader": "Leader",
+    "fill-color": "Fill color",
+    fill: "Fill",
+    scale: "Magnification",
+    label: "Label",
+  };
+  const caption = captions[name] ?? label;
   return (
     <label data-property={name}>
-      <span>{caption}</span>
+      <span title={label}>{caption}</span>
       <input
         data-field={name}
         aria-label={label}
@@ -209,7 +224,9 @@ function RangeProperty({
       disabled={model.busy}
       onValueChange={(value) => actions.property(name, String(value))}
     >
-      <Slider.Label>{label}</Slider.Label>
+      <Slider.Label title={label}>
+        {name === "smoothing" ? "Smoothing" : "Opacity"}
+      </Slider.Label>
       <Slider.Control className="annotation-slider-control">
         <Slider.Track className="annotation-slider-track">
           <Slider.Indicator className="annotation-slider-indicator" />
@@ -237,6 +254,7 @@ function DrawingPopover({
   onPopup,
   refs,
   className = "",
+  pressed,
 }: {
   name: Exclude<Popup, null>;
   label: string;
@@ -246,6 +264,7 @@ function DrawingPopover({
   onPopup(value: Popup): void;
   refs: Refs;
   className?: string;
+  pressed?: boolean;
 }) {
   return (
     <Popover.Root
@@ -255,12 +274,9 @@ function DrawingPopover({
       <Popover.Trigger
         data-command={name}
         aria-label={label}
-        aria-pressed={
-          name === "more-tools" ? EXTRA.includes(model.tool) : undefined
-        }
-        className={
-          name === "colors" ? "annotation-color" : "annotation-labeled"
-        }
+        title={name === "help" ? model.hint : label}
+        aria-pressed={pressed}
+        className={name === "colors" ? "annotation-color" : undefined}
         style={
           name === "colors"
             ? ({ "--annotation-color": model.values.color } as CSSProperties)
@@ -268,14 +284,13 @@ function DrawingPopover({
         }
         disabled={model.busy}
       >
-        {name === "colors" ? (
-          <Palette size={16} />
-        ) : (
-          <>
-            {label}
-            <ChevronDown size={16} />
-          </>
-        )}
+        {name === "more-tools" ? (
+          <Ellipsis size={16} />
+        ) : name === "options" ? (
+          <SlidersHorizontal size={16} />
+        ) : name === "help" ? (
+          <Info size={16} />
+        ) : null}
       </Popover.Trigger>
       <Popover.Portal container={refs.dialog.current} keepMounted>
         <Popover.Positioner
@@ -322,6 +337,45 @@ export function DrawingEditorView({
   const filled = ["rectangle", "ellipse", "triangle", "path"].includes(
     activeTool,
   );
+  const [toolBar, setToolBar] = useState<HTMLDivElement | null>(null);
+  const [visibleTools, setVisibleTools] = useState(TOOL_ORDER.length);
+  useLayoutEffect(() => {
+    const bar = toolBar;
+    if (!bar) return;
+    const measure = () => {
+      const button = bar.querySelector("button");
+      if (!button) return;
+      const gap = parseFloat(getComputedStyle(bar).columnGap) || 0;
+      const slots = Math.floor(
+        (bar.clientWidth + gap) / (button.getBoundingClientRect().width + gap),
+      );
+      setVisibleTools(
+        slots >= TOOL_ORDER.length ? TOOL_ORDER.length : Math.max(0, slots - 1),
+      );
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(bar);
+    return () => observer.disconnect();
+  }, [toolBar]);
+  const overflowTools = TOOL_ORDER.slice(visibleTools);
+  const hasProperties =
+    !["pan", "select"].includes(activeTool) ||
+    (m.tool === "select" && !!m.marks.length);
+  const hasOptions =
+    [
+      "pen",
+      "highlighter",
+      "rectangle",
+      "ellipse",
+      "triangle",
+      "path",
+      "text",
+      "callout",
+      "magnifier",
+    ].includes(activeTool) ||
+    m.selected >= 0 ||
+    (m.tool === "select" && !!m.marks.length);
   const command = (
     name: string,
     label: string,
@@ -332,6 +386,7 @@ export function DrawingEditorView({
     <Button
       data-command={name}
       aria-label={label}
+      title={label}
       disabled={disabled}
       className={extra.className}
       aria-pressed={extra.pressed}
@@ -412,7 +467,23 @@ export function DrawingEditorView({
         >
           <div className="annotation-tools">
             <div className="annotation-header">
-              <Dialog.Title className="annotation-title">Drawing</Dialog.Title>
+              <Toolbar.Root
+                ref={setToolBar}
+                className="annotation-group annotation-tool-strip"
+                aria-label="Drawing tools"
+              >
+                {visibleTools > 0 && tools(TOOL_ORDER.slice(0, visibleTools))}
+                {overflowTools.length > 0 && (
+                  <DrawingPopover
+                    name="more-tools"
+                    label="More tools"
+                    pressed={overflowTools.includes(m.tool)}
+                    {...popoverProps}
+                  >
+                    {tools(overflowTools, true)}
+                  </DrawingPopover>
+                )}
+              </Toolbar.Root>
               <Toolbar.Root className="annotation-group" aria-label="History">
                 <Toolbar.Button
                   render={command(
@@ -431,60 +502,47 @@ export function DrawingEditorView({
                   )}
                 />
               </Toolbar.Root>
-              <div
-                className="annotation-group annotation-commit"
-                role="group"
-                aria-label="Finish drawing"
-              >
-                <Button
-                  data-command="apply"
-                  className="annotation-apply"
-                  aria-label={m.applyLabel}
-                  aria-busy={m.saving}
-                  data-dirty={m.dirty ? "" : undefined}
-                  disabled={m.busy || !m.hasImage}
-                  onClick={() => a.command("apply")}
-                >
-                  {m.applyLabel}
-                </Button>
-                {command(
-                  "cancel",
-                  "Close drawing editor",
-                  <X size={16} />,
-                  m.saving,
-                )}
-              </div>
-            </div>
-            <div className="annotation-context">
-              <div className="annotation-state" aria-live="polite">
-                <span className="annotation-active-tool">
-                  Tool: {TOOL_NAMES[m.tool]}
-                </span>
-                <span className="annotation-selection">
-                  Selected: {m.current ? TOOL_NAMES[m.current.tool] : "None"}
-                </span>
-              </div>
               {command(
                 "original",
                 "Show original screenshot",
-                <>
-                  <Eye size={16} /> Show original
-                </>,
+                <Eye size={16} />,
                 m.busy,
-                { className: "annotation-labeled", pressed: m.original },
+                { pressed: m.original },
               )}
-            </div>
-            <Toolbar.Root
-              className="annotation-group annotation-common-tools"
-              aria-label="Drawing tools"
-            >
-              {tools(COMMON)}
               <DrawingPopover
-                name="more-tools"
-                label="More tools"
+                name="help"
+                label="Drawing help"
                 {...popoverProps}
               >
-                {tools(EXTRA, true)}
+                <p>{m.hint}</p>
+                <p>
+                  Select to move or resize. Shift constrains shapes. Escape
+                  cancels a gesture. Hold O to compare the original. Wheel to
+                  zoom; Space and drag to pan.
+                </p>
+                <p>
+                  Paths: click points, drag for curves, Enter or double-click to
+                  finish. Click the first point to close. Double-click a segment
+                  to add a point.
+                </p>
+                {!!m.padding && (
+                  <p>
+                    Striped margins are drawing space, not captured content.
+                    They are not exported.
+                  </p>
+                )}
+                {activeTool === "pen" && (
+                  <p>
+                    Pressure mode uses pen-reported pressure; mouse and touch
+                    simulate pressure. Existing strokes keep their rendering
+                    mode.
+                    {m.current?.tool === "pen" &&
+                      m.current.stroke &&
+                      (m.current.stroke.pressure === "pointer"
+                        ? " This stroke uses recorded pen pressure."
+                        : " This stroke uses simulated pressure.")}
+                  </p>
+                )}
                 <div className="annotation-secondary-actions">
                   {command(
                     "clear",
@@ -494,251 +552,269 @@ export function DrawingEditorView({
                   )}
                 </div>
               </DrawingPopover>
-            </Toolbar.Root>
-            <div
-              className="annotation-properties annotation-primary-properties"
-              role="group"
-              aria-label="Tool properties"
-            >
-              {!["pan", "select"].includes(activeTool) && (
-                <DrawingPopover
-                  name="colors"
-                  label="Drawing color"
-                  {...popoverProps}
-                >
-                  <ToggleGroup
-                    className="annotation-palette"
-                    aria-label="Saved drawing colors"
-                    value={[String(m.values.color)]}
-                    onValueChange={(value) => {
-                      if (value[0]) {
-                        a.property("color", value[0]);
-                        onPopup(null);
-                      }
-                    }}
-                  >
-                    {m.colors.map((color) => (
-                      <Toggle
-                        key={color}
-                        value={color}
-                        data-color={color}
-                        aria-label={`Use color ${color}`}
-                        style={{ "--annotation-color": color } as CSSProperties}
-                      />
-                    ))}
-                  </ToggleGroup>
-                  {property("color", "Custom drawing color", "color")}
-                </DrawingPopover>
-              )}
-              {!["text", "select", "pan"].includes(activeTool) &&
-                property(
-                  "width",
-                  "Stroke width in image pixels",
-                  "number",
-                  1,
-                  LIMITS.maxWidth,
-                )}
-              {["text", "callout"].includes(activeTool) &&
-                property(
-                  "size",
-                  "Text size in image pixels",
-                  "number",
-                  1,
-                  LIMITS.maxTextSize,
-                )}
-              <DrawingPopover
-                name="options"
-                label="Options"
-                className="annotation-properties"
-                {...popoverProps}
+              <div
+                className="annotation-group annotation-commit"
+                role="group"
+                aria-label="Finish drawing"
               >
-                {m.selected < 0 && ["pen", "highlighter"].includes(m.tool) && (
-                  <RangeProperty
-                    name="smoothing"
-                    label="Pen smoothing"
-                    model={m}
-                    actions={a}
-                    step={10}
-                  />
+                <Button
+                  data-command="apply"
+                  className="annotation-apply"
+                  aria-label={m.applyLabel}
+                  title={m.applyLabel}
+                  aria-busy={m.saving}
+                  data-dirty={m.dirty ? "" : undefined}
+                  disabled={m.busy || !m.hasImage}
+                  onClick={() => a.command("apply")}
+                >
+                  <SquareCheck size={18} />
+                </Button>
+                {command(
+                  "cancel",
+                  "Close drawing editor",
+                  <X size={16} />,
+                  m.saving,
                 )}
-                {activeTool === "pen" && (
-                  <>
-                    <label data-property="pen-mode">
-                      <span>Pen rendering</span>
-                      <select
-                        data-field="pen-mode"
-                        aria-label="Pen rendering"
-                        value={String(m.values["pen-mode"])}
-                        disabled={m.busy || m.selected >= 0}
-                        onChange={(e) =>
-                          a.property("pen-mode", e.currentTarget.value)
+              </div>
+            </div>
+            {hasProperties && (
+              <div
+                className="annotation-properties annotation-primary-properties"
+                role="group"
+                aria-label="Tool properties"
+              >
+                {!["pan", "select"].includes(activeTool) && (
+                  <DrawingPopover
+                    name="colors"
+                    label="Drawing color"
+                    {...popoverProps}
+                  >
+                    <ToggleGroup
+                      className="annotation-palette"
+                      aria-label="Saved drawing colors"
+                      value={[String(m.values.color)]}
+                      onValueChange={(value) => {
+                        if (value[0]) {
+                          a.property("color", value[0]);
+                          onPopup(null);
                         }
-                      >
-                        <option value="classic">Classic constant width</option>
-                        <option value="pressure">Pressure / tapered</option>
-                      </select>
-                    </label>
-                    <p className="annotation-pressure-hint">
-                      Pressure / tapered uses pen-reported pressure; mouse and
-                      touch use simulated pressure. Existing strokes keep their
-                      rendering mode.
-                    </p>
-                    {m.current?.tool === "pen" && m.current.stroke && (
-                      <p role="status">
-                        {m.current.stroke.pressure === "pointer"
-                          ? "Recorded pen pressure"
-                          : "Simulated pressure"}{" "}
-                        · perfect-freehand 1.2.3
-                      </p>
-                    )}
-                  </>
+                      }}
+                    >
+                      {m.colors.map((color) => (
+                        <Toggle
+                          key={color}
+                          value={color}
+                          data-color={color}
+                          aria-label={`Use color ${color}`}
+                          style={
+                            { "--annotation-color": color } as CSSProperties
+                          }
+                        />
+                      ))}
+                    </ToggleGroup>
+                    {property("color", "Custom drawing color", "color")}
+                  </DrawingPopover>
                 )}
-                {activeTool === "rectangle" &&
+                {!["text", "select", "pan"].includes(activeTool) &&
                   property(
-                    "radius",
-                    "Rectangle corner radius in image pixels",
-                    "number",
-                    0,
-                    LIMITS.maxDimension,
-                  )}
-                {(activeTool === "highlighter" || filled) && (
-                  <RangeProperty
-                    name="opacity"
-                    label="Highlight or fill opacity"
-                    model={m}
-                    actions={a}
-                    step={5}
-                  />
-                )}
-                {filled && (
-                  <>
-                    {property("fill", "Fill shape", "checkbox")}
-                    {property("fill-color", "Shape fill color", "color")}
-                  </>
-                )}
-                {activeTool === "text" && (
-                  <>
-                    {property(
-                      "wrap",
-                      "Text wrapping width",
-                      "number",
-                      1,
-                      LIMITS.maxDimension,
-                    )}
-                    {property("background", "Text background", "checkbox")}
-                    {property(
-                      "background-color",
-                      "Text background color",
-                      "color",
-                    )}
-                    {property("text-outline", "Outline text", "checkbox")}
-                    {property(
-                      "text-leader",
-                      "Connect text to target",
-                      "checkbox",
-                    )}
-                  </>
-                )}
-                {activeTool === "callout" &&
-                  property("label", "Callout label", "text")}
-                {activeTool === "magnifier" &&
-                  property(
-                    "scale",
-                    "Detail magnification",
+                    "width",
+                    "Stroke width in image pixels",
                     "number",
                     1,
-                    8,
-                    0.5,
+                    LIMITS.maxWidth,
                   )}
-                {!!m.marks.length &&
-                  (m.tool === "select" || m.selected >= 0) && (
-                    <label data-property="mark">
-                      <span>Drawing</span>
-                      <select
-                        data-field="mark"
-                        aria-label="Select an editable drawing"
-                        disabled={m.busy}
-                        value={m.selected}
-                        onChange={(e) =>
-                          a.property("mark", e.currentTarget.value)
-                        }
-                      >
-                        <option value={-1}>No drawing selected</option>
-                        {m.marks.map((mark, i) => (
-                          <option key={i} value={i}>
-                            {i + 1} ·{" "}
-                            {mark.tool === "callout"
-                              ? `Callout ${mark.number}${mark.label ? `: ${mark.label}` : ""}`
-                              : mark.tool}
-                            {m.hidden.has(mark) ? " (hidden)" : ""}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                {["text", "callout"].includes(activeTool) &&
+                  property(
+                    "size",
+                    "Text size in image pixels",
+                    "number",
+                    1,
+                    LIMITS.maxTextSize,
                   )}
-                {m.current?.tool === "text" &&
-                  command("edit-text", "Edit text in place", "Edit text")}
-                {m.selected >= 0 && (
-                  <>
-                    {command(
-                      "delete",
-                      "Delete selected drawing",
-                      "Delete drawing",
-                    )}
-                    {command(
-                      "visibility",
-                      m.current && m.hidden.has(m.current)
-                        ? "Show selected drawing"
-                        : "Hide selected drawing",
-                      m.current && m.hidden.has(m.current)
-                        ? "Show drawing"
-                        : "Hide drawing",
-                    )}
-                  </>
-                )}
-                {m.path && (
-                  <div
-                    className="annotation-path-tools"
-                    data-path-tools
-                    role="group"
-                    aria-label="Path editing"
+                {hasOptions && (
+                  <DrawingPopover
+                    name="options"
+                    label="Options"
+                    className="annotation-properties"
+                    {...popoverProps}
                   >
-                    {m.pathDraft &&
-                      command(
-                        "finish-path",
-                        "Finish open path",
-                        "Finish path",
-                        m.busy || m.path.nodes.length < 2,
+                    {m.selected < 0 &&
+                      ["pen", "highlighter"].includes(m.tool) && (
+                        <RangeProperty
+                          name="smoothing"
+                          label="Pen smoothing"
+                          model={m}
+                          actions={a}
+                          step={10}
+                        />
                       )}
-                    {command(
-                      "close-path",
-                      m.path.closed ? "Open path" : "Close path",
-                      undefined,
-                      m.busy || m.path.nodes.length < 3,
-                      { pressed: m.path.closed },
+                    {activeTool === "pen" && (
+                      <>
+                        <label data-property="pen-mode">
+                          <span>Mode</span>
+                          <select
+                            data-field="pen-mode"
+                            aria-label="Pen rendering"
+                            value={String(m.values["pen-mode"])}
+                            disabled={m.busy || m.selected >= 0}
+                            onChange={(e) =>
+                              a.property("pen-mode", e.currentTarget.value)
+                            }
+                          >
+                            <option value="classic">Classic</option>
+                            <option value="pressure">Pressure</option>
+                          </select>
+                        </label>
+                      </>
                     )}
-                    {command(
-                      "smooth-node",
-                      "Smooth selected path point",
-                      "Smooth point",
-                      m.busy || m.pathDraft || m.selectedNode < 0,
+                    {activeTool === "rectangle" &&
+                      property(
+                        "radius",
+                        "Rectangle corner radius in image pixels",
+                        "number",
+                        0,
+                        LIMITS.maxDimension,
+                      )}
+                    {(activeTool === "highlighter" || filled) && (
+                      <RangeProperty
+                        name="opacity"
+                        label="Highlight or fill opacity"
+                        model={m}
+                        actions={a}
+                        step={5}
+                      />
                     )}
-                    {command(
-                      "corner-node",
-                      "Make selected path point a corner",
-                      "Corner point",
-                      m.busy || m.pathDraft || m.selectedNode < 0,
+                    {filled && (
+                      <>
+                        {property("fill", "Fill shape", "checkbox")}
+                        {property("fill-color", "Shape fill color", "color")}
+                      </>
                     )}
-                    {command(
-                      "delete-node",
-                      "Delete selected path point",
-                      "Delete point",
-                      m.busy || m.pathDraft || m.selectedNode < 0,
+                    {activeTool === "text" && (
+                      <>
+                        {property(
+                          "wrap",
+                          "Text wrapping width",
+                          "number",
+                          1,
+                          LIMITS.maxDimension,
+                        )}
+                        {property("background", "Text background", "checkbox")}
+                        {property(
+                          "background-color",
+                          "Text background color",
+                          "color",
+                        )}
+                        {property("text-outline", "Outline text", "checkbox")}
+                        {property(
+                          "text-leader",
+                          "Connect text to target",
+                          "checkbox",
+                        )}
+                      </>
                     )}
-                  </div>
+                    {activeTool === "callout" &&
+                      property("label", "Callout label", "text")}
+                    {activeTool === "magnifier" &&
+                      property(
+                        "scale",
+                        "Detail magnification",
+                        "number",
+                        1,
+                        8,
+                        0.5,
+                      )}
+                    {!!m.marks.length &&
+                      (m.tool === "select" || m.selected >= 0) && (
+                        <label data-property="mark">
+                          <span>Drawing</span>
+                          <select
+                            data-field="mark"
+                            aria-label="Select an editable drawing"
+                            disabled={m.busy}
+                            value={m.selected}
+                            onChange={(e) =>
+                              a.property("mark", e.currentTarget.value)
+                            }
+                          >
+                            <option value={-1}>No drawing selected</option>
+                            {m.marks.map((mark, i) => (
+                              <option key={i} value={i}>
+                                {i + 1} ·{" "}
+                                {mark.tool === "callout"
+                                  ? `Callout ${mark.number}${mark.label ? `: ${mark.label}` : ""}`
+                                  : mark.tool}
+                                {m.hidden.has(mark) ? " (hidden)" : ""}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
+                    {m.current?.tool === "text" &&
+                      command("edit-text", "Edit text in place", "Edit text")}
+                    {m.selected >= 0 && (
+                      <>
+                        {command(
+                          "delete",
+                          "Delete selected drawing",
+                          "Delete drawing",
+                        )}
+                        {command(
+                          "visibility",
+                          m.current && m.hidden.has(m.current)
+                            ? "Show selected drawing"
+                            : "Hide selected drawing",
+                          m.current && m.hidden.has(m.current)
+                            ? "Show drawing"
+                            : "Hide drawing",
+                        )}
+                      </>
+                    )}
+                    {m.path && (
+                      <div
+                        className="annotation-path-tools"
+                        data-path-tools
+                        role="group"
+                        aria-label="Path editing"
+                      >
+                        {m.pathDraft &&
+                          command(
+                            "finish-path",
+                            "Finish open path",
+                            "Finish path",
+                            m.busy || m.path.nodes.length < 2,
+                          )}
+                        {command(
+                          "close-path",
+                          m.path.closed ? "Open path" : "Close path",
+                          undefined,
+                          m.busy || m.path.nodes.length < 3,
+                          { pressed: m.path.closed },
+                        )}
+                        {command(
+                          "smooth-node",
+                          "Smooth selected path point",
+                          "Smooth point",
+                          m.busy || m.pathDraft || m.selectedNode < 0,
+                        )}
+                        {command(
+                          "corner-node",
+                          "Make selected path point a corner",
+                          "Corner point",
+                          m.busy || m.pathDraft || m.selectedNode < 0,
+                        )}
+                        {command(
+                          "delete-node",
+                          "Delete selected path point",
+                          "Delete point",
+                          m.busy || m.pathDraft || m.selectedNode < 0,
+                        )}
+                      </div>
+                    )}
+                  </DrawingPopover>
                 )}
-              </DrawingPopover>
-            </div>
+              </div>
+            )}
           </div>
           {m.discard && (
             <div
@@ -803,20 +879,6 @@ export function DrawingEditorView({
               )}
             </div>
           )}
-          <p className="annotation-gesture-hint">{m.hint}</p>
-          <p className="annotation-padding-hint" hidden={!m.padding}>
-            Striped margins: drawing space, not captured content.
-          </p>
-          <Dialog.Description id="annotation-help" className="annotation-help">
-            Select a drawing to resize it using handles. Drag line endpoints or
-            path points and curve handles. Double-click a path segment to add a
-            point. Path tool: click points, drag for curves, Enter or
-            double-click to finish; click the first point to close. Shift draws
-            squares and circles. Escape cancels an active gesture or unfinished
-            path. Striped margins are drawing space, not captured content; the
-            stripes and labels are not exported. Hold O or use Show original to
-            compare. Wheel to zoom; Space and drag to pan.
-          </Dialog.Description>
           <div ref={refs.viewport} className="annotation-viewport">
             <div ref={refs.surface} className="annotation-surface">
               <div
@@ -949,12 +1011,12 @@ export function mountDrawingEditor(
       },
       closePopup() {
         if (!popup) return false;
-        const command = popup;
+        const trigger = dialog.querySelector<HTMLElement>(
+          `[data-command="${popup}"]`,
+        );
         onPopup(null);
-        dialog
-          .querySelector<HTMLElement>(`[data-command="${command}"]`)
-          ?.focus({ preventScroll: true });
-        return true;
+        trigger?.focus({ preventScroll: true });
+        return !!trigger;
       },
       destroy,
     };

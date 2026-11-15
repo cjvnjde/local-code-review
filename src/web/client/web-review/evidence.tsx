@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { Trash2 } from "lucide-react";
+import { Tooltip } from "../components/ui/tooltip.tsx";
 import { useAnnotator } from "../components/images.tsx";
 import { Button } from "../components/ui/button.tsx";
 import { DifferenceOverlay } from "./difference-overlay.tsx";
@@ -33,7 +35,7 @@ function captureName(capture: WebCapture): string {
     element?.text.split("\n").find((line) => line.trim()) ||
     capture.selector ||
     capture.title;
-  const subject = name.replace(/\s+/g, " ").trim().slice(0, 80);
+  const subject = name.replace(/\s+/g, " ").trim();
   return capture.mode === "area"
     ? `Area · ${subject || "Page"}`
     : subject || (capture.mode === "point" ? "Point" : "Element");
@@ -98,20 +100,23 @@ function Capture({
   const src = image && attachmentSrc(image);
   return (
     <figure className="min-w-0 space-y-2 rounded-md bg-muted/30 p-2">
-      <figcaption className="flex flex-wrap items-center gap-2" title={label}>
-        <span className="min-w-0 flex-1 break-words text-xs font-medium">
+      <figcaption className="flex min-w-0 items-center gap-2" title={label}>
+        <span className="min-w-0 flex-1 truncate text-xs font-medium">
           {label}
         </span>
         {onRemove && (
-          <Button
-            variant="ghost"
-            size="sm"
-            aria-label={`Remove capture: ${label}`}
-            disabled={busy}
-            onClick={() => void remove()}
-          >
-            Remove capture
-          </Button>
+          <Tooltip label="Remove capture">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7 shrink-0"
+              aria-label={`Remove capture: ${label}`}
+              disabled={busy}
+              onClick={() => void remove()}
+            >
+              <Trash2 />
+            </Button>
+          </Tooltip>
         )}
       </figcaption>
       {src && (
@@ -119,7 +124,7 @@ function Capture({
           source={image!}
           label={label}
           thumbnail
-          onDraw={onAnnotate ? () => void draw() : undefined}
+          onDraw={onAnnotate && capture.area ? () => void draw() : undefined}
           size={
             capture.annotation
               ? {
@@ -134,26 +139,9 @@ function Capture({
           }
         />
       )}
-      <div className="flex flex-wrap items-center gap-2">
-        {capture.annotation && (
-          <p className="text-xs text-muted-foreground">
-            Drawing attached · original retained
-          </p>
-        )}
-        {!src && (
-          <p className="text-xs text-muted-foreground">Point · no screenshot</p>
-        )}
-        {onAnnotate && capture.area && (
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={busy}
-            onClick={() => void draw()}
-          >
-            {capture.annotation ? "Edit drawing" : "Annotate"}
-          </Button>
-        )}
-      </div>
+      {!src && (
+        <p className="text-xs text-muted-foreground">Point · no screenshot</p>
+      )}
       {error && (
         <p role="alert" className="text-xs text-destructive">
           {error}
@@ -174,14 +162,38 @@ function Capture({
             </details>
           )}
           {(capture.selections || [capture]).map((selection, i) => (
-            <div key={i}>
-              <code className="break-all">{selection.selector}</code>
-              <p>{selection.element?.text}</p>
-              <p>{selection.components.map((c) => c.name).join(" → ")}</p>
-              <pre className="max-h-36 overflow-auto whitespace-pre-wrap">
-                {JSON.stringify(selection.element?.styles, null, 2)}
-              </pre>
-            </div>
+            <details key={i}>
+              <summary
+                className="cursor-pointer truncate"
+                title={selection.selector}
+              >
+                {selection.selector || `Selection ${i + 1}`}
+              </summary>
+              <div className="mt-2 space-y-2">
+                {selection.element?.text && (
+                  <details>
+                    <summary className="cursor-pointer">Text</summary>
+                    <p className="whitespace-pre-wrap break-words">
+                      {selection.element.text}
+                    </p>
+                  </details>
+                )}
+                {selection.components.length > 0 && (
+                  <details>
+                    <summary className="cursor-pointer">Components</summary>
+                    <p>{selection.components.map((c) => c.name).join(" → ")}</p>
+                  </details>
+                )}
+                {selection.element?.styles && (
+                  <details>
+                    <summary className="cursor-pointer">Styles</summary>
+                    <pre className="whitespace-pre-wrap break-all">
+                      {JSON.stringify(selection.element.styles, null, 2)}
+                    </pre>
+                  </details>
+                )}
+              </div>
+            </details>
           ))}
           {capture.context && (
             <ContextReference

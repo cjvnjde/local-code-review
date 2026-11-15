@@ -37,6 +37,7 @@ import {
 import { browserEvidence, cssEvidence } from "./evidence.ts";
 import { repositoryEvidence } from "./repository-evidence.ts";
 import { DiagnosticsEvidence } from "./diagnostics-evidence.ts";
+import { fullPageSources } from "./full-page-sources.ts";
 import {
   privateCapture,
   redactionRegions,
@@ -478,7 +479,20 @@ export function createWebReview(options: WebReviewOptions) {
     const { page: _page, area: _area, ...metadata } = clean;
     const extras: ContextPartInput[] = settings.aiContext
       ? [
-          ...parts.filter((part) => part.name !== "full-page"),
+          ...parts.filter(
+            (part) =>
+              ![
+                "full-page",
+                "full-page-html",
+                "full-page-css",
+                "full-page-js",
+              ].includes(part.name),
+          ),
+          ...(await fullPageSources(null, "", {
+            enabled: settings.contextFullPage,
+            private: !!clean.redaction?.regions.length,
+            point: true,
+          })),
           {
             name: "full-page",
             label: "Full document screenshot",
@@ -530,10 +544,18 @@ export function createWebReview(options: WebReviewOptions) {
           "repository",
           "diagnostics",
           "full-page",
+          "full-page-html",
+          "full-page-css",
+          "full-page-js",
         ].map((name) => ({
           name,
           label: name,
-          type: name === "full-page" ? "image/png" : "application/json",
+          type:
+            name === "full-page"
+              ? "image/png"
+              : name === "full-page-html"
+                ? "text/plain"
+                : "application/json",
           status: "excluded",
           detail: REDACTION_OMISSION,
         }))
@@ -652,6 +674,11 @@ export function createWebReview(options: WebReviewOptions) {
         ? regions.length
           ? privacyParts
           : [
+              ...(await fullPageSources(browser?.cdp ?? null, sessionId, {
+                enabled: settings.contextFullPage,
+                private: false,
+                point: false,
+              })),
               htmlPart(input, settings),
               ...(await evidenceParts(input, settings)),
               settings.contextFullPage

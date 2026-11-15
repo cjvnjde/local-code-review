@@ -236,14 +236,15 @@ export function Settings({
         <h3 className="text-sm font-semibold">Capture context</h3>
         <p className="text-xs text-muted-foreground">
           Context is saved locally and read by AI only when needed. Selected
-          HTML excludes form values and hidden content; screenshots are not
-          redacted and may still show sensitive information.
+          HTML excludes form values and hidden content. Full-page HTML/CSS/JS
+          preserves raw page source and may include secrets or hidden data.
+          Privacy regions omit full-page context.
         </p>
         {(
           [
             ["aiContext", "Save context for on-demand AI reading"],
             ["contextHtml", "Include selected HTML"],
-            ["contextFullPage", "Include full-page screenshots"],
+            ["contextFullPage", "Include full-page screenshot and HTML/CSS/JS"],
             [
               "contextDiagnostics",
               "Record recent interaction and failure metadata",

@@ -858,18 +858,10 @@ browserTest(
 );
 
 browserTest(
-  "drawing completion stays visible at narrow widths and advanced tools dismiss accessibly",
+  "drawing actions stay visible and tools overflow only when space requires it",
   async () => {
     await withEditor(async ({ js, click, key, drag, save, reopen, resize }) => {
-      const completion = () =>
-        js(`(()=>{
-        const button=document.querySelector('[data-command=apply]');
-        return {text:button.textContent,label:button.getAttribute('aria-label')};
-      })()`);
-      expect(await completion()).toEqual({
-        text: "Use drawing",
-        label: "Use drawing",
-      });
+      await resize(390, 720);
       await click("[data-command=more-tools]");
       await key("Escape");
       expect(await js("document.activeElement.dataset.command")).toBe(
@@ -884,11 +876,14 @@ browserTest(
         await js("!!document.querySelector('[data-annotation-editor]')"),
       ).toBe(true);
       await key("Enter");
+      const overflowTool = await js(
+        "document.querySelector('#annotation-more-tools [data-tool]').dataset.tool",
+      );
       await js(
-        "(()=>{const gate=Promise.withResolvers(),button=document.querySelector('[data-tool=highlighter]');if(document.activeElement===button)gate.resolve();else button.addEventListener('focus',gate.resolve,{once:true});return gate.promise})()",
+        "(()=>{const gate=Promise.withResolvers(),button=document.querySelector('#annotation-more-tools [data-tool]');if(document.activeElement===button)gate.resolve();else button.addEventListener('focus',gate.resolve,{once:true});return gate.promise})()",
       );
       expect(await js("document.activeElement.dataset.tool")).toBe(
-        "highlighter",
+        overflowTool,
       );
       await key(" ");
       expect(
@@ -898,31 +893,33 @@ browserTest(
       ).toBe(false);
       expect(
         await js(
-          "document.querySelector('.annotation-active-tool').textContent",
-        ),
-      ).toBe("Tool: Highlighter");
-      expect(
-        await js(
           "document.querySelector('[data-command=more-tools]').getAttribute('aria-pressed')",
         ),
       ).toBe("true");
       await click("[data-command=more-tools]");
-      await click(".annotation-active-tool");
+      await click("[data-command=original]");
       expect(
         await js(
           "document.querySelector('#annotation-more-tools').hasAttribute('data-open')",
         ),
       ).toBe(false);
+      await click("[data-command=original]");
       await click("[data-tool=rectangle]");
       await drag({ x: 120, y: 120 }, { x: 210, y: 180 });
       await save();
       await reopen("Save drawing");
-      expect(await completion()).toEqual({
-        text: "Save drawing",
-        label: "Save drawing",
-      });
-      for (const width of [768, 390]) {
+      for (const width of [320, 390, 768, 1200]) {
         await resize(width, 720);
+        expect(
+          await js("!!document.querySelector('[data-command=more-tools]')"),
+        ).toBe(width < 1200);
+        if (width === 1200) {
+          expect(
+            await js(
+              "document.querySelector('[aria-label=\"Drawing tools\"]').querySelectorAll('[data-tool]').length",
+            ),
+          ).toBe(13);
+        }
         let completionTop: number | undefined;
         for (const tool of [
           "select",
@@ -950,7 +947,7 @@ browserTest(
               visible:controls.every(el=>{const r=el.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth;}),
               completionVisible:apply.width>0&&cancel.right<=innerWidth&&apply.top>=0,
               canvasHeight:editor.querySelector('.annotation-viewport').clientHeight,
-              popupOpen:editor.querySelector('#annotation-more-tools').hasAttribute('data-open'),
+              popupOpen:!!editor.querySelector('#annotation-more-tools')?.hasAttribute('data-open'),
               active:editor.querySelector('[data-tool="${tool}"]').getAttribute('aria-pressed')
             };
           })()`);
@@ -969,7 +966,7 @@ browserTest(
 );
 
 browserTest(
-  "drawing workspace distinguishes tool and selection and keeps comparison and margin decoration out of exports",
+  "comparison and margin decoration stay out of drawing exports",
   async () => {
     await withEditor(async ({ js, click, drag, key, save, reopen, resize }) => {
       await resize(390, 720);
@@ -977,34 +974,16 @@ browserTest(
         "(async()=>Array.from(new Uint8Array(await(await fetch('/api/attachment?name=source.png')).arrayBuffer())))()",
       );
       await click("[data-tool=arrow]");
-      expect(
-        await js(
-          "document.querySelector('.annotation-gesture-hint').textContent",
-        ),
-      ).toBe("Drag from the tail to the arrow tip.");
       await drag({ x: 120, y: 120 }, { x: 280, y: 200 });
-      expect(
-        await js(`({
-          tool:document.querySelector('.annotation-active-tool').textContent,
-          selection:document.querySelector('.annotation-selection').textContent,
-          hint:document.querySelector('.annotation-gesture-hint').textContent,
-        })`),
-      ).toEqual({
-        tool: "Tool: Select",
-        selection: "Selected: Arrow",
-        hint: "Drag to move; drag either endpoint to reshape.",
-      });
       expect(
         await js(`(()=>{
           const original=document.querySelector('[data-command=original]');
-          const padding=document.querySelector('.annotation-padding-hint');
           const stripe=document.querySelector('.annotation-padding span');
           const source=document.querySelector('.annotation-source-outline').getBoundingClientRect();
           const margin=stripe.getBoundingClientRect();
           const zoom=document.querySelector('.annotation-zoom-tools').getBoundingClientRect();
           return {
             originalVisible:original.checkVisibility()&&!original.closest('.annotation-popover'),
-            paddingVisible:padding.checkVisibility()&&padding.textContent.includes('not captured content'),
             striped:getComputedStyle(stripe).backgroundImage.includes('repeating-linear-gradient'),
             marginEndsAtSource:Math.abs(margin.bottom-source.top)<1,
             zoomAtBottom:zoom.top>innerHeight/2&&zoom.right<=innerWidth,
@@ -1013,7 +992,6 @@ browserTest(
         })()`),
       ).toEqual({
         originalVisible: true,
-        paddingVisible: true,
         striped: true,
         marginEndsAtSource: true,
         zoomAtBottom: true,
@@ -1031,11 +1009,6 @@ browserTest(
           "document.querySelector('[data-command=original]').getAttribute('aria-pressed')",
         ),
       ).toBe("true");
-      expect(
-        await js(
-          "document.querySelector('.annotation-gesture-hint').textContent",
-        ),
-      ).toContain("drawings are hidden, not removed");
       const first = await save();
       expect(first.marks[0]?.tool).toBe("arrow");
       expect(

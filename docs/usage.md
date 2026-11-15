@@ -119,12 +119,13 @@ protected with a longer fence.
 Drop or paste files, or use **Attach file**, to attach them
 directly to a note or reply (up to 12 MiB each). Files are kept beside the review
 and linked relatively; external images are not loaded.
-Attached images have inline thumbnails, a zoom viewer, and **Annotate**. Drawings
-retain editable shapes, text, paths, callouts and other tools when reopened.
-**More tools** holds less-used drawing tools; **Options** contains settings for
-the active tool or selected drawing. **Use drawing** returns the result to the
-editor without saving the note. Image diffs also support clicking or dragging a
-region to capture it in a comment. Audio diffs have before/after players.
+Attached images have inline thumbnails and a zoom viewer. Clicking an editable
+image opens its drawing editor. Drawings retain editable shapes, text, paths,
+callouts and other tools when reopened. Tools share one header; **More tools**
+appears only when they cannot all fit. Tool-specific controls occupy the second
+row, with help in tooltips. The checkmark applies the drawing without saving the
+note. Image diffs also support clicking or dragging a region to capture it in a
+comment. Audio diffs have before/after players.
 The pen's optional pressure/taper setting uses versioned perfect-freehand strokes.
 Pen devices retain pressure samples; mouse input uses explicitly recorded simulated
 pressure. Existing drawings keep their original rendering. Drawing controls use
@@ -275,12 +276,13 @@ contain repository content: keep the review output private.
 
 Existing saved context links remain compatible with the `apply-lcr` skill and
 `lcr context`. Web capture context bundles, selected HTML, and full-page screenshots
-are enabled by default. **Settings → Capture context** can disable them; page
-evidence may include sensitive content. Context stays local; use the capture's
+with HTML/CSS/JS sources are enabled by default. **Settings → Capture context** can
+disable them. Full-page source is raw text evidence and can include hidden data or
+secrets; privacy-region captures omit it. Context stays local; use the capture's
 context ID or `context/<id>/manifest.json` when asking an agent to inspect it.
-Previously saved context cards can still inspect their manifests and read text in
-chunks. Web captures now expose that inspector under **Capture details → Additional
-context**; expanding it loads only the inventory, not every image or text payload.
+Context lives under nested **Capture details → Additional context** disclosures.
+**Read text** expands or collapses a part without a nested scroll area; large
+parts load in chunks. Opening the inventory does not load every payload.
 New arbitrary-file attachments use ordinary relative links instead of a separate
 context form.
 
