@@ -124,18 +124,24 @@ export async function saveWebContext(
       label: "Complete capture and editable drawing",
       type: "application/json",
       data: encoded,
+      detail:
+        "Complete historical metadata and drawing geometry; prefer a focused part for ordinary questions.",
     },
     {
       name: "elements",
       label: "Selected elements, selectors and component hints",
       type: "application/json",
       data: JSON.stringify(elements, null, 2),
+      detail:
+        "Target identities and framework/source hints. Verify source hints against the current checkout.",
     },
     {
       name: "styles",
       label: "Selected computed styles",
       type: "application/json",
       data: JSON.stringify(styles, null, 2),
+      detail:
+        "Computed results on selected elements. Use layout and css-rules to investigate their causes.",
     },
     {
       name: "viewport",
@@ -153,6 +159,7 @@ export async function saveWebContext(
       name: "selected-area",
       label: "Original selected area",
       type: "image/png",
+      detail: "Untouched selected-area evidence, not the annotated proposal.",
       attachment: clean.area,
       ...(!clean.area
         ? {
@@ -180,7 +187,20 @@ export async function saveWebContext(
   const context = await saveContext(repoRoot, outDir, {
     label,
     at: clean.at,
-    source: { url: clean.url, title: clean.title, captureAt: clean.at },
+    source: {
+      url: clean.url,
+      title: clean.title,
+      captureAt: clean.at,
+      target: [
+        clean.element?.attributes.role || clean.element?.tag || clean.mode,
+        clean.element?.attributes["aria-label"],
+        clean.components[0]?.name,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+        .replace(/\s+/g, " ")
+        .slice(0, 240),
+    },
     parts,
   });
   return { ...clean, context };

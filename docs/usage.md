@@ -205,8 +205,20 @@ are enabled by default. **Settings → Capture context** can disable them; page
 evidence may include sensitive content. Context stays local; use the capture's
 context ID or `context/<id>/manifest.json` when asking an agent to inspect it.
 Previously saved context cards can still inspect their manifests and read text in
-chunks. New arbitrary-file attachments use ordinary relative links instead of a
-separate context form.
+chunks. Web captures now expose that inspector under **Capture details → Additional
+context**; expanding it loads only the inventory, not every image or text payload.
+New arbitrary-file attachments use ordinary relative links instead of a separate
+context form.
+
+Capture bundles include bounded layout/CSS provenance, browser-state hints, and
+checkout identity. Recent interaction/failure metadata is separately opt-in;
+disabling it clears the live recording buffers. Screenshots are not redacted.
+See [web capture context](web-ui.md#context) for evidence scopes and privacy limits.
+
+Agents receive a compact discovery inventory and can retrieve only a captured
+target, CSS property, event window, or JSON subtree. `lcr context --help` describes
+the offline filters. All retrieval uses saved evidence; it does not query the
+current page or silently replace an unavailable capture.
 
 ## Navigate a large review
 

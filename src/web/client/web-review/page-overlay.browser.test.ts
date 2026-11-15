@@ -44,7 +44,7 @@ browserTest(
           const message=JSON.parse(encoded);requests.push(message);
           let value={};
           if(message.action==='notes')value={notes:window.savedNotes||[]};
-          if(message.action==='context-settings')value={aiContext:false,contextHtml:false,contextFullPage:false};
+          if(message.action==='context-settings')value=window.contextSettings||{aiContext:false,contextHtml:false,contextFullPage:false,contextDiagnostics:false};
           if(message.action==='capture'){
             const capture=message.payload.capture;
             if(message.payload.id){
@@ -406,11 +406,94 @@ browserTest(
       expect(await js(`${root}.querySelector('.draft-pin')`)).toBeNull();
       await js("window.scrollTo(0,0)");
 
+      // New evidence is bounded, opt-in, and never includes editable values or event payloads.
+      await mode("browse");
+      await js(`window.contextSettings={aiContext:true,contextHtml:false,contextFullPage:false,contextDiagnostics:true};
+        window.overlay.configureContext(window.contextSettings);
+        const privateInput=document.createElement('input');privateInput.id='private-input';
+        privateInput.value='PRIVATE_VALUE_SENTINEL';privateInput.setAttribute('aria-label','PRIVATE_LABEL_SENTINEL');
+        privateInput.style.cssText='position:absolute;left:900px;top:100px;width:100px';
+        document.body.append(privateInput);
+        document.querySelector('#parent').style.setProperty('--unused-secret','PRIVATE_CSS_SENTINEL');
+        document.querySelector('#parent').style.setProperty('--layout-gap','19px');
+        document.querySelector('#parent').style.gap='var(--layout-gap)';
+        const build=document.createElement('meta');build.name='lcr-build-id';build.content='build-before';document.head.append(build);
+        window.prepareEvidence=()=>window.overlay.prepare({mode:'element',url:location.href,selector:'button#target',element:{tag:'button',attributes:{id:'target'}}});
+      `);
+      await click(await center("#target"));
+      await js(`document.querySelector('#private-input').focus({preventScroll:true});
+        document.querySelector('#target').dispatchEvent(new MouseEvent('click',{bubbles:true}));
+        document.querySelector('#private-input').dispatchEvent(new InputEvent('input',{bubbles:true,data:'PRIVATE_EVENT_SENTINEL'}));
+      `);
+      const evidence = await js("window.prepareEvidence()");
+      const layout = JSON.parse(evidence.contextLayout.data);
+      const environment = JSON.parse(evidence.contextEnvironment.data);
+      const interactions = JSON.parse(evidence.contextInteractions.data);
+      expect(layout.nodes.length).toBeLessThanOrEqual(40);
+      expect(
+        new Set(layout.nodes.map((node: { id: string }) => node.id)).size,
+      ).toBe(layout.nodes.length);
+      const selectedTarget = layout.nodes.find(
+        (node: { relation: string }) => node.relation === "target",
+      );
+      const layoutParent = layout.nodes.find(
+        (node: { selector: string }) => node.selector === "section#parent",
+      );
+      expect(layoutParent.targets).toContain(selectedTarget.selector);
+      expect(layoutParent.styles["--layout-gap"]).toBe("19px");
+      expect(environment.focused.tag).toBe("input");
+      expect(environment.appBuild.id).toBe("build-before");
+      expect(
+        interactions.events.filter(
+          (event: { type: string }) => event.type === "click",
+        ),
+      ).toHaveLength(1);
+      expect(JSON.stringify([layout, environment, interactions])).not.toContain(
+        "PRIVATE_",
+      );
+      for (const part of [
+        evidence.contextLayout,
+        evidence.contextEnvironment,
+        evidence.contextInteractions,
+      ])
+        expect(new TextEncoder().encode(part.data).length).toBeLessThanOrEqual(
+          128 * 1024,
+        );
+      await js(
+        `for(let i=0;i<60;i++)document.querySelector(i%2?'#target':'#private-input').focus({preventScroll:true})`,
+      );
+      const cappedInteractions = (await js("window.prepareEvidence()"))
+        .contextInteractions;
+      expect(JSON.parse(cappedInteractions.data).events).toHaveLength(50);
+      expect(cappedInteractions.truncated).toBe(true);
+      await js(`window.overlay.configureContext({...window.contextSettings,contextDiagnostics:false});
+        window.overlay.configureContext(window.contextSettings)`);
+      await js(
+        `${root}.querySelector('[data-launcher]').focus({preventScroll:true})`,
+      );
+      expect(
+        JSON.parse(
+          (await js("window.prepareEvidence()")).contextInteractions.data,
+        ).events,
+      ).toEqual([]);
+      await js(`window.overlay.configureContext({...window.contextSettings,aiContext:false});
+        document.querySelector('#private-input').focus({preventScroll:true});
+        window.overlay.configureContext(window.contextSettings)`);
+      expect(
+        JSON.parse(
+          (await js("window.prepareEvidence()")).contextInteractions.data,
+        ).events,
+      ).toEqual([]);
+      await js("document.querySelector('#private-input').remove()");
+
       await mode("element");
       await freezeKey();
       await until(`!!${root}.querySelector('.frozen-page')`);
+      const frozenContext = await js(
+        "requests.filter(r=>r.action==='freeze').at(-1).payload.capture",
+      );
       await js(
-        "document.querySelector('#target').textContent='Changed after freeze';document.querySelector('#target').style.color='red'",
+        "document.querySelector('#target').textContent='Changed after freeze';document.querySelector('#target').style.color='red';document.querySelector('meta[name=lcr-build-id]').content='build-after';document.documentElement.lang='fr';window.overlay.configureContext({...window.contextSettings,aiContext:false})",
       );
       await mode("point");
       await click(at);
@@ -422,6 +505,16 @@ browserTest(
       expect(frozen.rect).toEqual(live.rect);
       expect(frozen.point).toEqual(at);
       expect(await pinCenter()).toEqual(at);
+      expect(frozen.contextLayout).toEqual(frozenContext.contextLayout);
+      expect(frozen.contextEnvironment).toEqual(
+        frozenContext.contextEnvironment,
+      );
+      expect(frozen.contextInteractions).toEqual(
+        frozenContext.contextInteractions,
+      );
+      expect(JSON.parse(frozen.contextEnvironment.data).appBuild.id).toBe(
+        "build-before",
+      );
 
       await control("[data-close]");
       await control("[data-resume]");
@@ -436,6 +529,10 @@ browserTest(
       const truncated = (await captures()).at(-1);
       expect(truncated.element).toBeUndefined();
       expect(truncated.selector).toBeUndefined();
+      expect(truncated.contextLayout.truncated).toBe(true);
+      expect(
+        JSON.parse(truncated.contextLayout.data).nodes.length,
+      ).toBeLessThanOrEqual(40);
       await control("[data-close]");
       await control("[data-resume]");
       await mode("point");

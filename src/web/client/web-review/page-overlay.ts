@@ -570,7 +570,7 @@ export function installPageReview(config: {
     tellFrame("capturing", { busy: true });
     let id = "";
     try {
-      const settings = await rpc("context-settings", {});
+      const settings = await currentContextSettings();
       // Snapshot DOM hints and optional HTML before inserting the frozen image.
       const capture = captureContext(
         areaCapture({
@@ -1019,7 +1019,517 @@ export function installPageReview(config: {
     aiContext: boolean;
     contextHtml: boolean;
     contextFullPage: boolean;
+    contextDiagnostics: boolean;
   };
+  type ContextPart = { data: string; truncated: boolean };
+  let contextSettings: CaptureSettings | undefined,
+    contextRevision = 0,
+    interactionClipped = false,
+    lastScrollAt = 0;
+  const interactionEvents: { at: string; type: string; selector?: string }[] =
+    [];
+  function configureContext(settings: CaptureSettings) {
+    contextRevision++;
+    contextSettings = {
+      aiContext: settings?.aiContext === true,
+      contextHtml: settings?.contextHtml === true,
+      contextFullPage: settings?.contextFullPage === true,
+      contextDiagnostics: settings?.contextDiagnostics === true,
+    };
+    if (!contextSettings.aiContext || !contextSettings.contextDiagnostics) {
+      interactionEvents.length = 0;
+      interactionClipped = false;
+      lastScrollAt = 0;
+    }
+  }
+  async function currentContextSettings() {
+    const revision = contextRevision;
+    const settings = await rpc("context-settings", {});
+    if (contextRevision === revision) configureContext(settings);
+    return contextSettings!;
+  }
+  const contextExclusions =
+    "No form values, editable content, keystrokes, props/state, storage, cookies, URL data, embedded documents or overlay actions. Identity uses existing capture selectors and explicit semantic labels only.";
+  function contextElement(el: Element) {
+    return (
+      el !== host &&
+      !host.contains(el) &&
+      el.getRootNode() !== root &&
+      !el.closest(
+        "script,style,noscript,template,iframe,object,embed,[hidden],[inert],[aria-hidden=true]",
+      ) &&
+      el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })
+    );
+  }
+  function contextSelector(el: Element): string {
+    // Bound the sibling enumeration performed by the shared selector builder.
+    for (
+      let node: Element | null = el, depth = 0;
+      node && depth < 12;
+      node = node.parentElement, depth++
+    ) {
+      if (
+        (node.parentElement?.children.length ?? 0) > 2500 ||
+        node.id.length > 256 ||
+        (node.getAttribute("data-testid")?.length ?? 0) > 256 ||
+        (node.getAttribute("class")?.length ?? 0) > 1024 ||
+        node.classList.length > 40
+      )
+        return "";
+    }
+    const value = selector(el);
+    return value.length <= 1024 ? value : "";
+  }
+  function contextIdentity(el: Element | null) {
+    if (!el || !contextElement(el)) return undefined;
+    const value = contextSelector(el);
+    return value ? { selector: value, tag: el.localName } : undefined;
+  }
+  function pruneInteractions(now: number) {
+    while (
+      interactionEvents.length &&
+      Date.parse(interactionEvents[0]!.at) < now - 60000
+    )
+      interactionEvents.shift();
+  }
+  function recordInteraction(event: Event) {
+    if (
+      !contextSettings?.aiContext ||
+      !contextSettings.contextDiagnostics ||
+      !event.isTrusted ||
+      event.composedPath().includes(host) ||
+      busy ||
+      freezing ||
+      frozen ||
+      suspended
+    )
+      return;
+    const navigation = ["pageshow", "popstate", "hashchange"].includes(
+      event.type,
+    );
+    if (
+      !navigation &&
+      mode !== "browse" &&
+      !(event instanceof MouseEvent && event.altKey)
+    )
+      return;
+    const now = Date.now();
+    if (navigation) {
+      interactionEvents.length = 0;
+      interactionClipped = false;
+    }
+    if (event.type === "scroll") {
+      if (now - lastScrollAt < 250) return;
+      lastScrollAt = now;
+    }
+    const el = event.target instanceof Element ? event.target : null;
+    const identity = el ? contextIdentity(el) : undefined;
+    if (el && !identity) return;
+    pruneInteractions(now);
+    if (interactionEvents.length === 50) {
+      interactionEvents.shift();
+      interactionClipped = true;
+    }
+    interactionEvents.push({
+      at: new Date(now).toISOString(),
+      type: event.type,
+      ...(identity ? { selector: identity.selector } : {}),
+    });
+  }
+  function layoutContext(
+    capture: { rect: CaptureRect },
+    elements: Element[],
+  ): ContextPart {
+    const limits = {
+      nodes: 40,
+      targets: 20,
+      ancestorsPerTarget: 6,
+      siblingsPerTarget: 4,
+      scannedElements: 500,
+      bytes: 128 * 1024,
+    };
+    const nodes: {
+      id: string;
+      selector: string;
+      relation: "target" | "ancestor" | "sibling";
+      targets: string[];
+      tag: string;
+      role?: string;
+      name?: string;
+      rect: CaptureRect;
+      styles: Record<string, string>;
+      states: Record<string, boolean | string>;
+    }[] = [];
+    const byElement = new Map<Element, (typeof nodes)[number]>();
+    const targets: Element[] = [];
+    let truncated = false,
+      excluded = 0;
+    const properties = [
+      "display",
+      "position",
+      "box-sizing",
+      "width",
+      "height",
+      "min-width",
+      "max-width",
+      "min-height",
+      "max-height",
+      "top",
+      "right",
+      "bottom",
+      "left",
+      "margin",
+      "padding",
+      "border-width",
+      "border-style",
+      "border-color",
+      "border-radius",
+      "color",
+      "background-color",
+      "font-family",
+      "font-size",
+      "font-weight",
+      "line-height",
+      "white-space",
+      "text-align",
+      "flex-direction",
+      "flex-wrap",
+      "flex-grow",
+      "flex-shrink",
+      "flex-basis",
+      "align-items",
+      "align-content",
+      "align-self",
+      "justify-content",
+      "justify-items",
+      "justify-self",
+      "gap",
+      "row-gap",
+      "column-gap",
+      "order",
+      "grid-template-columns",
+      "grid-template-rows",
+      "grid-auto-flow",
+      "grid-auto-columns",
+      "grid-auto-rows",
+      "grid-column",
+      "grid-row",
+      "overflow-x",
+      "overflow-y",
+      "z-index",
+      "isolation",
+      "opacity",
+      "transform",
+      "transform-origin",
+      "contain",
+      "container-type",
+      "visibility",
+      "pointer-events",
+    ];
+    function add(
+      el: Element,
+      relation: (typeof nodes)[number]["relation"],
+      target: string,
+    ) {
+      if (!contextElement(el)) {
+        excluded++;
+        return;
+      }
+      const previous = byElement.get(el);
+      if (previous) {
+        if (!previous.targets.includes(target)) previous.targets.push(target);
+        if (relation === "target") previous.relation = relation;
+        return;
+      }
+      if (nodes.length === limits.nodes) {
+        truncated = true;
+        return;
+      }
+      const key = contextSelector(el);
+      if (!key) {
+        excluded++;
+        truncated = true;
+        return;
+      }
+      const css = getComputedStyle(el),
+        styles: Record<string, string> = {};
+      const variables = new Set<string>();
+      for (const name of properties) {
+        const value = css.getPropertyValue(name);
+        if (value.length > 256) {
+          truncated = true;
+          continue;
+        }
+        if (value && !/url\s*\(|https?:|data:|content\s*:/i.test(value))
+          styles[name] = value;
+        const inline = (el as HTMLElement).style?.getPropertyValue(name) ?? "";
+        if (inline.length > 512) {
+          truncated = true;
+          continue;
+        }
+        for (const match of inline.matchAll(/var\(\s*(--[\w-]+)/g)) {
+          if (variables.size === 12) {
+            truncated = true;
+            break;
+          }
+          variables.add(match[1]!);
+        }
+      }
+      for (const name of variables) {
+        const value = css.getPropertyValue(name).trim();
+        // Only resolved numeric/color tokens, never arbitrary custom-property strings.
+        if (
+          value.length <= 128 &&
+          /^(?:[-+.\d%\s,/#()]|px|rem|em|vh|vw|vmin|vmax|ch|ex|deg|rad|fr|auto|none|rgb|rgba|hsl|hsla|[a-fA-F])+$/i.test(
+            value,
+          )
+        )
+          styles[name] = value;
+        else excluded++;
+      }
+      const states: Record<string, boolean | string> = {};
+      for (const name of [
+        "expanded",
+        "pressed",
+        "selected",
+        "checked",
+        "disabled",
+        "modal",
+      ]) {
+        const value = el.getAttribute("aria-" + name);
+        if (value === "true" || value === "false" || value === "mixed")
+          states[name] = value;
+      }
+      if (el.localName === "dialog" || el.localName === "details")
+        states.open = el.hasAttribute("open");
+      const editable = el.closest(
+        "input,textarea,select,option,[contenteditable]:not([contenteditable=false])",
+      );
+      const label = editable
+        ? null
+        : el.getAttribute("aria-label") ||
+          el.getAttribute("alt") ||
+          el.getAttribute("title");
+      const role = el.getAttribute("role");
+      if ((label?.length ?? 0) > 160) truncated = true;
+      const bounds = el.getBoundingClientRect();
+      const node: (typeof nodes)[number] = {
+        id: `n${nodes.length + 1}`,
+        selector: key,
+        relation,
+        targets: [target],
+        tag: el.localName,
+        ...(role && /^[a-z -]{1,80}$/.test(role) ? { role } : {}),
+        ...(label ? { name: label.slice(0, 160) } : {}),
+        rect: {
+          x: bounds.x,
+          y: bounds.y,
+          width: bounds.width,
+          height: bounds.height,
+        },
+        styles,
+        states,
+      };
+      byElement.set(el, node);
+      nodes.push(node);
+    }
+    if (elements.length) {
+      for (let i = 0; i < Math.min(elements.length, limits.targets); i++) {
+        const el = elements[i]!;
+        if (contextElement(el)) targets.push(el);
+        else excluded++;
+      }
+      if (elements.length > limits.targets) truncated = true;
+    } else {
+      const walker = document.createTreeWalker(
+        document.body || document.documentElement,
+        NodeFilter.SHOW_ELEMENT,
+      );
+      let visited = 0,
+        node: Node | null;
+      while ((node = walker.nextNode())) {
+        if (
+          ++visited > limits.scannedElements ||
+          targets.length === limits.targets
+        ) {
+          truncated = true;
+          break;
+        }
+        const el = node as Element,
+          bounds = el.getBoundingClientRect(),
+          r = capture.rect;
+        if (
+          bounds.width > 0 &&
+          bounds.height > 0 &&
+          bounds.right > r.x &&
+          bounds.bottom > r.y &&
+          bounds.x < r.x + r.width &&
+          bounds.y < r.y + r.height &&
+          contextElement(el)
+        )
+          targets.push(el);
+      }
+    }
+    // Add targets before their neighbors so a large neighborhood cannot displace them.
+    for (const el of targets) {
+      const key = contextSelector(el);
+      if (key) add(el, "target", key);
+      else {
+        truncated = true;
+        excluded++;
+      }
+    }
+    for (const el of targets) {
+      const key = contextSelector(el);
+      if (!key) continue;
+      let ancestor = el.parentElement;
+      for (
+        let depth = 0;
+        ancestor && depth < limits.ancestorsPerTarget;
+        depth++, ancestor = ancestor.parentElement
+      )
+        add(ancestor, "ancestor", key);
+      if (ancestor) truncated = true;
+      let before = el.previousElementSibling,
+        after = el.nextElementSibling;
+      for (let i = 0; i < limits.siblingsPerTarget / 2; i++) {
+        if (before) {
+          add(before, "sibling", key);
+          before = before.previousElementSibling;
+        }
+        if (after) {
+          add(after, "sibling", key);
+          after = after.nextElementSibling;
+        }
+      }
+      if (before || after) truncated = true;
+    }
+    const payload = {
+      version: 1,
+      coordinateSpace: "capture viewport CSS pixels",
+      nodes,
+      limits,
+      exclusions:
+        contextExclusions +
+        " No text-content names or arbitrary CSS/attributes; custom properties cover only inline var() references with numeric/color values. Area targets use bounded DOM-order intersection, not exhaustive hit testing.",
+      excludedNodes: excluded,
+    };
+    const encoder = new TextEncoder();
+    let data = JSON.stringify(payload);
+    while (encoder.encode(data).length > limits.bytes && nodes.length) {
+      nodes.pop();
+      truncated = true;
+      data = JSON.stringify(payload);
+    }
+    return { data, truncated };
+  }
+  function environmentContext(): ContextPart {
+    let truncated = false,
+      scanned = 0,
+      hovered: Element | null = null;
+    const states: {
+      selector: string;
+      tag: string;
+      dialog: boolean;
+      expanded: boolean;
+    }[] = [];
+    const walker = document.createTreeWalker(
+      document.body || document.documentElement,
+      NodeFilter.SHOW_ELEMENT,
+    );
+    let node: Node | null;
+    while ((node = walker.nextNode())) {
+      if (++scanned > 500) {
+        truncated = true;
+        break;
+      }
+      const el = node as Element;
+      if (!contextElement(el)) continue;
+      if (el.matches(":hover")) hovered = el;
+      const dialog = el.matches(
+        "dialog[open],[role=dialog],[role=alertdialog]",
+      );
+      const expanded = el.getAttribute("aria-expanded") === "true";
+      if (!dialog && !expanded) continue;
+      if (states.length === 20) {
+        truncated = true;
+        continue;
+      }
+      const identity = contextIdentity(el);
+      if (identity) states.push({ ...identity, dialog, expanded });
+      else truncated = true;
+    }
+    const bounded = (value: string, limit = 256) => {
+      if (value.length > limit) truncated = true;
+      return value.slice(0, limit);
+    };
+    const viewport = window.visualViewport;
+    const build = document
+      .querySelector('meta[name="lcr-build-id"]')
+      ?.getAttribute("content");
+    const declaredTheme = document.documentElement.getAttribute("data-theme");
+    const data = JSON.stringify({
+      version: 1,
+      at: new Date().toISOString(),
+      browser: {
+        userAgent: bounded(navigator.userAgent, 512),
+        platform: bounded(navigator.platform),
+      },
+      locale: bounded(navigator.language),
+      timezone: bounded(Intl.DateTimeFormat().resolvedOptions().timeZone),
+      documentLang: bounded(document.documentElement.lang),
+      theme: {
+        colorScheme: bounded(
+          getComputedStyle(document.documentElement).colorScheme,
+        ),
+        declared:
+          declaredTheme && /^[a-zA-Z0-9_-]{1,80}$/.test(declaredTheme)
+            ? declaredTheme
+            : null,
+        classHints: ["light", "dark"].filter((name) =>
+          document.documentElement.classList.contains(name),
+        ),
+      },
+      media: {
+        dark: matchMedia("(prefers-color-scheme: dark)").matches,
+        reducedMotion: matchMedia("(prefers-reduced-motion: reduce)").matches,
+        forcedColors: matchMedia("(forced-colors: active)").matches,
+      },
+      viewport: { width: innerWidth, height: innerHeight, devicePixelRatio },
+      visualViewport: viewport
+        ? {
+            width: viewport.width,
+            height: viewport.height,
+            offsetLeft: viewport.offsetLeft,
+            offsetTop: viewport.offsetTop,
+            scale: viewport.scale,
+          }
+        : null,
+      zoom: {
+        status: "partial",
+        detail:
+          "Visual viewport scale and device pixel ratio only; desktop zoom is not independently available.",
+      },
+      focused: contextIdentity(document.activeElement) ?? null,
+      hovered: contextIdentity(hovered) ?? null,
+      visibleStates: states,
+      appBuild: build
+        ? {
+            status: "captured",
+            source: 'meta[name="lcr-build-id"]',
+            id: bounded(build),
+          }
+        : {
+            status: "unavailable",
+            detail: "No explicit lcr-build-id meta value.",
+          },
+      limits: { scannedElements: 500, visibleStates: 20 },
+      exclusions:
+        contextExclusions +
+        " Focus/hover can be unavailable; hovered identity and visible states cover only the bounded document scan, not embedded/shadow documents.",
+    });
+    return { data, truncated };
+  }
   function captureContext<T extends { rect: CaptureRect; mode: string }>(
     capture: T,
     elements: Element[],
@@ -1032,15 +1542,38 @@ export function installPageReview(config: {
         aiContext: settings.aiContext === true,
         contextHtml: settings.contextHtml === true,
         contextFullPage: settings.contextFullPage === true,
+        contextDiagnostics: settings.contextDiagnostics === true,
       },
       contextHtml: undefined as
         { data: string; truncated: boolean } | undefined,
+      contextLayout: undefined as ContextPart | undefined,
+      contextEnvironment: undefined as ContextPart | undefined,
+      contextInteractions: undefined as ContextPart | undefined,
     };
-    if (
-      !result.contextSettings.aiContext ||
-      !result.contextSettings.contextHtml
-    )
-      return result;
+    configureContext(settings);
+    if (!result.contextSettings.aiContext) return result;
+    try {
+      result.contextLayout = layoutContext(capture, elements);
+    } catch {}
+    try {
+      result.contextEnvironment = environmentContext();
+    } catch {}
+    if (result.contextSettings.contextDiagnostics) {
+      pruneInteractions(Date.now());
+      result.contextInteractions = {
+        data: JSON.stringify({
+          version: 1,
+          events: interactionEvents,
+          windowMs: 60000,
+          limit: 50,
+          coverage:
+            "Trusted click/focusin/scroll events in browse mode and Alt-assisted clicks since explicit opt-in; scroll sampled at 250ms. Trusted pageshow/popstate/hashchange reset history. Programmatic trusted focus/scroll may be included. No history before installation, iframe/shadow internals, pushState interception or cross-document persistence.",
+          exclusions: contextExclusions,
+        }),
+        truncated: interactionClipped,
+      };
+    }
+    if (!result.contextSettings.contextHtml) return result;
     try {
       const nodes: { selector: string; rect: CaptureRect; html: string }[] = [];
       const encoder = new TextEncoder();
@@ -1235,8 +1768,13 @@ export function installPageReview(config: {
       [0.1, 0.9],
       [0.9, 0.9],
     ];
-    let node: Node | null;
-    while (selections.length < 100 && (node = walker.nextNode())) {
+    let node: Node | null,
+      visited = 0;
+    while (
+      selections.length < 100 &&
+      visited++ < 2500 &&
+      (node = walker.nextNode())
+    ) {
       const el = node as Element,
         b = el.getBoundingClientRect();
       const x = Math.max(r.x, b.x),
@@ -1477,7 +2015,7 @@ export function installPageReview(config: {
       };
       capturingSelection = capture;
       pins();
-      const settings = await rpc("context-settings", {});
+      const settings = await currentContextSettings();
       const result = await rpc("capture", {
         capture: frozen
           ? capture
@@ -2333,6 +2871,7 @@ export function installPageReview(config: {
   function dispose() {
     if (disposed) return;
     disposed = true;
+    interactionEvents.length = 0;
     lifecycle.abort();
     clearInterval(refreshTimer);
     cancelAnimationFrame(pinsFrame);
@@ -2347,6 +2886,7 @@ export function installPageReview(config: {
   }
   win[ownerKey] = config.key;
   win[config.key] = {
+    configureContext,
     dispose,
     suspend(value: boolean) {
       suspended = value;
@@ -2432,7 +2972,7 @@ export function installPageReview(config: {
           behavior: "instant",
         });
       await new Promise((resolve) => requestAnimationFrame(resolve));
-      const settings = await rpc("context-settings", {});
+      const settings = await currentContextSettings();
       if (grouped)
         return captureContext(
           selectionCapture(elements, c.mode),
@@ -2458,6 +2998,22 @@ export function installPageReview(config: {
       );
     },
   };
+  for (const type of [
+    "click",
+    "focusin",
+    "scroll",
+    "pageshow",
+    "popstate",
+    "hashchange",
+  ])
+    listen(window, type, recordInteraction, { capture: true, passive: true });
+  const initialContextRevision = contextRevision;
+  void rpc("context-settings", {})
+    .then((settings) => {
+      if (!disposed && contextRevision === initialContextRevision)
+        configureContext(settings);
+    })
+    .catch(() => {});
   setMode(mode);
   positionLauncher();
   void refresh().catch(error);

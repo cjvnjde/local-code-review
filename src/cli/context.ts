@@ -5,16 +5,25 @@ import {
   readContext,
   readContextPart,
 } from "../review/context.ts";
+import {
+  CONTEXT_QUERY_KEYS,
+  projectContext,
+  type ContextQuery,
+} from "../review/context-query.ts";
 import { contextId, contextIsText } from "../shared/context.ts";
 
 export const CONTEXT_HELP = `Usage:
   lcr context inspect <id> --review <review.md>
   lcr context read <id> --review <review.md> --part <name> [--offset N --limit N]
+    [--select <JSON Pointer>] [--selector <capture selector>] [--property <CSS property>]
+    [--since <ISO timestamp>] [--until <ISO timestamp>]
 
 Read immutable saved context offline, without Git, settings, a server, or an agent.
 IDs may also be review-relative context/<id>/manifest.json references.
 Text reads return JSON with UTF-8-safe byte offsets and nextOffset (null at EOF).
 The default text limit is 16384 bytes; the maximum is 65536 bytes.
+JSON filters retain exact target/ancestor nodes, CSS properties, or inclusive event windows.
+--select applies after filters; "" selects the root. Offsets page the projected JSON.
 Binary reads report a local path and MIME type, never inline binary data.`;
 
 export async function runContextCli(argv: string[]): Promise<string> {
@@ -33,11 +42,23 @@ export async function runContextCli(argv: string[]): Promise<string> {
   const values = new Map<string, string>();
   for (let i = 0; i < flags.length; i += 2) {
     const flag = flags[i]!;
-    if (!["--review", "--part", "--offset", "--limit"].includes(flag))
+    if (
+      ![
+        "--review",
+        "--part",
+        "--offset",
+        "--limit",
+        ...CONTEXT_QUERY_KEYS.map((key) => `--${key}`),
+      ].includes(flag)
+    )
       throw new Error(`Unknown context option: ${flag}.`);
     if (values.has(flag)) throw new Error(`Duplicate context option: ${flag}.`);
     const value = flags[i + 1];
-    if (!value || value.startsWith("--"))
+    if (
+      value === undefined ||
+      (value === "" && flag !== "--select") ||
+      (value.startsWith("--") && flag !== "--property")
+    )
       throw new Error(`${flag} requires a value.`);
     values.set(flag, value);
   }
@@ -48,10 +69,15 @@ export async function runContextCli(argv: string[]): Promise<string> {
     );
   if (
     command === "inspect" &&
-    ["--part", "--offset", "--limit"].some((flag) => values.has(flag))
+    [
+      "--part",
+      "--offset",
+      "--limit",
+      ...CONTEXT_QUERY_KEYS.map((key) => `--${key}`),
+    ].some((flag) => values.has(flag))
   )
     throw new Error(
-      "--part, --offset, and --limit apply only to context read.",
+      "--part, pagination, and JSON filters apply only to context read.",
     );
   const name = values.get("--part");
   if (command === "read" && !name)
@@ -64,6 +90,11 @@ export async function runContextCli(argv: string[]): Promise<string> {
         throw new Error(`--${key} requires a non-negative integer.`);
       numbers[key] = Number(value);
     }
+  }
+  const query: ContextQuery = {};
+  for (const key of CONTEXT_QUERY_KEYS) {
+    const value = values.get(`--${key}`);
+    if (value !== undefined) query[key] = value;
   }
   let reviewFile: string;
   try {
@@ -88,11 +119,13 @@ export async function runContextCli(argv: string[]): Promise<string> {
     throw new Error(
       `Context part ${name} in ${id} is missing or unavailable beside ${reviewFile}.`,
     );
+  const projected = projectContext(found.bytes, found.part.type, query);
   if (contextIsText(found.part.type))
     return JSON.stringify(
       {
         part: found.part,
-        ...contextTextSlice(found.bytes, numbers.offset, numbers.limit),
+        ...(projected.projection ? { projection: projected.projection } : {}),
+        ...contextTextSlice(projected.bytes, numbers.offset, numbers.limit),
       },
       null,
       2,

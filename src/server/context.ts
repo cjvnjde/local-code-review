@@ -6,6 +6,12 @@ import {
   saveContext,
 } from "../review/context.ts";
 import {
+  CONTEXT_QUERY_KEYS,
+  ContextQueryError,
+  projectContext,
+  type ContextQuery,
+} from "../review/context-query.ts";
+import {
   CONTEXT_MAX_BYTES,
   contextId,
   contextIsText,
@@ -232,7 +238,18 @@ export async function contextRoute(
     if (!match || !contextId(match[1]))
       throw new ContextRequestError("Unknown context resource.", 404);
     const id = match[1]!;
+    const query: ContextQuery = {};
+    for (const key of CONTEXT_QUERY_KEYS) {
+      const values = url.searchParams.getAll(key);
+      if (values.length > 1)
+        throw new ContextRequestError(`Duplicate context option: ${key}.`);
+      if (values.length) query[key] = values[0]!;
+    }
     if (!match[2]) {
+      if (Object.keys(query).length)
+        throw new ContextRequestError(
+          "JSON filters apply only to context part reads.",
+        );
       const manifest = await readContext(options.repoRoot, options.outDir, id);
       if (!manifest)
         throw new ContextRequestError(
@@ -252,11 +269,12 @@ export async function contextRoute(
         "Context part is missing or unavailable.",
         404,
       );
+    const projected = projectContext(found.bytes, found.part.type, query);
     if (contextIsText(found.part.type)) {
       let slice;
       try {
         slice = contextTextSlice(
-          found.bytes,
+          projected.bytes,
           numberParam(url, "offset"),
           numberParam(url, "limit"),
         );
@@ -265,7 +283,14 @@ export async function contextRoute(
           error instanceof Error ? error.message : "Invalid text range.",
         );
       }
-      return Response.json({ part: found.part, ...slice }, { headers });
+      return Response.json(
+        {
+          part: found.part,
+          ...(projected.projection ? { projection: projected.projection } : {}),
+          ...slice,
+        },
+        { headers },
+      );
     }
     if (url.searchParams.has("offset") || url.searchParams.has("limit"))
       throw new ContextRequestError(
@@ -291,7 +316,11 @@ export async function contextRoute(
           error instanceof Error ? error.message : "Context request failed.",
       },
       {
-        status: error instanceof ContextRequestError ? error.status : 500,
+        status:
+          error instanceof ContextRequestError ||
+          error instanceof ContextQueryError
+            ? error.status
+            : 500,
         headers,
       },
     );

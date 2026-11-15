@@ -233,3 +233,107 @@ test("JSON framing does not shrink the saved-text byte limit", async () => {
   const manifest = await (await request(`/${saved.context.id}`)).json();
   expect(manifest.parts[0].bytes).toBe(text.length);
 });
+
+test("authenticated projections filter event windows before selection and paginate only that view", async () => {
+  const { request } = await fixture();
+  const events = [
+    { at: "2026-11-15T11:00:00Z", type: "warning" },
+    { at: "2026-11-15T11:00:01Z", type: "click", selector: "#card" },
+    { at: "2026-11-15T11:00:02Z", type: "request-failure" },
+  ];
+  const saved = await (
+    await request("", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        label: "Events",
+        type: "application/json",
+        text: JSON.stringify({
+          events,
+          private: "excluded".repeat(30),
+          "a/b": { "~": "a🙂z" },
+        }),
+      }),
+    })
+  ).json();
+  const route = `/${saved.context.id}/parts/content`;
+  const query = new URLSearchParams({
+    since: events[1]!.at,
+    until: events[2]!.at,
+    select: "/events",
+  });
+  const response = await request(`${route}?${query}`);
+  expect(response.status).toBe(200);
+  const view = await response.json();
+  expect(JSON.parse(view.content)).toEqual(events.slice(1));
+  expect(view.projection).toMatchObject({
+    since: events[1]!.at,
+    until: events[2]!.at,
+    select: "/events",
+    timeBounds: "inclusive",
+  });
+  let content = "";
+  let offset: number | null = 0;
+  while (offset !== null) {
+    const page = await (
+      await request(`${route}?${query}&offset=${offset}&limit=9`)
+    ).json();
+    content += page.content;
+    offset = page.nextOffset;
+    expect(page.totalBytes).toBe(view.totalBytes);
+    expect(page.projection).toEqual(view.projection);
+  }
+  expect(content).toBe(view.content);
+  expect(content).not.toContain("excluded");
+  const escaped = new URLSearchParams({
+    select: "/a~1b/~0",
+    offset: "2",
+    limit: "4",
+  });
+  const emoji = await (await request(`${route}?${escaped}`)).json();
+  expect(emoji.content).toBe("🙂");
+  expect(emoji.totalBytes).toBe(8);
+  expect((await request(`${route}?${escaped}&since=invalid`)).status).toBe(400);
+  for (const [filter, status] of [
+    ["select=/constructor", 404],
+    ["select=/missing", 404],
+    ["select=/events/length", 404],
+    ["select=not-a-pointer", 400],
+    ["selector=%23card", 400],
+    ["select=/events&select=/private", 400],
+    ["select=/a~1b/~0&offset=3", 400],
+    ["select=/a~1b/~0&offset=9", 400],
+    ["select=/a~1b/~0&offset=2&limit=3", 400],
+    ["since=2026-11-16T00:00:00Z&until=2026-11-15T00:00:00Z", 400],
+  ] as const)
+    expect((await request(`${route}?${filter}`)).status).toBe(status);
+  expect((await request(`/${saved.context.id}?select=`)).status).toBe(400);
+  const forbidden = await request(`${route}?${query}`, {
+    headers: { authorization: "Bearer foreign" },
+  });
+  expect(forbidden.status).toBe(403);
+  expect(await forbidden.text()).not.toContain("events");
+});
+
+test("HTTP filters reject non-JSON and binary parts instead of serving the payload", async () => {
+  const { request } = await fixture();
+  for (const type of [
+    "text/plain",
+    "application/octet-stream",
+    "application/json",
+  ]) {
+    const form = new FormData();
+    form.set("file", new File(["not JSON"], "evidence", { type }));
+    form.set("type", type);
+    const saved = await (
+      await request("", { method: "POST", body: form })
+    ).json();
+    const response = await request(
+      `/${saved.context.id}/parts/content?select=`,
+    );
+    expect(response.status).toBe(type === "application/json" ? 400 : 415);
+    const body = await response.json();
+    expect(body.error).toBeString();
+    expect(body.content).toBeUndefined();
+  }
+});

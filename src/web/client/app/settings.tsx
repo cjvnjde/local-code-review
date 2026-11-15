@@ -227,25 +227,37 @@ export function Settings({
       <section className="space-y-3">
         <h3 className="text-sm font-semibold">Capture context</h3>
         <p className="text-xs text-muted-foreground">
-          Enabled by default. Captures may include sensitive page content; turn
-          off any evidence you do not want saved locally.
+          Context is saved locally and read by AI only when needed. Selected
+          HTML excludes form values and hidden content; screenshots are not
+          redacted and may still show sensitive information.
         </p>
         {(
           [
             ["aiContext", "Save context for on-demand AI reading"],
             ["contextHtml", "Include selected HTML"],
             ["contextFullPage", "Include full-page screenshots"],
+            [
+              "contextDiagnostics",
+              "Record recent interaction and failure metadata",
+            ],
           ] as const
         ).map(([key, label]) => (
           <label key={key} className="flex items-center gap-3 text-sm">
             <input
               type="checkbox"
               checked={ui.settings[key]}
+              disabled={key !== "aiContext" && !ui.settings.aiContext}
               onChange={(event) => ui.update({ [key]: event.target.checked })}
             />
             {label}
           </label>
         ))}
+        <p className="text-xs text-muted-foreground">
+          Diagnostics are off by default. When enabled, retain at most 50 events
+          per stream from the last minute, without typed values, console
+          arguments, request bodies, headers, cookies, or storage. Turning
+          recording off clears the live buffers, not previously saved evidence.
+        </p>
       </section>
       <section className="space-y-2">
         <h3 className="text-sm font-semibold">Agent connection</h3>

@@ -42,19 +42,27 @@ export function ContextReference({
           </code>
           {manifest.isFetching && <span>Loading…</span>}
           {manifest.error && <span role="alert">{manifest.error.message}</span>}
+          {manifest.data && (
+            <span className="block text-muted-foreground">
+              {manifest.data.source?.target && (
+                <span className="block">{manifest.data.source.target}</span>
+              )}
+              Captured {manifest.data.at}. Historical evidence, not the current
+              page. Open only the parts needed; excluded or unavailable evidence
+              does not mean the page was empty.
+            </span>
+          )}
           {manifest.data?.parts.map((part) => (
             <span className="block rounded border p-3" key={part.name}>
               <b>{part.label}</b>
               <span className="ml-2 text-muted-foreground">
                 {part.bytes} bytes · {part.status}
+                {part.truncated ? " · partial capture" : ""}
               </span>
               {part.detail && <span className="block">{part.detail}</span>}
               {part.status === "available" &&
                 (part.attachment ? (
-                  <AttachmentImage
-                    source={part.attachment}
-                    label={part.label}
-                  />
+                  <ContextImage source={part.attachment} label={part.label} />
                 ) : contextIsText(part.type) ? (
                   <ContextText id={id} name={part.name} />
                 ) : null)}
@@ -103,5 +111,16 @@ function ContextText({ id, name }: { id: string; name: string }) {
       )}
       {error && <span role="alert">{error}</span>}
     </span>
+  );
+}
+
+function ContextImage({ source, label }: { source: string; label: string }) {
+  const [visible, setVisible] = useState(false);
+  return visible ? (
+    <AttachmentImage source={source} label={label} />
+  ) : (
+    <Button size="sm" variant="outline" onClick={() => setVisible(true)}>
+      View image
+    </Button>
   );
 }

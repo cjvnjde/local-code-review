@@ -63,7 +63,74 @@ the full lcr page.
 ## Context
 
 **Settings → Capture context** controls on-demand context bundles, selected HTML,
-and full-page screenshots. All are enabled by default; turn off any evidence you
-do not want saved, especially on pages with sensitive content. Changes persist in
-the same user `lcr/config.json` used at startup. Saved context IDs and manifests
-remain readable by the optional `apply-lcr` skill or `lcr context`.
+and full-page screenshots. These are enabled by default. **Record recent
+interaction and failure metadata** is separately opt-in and off by default.
+Settings persist in the same user `lcr/config.json` used at startup.
+
+Under **Capture details**, open **Additional context** to see the inventory,
+capture time, byte sizes, availability, and partial-capture markers. Text and
+images load only when explicitly opened. The selected-area original and any
+annotated proposal remain primary evidence; opening the inventory does not load
+the full-page image.
+
+Each bundle keeps separate, immutable parts:
+
+- **Layout:** selected targets, up to six ancestors and four nearby siblings per
+  target, bounded to 40 nodes. Includes geometry, flex/grid constraints,
+  overflow/stacking, selected styles, and explicit semantic labels/states.
+  Area selections use a bounded spatial scan, not an exhaustive accessibility tree.
+- **CSS rules:** bounded matched rules and inline declarations for up to 12
+  captured nodes, including referenced safe numeric/color custom properties
+  across those nodes. Stylesheet locations use zero-based browser coordinates.
+  Matched rules are not a winning-cascade calculation; unknown query activation
+  and missing source locations stay unknown.
+- **Environment:** browser, locale, theme hints, media preferences, visual viewport,
+  focus/hover identities, and visible dialog/expanded states. An app can expose its
+  build explicitly with `<meta name="lcr-build-id" content="your-build-id">`.
+  Without that marker, running-app identity is unavailable—not inferred from Git.
+- **Repository:** capture-time HEAD and a bounded fingerprint of tracked index and
+  regular working-file contents. No source content is saved. Untracked files,
+  symlink contents, and submodule contents are excluded; oversized or unreadable
+  evidence is marked unavailable. This is checkout identity, not a cleanliness
+  test or proof of which application build is running.
+- **Interactions and diagnostics:** when opted in, at most 50 events per stream
+  from the last minute. Includes browse-mode interactions, Alt-assisted clicks,
+  console warning/error occurrence metadata, and HTTP/request failures.
+  Disabling recording clears live buffers, not existing saved bundles.
+
+These are historical observations, not a replayable browser session. CSS,
+screenshots, and checkout identity are collected in a bounded interval, not one
+atomic instant. Frozen selections reuse their original evidence rather than
+querying a newer page. Each part reports exclusions, unavailable evidence, or
+truncation; missing evidence never proves that something was absent.
+
+HTML excludes form values, editable/hidden content, scripts, and arbitrary
+props/state. Diagnostics omit typed values, console arguments, exception text,
+headers, bodies, cookies, and storage. URL credentials, queries, and fragments are
+removed from diagnostic/CSS source URLs, but paths and semantic labels may still
+be sensitive. **Screenshots are not redacted.** Disable unwanted capture before
+reviewing sensitive pages.
+
+### Select only the evidence needed
+
+Managed AI handoffs include a bounded manifest inventory, not the stored payloads.
+The optional `apply-lcr` skill can read saved IDs/manifests directly from disk;
+neither a live browser nor an lcr installation is required for ordinary file reads.
+When lcr is available, offline helpers support focused reads:
+
+```sh
+lcr context inspect <id> --review <review.md>
+lcr context read <id> --review <review.md> --part layout \
+  --selector 'button#checkout' --property gap
+lcr context read <id> --review <review.md> --part css-rules --property --space
+lcr context read <id> --review <review.md> --part diagnostics \
+  --since 2026-11-15T10:00:00Z --until 2026-11-15T10:01:00Z --select /events
+```
+
+Use the exact saved selector; it also retains the captured ancestors/siblings
+associated with that target. `--select` is a JSON Pointer, not executable code.
+Filters apply before pointer selection. `--offset`/`--limit` paginate the resulting
+JSON with UTF-8 byte offsets and `nextOffset`, not the original part. Invalid
+queries and unsupported evidence shapes fail explicitly; they never fall back to
+loading the entire payload. Authenticated HTTP part reads support the same
+`selector`, `property`, `since`, `until`, and `select` query parameters.

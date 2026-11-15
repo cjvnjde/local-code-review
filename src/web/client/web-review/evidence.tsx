@@ -20,6 +20,7 @@ import { Markdown } from "../components/markdown.tsx";
 import { webReview, type WebCapture } from "../../../shared/web-review.ts";
 import { attachmentSrc } from "../components/attachments.ts";
 import { AttachmentImage } from "../components/images.tsx";
+import { ContextReference } from "../components/context.tsx";
 
 function captureName(capture: WebCapture): string {
   if (capture.selections && capture.selections.length > 1)
@@ -164,10 +165,10 @@ function Capture({
             </div>
           ))}
           {capture.context && (
-            <p>
-              Saved context:{" "}
-              <code className="break-all">{capture.context.id}</code>
-            </p>
+            <ContextReference
+              source={capture.context.id}
+              label={`Additional context: ${capture.context.label}`}
+            />
           )}
           {onRemove && (
             <Button

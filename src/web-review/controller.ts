@@ -34,6 +34,9 @@ import {
   webAnnotationImagesMatch,
   type WebAnnotation,
 } from "../shared/web-annotation.ts";
+import { browserEvidence, cssEvidence } from "./evidence.ts";
+import { repositoryEvidence } from "./repository-evidence.ts";
+import { DiagnosticsEvidence } from "./diagnostics-evidence.ts";
 
 export interface WebReviewOptions {
   url: string;
@@ -75,6 +78,7 @@ export function createWebReview(options: WebReviewOptions) {
   const replyDrafts = new Map<string, string>();
   const draftOwners = new Map<string, string>();
   let contextSettings: ContextSettings = { ...DEFAULT_CONTEXT_SETTINGS };
+  let diagnostics: DiagnosticsEvidence | undefined;
   let theme = DEFAULT_THEME;
   type ContextSnapshot = {
     settings: ContextSettings;
@@ -141,6 +145,8 @@ export function createWebReview(options: WebReviewOptions) {
     );
   async function detachPage() {
     frozen = null;
+    diagnostics?.dispose();
+    diagnostics = undefined;
     unbind();
     const current = browser,
       sid = sessionId,
@@ -290,6 +296,9 @@ export function createWebReview(options: WebReviewOptions) {
       contextHtml: "contextHtml" in settings && settings.contextHtml === true,
       contextFullPage:
         "contextFullPage" in settings && settings.contextFullPage === true,
+      contextDiagnostics:
+        "contextDiagnostics" in settings &&
+        settings.contextDiagnostics === true,
     };
   }
   async function fullPagePart(capture: WebCapture): Promise<ContextPartInput> {
@@ -395,15 +404,57 @@ export function createWebReview(options: WebReviewOptions) {
         "Capture-time sanitized visible DOM only. Form controls, hidden content, scripts, arbitrary attributes, state and props are excluded.",
     };
   }
+  async function evidenceParts(
+    input: Record<string, unknown>,
+    settings: ContextSettings,
+  ) {
+    if (!settings.aiContext) return [];
+    const { parts, nodes } = browserEvidence(input);
+    if (!settings.contextDiagnostics) {
+      const index = parts.findIndex((part) => part.name === "interactions");
+      parts[index] = {
+        name: "interactions",
+        label: "Recent safe interactions",
+        type: "application/json",
+        status: "excluded",
+        detail: "Interaction recording was disabled at capture time.",
+      };
+    }
+    // Snapshot the rolling buffer before optional asynchronous collectors run.
+    const diagnosticPart = diagnostics?.snapshot(
+      settings.contextDiagnostics,
+    ) ?? {
+      name: "diagnostics",
+      label: "Recent opt-in diagnostic metadata",
+      type: "application/json",
+      status: settings.contextDiagnostics
+        ? ("unavailable" as const)
+        : ("excluded" as const),
+      detail: "No active diagnostic recorder was available at capture time.",
+    };
+    const [css, repository] = await Promise.all([
+      browser && sessionId
+        ? cssEvidence(browser.cdp, sessionId, nodes)
+        : Promise.resolve({
+            name: "css-rules",
+            label: "Matched CSS rule provenance",
+            type: "application/json",
+            status: "unavailable" as const,
+            detail: "The reviewed browser was not attached at capture time.",
+          }),
+      repositoryEvidence(options.repoRoot),
+    ]);
+    return [...parts, css, repository, diagnosticPart];
+  }
   async function pointCapture(
     clean: WebCapture,
     settings: ContextSettings,
-    html: ContextPartInput,
+    parts: ContextPartInput[],
   ) {
     const { page: _page, area: _area, ...metadata } = clean;
     const extras: ContextPartInput[] = settings.aiContext
       ? [
-          html,
+          ...parts.filter((part) => part.name !== "full-page"),
           {
             name: "full-page",
             label: "Full document screenshot",
@@ -420,6 +471,11 @@ export function createWebReview(options: WebReviewOptions) {
   }
   async function screenshot(input: any, freezeId?: unknown) {
     const settings = { ...contextSettings };
+    if (input.contextSettings && typeof input.contextSettings === "object") {
+      const captured = settingsSnapshot(input.contextSettings);
+      for (const setting of Object.keys(settings) as (keyof ContextSettings)[])
+        settings[setting] = settings[setting] && captured[setting];
+    }
     const clean = webCapture({
       ...input,
       annotation: undefined,
@@ -448,12 +504,7 @@ export function createWebReview(options: WebReviewOptions) {
         );
       if (clean.mode === "point") {
         const { settings, extras } = frozen.snapshot;
-        return pointCapture(
-          clean,
-          settings,
-          extras.find((part) => part.name === "selected-html") ??
-            htmlPart({}, settings),
-        );
+        return pointCapture(clean, settings, extras);
       }
       const page = frozen.capture.page;
       const data = await api("cropFrozen", { id: freezeId, rect: clean.rect });
@@ -489,7 +540,10 @@ export function createWebReview(options: WebReviewOptions) {
         "The page moved during selection. Select the area again.",
       );
     if (clean.mode === "point")
-      return pointCapture(clean, settings, htmlPart(input, settings));
+      return pointCapture(clean, settings, [
+        htmlPart(input, settings),
+        ...(await evidenceParts(input, settings)),
+      ]);
     await api("visible", false);
     try {
       const page = await send("Page.captureScreenshot", {
@@ -512,6 +566,7 @@ export function createWebReview(options: WebReviewOptions) {
       const extras: ContextPartInput[] = settings.aiContext
         ? [
             htmlPart(input, settings),
+            ...(await evidenceParts(input, settings)),
             settings.contextFullPage
               ? await fullPagePart(clean)
               : {
@@ -815,6 +870,9 @@ export function createWebReview(options: WebReviewOptions) {
           const connected = browser;
           offDisconnect = connected.cdp.onDisconnect(() => {
             if (browser !== connected) return;
+            diagnostics?.dispose();
+            diagnostics = undefined;
+            frozen = null;
             state = "closed";
             detail = "The browser disconnected. Use Open page to reconnect.";
           });
@@ -850,7 +908,17 @@ export function createWebReview(options: WebReviewOptions) {
             if (sid === attachedSession) {
               contextId = 0;
               frozen = null;
+              diagnostics?.clear();
             }
+          }),
+        );
+        listeners.push(
+          cdp.on("Page.navigatedWithinDocument", (_, sid) => {
+            if (sid === attachedSession) diagnostics?.clear();
+          }),
+          cdp.on("Page.frameNavigated", (event, sid) => {
+            if (sid === attachedSession && !event.frame?.parentId)
+              diagnostics?.clear();
           }),
         );
         listeners.push(
@@ -912,6 +980,10 @@ export function createWebReview(options: WebReviewOptions) {
         );
         await send("Page.enable");
         await send("Runtime.enable");
+        diagnostics = new DiagnosticsEvidence(cdp, attachedSession);
+        await diagnostics.configure(
+          contextSettings.aiContext && contextSettings.contextDiagnostics,
+        );
         await send("Runtime.addBinding", { name: binding });
         const source =
           "(" +
@@ -955,6 +1027,7 @@ export function createWebReview(options: WebReviewOptions) {
           throw new Error(
             "The annotation toolbar could not start. Check that the local app is running and its page finishes loading.",
           );
+        await api("configureContext", contextSettings);
         await ensureReviewTarget();
         await cdp.send("Target.activateTarget", { targetId });
         state = "ready";
@@ -967,6 +1040,9 @@ export function createWebReview(options: WebReviewOptions) {
               sessionId === attachedSession
             ) {
               sessionId = "";
+              diagnostics?.dispose();
+              diagnostics = undefined;
+              frozen = null;
               contextId = 0;
               state = "closed";
               detail = "The reviewed tab closed. Use Open page to continue.";
@@ -988,6 +1064,11 @@ export function createWebReview(options: WebReviewOptions) {
     status,
     configureContext(settings: Partial<ContextSettings>) {
       contextSettings = settingsSnapshot(settings);
+      void diagnostics?.configure(
+        contextSettings.aiContext && contextSettings.contextDiagnostics,
+      );
+      if (browser && sessionId)
+        void api("configureContext", contextSettings).catch(() => {});
     },
     configureTheme(next: Theme) {
       theme = next;

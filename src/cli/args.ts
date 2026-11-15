@@ -116,7 +116,7 @@ Use -- to separate file paths from options and revisions.
 
 Offline context:
   lcr context inspect <id> --review <review.md>
-  lcr context read <id> --review <review.md> --part <name> [--offset N --limit N]
+  lcr context read <id> --review <review.md> --part <name> [--select /pointer] [--offset N --limit N]
   lcr context --help         Read saved AI context without Git, settings, or an agent
 
 Options:
