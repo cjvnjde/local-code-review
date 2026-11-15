@@ -47,6 +47,7 @@ export function EmbeddedReview({
   );
   const [busy, setBusy] = useState(false);
   const [capturing, setCapturing] = useState(false);
+  const [minimumHeight, setMinimumHeight] = useState(0);
   const headerAction = useAction();
   const client = useQueryClient();
   const origin = diff.web ? new URL(diff.web.url).origin : "";
@@ -108,6 +109,12 @@ export function EmbeddedReview({
         return;
       if (event.data.action === "capturing")
         setCapturing(event.data.busy === true);
+      if (
+        event.data.action === "layout" &&
+        Number.isFinite(event.data.minimumHeight) &&
+        event.data.minimumHeight >= 0
+      )
+        setMinimumHeight(event.data.minimumHeight);
       if (event.data.action === "triage") {
         const option = triageOptions.find(
           ({ value }) => value === event.data.triage,
@@ -209,6 +216,7 @@ export function EmbeddedReview({
       <div
         ref={content}
         className="flex flex-col bg-background text-foreground"
+        style={{ minHeight: minimumHeight }}
       >
         {draft && (
           <DraftReviewNotice

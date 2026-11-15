@@ -217,15 +217,16 @@ export function installPageReview(config: {
     .bar [data-mode],.bar [data-multiple]{width:100%;text-align:left;display:flex;align-items:baseline;gap:var(--space-2)}.bar small{font-size:var(--fs-small);color:var(--ink-dim);font-weight:400}.bar [data-notes]{width:100%;text-align:left;color:var(--ink-dim)}
     .outline{position:fixed;pointer-events:none;border:2px solid var(--accent);background:var(--sel);border-radius:var(--radius-sm);display:none}
     .label{position:absolute;bottom:100%;left:0;white-space:nowrap;padding:2px var(--space-2);border-radius:var(--radius-sm) var(--radius-sm) 0 0;background:var(--accent);color:var(--primary-ink);font-size:var(--fs-small)}
-    .dock{pointer-events:auto;position:absolute;right:var(--space-4);top:var(--space-4);height:540px;width:min(440px,calc(100vw - var(--space-3)*2));max-width:calc(100vw - var(--space-3)*2);background:var(--panel2);border:0;box-shadow:0 8px 32px #0006;border-radius:var(--radius-md);display:flex;flex-direction:column;overflow:hidden;overflow-anchor:none}
-    .dock.minimized{height:auto}.dock.minimized .content{position:absolute;top:100%;left:0;right:0;flex:none;height:var(--content-height);visibility:hidden;pointer-events:none}
-    .resize{position:absolute;right:0;bottom:0;width:var(--tap-lg);height:var(--tap-lg);padding:0;border:0;border-radius:var(--radius-sm) 0 0 0;background:transparent;cursor:nwse-resize;touch-action:none;display:grid;place-items:center;color:var(--ink-dim)}
+    .dock{pointer-events:auto;position:absolute;right:var(--space-4);top:var(--space-4);height:540px;width:min(440px,calc(100vw - var(--space-3)*2));max-width:calc(100vw - var(--space-3)*2);background:var(--panel2);border:0;box-shadow:0 8px 32px #0006;border-radius:var(--radius-md);display:flex;flex-direction:column;overflow:visible;overflow-anchor:none}
+    .dock.minimized{height:auto}.dock.minimized .head{border-radius:var(--radius-md)}.dock.minimized .content{position:absolute;top:100%;left:0;right:0;flex:none;height:var(--content-height);visibility:hidden;pointer-events:none}
+    .resize{position:absolute;z-index:2;right:0;bottom:0;width:var(--tap-lg);height:var(--tap-lg);padding:0;border:0;border-radius:var(--radius-sm) 0 0 0;background:transparent;cursor:nwse-resize;touch-action:none;display:grid;place-items:center;color:var(--ink-dim)}
     .resize svg{width:var(--icon);height:var(--icon);pointer-events:none}.resize:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}.dock.minimized .resize{display:none}
     .resize-edge{min-width:0;min-height:0;border-radius:0;z-index:1}.resize-edge:is(:hover,:focus-visible){background:var(--sel)}.resize-edge::before{display:none}
     .resize-edge[data-resize=e],.resize-edge[data-resize=w]{top:var(--tap-lg);bottom:var(--tap-lg);width:6px;height:auto;cursor:ew-resize}.resize-edge[data-resize=w]{left:0;right:auto}
     .resize-edge[data-resize=n],.resize-edge[data-resize=s]{left:var(--space-2);right:var(--tap-lg);width:auto;height:6px;cursor:ns-resize}.resize-edge[data-resize=n]{top:0;bottom:auto}
     .bar[hidden],.dock[hidden],.selection-tools[hidden]{display:none}.head{display:flex;flex:none;align-items:center;gap:var(--space-1);min-height:var(--bar-height);padding:var(--space-2) var(--space-3);background:var(--panel);cursor:move;touch-action:none;user-select:none}.head b{display:block;flex:1;min-width:0;min-height:var(--tap-lg);line-height:var(--tap-lg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-radius:var(--radius-sm)}.head button,.head .review-link{flex:none}.head button{width:var(--tap-lg);padding:0}.head .review-link{display:inline-flex;align-items:center;color:var(--ink-dim)}.head svg{width:var(--icon);height:var(--icon);pointer-events:none}.content{display:flex;flex-direction:column;flex:1;min-height:0}.content iframe{display:block;width:100%;flex:1;min-height:0;border:0;background:var(--panel2)}.status,.error{padding:var(--space-3) var(--space-4);margin:0}
     .head select{flex:none;min-width:0;max-width:118px;height:var(--tap-lg);border:1px solid var(--edge);border-radius:var(--radius-sm);padding:0 var(--space-1);background:var(--panel2);color:var(--ink);font:inherit;cursor:pointer;touch-action:auto}.head select:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}.head [hidden]{display:none}
+    .head{border-radius:var(--radius-md) var(--radius-md) 0 0}.content iframe{border-radius:0 0 var(--radius-md) var(--radius-md)}.dock.resizing iframe{pointer-events:none}.dock.fullscreen iframe{border-radius:0}
     .dock.fullscreen .head,.dock.fullscreen .resize{display:none}
     .dock.fullscreen{position:fixed;border:0;border-radius:0;box-shadow:none;max-width:none}
     .dock.fullscreen~.launcher,.dock.fullscreen~.bar{display:none}
@@ -391,6 +392,10 @@ export function installPageReview(config: {
     dock.style.top = dockPosition.y + "px";
     dock.style.width = width + "px";
     dock.style.height = minimized ? "auto" : expandedHeight + "px";
+    // Send the requested floor, not the grown frame height, so shorter content can shrink again.
+    tellFrame("layout", {
+      minimumHeight: Math.max(0, placementHeight - headHeight),
+    });
     positionLauncher();
   }
   function resizeDock(
@@ -591,7 +596,7 @@ export function installPageReview(config: {
     frameEditingOriginal = false;
     replyDraftId = "";
     pendingReply = false;
-    resizePress = null;
+    endResize();
     annotationOpen = false;
     imagePreviewOpen = false;
     dock.hidden = true;
@@ -2335,6 +2340,7 @@ export function installPageReview(config: {
     } else if (message.action === "freeze") {
       void toggleFreeze();
     } else if (message.action === "ready") {
+      positionDock();
       tellFrame("capturing", { busy: busy || freezing });
       if (pendingWeb !== undefined)
         tellFrame("evidence", {
@@ -2788,6 +2794,10 @@ export function installPageReview(config: {
     dockPosition.y += delta[e.key][1] * step;
     positionDock();
   };
+  function endResize() {
+    resizePress = null;
+    dock.classList.remove("resizing");
+  }
   for (const resize of root.querySelectorAll<HTMLButtonElement>(
     "[data-resize]",
   )) {
@@ -2808,6 +2818,9 @@ export function installPageReview(config: {
           height: dock.offsetHeight,
         },
       };
+      start = null;
+      outline.style.display = "none";
+      dock.classList.add("resizing");
       resize.setPointerCapture(e.pointerId);
       e.preventDefault();
     };
@@ -2829,7 +2842,7 @@ export function installPageReview(config: {
       resize.onpointercancel =
       resize.onlostpointercapture =
         (e) => {
-          if (resizePress?.id === e.pointerId) resizePress = null;
+          if (resizePress?.id === e.pointerId) endResize();
         };
     resize.onkeydown = (e) => {
       const delta: { [key: string]: [number, number] } = {
@@ -2934,6 +2947,7 @@ export function installPageReview(config: {
     document,
     "pointermove",
     (e) => {
+      if (resizePress) return;
       if (e.altKey && !frozen) {
         outline.style.display = "none";
         return;
@@ -2971,6 +2985,7 @@ export function installPageReview(config: {
         busy ||
         freezing ||
         frameSaving ||
+        resizePress ||
         ours(e) ||
         (e.altKey && !frozen) ||
         e.button !== 0
@@ -3081,7 +3096,7 @@ export function installPageReview(config: {
     updateLauncher();
     start = null;
     dockPress = null;
-    resizePress = null;
+    endResize();
     outline.style.display = "none";
     endLauncher(true);
     hideTools();
@@ -3226,7 +3241,7 @@ export function installPageReview(config: {
       host.inert = value;
       start = null;
       dockPress = null;
-      resizePress = null;
+      endResize();
       outline.style.display = "none";
       endLauncher(true);
     },

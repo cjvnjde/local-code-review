@@ -23,6 +23,9 @@ follows the same palette without recoloring the page or captured image. See
 [themes and custom colors](usage.md#themes-and-custom-colors).
 
 The note window can be moved, resized from any side or its corner, or minimized.
+The input and save controls stay at the bottom when the window is taller than its
+content. Resizing preserves the draft and does not capture the page underneath;
+the corner grip stays clear of the save button.
 Capture titles stay on one line with ellipsis; their full titles are available
 on hover. Clicking an editable thumbnail opens the drawing editor directly;
 read-only images open the viewer. Closing either restores the window and draft.

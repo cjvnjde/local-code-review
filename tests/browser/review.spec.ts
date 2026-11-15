@@ -2953,6 +2953,57 @@ test("live page capture grows notes without moving the page and opens drawings a
     const evidence = frame.getByRole("region", {
       name: "Evidence and attachments",
     });
+    const dock = target.locator(".dock");
+    const save = frame.getByRole("button", { name: "Save note", exact: true });
+    const composerAtBottom = async () => {
+      await expect
+        .poll(async () => {
+          const window = (await dock.boundingBox())!;
+          const button = (await save.boundingBox())!;
+          return Math.abs(window.y + window.height - button.y - button.height);
+        })
+        .toBeLessThanOrEqual(24);
+    };
+    await composerAtBottom();
+    const initialDock = (await dock.boundingBox())!;
+    const frameUrl = await iframe.getAttribute("src");
+    await input.fill("Keep this draft while resizing the note window");
+    // The outer corner used to be clipped by the dock's rounded border, so this
+    // drag selected the page underneath instead. The reverse drag crosses the iframe.
+    for (const [dx, dy] of [
+      [-70, 100],
+      [70, -100],
+    ]) {
+      const before = (await dock.boundingBox())!;
+      const x = before.x + before.width - 1;
+      const y = before.y + before.height - 1;
+      await target.mouse.move(x, y);
+      await target.mouse.down();
+      await target.mouse.move(x + dx!, y + dy!, { steps: 5 });
+      await target.mouse.up();
+      await expect
+        .poll(() => dock.boundingBox())
+        .toMatchObject({
+          width: before.width + dx!,
+          height: before.height + dy!,
+        });
+      await composerAtBottom();
+      await expect(input).toHaveValue(
+        "Keep this draft while resizing the note window",
+      );
+      const saveBounds = (await save.boundingBox())!;
+      await save.click({
+        trial: true,
+        position: { x: saveBounds.width - 2, y: saveBounds.height - 2 },
+      });
+      await expect(iframe).toHaveAttribute("src", frameUrl!);
+      await expect(
+        evidence.getByRole("link", { name: /^Annotate / }),
+      ).toHaveCount(1);
+      await expect(
+        target.getByText("New web note", { exact: true }),
+      ).toBeVisible();
+    }
     await frame.getByText("Capture details", { exact: true }).click();
     expect(
       await evidence.evaluate(
@@ -2963,6 +3014,9 @@ test("live page capture grows notes without moving the page and opens drawings a
     await input.fill(
       Array.from({ length: 100 }, (_, i) => `Line ${i}`).join("\n"),
     );
+    await expect
+      .poll(async () => (await dock.boundingBox())!.height)
+      .toBeGreaterThan(initialDock.height);
     expect(
       await input.evaluate((field) => field.scrollHeight - field.clientHeight),
     ).toBeLessThanOrEqual(1);
@@ -2978,6 +3032,8 @@ test("live page capture grows notes without moving the page and opens drawings a
     ).toBeLessThanOrEqual(1);
     await frame.getByRole("button", { name: "Write", exact: true }).click();
     await input.fill("Keep this draft through fullscreen previews");
+    await expect.poll(() => dock.boundingBox()).toEqual(initialDock);
+    await composerAtBottom();
     await target.screenshot({ path: "/tmp/lcr-web-composer.png" });
     const panel = (await iframe.boundingBox())!;
     const triage = target.getByRole("combobox", {

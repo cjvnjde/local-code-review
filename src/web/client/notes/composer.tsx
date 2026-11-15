@@ -453,7 +453,7 @@ export function Composer({
   );
   const content = (
     <div
-      className={`flex flex-col gap-2 ${embedded ? "pt-2" : integrated ? "" : "p-2.5"}`}
+      className={`flex flex-col gap-2 ${embedded ? "flex-1 pt-2" : integrated ? "" : "p-2.5"}`}
     >
       <div
         role={embedded ? "region" : undefined}
@@ -516,7 +516,11 @@ export function Composer({
         )}
         {embedded && attachments}
       </div>
-      <div className={embedded ? "space-y-1.5 border-t p-2.5" : "space-y-1.5"}>
+      <div
+        className={
+          embedded ? "mt-auto space-y-1.5 border-t p-2.5" : "space-y-1.5"
+        }
+      >
         <div
           role="toolbar"
           aria-label="Text formatting"
@@ -811,7 +815,9 @@ export function Composer({
               : "Draft saved locally"}
           </span>
         )}
-        <div className="flex flex-wrap items-center gap-2 border-t pt-1.5 [&_button]:h-7">
+        <div
+          className={`flex flex-wrap items-center gap-2 border-t pt-1.5 [&_button]:h-7 ${embedded ? "pr-8" : ""}`}
+        >
           {onAddCapture && (
             <Button
               size="sm"
@@ -862,7 +868,7 @@ export function Composer({
       aria-label="Comment editor"
       className={
         embedded
-          ? "flex flex-col [&_button]:rounded"
+          ? "flex flex-1 flex-col [&_button]:rounded"
           : integrated
             ? "min-w-0 w-full [&_button]:rounded"
             : "min-w-0 w-full rounded border bg-card [&_button]:rounded"
