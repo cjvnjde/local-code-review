@@ -70,9 +70,16 @@ const FOOTER = [
   "For each note, the last message in its thread is what you are answering. Everything above it is " +
     "history. A note with no thread yet is asking about its captured code or UI evidence.",
   "",
-  "A sealed `Triage:` line is the reviewer's optional classification (blocker, bug, suggestion, " +
-    "or question), not a verdict or execution instruction. Preserve it while answering; only the " +
-    "`Status:` line records your outcome.",
+  "A sealed `Triage:` line is optional classification (blocker, bug, suggestion, or question), " +
+    "not a verdict or execution instruction. Preserve any existing category. While handling an " +
+    "unclassified note, you may classify it from the note and investigated evidence: blocker means " +
+    "a serious issue preventing safe progress, bug means incorrect behavior, suggestion means an " +
+    "improvement, and question means a request for explanation. Leave it unclassified if evidence " +
+    "is insufficient. Re-read the note before writing; preserve any category or reviewer edits " +
+    "that appeared while you worked. Insert exactly `Triage: <category> <!-- lcr:triage -->` on " +
+    "its own line immediately after the note heading and its blank line, before any provenance, " +
+    "captured evidence, or reviewer text, followed by a blank line. Never put classification " +
+    "inside the reply or change an existing category; only `Status:` records your outcome.",
   "",
   "A note may point at another note of this review using `#mk1a`, a local comment URL ending in " +
     "`#note=mk1a`, or the older link `[src/app.ts:12](lcr:mk1a)`. " +

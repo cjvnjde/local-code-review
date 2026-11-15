@@ -324,13 +324,11 @@ test("compiled executable reviews changes, preserves drafts, and continues the M
     page.locator('[data-sonner-toast][data-type="success"]'),
   ).toHaveCount(0);
   await expect(
-    notesPanel
-      .locator("article")
-      .getByText("This greeting is intentionally local."),
-  ).toBeVisible();
+    savedCard.getByRole("region", { name: "Agent reply", exact: true }),
+  ).toContainText("This greeting is intentionally local.");
   await expect(
-    notesPanel.locator("article").getByText("Keep this"),
-  ).toBeVisible();
+    savedCard.getByRole("region", { name: "Your reply", exact: true }),
+  ).toContainText("Keep this unsaved follow-up.");
   expect(
     await savedCard
       .locator(".markdown")
@@ -441,6 +439,153 @@ test("compiled executable reviews changes, preserves drafts, and continues the M
   );
   expect(codeNote.messages).toHaveLength(2);
   expect(codeNote.status).toBe("answered");
+});
+
+test("classification changes and stale editor saves preserve the latest category", async ({
+  page,
+}) => {
+  await page.request.delete(`${url}/api/review`);
+  const comment = {
+    id: "src/app.ts|n2|n2|#triageui123",
+    file: "src/app.ts",
+    start: 2,
+    end: 2,
+    side: "new",
+    code: "+  return 'hello world';",
+    body: "Investigate the greeting behavior.",
+  };
+  const saved = await page.request.post(`${url}/api/note`, {
+    data: { comment, ask: false },
+  });
+  expect(saved.ok()).toBe(true);
+  await page.goto(url);
+  const pane = page.getByRole("region", { name: "Code diff" });
+  const card = pane.locator(`[data-note-id="${comment.id}"]`);
+  const current = async () =>
+    (await (await page.request.get(`${url}/api/review`)).json()).notes.find(
+      (note: { id: string }) => note.id === comment.id,
+    );
+  await card.getByRole("combobox", { name: "Note triage" }).click();
+  await page.getByRole("option", { name: "Bug", exact: true }).click();
+  await expect.poll(async () => (await current()).triage).toBe("bug");
+  await card.getByRole("button", { name: "Note actions", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Edit note", exact: true }).click();
+  await card
+    .getByRole("textbox", { name: "Note text" })
+    .fill("Updated reviewer wording.");
+  // Another client/agent classifies while this editor still holds the old category.
+  const classified = await page.request.post(`${url}/api/note`, {
+    data: { comment: { ...comment, triage: "question" }, ask: false },
+  });
+  expect(classified.ok()).toBe(true);
+  await card.getByRole("button", { name: "Save note", exact: true }).click();
+  await expect.poll(current).toMatchObject({
+    body: "Updated reviewer wording.",
+    triage: "question",
+  });
+  await card.getByRole("combobox", { name: "Note triage" }).click();
+  await page.getByRole("option", { name: "Unclassified", exact: true }).click();
+  await expect.poll(async () => (await current()).triage).toBeUndefined();
+  await page.reload();
+  await expect(
+    card.getByRole("region", { name: "Your note", exact: true }),
+  ).toContainText("Updated reviewer wording.");
+});
+
+test("inline note geometry and visible-note tracking follow gutters without moving editors", async ({
+  page,
+}) => {
+  await page.request.delete(`${url}/api/review`);
+  await page.setViewportSize({ width: 1920, height: 1000 });
+  const notes = [
+    {
+      id: "src/app.ts|n2|n2|#geometryshort",
+      file: "src/app.ts",
+      start: 2,
+      end: 2,
+      side: "new",
+      code: "+  return 'hello world';",
+      body: "A short file note.",
+    },
+    {
+      id: "untracked.ts|n1200|n1200|#geometrylong",
+      file: "untracked.ts",
+      start: 1200,
+      end: 1200,
+      side: "new",
+      code: "+export const item1199 = 1199;",
+      body: "A four-digit file note.",
+    },
+  ];
+  for (const comment of notes) {
+    const saved = await page.request.post(`${url}/api/note`, {
+      data: { comment, ask: false },
+    });
+    expect(saved.ok()).toBe(true);
+  }
+  await page.goto(url);
+  const pane = page.getByRole("region", { name: "Code diff" });
+  const panel = page.getByRole("complementary", { name: "Review notes" });
+  const checkAlignment = async (note: (typeof notes)[number]) => {
+    const card = pane.locator(`[data-note-id="${note.id}"]`);
+    await expect(card).toBeInViewport();
+    await expect
+      .poll(async () => {
+        const code = await pane
+          .locator(
+            `[data-diff-kind="row"][data-file-path="${note.file}"] [data-code-cell]`,
+          )
+          .first()
+          .boundingBox();
+        return Math.abs((await card.boundingBox())!.x - code!.x);
+      })
+      .toBeLessThan(1);
+    await expect(
+      panel
+        .locator('[aria-current="location"]')
+        .locator(`[data-note-id="${note.id}"]`),
+    ).toBeVisible();
+    return card;
+  };
+  const first = await checkAlignment(notes[0]!);
+  expect((await first.boundingBox())!.width).toBeLessThanOrEqual(897);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page
+    .getByRole("combobox", { name: "Inline note width", exact: true })
+    .click();
+  await page.getByRole("option", { name: "Full width", exact: true }).click();
+  await page.keyboard.press("Escape");
+  await expect
+    .poll(async () => (await first.boundingBox())!.width)
+    .toBeGreaterThan(1000);
+  await page.reload();
+  await checkAlignment(notes[0]!);
+  expect((await first.boundingBox())!.width).toBeGreaterThan(1000);
+  for (const lineNumbers of [true, false]) {
+    const changed = await page.request.put(`${url}/api/settings`, {
+      data: { lineNumbers },
+    });
+    expect(changed.ok()).toBe(true);
+    await page.reload();
+    for (const note of notes) {
+      await panel.locator(`button[data-note-id="${note.id}"]`).click();
+      await checkAlignment(note);
+    }
+  }
+  await pane.evaluate((element) => {
+    const note = element.querySelector(
+      '[data-note-id="untracked.ts|n1200|n1200|#geometrylong"]',
+    )!;
+    element.scrollTop +=
+      note.getBoundingClientRect().bottom -
+      element.getBoundingClientRect().top +
+      5;
+  });
+  // Virtualizer overscan retains the card, but it is no longer the visible note.
+  await expect(
+    pane.locator('[data-note-id="untracked.ts|n1200|n1200|#geometrylong"]'),
+  ).toHaveCount(1);
+  await expect(panel.locator('[aria-current="location"]')).toHaveCount(0);
 });
 
 test("line, range and character gestures keep comments inline and protect draft text", async ({

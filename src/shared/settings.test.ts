@@ -28,6 +28,21 @@ describe("UI settings schema", () => {
       expect(() => parseUiSettings({ theme })).toThrow("ui.theme");
   });
 
+  test("inline note width defaults to compact and accepts only the offered choices", () => {
+    expect(DEFAULT_UI_SETTINGS.noteWidth).toBe("compact");
+    for (const noteWidth of ["compact", "full"]) {
+      expect(parseUiSettings({ noteWidth })).toEqual({ noteWidth });
+      expect(
+        parseUiSettings({ noteWidth, lineNumbers: false, ntFold: true }),
+      ).toEqual({ noteWidth, lineNumbers: false, ntFold: true });
+    }
+    for (const noteWidth of ["", "wide", "Full width", null, false, 1])
+      expect(() => parseUiSettings({ noteWidth })).toThrow("ui.noteWidth");
+    expect(parseUiSettings({ lineNumbers: false })).not.toHaveProperty(
+      "noteWidth",
+    );
+  });
+
   test("accepts exactly the choices offered by the numeric controls", () => {
     for (const limit of [0, 500, 900, 1800])
       expect(parseUiSettings({ limit })).toEqual({ limit });

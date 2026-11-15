@@ -79,6 +79,7 @@ export function DiffView({
   onComment,
   onCompose,
   onActiveChange,
+  onVisibleNoteChange,
   agent,
   bookmarks,
   onBookmark,
@@ -100,6 +101,7 @@ export function DiffView({
   onComment: (comment: ReviewComment) => boolean | void;
   onCompose: (draft: Draft) => void;
   onActiveChange: (path: string) => void;
+  onVisibleNoteChange?: (noteId: string | null) => void;
   agent: boolean;
   onAutoViewed: (paths: string[], back?: string) => void;
   bookmarks: string[];
@@ -148,10 +150,15 @@ export function DiffView({
       styles.set(file.path, {
         "--old-line-width": `calc(${String(oldMax).length}ch + 0.5rem)`,
         "--new-line-width": `calc(${String(newMax).length}ch + 0.5rem)`,
+        "--gutter-control-width": "1.25rem",
+        "--diff-marker-width": "1rem",
+        "--code-inset": settings.lineNumbers
+          ? "calc(var(--old-line-width) + var(--new-line-width) + 2 * var(--gutter-control-width) + var(--diff-marker-width))"
+          : "var(--diff-marker-width)",
       } as CSSProperties);
     }
     return styles;
-  }, [prepared]);
+  }, [prepared, settings.lineNumbers]);
   const [folds, setFolds] = useState<
     Record<string, { hash: string; folded: boolean }>
   >({});
@@ -266,6 +273,40 @@ export function DiffView({
     [items],
   );
   const frame = useRef(0);
+  const visibleNote = useRef<string | null>(null);
+  const visibleNoteCallback = useRef(onVisibleNoteChange);
+  useLayoutEffect(() => {
+    visibleNoteCallback.current = onVisibleNoteChange;
+  }, [onVisibleNoteChange]);
+  const updateVisibleNote = useCallback((inset?: number) => {
+    const element = scroll.current;
+    if (!element || !visibleNoteCallback.current) return;
+    const viewport = element.getBoundingClientRect();
+    const top = viewport.top + (inset ?? readingInset(element));
+    let next: string | null = null;
+    let nearest = Infinity;
+    if (top < viewport.bottom)
+      for (const note of element.querySelectorAll<HTMLElement>(
+        '[data-diff-kind="note"] [data-note-surface][data-note-id]',
+      )) {
+        const bounds = note.getBoundingClientRect();
+        const edge = Math.max(top, bounds.top);
+        if (
+          bounds.bottom > top &&
+          bounds.top < viewport.bottom &&
+          bounds.right > viewport.left &&
+          bounds.left < viewport.right &&
+          edge < nearest
+        ) {
+          next = note.dataset.noteId!;
+          nearest = edge;
+        }
+      }
+    if (next !== visibleNote.current) {
+      visibleNote.current = next;
+      visibleNoteCallback.current(next);
+    }
+  }, []);
   const virtual = useVirtualizer({
     count: items.length,
     getScrollElement: () => scroll.current,
@@ -325,6 +366,7 @@ export function DiffView({
         frame.current = 0;
         if (appliedItems.current !== items || !scroll.current) return;
         const sticky = readingInset(scroll.current);
+        updateVisibleNote(sticky);
         const visible = instance.getVirtualItemForOffset(
           scroll.current.scrollTop + sticky + 1,
         );
@@ -393,6 +435,10 @@ export function DiffView({
     () => () => {
       cancelAnimationFrame(frame.current);
       if (readingTimer.current) clearTimeout(readingTimer.current);
+      if (visibleNote.current !== null) {
+        visibleNote.current = null;
+        visibleNoteCallback.current?.(null);
+      }
     },
     [],
   );
@@ -567,6 +613,10 @@ export function DiffView({
     }
     previousSubject.current = subject;
   }, [subject, editorIndex, virtual, clearSelection]);
+  useLayoutEffect(() => {
+    // Settings and committed content can change geometry without a scroll event.
+    updateVisibleNote();
+  });
   const editor =
     draft && draft.host !== "panel" ? (
       <Composer
@@ -619,6 +669,10 @@ export function DiffView({
       if (isCodeItem(entry)) codeFiles.get(entry.path)!.push(item);
     }
   }
+  // Resolve ch-based gutter widths with code metrics without changing note typography.
+  const inlineNoteClass =
+    "flex min-w-0 py-2 pr-2 before:shrink-0 before:w-[var(--code-inset)] before:font-mono before:text-xs before:content-['']";
+  const inlineNoteContentClass = `min-w-0 flex-1 ${settings.noteWidth === "compact" ? "max-w-4xl" : ""}`;
   const renderItem = (item: VirtualItem, offset = 0) => {
     const entry = items[item.index]!;
     if (entry.kind === "header") {
@@ -706,7 +760,18 @@ export function DiffView({
                 ),
               }}
             >
-              <div className="max-w-4xl px-2 py-2">{editor}</div>
+              <div
+                className={inlineNoteClass}
+                style={gutterStyles.get(entry.path)}
+                data-inline-note-width={settings.noteWidth}
+              >
+                <div
+                  className={inlineNoteContentClass}
+                  data-inline-note-content
+                >
+                  {editor}
+                </div>
+              </div>
             </div>
           </div>
         );
@@ -767,24 +832,38 @@ export function DiffView({
           </button>
         )}
         {entry.kind === "editor" && (
-          <div className="max-w-4xl px-2 py-2">{editor}</div>
+          <div
+            className={inlineNoteClass}
+            style={gutterStyles.get(entry.path)}
+            data-inline-note-width={settings.noteWidth}
+          >
+            <div className={inlineNoteContentClass} data-inline-note-content>
+              {editor}
+            </div>
+          </div>
         )}
         {entry.kind === "note" && (
-          <div className="max-w-4xl px-2 py-2">
-            <NoteCard
-              note={entry.note}
-              file={entry.file}
-              agent={agent}
-              onCompose={onCompose}
-              inline
-              editorDraft={draft ?? undefined}
-              editor={
-                (draft?.kind === "note" ? draft.comment.id : draft?.id) ===
-                entry.note.id
-                  ? editor
-                  : undefined
-              }
-            />
+          <div
+            className={inlineNoteClass}
+            style={gutterStyles.get(entry.path)}
+            data-inline-note-width={settings.noteWidth}
+          >
+            <div className={inlineNoteContentClass} data-inline-note-content>
+              <NoteCard
+                note={entry.note}
+                file={entry.file}
+                agent={agent}
+                onCompose={onCompose}
+                inline
+                editorDraft={draft ?? undefined}
+                editor={
+                  (draft?.kind === "note" ? draft.comment.id : draft?.id) ===
+                  entry.note.id
+                    ? editor
+                    : undefined
+                }
+              />
+            </div>
           </div>
         )}
         {entry.kind === "row" && (

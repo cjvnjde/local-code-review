@@ -14,7 +14,7 @@ import {
 import type { AgentAdapter, AgentDelivery } from "./agent-connection.ts";
 import { createSession, type ReviewSession } from "../review/session.ts";
 import type { ReviewNote } from "../review/thread.ts";
-import type { NoteStatusKind } from "../shared/review-types.ts";
+import type { NoteStatusKind, NoteTriage } from "../shared/review-types.ts";
 import { compactWebReview } from "../shared/web-review.ts";
 import { contextIds, contextPath } from "../shared/context.ts";
 import { agentLaunchSummary } from "./launch-summary.ts";
@@ -91,18 +91,24 @@ export function managedPrompt(
     "Do not write, recreate, or change any review Markdown file. lcr owns response routing for this managed turn and will append your answer only if that exact note still exists.",
     "Answer questions without editing code unless a change was requested. Honor agent permissions and sandbox policy; never bypass an approval request.",
     'Return your final answer as JSON {"status":"applied|answered|needs-input|skipped|pending","body":"Markdown answer"}. Applied means a requested change was actually completed and validated. Use needs-input for a blocker or clarification. Explain errors honestly. Answer this note fully; references only add context.',
+    'When the submitted note has no triage, you may add "triage":"blocker|bug|suggestion|question" to that same JSON response. Classify from the note and investigated evidence: blocker means a serious issue preventing safe progress, bug means incorrect behavior, suggestion means an improvement, and question means a request for explanation. Leave triage absent when evidence is insufficient. Preserve existing categories; classification is not your outcome or queue state. lcr writes accepted classification as sealed Triage metadata before the note evidence, never inside the reply.',
     JSON.stringify(view),
   ].join("\n\n");
 }
 
-/** Progress messages may precede the final response on the same ACP text stream. */
-export function acpAnswer(text: string): {
+export interface AcpAnswer {
   body: string;
   status?: NoteStatusKind;
-} {
+  triage?: NoteTriage;
+}
+
+/** Progress messages may precede the final response on the same ACP text stream. */
+export function acpAnswer(text: string): AcpAnswer {
   const body = text.trim();
   const unfenced = body.replace(/```(?:json)?\s*\n([\s\S]*?)\n```$/, "$1");
-  const candidates = [...unfenced.matchAll(/\{\s*"(?:status|body)"\s*:/g)]
+  const candidates = [
+    ...unfenced.matchAll(/\{\s*"(?:status|body|triage)"\s*:/g),
+  ]
     .slice(-32)
     .reverse();
   for (const candidate of candidates) {
@@ -113,8 +119,17 @@ export function acpAnswer(text: string): {
         ["applied", "answered", "needs-input", "skipped", "pending"].includes(
           answer.status,
         )
-      )
-        return { body: answer.body, status: answer.status };
+      ) {
+        const parsed: AcpAnswer = {
+          body: answer.body,
+          status: answer.status,
+        };
+        if (
+          ["blocker", "bug", "suggestion", "question"].includes(answer.triage)
+        )
+          parsed.triage = answer.triage;
+        return parsed;
+      }
     } catch {
       /* Only a complete final JSON object is a verdict. */
     }
@@ -304,7 +319,7 @@ export function createManagedAgent(options: Options): ManagedAgent {
         });
         liveTask = undefined;
         permissions = [];
-        const { body, status } = acpAnswer(task.response ?? "");
+        const { body, status, triage } = acpAnswer(task.response ?? "");
         const cancelled =
           task.detail === "Cancellation requested." ||
           result.stopReason === "cancelled";
@@ -326,6 +341,9 @@ export function createManagedAgent(options: Options): ManagedAgent {
             body,
             task.revision,
             result.stopReason === "end_turn" && !cancelled ? status : undefined,
+            result.stopReason === "end_turn" && !cancelled && !note.triage
+              ? triage
+              : undefined,
           );
         task.state = outcome;
         if (outcome !== "completed") queue.data.paused = true;

@@ -33,6 +33,7 @@ export const uiSettingsSchema = z.strictObject({
   foldDel: z.boolean(),
   enterSaves: z.boolean(),
   capturedCodeOpen: z.boolean(),
+  noteWidth: z.enum(["compact", "full"]),
   lineNumbers: z.boolean(),
   wrapLines: z.boolean(),
   expand: z
@@ -67,6 +68,7 @@ export const DEFAULT_UI_SETTINGS: Readonly<UiSettings> = {
   foldDel: false,
   enterSaves: true,
   capturedCodeOpen: false,
+  noteWidth: "compact",
   lineNumbers: true,
   wrapLines: true,
   expand: 20,

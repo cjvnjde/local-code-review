@@ -154,6 +154,10 @@ describe("renderMarkdown", () => {
     const markdown = write([]);
     expect(markdown).toContain("**Agent** <!-- lcr:m -->");
     expect(markdown).toContain("one at a time");
+    expect(markdown).toContain("Preserve any existing category.");
+    expect(markdown).toContain("Triage: <category> <!-- lcr:triage -->");
+    expect(markdown).toContain("immediately after the note heading");
+    expect(markdown).toContain("Leave it unclassified if evidence");
   });
 });
 

@@ -315,6 +315,77 @@ test("real ACP streams can include progress prose before a final explicit verdic
   ).toBeUndefined();
 });
 
+test.each(["blocker", "bug", "suggestion", "question"] as const)(
+  "ACP accepts optional %s triage in any response key order",
+  (triage) => {
+    expect(
+      acpAnswer(
+        `Investigated.\n\`\`\`json\n${JSON.stringify({ triage, body: "Evidence.", status: "answered" })}\n\`\`\``,
+      ),
+    ).toEqual({ triage, body: "Evidence.", status: "answered" });
+  },
+);
+
+test.each(["applied", "", null, 1, {}, ["bug"]].map((triage) => ({ triage })))(
+  "invalid ACP triage %j does not discard the answer",
+  ({ triage }) => {
+    expect(
+      acpAnswer(
+        JSON.stringify({ status: "answered", triage, body: "Evidence." }),
+      ),
+    ).toEqual({ status: "answered", body: "Evidence." });
+  },
+);
+
+test.each(["triage", "triage-blocked"])(
+  "%s routes classification only from a completed managed turn",
+  async (mode) => {
+    const f = await setup(mode);
+    const note = await f.send("classification");
+    await until(() => f.started(1));
+    f.release(1);
+    await until(() => ["completed", "blocked"].includes(f.tasks()[0].state));
+    const restarted = createSession(f.root, ".review", "HEAD");
+    await restarted.adoptNewest();
+    const restored = (await restarted.read()).notes[0]!;
+    expect(restored.triage).toBe(mode === "triage" ? "question" : undefined);
+    expect(restored.body).toBe(note.body);
+    expect(restored.code).toBe(note.code);
+    expect(restored.messages[0]!.body).toBe("Fixture answer 1");
+  },
+);
+
+test("a cancelled managed turn cannot classify its note", async () => {
+  const f = await setup("triage");
+  await f.send("cancelled");
+  await until(() => f.started(1));
+  await f.agent.control("cancel", f.tasks()[0].id);
+  await until(() => f.tasks()[0].state === "cancelled");
+  const restored = (await f.session.read()).notes[0]!;
+  expect(restored.status).toBe("pending");
+  expect(restored.triage).toBeUndefined();
+});
+
+test.each(["assigned", "cleared"] as const)(
+  "managed classification preserves a previously %s category",
+  async (change) => {
+    const f = await setup("triage");
+    const saved = await f.session.save({
+      comments: [{ ...comment("classified"), triage: "bug" }],
+    });
+    const note = saved.changed[0]!;
+    await f.agent.publish(f.session.file, [note]);
+    await until(() => f.started(1));
+    if (change === "cleared")
+      await f.session.save({ comments: [comment("classified")] });
+    f.release(1);
+    await until(() => f.tasks()[0].state === "completed");
+    expect((await f.session.read()).notes[0]!.triage).toBe(
+      change === "assigned" ? "bug" : undefined,
+    );
+  },
+);
+
 test("cancelling while the pre-dispatch file read is pending never starts the task", async () => {
   const f = await setup();
   await f.agent.control("pause");

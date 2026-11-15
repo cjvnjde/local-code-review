@@ -74,7 +74,7 @@ export function NoteHeader({
     <header className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b px-2.5 py-1">
       <div className="flex min-w-0 flex-[1_1_12rem] items-baseline gap-2">
         <div
-          className="flex min-w-0 flex-1 items-baseline gap-1 text-xs font-medium"
+          className="flex min-w-0 items-baseline gap-1 text-xs font-medium"
           title={fullLocation}
           aria-label={fullLocation}
         >

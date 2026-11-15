@@ -13,11 +13,9 @@ const INSTALL_SKILL_COMMAND =
 
 export function Settings({
   agent,
-  onNewReview,
   onOpenReview,
 }: {
   agent: AgentState;
-  onNewReview: () => void;
   onOpenReview: (file: string) => void;
 }) {
   const ui = useUi();
@@ -108,6 +106,18 @@ export function Settings({
             {label}
           </label>
         ))}
+        <div className="flex items-center justify-between gap-3 text-xs">
+          <span>Inline note width</span>
+          <Select
+            label="Inline note width"
+            value={ui.settings.noteWidth}
+            onValueChange={(noteWidth) => ui.update({ noteWidth })}
+            options={[
+              { value: "compact", label: "Compact" },
+              { value: "full", label: "Full width" },
+            ]}
+          />
+        </div>
         <div className="flex items-center justify-between gap-3 text-xs">
           <span>Reading speed threshold</span>
           <Select
@@ -203,9 +213,6 @@ export function Settings({
           One Markdown file holds each conversation. Starting a new review
           leaves the current file on disk.
         </p>
-        <Button variant="outline" onClick={onNewReview}>
-          New review
-        </Button>
         {reviews.data?.reviews
           .slice()
           .reverse()

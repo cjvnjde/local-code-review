@@ -61,6 +61,7 @@ Notes appear inline beside their subject; the conversation pane defaults to a
 compact index rather than duplicating every thread. **In diff** jumps to the
 note, reopening its file. The pane preserves your reading position when notes or
 code change. Incoming diff updates wait until an open editor closes.
+The note nearest the visible top of the diff is highlighted in the sidebar.
 Captured code uses the same disclosure in drafts, inline notes, and full sidebar
 conversations. It starts closed; **Settings → Expand captured code in notes by
 default** opens it by default. Each disclosure can still be toggled independently.
@@ -78,9 +79,12 @@ Hover over code to highlight a commentable row and show its gutter affordance.
 Click code or a line number to comment immediately, drag across lines for a range,
 or drag within a line to select specific characters. Shift-click extends a range;
 Alt-drag keeps normal browser text selection for copying. Comments open directly
-below their subject in a left-aligned, compact card with a transparent background,
-small corner radii, and a bordered input. Locations and agent outcomes share the
-identity row. File-level draft cards remain pinned below their file header.
+below their subject in a compact card aligned with the start of the code text,
+after the gutter. Cards and editors have solid backgrounds and small corner radii;
+the surrounding area matches the code pane. **Settings → Inline note width →
+Full width** removes the compact width cap. The choice survives reloads and also
+applies to pinned file drafts. Locations and agent outcomes share the identity row.
+File-level draft cards remain pinned below their file header.
 **Cancel** clears the selected-line highlight. Re-aiming an overlapping selection
 preserves your draft text and caret; an unrelated click cannot replace a dirty
 draft. The file header offers a file comment; while creating it, the editor stays
@@ -128,6 +132,10 @@ storage failures remain visible warnings.
 It persists in Markdown, imports, history, and reloads. Filter by triage separately
 from resolution. Changing classification alone preserves replies, verdicts,
 reviewer resolution, and queued work; it does not ask an agent to act.
+Agents may classify an unclassified note from their investigation, but must keep
+an existing category. Managed-agent results only classify the unchanged submitted
+revision after a completed turn. Saving text from an older editor preserves a
+category assigned meanwhile unless the reviewer explicitly changes classification.
 
 AI requests show queued, running, and permission/error states on their note and
 in the footer. Running work includes the agent's current activity when available.
@@ -175,6 +183,7 @@ counts, and empty states distinguish an empty review from a filtered list.
 **All / Open / Resolved** describe reviewer acknowledgement, not agent progress.
 Agent outcomes and activity remain separate.
 
+The label filter sits beside the select-style **View** control.
 **View → Compact list / Full conversations** changes how the sidebar presents notes.
 Compact rows show locations, feedback, resolution when applicable, and reply counts. Clicking a note
 jumps to its inline thread, including overall notes. Notes whose files are no
@@ -185,8 +194,9 @@ editor before switching views. View preferences survive reloads.
 **Resolve / Reopen** and **Note actions** sit in the compact note header.
 Reply stays below the conversation. **Note actions** contains copying the stable
 reference, editing, and deletion; each editable reply has **Reply actions**.
-Agent messages remain the agent's account. Unread counts include only incoming
-agent messages, never your own replies.
+Your original note and replies are labeled **You**; agent replies and summaries
+have a separate author icon and accent. Agent messages remain the agent's account.
+Unread counts include only incoming agent messages, never your own replies.
 References expand in place to show their note and conversation. Type `#` in a note
 or reply to search notes by reference, file, or text. Use ↑/↓ and Enter/Tab, or click
 a suggestion, to insert its reference; Escape dismisses suggestions. Type `@` to
@@ -216,8 +226,10 @@ Then ask “Apply the newest lcr review” or use `/apply-lcr` if supported.
 ## Saved reviews and history
 
 Each conversation has one timestamped Markdown file. Every mutation rereads that
-file to retain current agent replies. Restarting adopts its conversation. **Settings
-→ New review** leaves the current file in place; the saved-review list reopens it.
+file to retain current agent replies. Restarting adopts its conversation. Click
+the review icon beside the app title (**New review**) to start another conversation;
+the current file stays on disk. Unsaved edits must be saved or cancelled first.
+The saved-review list in Settings reopens earlier reviews.
 
 The header's history button opens observed review states from this browser's
 append-only journal. Choose **Current review** or **All repository** to inspect

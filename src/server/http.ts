@@ -854,6 +854,7 @@ function serve(options: ServerOptions, port: number) {
           const { file, changed, removed } = await options.session.save(
             { comments: [comment] },
             payload?.replace === true,
+            payload.preserveTriage === true,
           );
           for (const old of removed) await options.agent?.withdraw?.(old);
           const review = path.basename(file);

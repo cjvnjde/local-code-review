@@ -11,6 +11,8 @@ import {
   LoaderCircle,
   Copy,
   MoreHorizontal,
+  Bot,
+  UserRound,
 } from "lucide-react";
 import type { DiffFile, ReviewNote } from "../../../shared/review-types.ts";
 import { noteKey } from "../../../shared/note-id.ts";
@@ -30,6 +32,7 @@ import { useUi } from "../app/ui-preferences.tsx";
 import { useNoteEntrance } from "./note-motion.tsx";
 import { NoteHeader, TriageSelect } from "./note-header.tsx";
 import { refOf, refToken } from "./note-ref.ts";
+import { commentInput } from "./comment-input.ts";
 
 export function NoteCard({
   note,
@@ -110,6 +113,20 @@ export function NoteCard({
         ["pending", "unknown"].includes(note.status) ? undefined : note.status
       }
     >
+      {unreadBadge.current > 0 && (
+        // Keep a small fixed slot so reading the note cannot move a targeted action.
+        <span
+          className={cn(
+            "inline-flex size-5 shrink-0 items-center justify-center rounded border border-primary/40 text-[10px] font-medium text-primary",
+            unread === 0 && "invisible",
+          )}
+          title={`${unreadBadge.current} new from agent`}
+          aria-label={`${unreadBadge.current} new from agent`}
+          aria-hidden={unread === 0}
+        >
+          {unreadBadge.current > 9 ? "9+" : unreadBadge.current}
+        </span>
+      )}
       <TriageSelect
         value={note.triage}
         disabled={action.isPending || !!editor}
@@ -117,22 +134,10 @@ export function NoteCard({
           action.mutate({
             url: "/api/note",
             method: "POST",
-            body: { comment: { ...note, triage }, ask: false },
+            body: { comment: { ...commentInput(note), triage }, ask: false },
           })
         }
       />
-      {unreadBadge.current > 0 && (
-        // Reading on pointer entry or focus must not move the action being targeted.
-        <span
-          className={cn(
-            "text-xs font-medium text-primary",
-            unread === 0 && "invisible",
-          )}
-          aria-hidden={unread === 0}
-        >
-          {unreadBadge.current} new from agent
-        </span>
-      )}
       {(state.resolved(note) || canResolve(note)) && (
         <Button
           variant="ghost"
@@ -161,7 +166,9 @@ export function NoteCard({
         </ActionMenuItem>
         {editable && !editor && (
           <ActionMenuItem
-            onClick={() => onCompose({ kind: "note", comment: { ...note } })}
+            onClick={() =>
+              onCompose({ kind: "note", comment: commentInput(note) })
+            }
           >
             <Pencil /> Edit note
           </ActionMenuItem>
@@ -178,7 +185,7 @@ export function NoteCard({
   return (
     <article
       ref={entrance}
-      className="min-w-0 w-full rounded border bg-transparent [&_button]:rounded"
+      className="min-w-0 w-full rounded border bg-card [&_button]:rounded"
       data-note-id={note.id}
       data-note-surface
       onPointerEnter={() => state.read(note)}
@@ -275,15 +282,28 @@ export function NoteCard({
             />
           </div>
         )}
-        {editingNote ? (
-          editor
-        ) : (
-          <Markdown body={note.body} file={note.file} captured={note.code} />
-        )}
+        <section aria-label="Your note" className="space-y-1.5">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+            <UserRound aria-hidden="true" className="size-3.5" />
+            You
+          </div>
+          {editingNote ? (
+            editor
+          ) : (
+            <Markdown body={note.body} file={note.file} captured={note.code} />
+          )}
+        </section>
         {note.detail && (
-          <p className="rounded border px-2 py-1 text-xs text-muted-foreground">
-            {note.detail}
-          </p>
+          <section
+            aria-label="Agent summary"
+            className="space-y-1 border-l-2 border-l-primary/40 pl-2"
+          >
+            <div className="flex items-center gap-1.5 text-xs font-medium text-primary">
+              <Bot aria-hidden="true" className="size-3.5" />
+              Agent summary
+            </div>
+            <p className="text-xs text-muted-foreground">{note.detail}</p>
+          </section>
         )}
         {agent &&
           !(
@@ -303,20 +323,33 @@ export function NoteCard({
           <section
             key={message.at || i}
             data-note-message={i}
-            className="space-y-1.5 border-t px-2.5 py-2"
+            aria-label={message.role === "agent" ? "Agent reply" : "Your reply"}
+            className={cn(
+              "space-y-1.5 border-t border-l-2 py-2 pl-2 pr-2.5",
+              message.role === "agent"
+                ? "border-l-primary/40"
+                : "border-l-muted-foreground/30",
+            )}
           >
             <div className="flex items-center gap-2 text-xs">
               <span
                 className={cn(
-                  "font-medium",
+                  "flex items-center gap-1.5 font-medium",
                   message.role === "agent" && "text-primary",
                 )}
               >
+                {message.role === "agent" ? (
+                  <Bot aria-hidden="true" className="size-3.5" />
+                ) : (
+                  <UserRound aria-hidden="true" className="size-3.5" />
+                )}
                 {message.role === "agent" ? "Agent" : "You"}
               </span>
-              <span className="text-muted-foreground">
-                {message.at && new Date(message.at).toLocaleString()}
-              </span>
+              {message.at && (
+                <time dateTime={message.at} className="text-muted-foreground">
+                  {new Date(message.at).toLocaleString()}
+                </time>
+              )}
               <div className="ml-auto" />
               {own && editingReply !== message.at && (
                 <ActionMenu trigger={menuTrigger(message.at!, "Reply actions")}>
@@ -357,7 +390,16 @@ export function NoteCard({
         );
       })}
       {editor && !editingNote && !editingReply && (
-        <div className="border-t px-2.5 py-2">{editor}</div>
+        <section
+          aria-label="Your reply"
+          className="space-y-1.5 border-t border-l-2 border-l-muted-foreground/30 py-2 pl-2 pr-2.5"
+        >
+          <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+            <UserRound aria-hidden="true" className="size-3.5" />
+            You
+          </div>
+          {editor}
+        </section>
       )}
       {!editingNote && (
         <footer className="flex flex-wrap items-center gap-1 border-t px-2 py-1 [&_button]:h-7">
@@ -398,7 +440,11 @@ export function NoteCard({
                 action.mutate({
                   url: "/api/note",
                   method: "POST",
-                  body: { comment: note, retry: true },
+                  body: {
+                    comment: commentInput(note),
+                    retry: true,
+                    preserveTriage: true,
+                  },
                 })
               }
             >

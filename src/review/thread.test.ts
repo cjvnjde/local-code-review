@@ -51,6 +51,40 @@ describe("note triage metadata", () => {
     }
   });
 
+  test.each(["code", "file", "global"] as const)(
+    "manual classification before %s evidence preserves the conversation",
+    (scope) => {
+      const original = noteFromComment(
+        scope === "code"
+          ? comment
+          : {
+              ...comment,
+              id: scope === "global" ? "|@|@|#a1" : "src/app.ts|*|*|#a1",
+              scope,
+              file: scope === "global" ? "" : comment.file,
+              start: 0,
+              end: 0,
+              code: undefined,
+            },
+      );
+      original.messages.push(
+        { role: "reviewer", at: "first", body: "Please explain the evidence." },
+        { role: "agent", at: "second", body: "Here is the explanation." },
+      );
+      const markdown = renderMarkdown({ range: "HEAD", notes: [original] });
+      const classified = markdown.replace(
+        /(^### .+\n\n)/m,
+        "$1Triage: question <!-- lcr:triage -->\n\n",
+      );
+      const parsed = parseReview(classified).notes[0]!;
+      expect(parsed).toEqual({ ...original, triage: "question" });
+      expect(
+        parseReview(renderMarkdown({ range: "HEAD", notes: [parsed] }))
+          .notes[0],
+      ).toEqual(parsed);
+    },
+  );
+
   test("agent messages containing a sealed triage line remain messages", () => {
     const note = noteFromComment({ ...comment, triage: "bug" });
     note.messages.push({

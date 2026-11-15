@@ -104,6 +104,7 @@ export function CodeRow({
           : ["down", "up"];
   return (
     <div
+      style={gutterStyle}
       className={cn(
         "group relative flex min-h-[26px] items-start font-mono text-xs",
         settings.wrapLines || row.t === "hunk"
@@ -124,10 +125,9 @@ export function CodeRow({
         <div className="flex min-h-[26px] w-full min-w-0 items-stretch">
           <div
             style={{
-              ...gutterStyle,
               width: settings.lineNumbers
-                ? "calc(var(--old-line-width) + var(--new-line-width) + 2.5rem)"
-                : "2.5rem",
+                ? "calc(var(--old-line-width) + var(--new-line-width) + 2 * var(--gutter-control-width))"
+                : "calc(2 * var(--gutter-control-width))",
             }}
             className="flex min-w-10 shrink-0 flex-col bg-muted/70"
           >
@@ -184,7 +184,6 @@ export function CodeRow({
       ) : (
         <>
           <div
-            style={gutterStyle}
             className={cn(
               "flex shrink-0 self-stretch items-start",
               !settings.lineNumbers &&
@@ -222,7 +221,7 @@ export function CodeRow({
               aria-label={`Bookmark line ${row.n ?? row.o}`}
               aria-pressed={bookmarked}
               title={`${bookmarked ? "Remove bookmark from" : "Bookmark"} line ${row.n ?? row.o}`}
-              className="flex h-[26px] w-5 shrink-0 items-center justify-center text-muted-foreground hover:text-primary"
+              className="flex h-[26px] w-[var(--gutter-control-width)] shrink-0 items-center justify-center text-muted-foreground hover:text-primary"
               onClick={onBookmark}
             >
               {bookmarked ? (
@@ -231,7 +230,7 @@ export function CodeRow({
                 <Bookmark className="size-3 opacity-35" />
               )}
             </button>
-            <span className="flex h-[26px] w-5 shrink-0 items-center justify-center">
+            <span className="flex h-[26px] w-[var(--gutter-control-width)] shrink-0 items-center justify-center">
               {notes > 0 ? (
                 <button
                   data-row-action
@@ -252,7 +251,7 @@ export function CodeRow({
           </div>
           <span
             aria-hidden="true"
-            className="w-4 shrink-0 select-none text-center leading-[26px] opacity-60"
+            className="w-[var(--diff-marker-width)] shrink-0 select-none text-center leading-[26px] opacity-60"
           >
             {row.t === "add" ? "+" : row.t === "del" ? "−" : ""}
           </span>

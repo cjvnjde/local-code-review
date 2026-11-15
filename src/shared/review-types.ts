@@ -38,7 +38,7 @@ export interface NoteStatus {
   source: string;
 }
 
-/** Reviewer classification, independent from agent outcome and manual resolution. */
+/** Note classification, chosen by the reviewer or filled in by an agent when unclassified. */
 export type NoteTriage = "blocker" | "bug" | "suggestion" | "question";
 
 export interface ReviewComment {

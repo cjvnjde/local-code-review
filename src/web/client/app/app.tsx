@@ -48,6 +48,7 @@ import {
   FileCode2,
   Circle,
   LoaderCircle,
+  ChevronDown,
 } from "lucide-react";
 import {
   useDiff,
@@ -176,6 +177,7 @@ function Workspace({
   const dark = theme.mode === "dark";
   const [navOpen, setNavOpen] = useStored("lcr:v2:sidebar", true);
   const [selected, setSelected] = useState("");
+  const [visibleNote, setVisibleNote] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [notesOpen, setNotesOpen] = useStored(
     "lcr:v2:notes-panel",
@@ -680,9 +682,17 @@ function Workspace({
                       ? setNavOpen(!navOpen)
                       : setFileDrawerOpen(!fileDrawerOpen),
                 )}
-                <div className="hidden size-7 items-center justify-center text-primary sm:flex">
-                  <GitPullRequest className="size-4" />
-                </div>
+                <Tooltip label="New review">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-7 text-primary"
+                    aria-label="New review"
+                    onClick={() => void changeReview()}
+                  >
+                    <GitPullRequest />
+                  </Button>
+                </Tooltip>
                 <div className="mr-2 hidden shrink-0 xl:block">
                   <h1 className="text-sm font-semibold tracking-tight">
                     Local code review{" "}
@@ -825,7 +835,7 @@ function Workspace({
                           );
                         }}
                         aria-label="Overall note editor"
-                        className="absolute right-0 top-full z-40 mt-2 max-h-[calc(100dvh-112px)] w-[min(40rem,calc(100vw-24px))] overflow-auto rounded-xl shadow-xl max-sm:fixed max-sm:inset-x-3 max-sm:top-12 max-sm:mt-2 max-sm:w-auto"
+                        className="absolute right-0 top-full z-40 mt-2 max-h-[calc(100dvh-112px)] w-[min(40rem,calc(100vw-24px))] overflow-auto rounded bg-card shadow-xl max-sm:fixed max-sm:inset-x-3 max-sm:top-12 max-sm:mt-2 max-sm:w-auto"
                       >
                         <Composer
                           draft={draft}
@@ -1026,7 +1036,7 @@ function Workspace({
                 }
                 notes={
                   <aside
-                    className="flex h-full min-w-0 flex-col bg-muted/15 max-[960px]:fixed max-[960px]:inset-x-0 max-[960px]:top-12 max-[960px]:bottom-10 max-[960px]:z-20 max-[960px]:h-auto max-[960px]:w-full max-[960px]:bg-background"
+                    className="flex h-full min-w-0 flex-col bg-background max-[960px]:fixed max-[960px]:inset-x-0 max-[960px]:top-12 max-[960px]:bottom-10 max-[960px]:z-20 max-[960px]:h-auto max-[960px]:w-full"
                     aria-label="Review notes"
                   >
                     <Tabs.Root
@@ -1127,9 +1137,9 @@ function Workspace({
                               {file.path}
                             </p>
                           )}
-                          <div className="flex items-center gap-1">
+                          <div className="flex flex-wrap items-center gap-1">
                             <div
-                              className="flex flex-1 gap-1"
+                              className="flex gap-0.5"
                               role="group"
                               aria-label="Note state"
                             >
@@ -1138,6 +1148,7 @@ function Workspace({
                                   <Button
                                     key={kind}
                                     size="sm"
+                                    className="h-8 gap-1 rounded px-1.5"
                                     variant={
                                       filter === kind ? "outline" : "ghost"
                                     }
@@ -1162,68 +1173,73 @@ function Workspace({
                                 ),
                               )}
                             </div>
-                            <ActionMenu
-                              trigger={
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  aria-label="Note view and actions"
+                            <div className="ml-auto flex min-w-0 items-center gap-1">
+                              <Select
+                                label="Filter notes by triage"
+                                className="h-8 max-w-28 rounded px-2"
+                                value={triageFilter}
+                                onValueChange={setTriageFilter}
+                                options={[
+                                  { value: "all", label: "All labels" },
+                                  ...triageOptions,
+                                ]}
+                              />
+                              <ActionMenu
+                                trigger={
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-8 gap-2 rounded px-2 font-normal"
+                                    aria-label="Note view and actions"
+                                  >
+                                    View
+                                    <ChevronDown className="text-muted-foreground" />
+                                  </Button>
+                                }
+                              >
+                                <ActionMenuItem
+                                  onClick={() => setCompactNotes(true)}
+                                  disabled={draft?.host === "panel"}
                                 >
-                                  View
-                                </Button>
-                              }
-                            >
-                              <ActionMenuItem
-                                onClick={() => setCompactNotes(true)}
-                                disabled={draft?.host === "panel"}
-                              >
-                                Compact list{compactNotes && <Check />}
-                              </ActionMenuItem>
-                              <ActionMenuItem
-                                onClick={() => setCompactNotes(false)}
-                                disabled={draft?.host === "panel"}
-                              >
-                                Full conversations{!compactNotes && <Check />}
-                              </ActionMenuItem>
-                              <ActionMenuItem
-                                disabled={
-                                  !!draft ||
-                                  !notes.some(
-                                    (note) => note.status === "applied",
-                                  )
-                                }
-                                onClick={() =>
-                                  setBulkDelete(
-                                    notes
-                                      .filter(
-                                        (note) => note.status === "applied",
-                                      )
-                                      .map((note) => note.id),
-                                  )
-                                }
-                              >
-                                Remove applied notes
-                              </ActionMenuItem>
-                              <ActionMenuItem
-                                className="text-destructive"
-                                disabled={!!draft || !notes.length}
-                                onClick={() =>
-                                  setBulkDelete(notes.map((note) => note.id))
-                                }
-                              >
-                                Clear notes
-                              </ActionMenuItem>
-                            </ActionMenu>
+                                  Compact list{compactNotes && <Check />}
+                                </ActionMenuItem>
+                                <ActionMenuItem
+                                  onClick={() => setCompactNotes(false)}
+                                  disabled={draft?.host === "panel"}
+                                >
+                                  Full conversations{!compactNotes && <Check />}
+                                </ActionMenuItem>
+                                <ActionMenuItem
+                                  disabled={
+                                    !!draft ||
+                                    !notes.some(
+                                      (note) => note.status === "applied",
+                                    )
+                                  }
+                                  onClick={() =>
+                                    setBulkDelete(
+                                      notes
+                                        .filter(
+                                          (note) => note.status === "applied",
+                                        )
+                                        .map((note) => note.id),
+                                    )
+                                  }
+                                >
+                                  Remove applied notes
+                                </ActionMenuItem>
+                                <ActionMenuItem
+                                  className="text-destructive"
+                                  disabled={!!draft || !notes.length}
+                                  onClick={() =>
+                                    setBulkDelete(notes.map((note) => note.id))
+                                  }
+                                >
+                                  Clear notes
+                                </ActionMenuItem>
+                              </ActionMenu>
+                            </div>
                           </div>
-                          <Select
-                            label="Filter notes by triage"
-                            value={triageFilter}
-                            onValueChange={setTriageFilter}
-                            options={[
-                              { value: "all", label: "All labels" },
-                              ...triageOptions,
-                            ]}
-                          />
                         </div>
                         {bulkDelete.length > 0 && (
                           <div className="flex flex-wrap items-center gap-2 border-b p-3 text-xs">
@@ -1274,6 +1290,16 @@ function Workspace({
                               <div
                                 key={note.id}
                                 role={compactNotes ? "listitem" : undefined}
+                                aria-current={
+                                  visibleNote === note.id
+                                    ? "location"
+                                    : undefined
+                                }
+                                className={cn(
+                                  "relative rounded",
+                                  visibleNote === note.id &&
+                                    "ring-2 ring-primary/60",
+                                )}
                               >
                                 {compactNotes &&
                                 expandedNote !== note.id &&
@@ -1283,7 +1309,7 @@ function Workspace({
                                 ) ? (
                                   <button
                                     type="button"
-                                    className="w-full min-w-0 rounded border bg-transparent px-2.5 py-2 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                    className="w-full min-w-0 rounded border bg-card px-2.5 py-2 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                     id={`note-${note.id.split("|#").at(-1)}`}
                                     data-note-id={note.id}
                                     aria-label={
@@ -1519,6 +1545,7 @@ function Workspace({
                       }));
                     }}
                     onActiveChange={setSelected}
+                    onVisibleNoteChange={setVisibleNote}
                     onComment={(comment) => compose({ kind: "note", comment })}
                     onCompose={(next) => compose({ ...next, host: "diff" })}
                     agent={!!agent.agent}
@@ -1614,7 +1641,6 @@ function Workspace({
                   {dialog === "settings" && (
                     <Settings
                       agent={agent}
-                      onNewReview={() => void changeReview()}
                       onOpenReview={(name) => void changeReview(name)}
                     />
                   )}

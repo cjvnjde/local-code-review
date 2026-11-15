@@ -942,6 +942,115 @@ describe("serialized conversation mutations", () => {
 });
 
 describe("submitted revision ownership", () => {
+  test("agent classification persists without changing evidence, reviewer content or the thread", async () => {
+    const dir = await workspace();
+    const session = createSession(dir, ".", "HEAD");
+    const a = note("a|n12|n12|#triage");
+    await session.save({ comments: [a] });
+    await session.reply(a.id!, "Explain the behavior.");
+    const submitted = (await session.read()).notes[0]!;
+    const result = await session.answerRevision(
+      session.file,
+      a.id!,
+      "The implementation is deliberate.",
+      reviewerRevision(submitted),
+      "answered",
+      "question",
+    );
+    expect(result).toMatchObject({
+      ...a,
+      triage: "question",
+      status: "answered",
+    });
+    expect(result!.messages[0]).toEqual(submitted.messages[0]);
+    expect(result!.messages[1]!.body).toBe("The implementation is deliberate.");
+    const restarted = createSession(dir, ".", "HEAD");
+    await restarted.adoptNewest();
+    expect((await restarted.read()).notes[0]).toEqual(result);
+  });
+
+  test.each(["blocker", "bug", "suggestion", "question"] as const)(
+    "a concurrent reviewer %s category wins over an agent classification",
+    async (triage) => {
+      const dir = await workspace();
+      const session = createSession(dir, ".", "HEAD");
+      const a = note("a|n12|n12|#triage");
+      await session.save({ comments: [a] });
+      const revision = reviewerRevision((await session.read()).notes[0]!);
+      const changed = await session.save({ comments: [{ ...a, triage }] });
+      expect(changed.changed).toEqual([]);
+      const result = await session.answerRevision(
+        session.file,
+        a.id!,
+        "Answered.",
+        revision,
+        "answered",
+        "bug",
+      );
+      expect(result).toMatchObject({ ...a, triage, status: "answered" });
+      expect(result!.messages[0]!.body).toBe("Answered.");
+      expect((await session.read()).notes[0]).toEqual(result);
+    },
+  );
+
+  test.each(["managed", "manual"] as const)(
+    "a stale editor save preserves %s classification and explicit reviewer changes still win",
+    async (source) => {
+      const dir = await workspace();
+      const session = createSession(dir, ".", "HEAD");
+      const a = note("a|n12|n12|#triage");
+      await session.save({ comments: [a] });
+      const submitted = (await session.read()).notes[0]!;
+      if (source === "managed") {
+        await session.answerRevision(
+          session.file,
+          a.id!,
+          "Explained.",
+          reviewerRevision(submitted),
+          "answered",
+          "question",
+        );
+      } else {
+        submitted.triage = "question";
+        await writeFile(
+          path.join(dir, session.file),
+          renderMarkdown({ range: "HEAD", notes: [submitted] }),
+          "utf8",
+        );
+      }
+      const classified = (await session.read()).notes[0]!;
+      const saved = await session.save({ comments: [a] }, false, true);
+      expect(saved.changed).toEqual([]);
+      const restarted = createSession(dir, ".", "HEAD");
+      await restarted.adoptNewest();
+      expect((await restarted.read()).notes[0]).toEqual(classified);
+      await restarted.save({ comments: [{ ...a, triage: "suggestion" }] });
+      expect((await restarted.read()).notes[0]!.triage).toBe("suggestion");
+      await restarted.save({ comments: [a] });
+      const cleared = (await restarted.read()).notes[0]!;
+      expect(cleared.triage).toBeUndefined();
+      expect(cleared.messages).toEqual(classified.messages);
+      expect(cleared.status).toBe(classified.status);
+      await restarted.save(
+        { comments: [{ ...a, triage: "suggestion" }] },
+        false,
+        true,
+      );
+      expect((await restarted.read()).notes[0]!.triage).toBeUndefined();
+    },
+  );
+
+  test("preserving existing triage still accepts a category on a new note", async () => {
+    const dir = await workspace();
+    const session = createSession(dir, ".", "HEAD");
+    await session.save(
+      { comments: [{ ...note("a|n12|n12|#new"), triage: "bug" }] },
+      false,
+      true,
+    );
+    expect((await session.read()).notes[0]!.triage).toBe("bug");
+  });
+
   test("an unchanged submission receives its verdict and clears the previous detail", async () => {
     const dir = await workspace();
     const session = createSession(dir, ".", "HEAD");
@@ -983,8 +1092,10 @@ describe("submitted revision ownership", () => {
         "Old result.",
         revision,
         "applied",
+        "bug",
       );
       expect(result!.status).toBe("pending");
+      expect(result!.triage).toBeUndefined();
       expect(result!.messages.at(-1)).toMatchObject({ role: "agent" });
       expect(result!.messages.at(-1)!.body).toContain(revision.slice(0, 12));
       expect(result!.messages.at(-1)!.body).toContain("Old result.");

@@ -113,6 +113,7 @@ export const noteRequestSchema = z.strictObject({
   comment: savedCommentSchema,
   retry: z.boolean().optional(),
   replace: z.boolean().optional(),
+  preserveTriage: z.boolean().optional(),
   ask: z.boolean().optional(),
 });
 export const submitRequestSchema = z.strictObject({

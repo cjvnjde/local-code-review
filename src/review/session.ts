@@ -7,6 +7,7 @@ import { applyComment, noteFromComment, parseReview } from "./thread.ts";
 import type { ReviewDoc, ReviewMessage, ReviewNote } from "./thread.ts";
 import type {
   NoteStatusKind,
+  NoteTriage,
   ReviewComment,
   ReviewSubmission,
 } from "../shared/review-types.ts";
@@ -310,6 +311,7 @@ export function createSession(
       body: string,
       revision: string,
       status?: NoteStatusKind,
+      triage?: NoteTriage,
     ): Promise<ReviewNote | null> {
       return serialise(async () => {
         const doc = await readNamed(file);
@@ -327,6 +329,7 @@ export function createSession(
           note.status = status;
           note.detail = "";
         }
+        if (same && !note.triage && triage) note.triage = triage;
         await writeFile(path.join(dir(), file), renderMarkdown(doc), "utf8");
         return note;
       });
@@ -336,8 +339,13 @@ export function createSession(
      * Folds the page's notes into the conversation. Unanswered notes take the reviewer's current
      * wording; answered originals retain their wording, evidence, thread and verdict. Notes the page
      * no longer holds are left alone: handing a note over is not the same as withdrawing it.
+     * An editor that did not change triage preserves the latest category read inside this queue.
      */
-    save(submission: ReviewSubmission, replace = false): Promise<SaveResult> {
+    save(
+      submission: ReviewSubmission,
+      replace = false,
+      preserveTriage = false,
+    ): Promise<SaveResult> {
       return serialise(async () => {
         const doc = await read();
         const known = new Map(doc.notes.map((note, index) => [note.id, index]));
@@ -352,7 +360,10 @@ export function createSession(
           const index = known.get(comment.id);
           if (index !== undefined) {
             const kept = doc.notes[index]!;
-            const next = applyComment(kept, comment);
+            const next = applyComment(
+              kept,
+              preserveTriage ? { ...comment, triage: kept.triage } : comment,
+            );
             if (reviewerFields(kept) !== reviewerFields(next)) {
               assertEditableNote(kept);
               changed.push(next);

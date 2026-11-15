@@ -99,6 +99,7 @@ async function receive(message: any) {
       status:
         permission?.outcome?.optionId === "no" ? "needs-input" : "answered",
       body: "Fixture answer " + turn,
+      triage: mode.startsWith("triage") ? "question" : undefined,
     });
     send({
       method: "session/update",
@@ -113,7 +114,7 @@ async function receive(message: any) {
     result(message.id, {
       stopReason: cancelled
         ? "cancelled"
-        : mode === "blocked"
+        : mode.endsWith("blocked")
           ? "max_tokens"
           : "end_turn",
     });

@@ -50,6 +50,7 @@ import { CapturedCode } from "./captured-code.tsx";
 import { suggestionBlock } from "../diff/model.ts";
 import { WebEvidence } from "../web-review/evidence.tsx";
 import { NoteHeader, TriageSelect } from "./note-header.tsx";
+import { commentInput } from "./comment-input.ts";
 
 export type Draft = {
   host?: "diff" | "panel";
@@ -311,7 +312,13 @@ export function Composer({
         await action.mutateAsync({
           url: "/api/note",
           method: "POST",
-          body: { comment: draft.comment, ask, replace: settings.single },
+          body: {
+            comment: commentInput(draft.comment),
+            ask,
+            replace: settings.single,
+            preserveTriage:
+              !!draft.editing && draft.comment.triage === draft.originalTriage,
+          },
         });
       else
         await action.mutateAsync({
@@ -850,7 +857,7 @@ export function Composer({
           ? "flex min-h-0 flex-1 flex-col [&_button]:rounded"
           : integrated
             ? "min-w-0 w-full [&_button]:rounded"
-            : "min-w-0 w-full rounded border bg-transparent [&_button]:rounded"
+            : "min-w-0 w-full rounded border bg-card [&_button]:rounded"
       }
       onDragOver={(event) => {
         if (event.dataTransfer.types.includes("Files")) event.preventDefault();
