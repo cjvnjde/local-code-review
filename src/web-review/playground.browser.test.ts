@@ -143,7 +143,7 @@ test.skipIf(process.env.LCR_TEST_BROWSER !== "1")(
       const buttonCapture = await capture();
       expect(buttonCapture.element?.tag).toBe("button");
       expect(buttonCapture.element?.attributes["aria-label"]).toBe(
-        "Selection mode",
+        "Element tools",
       );
       expect(buttonCapture.rect).toEqual(original);
       expect(await js(`${launcher}.getAttribute('aria-pressed')`)).toBe("true");

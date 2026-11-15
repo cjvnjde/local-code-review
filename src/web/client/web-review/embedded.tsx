@@ -6,7 +6,6 @@ import { Composer, draftBody, type Draft } from "../notes/composer.tsx";
 import { NoteCard } from "../notes/note-card.tsx";
 import { makeComment } from "../diff/model.ts";
 import { webReview } from "../../../shared/web-review.ts";
-import { Button } from "../components/ui/button.tsx";
 
 const query =
   typeof location === "undefined"
@@ -152,13 +151,24 @@ export function EmbeddedReview({
           embedded
           onBusy={setBusy}
           webDraftId={draftId || undefined}
+          onAddCapture={
+            !capturing && !draft.editing && (draft.kind === "reply" || !noteId)
+              ? () => tell("add-capture")
+              : undefined
+          }
           onWebDrawing={(open) =>
             tell("annotation", { open, ...(draftId ? { draftId } : {}) })
           }
         />
       ) : note ? (
         <div className="min-h-0 flex-1 overflow-auto p-3">
-          <NoteCard note={note} agent={!!diff.agent} onCompose={setDraft} />
+          <NoteCard
+            note={note}
+            agent={!!diff.agent}
+            onCompose={setDraft}
+            embedded
+            onAddCapture={() => tell("add-capture")}
+          />
         </div>
       ) : (
         <p className="p-5 text-sm text-muted-foreground">
@@ -167,15 +177,6 @@ export function EmbeddedReview({
             : "This note is no longer in the review."}
         </p>
       )}
-      <div className="flex shrink-0 justify-end border-t p-2">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => tell("review", noteId ? { id: noteId } : {})}
-        >
-          Open full review
-        </Button>
-      </div>
     </div>
   );
 }

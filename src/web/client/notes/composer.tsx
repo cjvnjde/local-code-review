@@ -34,6 +34,7 @@ import {
   Eye,
   Pencil,
   LoaderCircle,
+  Plus,
 } from "lucide-react";
 import type { ReviewComment } from "../../../shared/review-types.ts";
 import { noteKey } from "../../../shared/note-id.ts";
@@ -82,6 +83,7 @@ export function Composer({
   onBusy,
   webDraftId,
   onWebDrawing,
+  onAddCapture,
 }: {
   draft: Draft;
   onChange: (draft: Draft) => void;
@@ -92,6 +94,7 @@ export function Composer({
   onBusy?: (busy: boolean) => void;
   webDraftId?: string;
   onWebDrawing?: (open: boolean) => void;
+  onAddCapture?: () => void;
 }) {
   const action = useAction();
   const { settings } = useUi();
@@ -126,8 +129,6 @@ export function Composer({
   }
   const code = draft.kind === "note" ? draft.comment.code : draft.code;
   const file = draft.kind === "note" ? draft.comment.file : draft.file;
-  const title =
-    draft.kind === "note" ? noteKey(draft.comment) : `Reply · ${draft.label}`;
   const busy = action.isPending || uploading || drawing;
   const integrated = !embedded && (draft.editing || draft.kind === "reply");
   const matches = useMemo(
@@ -358,7 +359,7 @@ export function Composer({
   );
   const content = (
     <div
-      className={`flex min-h-0 flex-col gap-3 ${embedded ? "flex-1" : integrated ? "" : "p-4"}`}
+      className={`flex min-h-0 flex-col gap-3 ${embedded ? "flex-1 pt-3" : integrated ? "" : "p-4"}`}
     >
       <div
         role={embedded ? "region" : undefined}
@@ -431,7 +432,7 @@ export function Composer({
       <div
         className={
           embedded
-            ? "shrink-0 space-y-3 border-t bg-background p-4"
+            ? "shrink-0 space-y-3 border-t bg-background p-3"
             : "space-y-3"
         }
       >
@@ -707,6 +708,17 @@ export function Composer({
           </p>
         )}
         <div className="flex flex-wrap items-center gap-2 border-t pt-2">
+          {onAddCapture && (
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={busy}
+              onClick={onAddCapture}
+            >
+              <Plus />
+              Add capture
+            </Button>
+          )}
           <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
             <Button size="sm" variant="ghost" disabled={busy} onClick={onClose}>
               Cancel
@@ -761,14 +773,9 @@ export function Composer({
         }
       }}
     >
-      {!integrated &&
-        (embedded ? (
-          <h2 className="mb-3 shrink-0 break-words px-4 pt-4 font-mono text-xs font-medium text-primary">
-            {title}
-          </h2>
-        ) : draft.kind === "note" ? (
-          <NoteHeader note={draft.comment} status="Draft" />
-        ) : null)}
+      {!integrated && !embedded && draft.kind === "note" && (
+        <NoteHeader note={draft.comment} status="Draft" />
+      )}
       {content}
     </section>
   );

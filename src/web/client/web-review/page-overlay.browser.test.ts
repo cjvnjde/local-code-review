@@ -28,7 +28,7 @@ browserTest(
           return new Response(script, {
             headers: { "content-type": "text/javascript" },
           });
-        if (url.searchParams.has("ui-draft"))
+        if (url.searchParams.has("ui-draft") || url.searchParams.has("ui-note"))
           return new Response(
             '<!doctype html><textarea id="draft"></textarea>',
             { headers: { "content-type": "text/html" } },
@@ -47,10 +47,17 @@ browserTest(
           if(message.action==='context-settings')value={aiContext:false,contextHtml:false,contextFullPage:false};
           if(message.action==='capture'){
             const capture=message.payload.capture;
-            window.draftWeb=message.payload.draftId
-              ? {...window.draftWeb,additional:[...(window.draftWeb.additional||[]),capture]}
-              : {before:capture,after:[]};
-            value={draftId:'draft',capture,web:window.draftWeb};
+            if(message.payload.id){
+              window.replyWeb=window.replyWeb
+                ? {...window.replyWeb,additional:[...(window.replyWeb.additional||[]),capture]}
+                : {before:capture,after:[]};
+              value={draftId:'reply-draft',reply:true,capture,web:window.replyWeb};
+            }else{
+              window.draftWeb=message.payload.draftId
+                ? {...window.draftWeb,additional:[...(window.draftWeb.additional||[]),capture]}
+                : {before:capture,after:[]};
+              value={draftId:'draft',capture,web:window.draftWeb};
+            }
           }
           if(message.action==='freeze'){
             const canvas=document.createElement('canvas');canvas.width=innerWidth;canvas.height=innerHeight;
@@ -111,18 +118,35 @@ browserTest(
       const root = "document.getElementById('overlay').shadowRoot";
       await until("!!window.overlay");
       const mode = (value: string) =>
-        js(`${root}.querySelector('[data-mode="${value}"]').click()`);
+        value === "browse"
+          ? js(
+              `if(${root}.querySelector('[data-launcher]').getAttribute('aria-pressed')==='true')${root}.querySelector('[data-toggle]').click()`,
+            )
+          : js(`${root}.querySelector('[data-mode="${value}"]').click()`);
       const control = (selector: string) =>
         js(`${root}.querySelector(${JSON.stringify(selector)}).click()`);
+      const message = (action: string, extra = {}, token?: string) =>
+        js(`window.dispatchEvent(new MessageEvent('message',{
+          origin:location.origin,source:savedFrame.contentWindow,
+          data:{type:'lcr:ui',token:${token === undefined ? "new URL(savedFrame.src).searchParams.get('ui-draft')||new URL(savedFrame.src).searchParams.get('ui-note')" : JSON.stringify(token)},action:${JSON.stringify(action)},...${JSON.stringify(extra)}}
+        }))`);
+      const dockBounds = () =>
+        js(
+          `(()=>{const r=${root}.querySelector('.dock').getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height}})()`,
+        );
       const center = async (selector: string): Promise<Point> =>
         js(
           `(()=>{const b=document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();return {x:b.x+b.width/2,y:b.y+b.height/2}})()`,
         );
-      const mouse = (type: string, at: Point, extra = {}) =>
+      const mouse = (
+        type: string,
+        at: Point,
+        extra: Record<string, unknown> = {},
+      ) =>
         send("Input.dispatchMouseEvent", {
           type,
           ...at,
-          button: type === "mouseMoved" ? "none" : "left",
+          button: type === "mouseMoved" && !extra.buttons ? "none" : "left",
           buttons: type === "mousePressed" ? 1 : 0,
           clickCount: 1,
           ...extra,
@@ -150,6 +174,38 @@ browserTest(
           });
       };
       const at = await center("#target");
+      await control("[data-launcher]");
+      expect(await js(`${root}.querySelector('.bar').hidden`)).toBe(false);
+      expect(await js(`${root}.querySelector('.mode-state').textContent`)).toBe(
+        "Element",
+      );
+      await control("[data-toggle]");
+      expect(await js(`${root}.querySelector('.mode-state').textContent`)).toBe(
+        "Browse",
+      );
+      expect(await js(`${root}.querySelector('.bar').hidden`)).toBe(true);
+      await control("[data-launcher]");
+      expect(
+        await js(`${root}.querySelector('[data-toggle]').textContent`),
+      ).toBe("Annotate page");
+      await control("[data-toggle]");
+      const launcherBefore = await pinCenter("[data-launcher]");
+      await mouse("mouseMoved", launcherBefore);
+      await mouse("mousePressed", launcherBefore);
+      await mouse(
+        "mouseMoved",
+        { x: launcherBefore.x + 70, y: launcherBefore.y - 40 },
+        { buttons: 1 },
+      );
+      await mouse("mouseReleased", {
+        x: launcherBefore.x + 70,
+        y: launcherBefore.y - 40,
+      });
+      expect(await pinCenter("[data-launcher]")).toEqual({
+        x: launcherBefore.x + 70,
+        y: launcherBefore.y - 40,
+      });
+      expect(await js(`${root}.querySelector('.bar').hidden`)).toBe(true);
 
       await mode("point");
       await click(at);
@@ -171,8 +227,74 @@ browserTest(
         `window.savedFrame=${root}.querySelector('iframe');savedFrame.contentDocument.querySelector('#draft').value='Keep this draft'`,
       );
 
+      expect(await dockBounds()).toMatchObject({ width: 440, height: 540 });
+      expect(await js(`${root}.querySelector('.head b').textContent`)).toBe(
+        "New web note",
+      );
+      await js(
+        `${root}.querySelector('[data-resize]').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft'}))`,
+      );
+      const resized = await dockBounds();
+      expect(resized.width).toBe(430);
+      await message("annotation", { open: true });
+      expect(await dockBounds()).toMatchObject(
+        await js("({x:0,y:0,width:innerWidth,height:innerHeight})"),
+      );
+      await message("add-capture");
+      expect(await js(`${root}.querySelector('.capture-prompt').hidden`)).toBe(
+        true,
+      );
+      await message("annotation", { open: false });
+      expect(await dockBounds()).toEqual(resized);
+      await message("image-preview", { open: true });
+      expect(await dockBounds()).toMatchObject(
+        await js("({x:0,y:0,width:innerWidth,height:innerHeight})"),
+      );
+      await message("image-preview", { open: false });
+      expect(await dockBounds()).toEqual(resized);
+      await message("add-capture", {}, "wrong-token");
+      expect(await js(`${root}.querySelector('.capture-prompt').hidden`)).toBe(
+        true,
+      );
+      for (const protectedState of [{ saving: true }, { editOriginal: true }]) {
+        await message("dirty", protectedState);
+        await message("add-capture");
+        expect(
+          await js(`${root}.querySelector('.capture-prompt').hidden`),
+        ).toBe(true);
+        await message("dirty", { saving: false, editOriginal: false });
+      }
+      await mode("browse");
+      await message("add-capture");
+      expect(
+        await js(
+          `${root}.querySelector('.dock').classList.contains('minimized')`,
+        ),
+      ).toBe(true);
+      expect(await js(`${root}.querySelector('.capture-prompt').hidden`)).toBe(
+        false,
+      );
+      for (const type of ["keyDown", "keyUp"])
+        await send("Input.dispatchKeyEvent", {
+          type,
+          key: "Escape",
+          code: "Escape",
+        });
+      expect(await dockBounds()).toEqual(resized);
+      expect(await js(`${root}.querySelector('.capture-prompt').hidden`)).toBe(
+        true,
+      );
+      expect(await js(`${root}.querySelector('.mode-state').textContent`)).toBe(
+        "Browse",
+      );
+      expect(
+        await js(
+          `${root}.querySelector('iframe')===savedFrame && savedFrame.contentDocument.querySelector('#draft').value==='Keep this draft'`,
+        ),
+      ).toBe(true);
       const elementAt = { x: at.x + 40, y: at.y };
       await mode("element");
+      await message("add-capture");
       await mouse("mouseMoved", elementAt);
       const bounds = await js(
         "(()=>{const b=document.querySelector('#target').getBoundingClientRect();return {width:b.width,height:b.height}})()",
@@ -199,6 +321,18 @@ browserTest(
         ),
       ).toBe(true);
       await until(`${root}.querySelectorAll('.draft-pin').length===2`);
+      expect(await js(`${root}.querySelector('.capture-prompt').hidden`)).toBe(
+        true,
+      );
+      expect(await dockBounds()).toEqual(resized);
+      expect(await js(`${root}.querySelector('.head b').textContent`)).toBe(
+        "New web note · 2 captures",
+      );
+      expect(
+        await js(
+          "requests.filter(r=>r.action==='capture').at(-1).payload.draftId",
+        ),
+      ).toBe("draft");
       await control("[data-minimize]");
       await control(".draft-pin");
       expect(
@@ -342,6 +476,65 @@ browserTest(
         x: viewport.width - 24,
         y: viewport.height - 44,
       });
+      await control(".pin");
+      await until(
+        `${root}.querySelector('iframe')?.contentDocument?.querySelector('#draft')`,
+      );
+      await js(
+        `window.savedFrame=${root}.querySelector('iframe');savedFrame.contentDocument.querySelector('#draft').value='Keep this reply'`,
+      );
+      await mode("element");
+      await message("add-capture");
+      await click(await center("#other"));
+      await until(`${root}.querySelector('.capture-prompt').hidden`);
+      expect(
+        await js("requests.filter(r=>r.action==='capture').at(-1).payload.id"),
+      ).toBe("saved-point");
+      expect(await js(`${root}.querySelector('.head b').textContent`)).toBe(
+        "Web note 1 · Reply",
+      );
+      await message("add-capture");
+      await control("[data-cancel-capture]");
+      expect(
+        await js(
+          `${root}.querySelector('iframe')===savedFrame && savedFrame.contentDocument.querySelector('#draft').value==='Keep this reply'`,
+        ),
+      ).toBe(true);
+      await message("add-capture");
+      await click(await center("#target"));
+      await until(`${root}.querySelector('.capture-prompt').hidden`);
+      expect(await js("window.replyWeb.additional.length")).toBe(1);
+      expect(await js(`${root}.querySelector('.head b').textContent`)).toBe(
+        "Web note 1 · Reply · 2 captures",
+      );
+      expect(
+        await js(
+          `${root}.querySelector('iframe')===savedFrame && savedFrame.contentDocument.querySelector('#draft').value==='Keep this reply'`,
+        ),
+      ).toBe(true);
+      await send("Emulation.setDeviceMetricsOverride", {
+        width: 360,
+        height: 480,
+        deviceScaleFactor: 1,
+        mobile: false,
+      });
+      await until(
+        `innerWidth===360 && innerHeight===480 && ${root}.querySelector('.dock').offsetWidth===336 && ${root}.querySelector('.dock').offsetHeight===456 && ${root}.querySelector('.dock').getBoundingClientRect().right<=348 && ${root}.querySelector('.dock').getBoundingClientRect().bottom<=468`,
+      );
+      const compact = await dockBounds();
+      expect(compact.width).toBeLessThanOrEqual(336);
+      expect(compact.height).toBeLessThanOrEqual(456);
+      expect(compact.x + compact.width).toBeLessThanOrEqual(348);
+      expect(compact.y + compact.height).toBeLessThanOrEqual(468);
+      await message("annotation", { open: true });
+      expect(await dockBounds()).toEqual({
+        x: 0,
+        y: 0,
+        width: 360,
+        height: 480,
+      });
+      await message("annotation", { open: false });
+      expect(await dockBounds()).toEqual(compact);
     } finally {
       await chrome?.close();
       server.stop(true);

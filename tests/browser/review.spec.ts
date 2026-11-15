@@ -668,11 +668,12 @@ test("image attachments preview, retain editable drawings and survive note and r
     );
     await page.mouse.up();
   }
+  await drawing.getByRole("button", { name: "Options", exact: true }).click();
   await drawing
     .getByRole("textbox", { name: "Callout label", exact: true })
     .fill("Check this detail");
   await drawing
-    .getByRole("button", { name: "Apply drawing", exact: true })
+    .getByRole("button", { name: "Use drawing", exact: true })
     .click();
   await expect(drawing).toHaveCount(0);
   const body = await page
@@ -702,6 +703,7 @@ test("image attachments preview, retain editable drawings and survive note and r
   await drawing
     .getByRole("button", { name: "Select and edit drawings", exact: true })
     .click();
+  await drawing.getByRole("button", { name: "Options", exact: true }).click();
   await expect(
     drawing
       .getByRole("combobox", { name: "Select an editable drawing" })
@@ -2045,7 +2047,7 @@ test("live page capture keeps its editor at the bottom and previews images acros
   const app = createServer((_req, response) => {
     response.setHeader("content-type", "text/html");
     response.end(
-      '<!doctype html><title>Capture fixture</title><style>body{background:white;color:black}button{margin:120px;padding:24px;font:20px sans-serif}</style><button id="target">Checkout target</button>',
+      '<!doctype html><title>Capture fixture</title><style>body{background:white;color:black}button{margin:120px;padding:24px;font:20px sans-serif}button+button{margin-left:0}</style><button id="target">Checkout target</button><button id="other">Secondary action</button>',
     );
   });
   await new Promise<void>((resolve) => app.listen(0, "127.0.0.1", resolve));
@@ -2085,7 +2087,7 @@ test("live page capture keeps its editor at the bottom and previews images acros
       name: "Evidence and attachments",
     });
     const inputY = (await input.boundingBox())!.y;
-    await frame.getByText("Selection details", { exact: true }).click();
+    await frame.getByText("Capture details", { exact: true }).click();
     await evidence.evaluate(
       (element) => (element.scrollTop = element.scrollHeight),
     );
@@ -2104,7 +2106,7 @@ test("live page capture keeps its editor at the bottom and previews images acros
     await target.screenshot({ path: "/tmp/lcr-web-composer.png" });
     const panel = (await iframe.boundingBox())!;
     await frame
-      .getByRole("link", { name: "Preview Selection 1", exact: true })
+      .getByRole("link", { name: "Preview Checkout target", exact: true })
       .click();
     const viewer = frame.locator("dialog.image-viewer");
     await expect(viewer).toBeVisible();
@@ -2124,7 +2126,7 @@ test("live page capture keeps its editor at the bottom and previews images acros
     );
     // Browser Back also restores the panel, and a preview can hand over to drawing without shrinking it.
     await frame
-      .getByRole("link", { name: "Preview Selection 1", exact: true })
+      .getByRole("link", { name: "Preview Checkout target", exact: true })
       .click();
     await expect
       .poll(async () => (await iframe.boundingBox())!.width)
@@ -2133,7 +2135,7 @@ test("live page capture keeps its editor at the bottom and previews images acros
     await expect(viewer).toHaveCount(0);
     await expect.poll(() => iframe.boundingBox()).toEqual(panel);
     await frame
-      .getByRole("link", { name: "Preview Selection 1", exact: true })
+      .getByRole("link", { name: "Preview Checkout target", exact: true })
       .click();
     await viewer
       .getByRole("button", { name: "Draw / edit", exact: true })
@@ -2154,6 +2156,30 @@ test("live page capture keeps its editor at the bottom and previews images acros
     await expect(input).toHaveValue(
       "Keep this draft through fullscreen previews",
     );
+    // Adding evidence temporarily exposes the page without replacing this editor.
+    const addCapture = frame.getByRole("button", {
+      name: "Add capture",
+      exact: true,
+    });
+    await addCapture.click();
+    await expect(input).toBeHidden();
+    await target.keyboard.press("Escape");
+    await expect(input).toBeVisible();
+    await expect(input).toHaveValue(
+      "Keep this draft through fullscreen previews",
+    );
+    await addCapture.click();
+    await target.locator("#other").click();
+    await expect(input).toBeVisible();
+    await expect(input).toHaveValue(
+      "Keep this draft through fullscreen previews",
+    );
+    await expect(
+      frame.getByRole("link", {
+        name: "Preview 2. Secondary action",
+        exact: true,
+      }),
+    ).toBeVisible();
     await frame
       .getByRole("textbox", { name: "Note text" })
       .fill("Increase this checkout target size.");
@@ -2167,6 +2193,7 @@ test("live page capture keeps its editor at the bottom and previews images acros
     );
     expect(note.web.before.element.text).toBe("Checkout target");
     expect(note.web.before.area).toMatch(/^images\/.+\.png$/);
+    expect(note.web.additional[0].element.text).toBe("Secondary action");
     const picture = await page.request.get(
       `${url}/api/attachment?ref=${encodeURIComponent(note.web.before.area)}`,
     );

@@ -30,10 +30,12 @@ export function AttachmentImage({
   source,
   label,
   onDraw,
+  thumbnail = false,
 }: {
   source: string;
   label: string;
   onDraw?: () => void;
+  thumbnail?: boolean;
 }) {
   const src = attachmentSrc(source);
   if (!src) return null;
@@ -59,7 +61,11 @@ export function AttachmentImage({
         src={src}
         alt={label}
         loading="lazy"
-        className="max-h-80 max-w-full rounded-lg border object-contain"
+        className={
+          thumbnail
+            ? "h-24 w-24 rounded-md border object-contain"
+            : "max-h-80 max-w-full rounded-lg border object-contain"
+        }
       />
     </a>
   );
@@ -72,10 +78,11 @@ export function useAnnotator() {
     annotation: WebAnnotation | undefined,
     width: number | undefined,
     apply: (next: WebAnnotation | null) => Promise<void>,
+    applyLabel: "Use drawing" | "Save drawing" = "Use drawing",
   ) =>
     openAnnotation(
       route,
-      { image: source, annotation, cssWidth: width },
+      { image: source, annotation, cssWidth: width, applyLabel },
       apply,
       scope,
       imageEditorOwner(document.activeElement),

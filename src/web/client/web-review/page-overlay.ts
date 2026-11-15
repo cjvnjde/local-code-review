@@ -95,7 +95,7 @@ export function installPageReview(config: {
     frameEditingOriginal = false,
     replyDraftId = "",
     pendingReply = false;
-  let dockPosition = { x: innerWidth - 578, y: 18 },
+  let dockPosition = { x: innerWidth - 458, y: 18 },
     dockPress: {
       id: number;
       x: number;
@@ -114,6 +114,7 @@ export function installPageReview(config: {
     imagePreviewOpen = false;
   let expanded = false,
     suppressLauncherClick = false;
+  let addingCapture: { mode: string; multiple: boolean } | null = null;
   let selected: Element[] = [],
     selectionUrl = location.href,
     multiple = false;
@@ -151,8 +152,6 @@ export function installPageReview(config: {
     y: number;
     origin: { x: number; y: number };
     moved: boolean;
-    held: boolean;
-    timer: ReturnType<typeof setTimeout>;
   } | null = null;
   const reviewOrigin = new URL(config.reviewUrl).origin;
   const host = document.createElement("div");
@@ -165,16 +164,15 @@ export function installPageReview(config: {
     :host{all:initial;--fs-body:13px;--fs-small:11px;--tap:32px;--tap-lg:30px;--icon:16px;--row:36px;--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--radius-sm:4px;--radius-md:8px;--bar-height:calc(var(--tap-lg) + var(--space-2)*2);--panel:#1e1e2e;--panel2:#181825;--crust:#11111b;--hover:#45475a;--edge:#313244;--ink:#cdd6f4;--ink-dim:#a6adc8;--accent:#89b4fa;--sel:#89b4fa24;--mark:#f9e2af;color:var(--ink);font:var(--fs-body)/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif}
     *{box-sizing:border-box}button,a{font:inherit}button,.review-link{min-width:var(--tap-lg);min-height:var(--tap-lg);border:0;background:transparent;color:inherit;border-radius:var(--radius-sm);padding:var(--space-1) var(--space-2);cursor:pointer}
     button:hover,.review-link:hover{background:var(--hover)}button:focus-visible,.review-link:focus-visible,.head b:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}button:disabled{opacity:.55;cursor:wait}button[aria-pressed=true]{background:var(--sel);color:var(--accent)}.review-link{text-decoration:none}
-    .launcher{pointer-events:auto;position:fixed;left:var(--space-4);bottom:var(--space-4);width:calc(var(--tap) + var(--space-3));height:calc(var(--tap) + var(--space-3));padding:0;border-radius:50%;background:var(--panel2);font-weight:700;touch-action:none;cursor:grab;box-shadow:0 4px 24px #0005}
+    .launcher{pointer-events:auto;position:fixed;left:var(--space-4);bottom:var(--space-4);display:flex;align-items:center;gap:var(--space-2);height:44px;padding:0 var(--space-3);border-radius:var(--radius-md);background:var(--panel2);font-weight:700;touch-action:none;cursor:grab;box-shadow:0 4px 24px #0005}
     .launcher:active{cursor:grabbing}
     .launcher[aria-pressed=true]{background:var(--accent);color:var(--crust);box-shadow:0 0 0 var(--space-1) var(--sel),0 4px 24px #0005}
-    .mode-state{position:absolute;bottom:calc(-1 * var(--space-1));left:50%;transform:translateX(-50%);padding:0 var(--space-1);border-radius:var(--radius-sm);background:var(--panel);color:var(--ink-dim);font-size:var(--fs-small);line-height:var(--space-4)}
-    .launcher[aria-pressed=true] .mode-state{background:var(--panel);color:var(--accent)}
-    .bar{pointer-events:auto;position:fixed;display:flex;gap:var(--space-1);align-items:center;padding:var(--space-2);border:0;border-radius:var(--radius-md);background:var(--panel2);box-shadow:0 4px 24px #0005;max-width:calc(100vw - var(--space-3)*2);max-height:calc(100dvh - var(--space-3)*2);overflow:auto;flex-wrap:wrap}
-    .brand{font-weight:700;padding:0 var(--space-2);color:var(--accent)}
+    .mode-state{white-space:nowrap}
+    .bar{pointer-events:auto;position:fixed;display:flex;gap:var(--space-1);align-items:center;padding:var(--space-2);border:0;border-radius:var(--radius-md);background:var(--panel2);box-shadow:0 4px 24px #0005;width:280px;max-width:calc(100vw - var(--space-3)*2);max-height:calc(100dvh - var(--space-3)*2);overflow:auto;flex-wrap:wrap}
+    .bar [data-toggle]{width:100%;text-align:left;border-bottom:1px solid var(--edge);border-radius:0;padding-bottom:var(--space-2)}.bar [data-notes]{width:100%;text-align:left;color:var(--ink-dim)}
     .outline{position:fixed;pointer-events:none;border:2px solid var(--accent);background:var(--sel);border-radius:var(--radius-sm);display:none}
     .label{position:absolute;bottom:100%;left:0;white-space:nowrap;padding:2px var(--space-2);border-radius:var(--radius-sm) var(--radius-sm) 0 0;background:var(--accent);color:var(--crust);font-size:var(--fs-small)}
-    .dock{pointer-events:auto;position:fixed;right:var(--space-4);top:var(--space-4);height:calc(100dvh - 96px);width:min(560px,calc(100vw - var(--space-3)*2));max-width:calc(100vw - var(--space-3)*2);max-height:calc(100dvh - var(--space-3)*2);background:var(--panel2);border:0;box-shadow:0 8px 32px #0006;border-radius:var(--radius-md);display:flex;flex-direction:column;overflow:hidden}
+    .dock{pointer-events:auto;position:fixed;right:var(--space-4);top:var(--space-4);height:min(540px,calc(100dvh - var(--space-3)*2));width:min(440px,calc(100vw - var(--space-3)*2));max-width:calc(100vw - var(--space-3)*2);max-height:calc(100dvh - var(--space-3)*2);background:var(--panel2);border:0;box-shadow:0 8px 32px #0006;border-radius:var(--radius-md);display:flex;flex-direction:column;overflow:hidden}
     .dock.minimized{height:auto}.dock.minimized .content{position:absolute;top:100%;left:0;right:0;flex:none;height:var(--content-height);visibility:hidden;pointer-events:none}
     .resize{position:absolute;right:0;bottom:0;width:var(--tap-lg);height:var(--tap-lg);padding:0;border:0;border-radius:var(--radius-sm) 0 0 0;background:transparent;cursor:nwse-resize;touch-action:none;display:grid;place-items:center;color:var(--ink-dim)}
     .resize svg{width:var(--icon);height:var(--icon);pointer-events:none}.resize:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}.dock.minimized .resize{display:none}
@@ -189,12 +187,14 @@ export function installPageReview(config: {
     .error{color:#f38ba8;white-space:pre-wrap}
     .frozen-page{position:fixed;inset:0;pointer-events:auto;max-width:none!important;max-height:none!important;user-select:none;touch-action:none}
     .freeze-status{pointer-events:auto;position:fixed;top:var(--space-4);left:50%;transform:translateX(-50%);display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2);padding:var(--space-2);border:1px solid var(--accent);border-radius:var(--radius-md);background:var(--panel2);max-width:calc(100vw - var(--space-3)*2);box-shadow:0 4px 24px #0005}.freeze-status[hidden]{display:none}
+    .capture-prompt{pointer-events:auto;position:fixed;top:72px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:var(--space-2);max-width:calc(100vw - 24px);padding:var(--space-2) var(--space-3);background:var(--panel2);border:1px solid var(--accent);border-radius:var(--radius-md);box-shadow:0 4px 24px #0005}.capture-prompt[hidden]{display:none}
   </style><div class="outline"><span class="label"></span></div><div class="selections"></div><div class="pins"></div>
   <div class="freeze-status" hidden role="status"><span data-freeze-status></span><button data-resume>Resume · Ctrl+Shift+F</button></div>
+  <div class="capture-prompt" hidden role="status"><span data-capture-instruction></span><button data-cancel-capture>Cancel · Esc</button></div>
   <div class="selection-tools" hidden><span data-selection-count></span><button data-write>Write note</button><button data-clear>Clear</button></div>
-  <div class="dock" hidden><div class="head"><b tabindex="0" title="Drag to move; arrow keys move the note window"></b><a class="review-link" data-panel-review target="lcr-review" rel="noopener">Review ↗</a><button type="button" data-minimize aria-label="Minimize note panel" aria-expanded="true">−</button><button type="button" data-close aria-label="Close note panel">×</button></div><div class="content"></div><button type="button" class="resize" data-resize aria-label="Resize note panel" title="Drag to resize; arrow keys resize; Shift moves farther"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 13 13 3M8 13l5-5M12 13l1-1"/></svg></button></div>
-  <button class="launcher" data-launcher aria-label="Selection mode" aria-pressed="true" aria-expanded="false"><span>lcr</span><span class="mode-state" aria-hidden="true">ON</span></button>
-  <div class="bar" hidden><span class="brand">lcr · UI</span><button data-mode="browse">Browse</button><button data-mode="element" aria-pressed="true" title="Hover for dimensions; click an element to inspect and comment; Alt + wheel picks parents; Shift-click selects multiple; drag selects an area">Element</button><button data-mode="block" title="Click a containing layout block; Shift-click to select multiple; drag to select an area">Block</button><button data-multiple aria-pressed="false" title="Collect elements for one note, then choose Write note">Multiple</button><button data-mode="area">Area</button><button data-mode="point">Point</button><button data-notes>Notes · 0</button><a class="review-link" data-review target="lcr-review" rel="noopener">Review ↗</a></div>`;
+  <div class="dock" hidden><div class="head"><b tabindex="0" title="Drag to move; arrow keys move the note window"></b><a class="review-link" data-panel-review target="lcr-review" rel="noopener">Full review ↗</a><button type="button" data-minimize aria-label="Minimize note panel" aria-expanded="true">−</button><button type="button" data-close aria-label="Close note panel">×</button></div><div class="content"></div><button type="button" class="resize" data-resize aria-label="Resize note panel" title="Drag to resize; arrow keys resize; Shift moves farther"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 13 13 3M8 13l5-5M12 13l1-1"/></svg></button></div>
+  <button class="launcher" data-launcher aria-label="Element tools" aria-pressed="true" aria-expanded="false" aria-controls="capture-tools"><span class="mode-state">Element</span><span aria-hidden="true">▾</span></button>
+  <div class="bar" id="capture-tools" aria-label="Capture tools" hidden><button data-toggle>Browse page</button><button data-mode="element" aria-pressed="true" title="Hover for dimensions; click an element to inspect and comment; Alt + wheel picks parents; Shift-click selects multiple; drag selects an area">Element</button><button data-mode="block" title="Click a containing layout block; Shift-click to select multiple; drag to select an area">Block</button><button data-multiple aria-pressed="false" title="Collect elements for one note, then choose Write note">Multiple</button><button data-mode="area">Area</button><button data-mode="point">Point</button><button data-freeze title="Freeze the current view · Ctrl+Shift+F">Freeze view</button><button data-notes>Notes · 0 ↗</button></div>`;
   (document.body || document.documentElement).append(host);
   const $ = (s: string) => root.querySelector(s) as HTMLElement;
   const dock = $(".dock"),
@@ -210,14 +210,15 @@ export function installPageReview(config: {
       launcherPosition = saved;
   } catch {}
   function positionLauncher() {
-    const size = launcher.offsetWidth;
+    const width = launcher.offsetWidth,
+      height = launcher.offsetHeight;
     launcherPosition.x = Math.max(
       12,
-      Math.min(innerWidth - size - 12, launcherPosition.x),
+      Math.min(innerWidth - width - 12, launcherPosition.x),
     );
     launcherPosition.y = Math.max(
       12,
-      Math.min(innerHeight - size - 12, launcherPosition.y),
+      Math.min(innerHeight - height - 12, launcherPosition.y),
     );
     launcher.style.left = launcherPosition.x + "px";
     launcher.style.top = launcherPosition.y + "px";
@@ -233,7 +234,7 @@ export function installPageReview(config: {
         12,
         Math.min(
           innerHeight - bar.offsetHeight - 12,
-          above >= 12 ? above : launcherPosition.y + size + 8,
+          above >= 12 ? above : launcherPosition.y + height + 8,
         ),
       ) + "px";
   }
@@ -250,11 +251,11 @@ export function installPageReview(config: {
     }
     const width = Math.max(
       1,
-      Math.min(dockSize?.width ?? 560, innerWidth - 24),
+      Math.min(dockSize?.width ?? 440, innerWidth - 24),
     );
     const expandedHeight = Math.max(
       1,
-      Math.min(dockSize?.height ?? innerHeight - 96, innerHeight - 24),
+      Math.min(dockSize?.height ?? 540, innerHeight - 24),
     );
     const height = minimized ? $(".head").offsetHeight || 50 : expandedHeight;
     dockPosition.x = Math.max(
@@ -373,6 +374,9 @@ export function installPageReview(config: {
     if (frameKind === "draft" && activeToken)
       void rpc("discard", { draftId: activeToken }).catch(() => {});
     panelGeneration++;
+    addingCapture = null;
+    $(".capture-prompt").hidden = true;
+    $("[data-write]").textContent = "Write note";
     frame = null;
     activeToken = "";
     frameKind = "";
@@ -414,14 +418,7 @@ export function installPageReview(config: {
     start = null;
     hovering = null;
     outline.style.display = "none";
-    launcher.setAttribute("aria-pressed", String(mode !== "browse"));
-    $(".mode-state").textContent = mode === "browse" ? "OFF" : "ON";
-    launcher.title =
-      "Selection " +
-      (mode === "browse"
-        ? "off — use the page normally"
-        : "on — " + mode + " targeting") +
-      ". Click to toggle; hold for tools; drag to move. Hold Alt to use the page temporarily. Ctrl+Shift+F freezes a hovered view for annotation.";
+    updateLauncher();
     root
       .querySelectorAll("[data-mode]")
       .forEach((b) =>
@@ -432,12 +429,86 @@ export function installPageReview(config: {
       );
     pins();
   }
+  function updateLauncher() {
+    const label =
+      mode === "browse"
+        ? "Browse"
+        : multiple
+          ? "Multiple"
+          : mode[0].toUpperCase() + mode.slice(1);
+    launcher.setAttribute("aria-pressed", String(mode !== "browse"));
+    launcher.setAttribute("aria-label", label + " tools");
+    $(".mode-state").textContent = label;
+    $("[data-toggle]").textContent =
+      mode === "browse" ? "Annotate page" : "Browse page";
+    launcher.title =
+      "Click for capture tools; drag to move. Hold Alt to browse temporarily. Ctrl+Shift+F freezes the current view.";
+    $("[data-capture-instruction]").textContent =
+      mode === "browse"
+        ? "Choose Annotate page from tools to add a capture."
+        : multiple
+          ? "Select elements, then choose Add capture."
+          : mode === "area"
+            ? "Drag an area to add a capture."
+            : mode === "point"
+              ? "Click a point to add a capture."
+              : "Click " +
+                (mode === "block" ? "a block" : "an element") +
+                " or drag an area to add a capture.";
+    positionLauncher();
+  }
+  function finishAddCapture() {
+    if (!addingCapture) return;
+    const previous = addingCapture;
+    addingCapture = null;
+    $(".capture-prompt").hidden = true;
+    $("[data-write]").textContent = "Write note";
+    if (mode !== previous.mode) setMode(previous.mode);
+    else {
+      clearSelections();
+      hideTools();
+      start = null;
+      hovering = null;
+      outline.style.display = "none";
+    }
+    multiple = previous.multiple;
+    $("[data-multiple]").setAttribute("aria-pressed", String(multiple));
+    updateLauncher();
+    minimize(false);
+    frame?.focus();
+  }
+  function addCapture() {
+    if (
+      !frame ||
+      !activeToken ||
+      addingCapture ||
+      busy ||
+      freezing ||
+      frameSaving ||
+      frameEditingOriginal ||
+      annotationOpen ||
+      imagePreviewOpen
+    )
+      return;
+    addingCapture = { mode, multiple };
+    if (mode === "browse") setMode(selectionMode);
+    else clearSelections();
+    hideTools();
+    minimize(true);
+    $(".capture-prompt").hidden = false;
+    ($("[data-cancel-capture]") as HTMLButtonElement).disabled = false;
+    $("[data-write]").textContent = "Add capture";
+    updateLauncher();
+    $("[data-cancel-capture]").focus();
+  }
   function freezeControls() {
     $(".freeze-status").hidden = !frozen && !freezing;
     $("[data-freeze-status]").textContent = freezing
       ? "Freezing view…"
       : "Frozen view · drag an area to comment";
     ($("[data-resume]") as HTMLButtonElement).disabled = freezing;
+    ($("[data-freeze]") as HTMLButtonElement).disabled = freezing;
+    $("[data-freeze]").textContent = frozen ? "Resume page" : "Freeze view";
     root
       .querySelectorAll<HTMLButtonElement>(
         '[data-mode="element"],[data-mode="block"],[data-multiple]',
@@ -1289,18 +1360,23 @@ export function installPageReview(config: {
       web,
       ...(pendingReply ? { reply: true, draftId: replyDraftId } : {}),
     });
+    updateHeader();
+    void refresh().catch(() => {});
+  }
+  function updateHeader() {
+    if (!frameKind) return;
+    const index = notes.findIndex((note) => note.id === activeToken);
+    const title =
+      frameKind === "draft"
+        ? "New web note"
+        : (frameEditingOriginal ? "Edit web note" : "Web note") +
+          (index >= 0 ? " " + (index + 1) : "");
+    const web = draftWeb ?? (index >= 0 ? notes[index].web : null);
     const count = web ? 1 + (web.additional?.length || 0) : 0;
     $(".head b").textContent =
-      (pendingReply
-        ? "Follow-up"
-        : frameKind === "draft"
-          ? "New note"
-          : "Note") +
-      " · " +
-      count +
-      " selection" +
-      (count === 1 ? "" : "s");
-    void refresh().catch(() => {});
+      title +
+      (pendingReply ? " · Reply" : "") +
+      (count > 1 ? " · " + count + " captures" : "");
   }
   async function removeSelection(index: number, key: string, draftId?: string) {
     if (!frame || !activeToken) return;
@@ -1355,11 +1431,12 @@ export function installPageReview(config: {
     status.textContent = "Capturing page and selected area…";
     if (!appending) {
       dock.hidden = false;
-      $(".head b").textContent = "New visual note";
+      $(".head b").textContent = "New web note";
       minimize(false);
       content.append(status);
     }
     busy = true;
+    ($("[data-cancel-capture]") as HTMLButtonElement).disabled = true;
     tellFrame("capturing", { busy: true });
     try {
       const capture = {
@@ -1419,6 +1496,8 @@ export function installPageReview(config: {
     } finally {
       busy = false;
       if (generation === panelGeneration) {
+        ($("[data-cancel-capture]") as HTMLButtonElement).disabled = false;
+        finishAddCapture();
         capturingSelection = null;
         pins();
         tellFrame("capturing", { busy: false });
@@ -1442,6 +1521,7 @@ export function installPageReview(config: {
       if (typeof message.editOriginal === "boolean")
         frameEditingOriginal = message.editOriginal;
       if (typeof message.draftId === "string") replyDraftId = message.draftId;
+      updateHeader();
     } else if (
       message.action === "annotation" &&
       typeof message.open === "boolean"
@@ -1455,6 +1535,8 @@ export function installPageReview(config: {
     ) {
       imagePreviewOpen = message.open;
       positionDock();
+    } else if (message.action === "add-capture") {
+      addCapture();
     } else if (message.action === "freeze") {
       void toggleFreeze();
     } else if (message.action === "ready") {
@@ -1480,7 +1562,7 @@ export function installPageReview(config: {
       pendingWeb = undefined;
       draftWeb = null;
       pins();
-      $(".head b").textContent = "Note";
+      updateHeader();
     } else if (message.action === "close") {
       frameDirty = false;
       close();
@@ -1671,6 +1753,10 @@ export function installPageReview(config: {
     };
     const reopen = () => {
       if (dock.hidden) return;
+      if (addingCapture) {
+        if (!busy && !freezing) finishAddCapture();
+        return;
+      }
       minimize(false);
       frame?.focus();
     };
@@ -1748,15 +1834,17 @@ export function installPageReview(config: {
     hideTools();
     clearSelections();
     dock.hidden = false;
-    $(".head b").textContent = "Visual note " + (notes.indexOf(n) + 1);
+    $(".head b").textContent = "Web note " + (notes.indexOf(n) + 1);
     minimize(false);
     showFrame("note", id);
+    updateHeader();
   }
   async function refresh() {
     const result = await rpc("notes");
     if (disposed) return;
     notes = result.notes;
-    $("[data-notes]").textContent = "Notes · " + notes.length;
+    $("[data-notes]").textContent = "Notes · " + notes.length + " ↗";
+    updateHeader();
     pins();
   }
   root.querySelectorAll("[data-mode]").forEach(
@@ -1766,6 +1854,12 @@ export function installPageReview(config: {
         setMode((b as HTMLElement).dataset.mode!);
       }),
   );
+  $("[data-toggle]").onclick = () =>
+    setMode(mode === "browse" ? selectionMode : "browse");
+  $("[data-freeze]").onclick = () => void toggleFreeze();
+  $("[data-cancel-capture]").onclick = () => {
+    if (!busy && !freezing) finishAddCapture();
+  };
   $("[data-multiple]").onclick = () => {
     hideTools();
     const value = !multiple;
@@ -1773,6 +1867,7 @@ export function installPageReview(config: {
     multiple = value;
     $("[data-multiple]").setAttribute("aria-pressed", String(value));
     hideTools();
+    updateLauncher();
   };
   $("[data-notes]").onclick = () => {
     hideTools();
@@ -1782,7 +1877,7 @@ export function installPageReview(config: {
     if (!busy && !freezing) resume();
   };
   root
-    .querySelectorAll<HTMLAnchorElement>("[data-review],[data-panel-review]")
+    .querySelectorAll<HTMLAnchorElement>("[data-panel-review]")
     .forEach((link) => {
       link.href = config.reviewUrl;
       link.onclick = (e) => {
@@ -1801,7 +1896,11 @@ export function installPageReview(config: {
   $("[data-close]").onclick = () => {
     close(true);
   };
-  $("[data-minimize]").onclick = () => minimize(!minimized);
+  $("[data-minimize]").onclick = () => {
+    if (addingCapture) {
+      if (!busy && !freezing) finishAddCapture();
+    } else minimize(!minimized);
+  };
   const head = $(".head");
   head.onpointerdown = (e) => {
     if (e.button !== 0 || (e.target as Element).closest("button,a")) return;
@@ -1904,29 +2003,17 @@ export function installPageReview(config: {
       y: e.clientY,
       origin: { ...launcherPosition },
       moved: false,
-      held: false,
-      timer: setTimeout(() => {
-        if (launcherPress !== press || press.moved) return;
-        press.held = true;
-        expand(true);
-      }, 450),
     };
     launcherPress = press;
     launcher.setPointerCapture(e.pointerId);
     e.preventDefault();
   };
   launcher.onpointermove = (e) => {
-    if (
-      !launcherPress ||
-      e.pointerId !== launcherPress.id ||
-      launcherPress.held
-    )
-      return;
+    if (!launcherPress || e.pointerId !== launcherPress.id) return;
     const dx = e.clientX - launcherPress.x,
       dy = e.clientY - launcherPress.y;
     if (Math.hypot(dx, dy) > 6) {
       launcherPress.moved = true;
-      clearTimeout(launcherPress.timer);
     }
     if (!launcherPress.moved) return;
     launcherPosition = {
@@ -1937,9 +2024,7 @@ export function installPageReview(config: {
   };
   function endLauncher(cancelled = false) {
     if (!launcherPress) return;
-    clearTimeout(launcherPress.timer);
-    suppressLauncherClick =
-      cancelled || launcherPress.moved || launcherPress.held;
+    suppressLauncherClick = cancelled || launcherPress.moved;
     launcherPress = null;
     try {
       sessionStorage.setItem(positionKey, JSON.stringify(launcherPosition));
@@ -1955,8 +2040,7 @@ export function installPageReview(config: {
     const suppressed = suppressLauncherClick;
     suppressLauncherClick = false;
     if (suppressed && e.detail !== 0) return;
-    hideTools();
-    setMode(mode === "browse" ? selectionMode : "browse");
+    expand(!expanded);
   };
   launcher.oncontextmenu = (e) => {
     e.preventDefault();
@@ -1966,6 +2050,7 @@ export function installPageReview(config: {
     if (e.key === "ArrowDown") {
       e.preventDefault();
       expand(true);
+      bar.querySelector<HTMLButtonElement>("button")?.focus();
     }
   };
   function areaRect(a: any, x: number, y: number) {
@@ -2139,6 +2224,10 @@ export function installPageReview(config: {
       }
       if (e.key === "Escape") {
         stop(e);
+        if (addingCapture) {
+          if (!busy && !freezing) finishAddCapture();
+          return;
+        }
         if (freezing) return;
         if (expanded) {
           hideTools();
@@ -2220,7 +2309,6 @@ export function installPageReview(config: {
     lifecycle.abort();
     clearInterval(refreshTimer);
     cancelAnimationFrame(pinsFrame);
-    if (launcherPress) clearTimeout(launcherPress.timer);
     for (const call of pending.values()) {
       clearTimeout(call.timer);
       call.reject(new Error("The review connection closed."));

@@ -12,17 +12,15 @@ export function NoteHeader({
   children,
 }: {
   note: ReviewComment;
-  status: string;
+  status?: string;
   children?: ReactNode;
 }) {
   const reference = note.id?.split("|#").at(-1);
+  const label = note.web ? "Web note" : noteKey(note);
   return (
     <header className="flex min-h-14 items-center gap-2 border-b px-4 py-3">
-      <span
-        className="min-w-0 truncate text-xs font-medium"
-        title={noteKey(note)}
-      >
-        {noteKey(note)}
+      <span className="min-w-0 truncate text-xs font-medium" title={label}>
+        {label}
       </span>
       {reference && (
         <div className="shrink-0">
@@ -47,18 +45,20 @@ export function NoteHeader({
       )}
       <div className="ml-auto" />
       {children}
-      <span
-        className={cn(
-          "rounded-full border px-2 py-0.5 text-[10px] font-medium",
-          ["applied", "answered"].includes(status)
-            ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-500"
-            : status === "needs-input"
-              ? "border-amber-500/25 bg-amber-500/10 text-amber-500"
-              : "text-muted-foreground",
-        )}
-      >
-        {status}
-      </span>
+      {status && (
+        <span
+          className={cn(
+            "rounded-full border px-2 py-0.5 text-[10px] font-medium",
+            ["applied", "answered"].includes(status)
+              ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-500"
+              : status === "needs-input"
+                ? "border-amber-500/25 bg-amber-500/10 text-amber-500"
+                : "text-muted-foreground",
+          )}
+        >
+          {status}
+        </span>
+      )}
     </header>
   );
 }

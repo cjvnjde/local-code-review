@@ -158,7 +158,7 @@ describe("sealed conversation captures", () => {
 });
 
 describe("Point capture presentation", () => {
-  test("metadata-only Point retains metadata and removal without images or drawing", () => {
+  test("metadata-only Point remains readable without generating an image", () => {
     const point = {
       ...before,
       mode: "point" as const,
@@ -166,11 +166,8 @@ describe("Point capture presentation", () => {
       area: undefined,
     };
     const html = webCaptureHtml({ before: point, after: [] });
-    expect(html).toContain("Selection details");
-    expect(html).toContain("Selection 1");
+    expect(html).toContain(before.url);
     expect(html).not.toContain("<img");
-    expect(html).not.toContain("data-web-annotate");
-    expect(html).not.toContain("Page screenshot");
   });
   test("legacy Point screenshots remain readable and separate from proposal images", () => {
     const html = webCaptureHtml({
@@ -178,7 +175,5 @@ describe("Point capture presentation", () => {
       after: [],
     });
     expect(html).toContain("ref=images%2Fbefore.png");
-    expect(html).toContain("Selection 1");
-    expect(html).not.toContain("metadata only");
   });
 });

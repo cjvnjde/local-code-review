@@ -21,18 +21,37 @@ import { webReview, type WebCapture } from "../../../shared/web-review.ts";
 import { attachmentSrc } from "../components/attachments.ts";
 import { AttachmentImage } from "../components/images.tsx";
 
+function captureName(capture: WebCapture): string {
+  if (capture.selections && capture.selections.length > 1)
+    return `${capture.selections.length} elements`;
+  const element = capture.element;
+  const name =
+    element?.attributes["aria-label"] ||
+    element?.attributes.alt ||
+    element?.attributes.title ||
+    element?.text.split("\n").find((line) => line.trim()) ||
+    capture.selector ||
+    capture.title;
+  const subject = name.replace(/\s+/g, " ").trim().slice(0, 80);
+  return capture.mode === "area"
+    ? `Area · ${subject || "Page"}`
+    : subject || (capture.mode === "point" ? "Point" : "Element");
+}
+
 function Capture({
   capture,
   label,
   onAnnotate,
   onRemove,
   onDrawing,
+  saved,
 }: {
   capture: WebCapture;
   label: string;
   onAnnotate?: (annotation: WebAnnotation | null) => Promise<void>;
   onRemove?: () => Promise<void>;
   onDrawing?: (open: boolean) => void;
+  saved: boolean;
 }) {
   const annotate = useAnnotator();
   const [error, setError] = useState("");
@@ -49,6 +68,7 @@ function Capture({
         capture.annotation,
         capture.rect.width,
         onAnnotate,
+        saved ? "Save drawing" : "Use drawing",
       );
     } catch (error) {
       setError(error instanceof Error ? error.message : String(error));
@@ -75,63 +95,67 @@ function Capture({
     capture.page;
   const src = image && attachmentSrc(image);
   return (
-    <figure className="space-y-2 rounded-lg border bg-muted/30 p-3">
-      <figcaption className="flex items-center gap-2 text-xs font-medium">
-        <span>{label}</span>
-        <span className="ml-auto text-muted-foreground">
-          {new Date(capture.at).toLocaleString()}
-        </span>
+    <figure className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3 gap-y-2 rounded-lg border bg-muted/30 p-3">
+      <figcaption
+        className={`min-w-0 text-xs font-medium ${src ? "col-start-2" : "col-span-2"}`}
+        title={label}
+      >
+        <span className="block truncate">{label}</span>
       </figcaption>
-      {capture.annotation && (
-        <p className="text-xs text-primary">
-          Annotated proposal · original screenshot retained
-        </p>
-      )}
       {src && (
-        <AttachmentImage
-          source={image!}
-          label={label}
-          onDraw={onAnnotate ? () => void draw() : undefined}
-        />
+        <div className="col-start-1 row-start-1 row-span-2">
+          <AttachmentImage
+            source={image!}
+            label={label}
+            thumbnail
+            onDraw={onAnnotate ? () => void draw() : undefined}
+          />
+        </div>
       )}
-      {onAnnotate && capture.area && (
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={busy}
-          onClick={() => void draw()}
-        >
-          Draw / edit
-        </Button>
-      )}
+      <div
+        className={`space-y-2 ${src ? "col-start-2 row-start-2" : "col-span-2"}`}
+      >
+        {capture.annotation && (
+          <p className="text-xs text-muted-foreground">
+            Drawing attached · original retained
+          </p>
+        )}
+        {!src && (
+          <p className="text-xs text-muted-foreground">Point · no screenshot</p>
+        )}
+        {onAnnotate && capture.area && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            onClick={() => void draw()}
+          >
+            {capture.annotation ? "Edit drawing" : "Draw"}
+          </Button>
+        )}
+      </div>
       {error && (
-        <p role="alert" className="text-xs text-destructive">
+        <p role="alert" className="col-span-2 text-xs text-destructive">
           {error}
         </p>
       )}
-      {onRemove && (
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={busy}
-          onClick={() => void remove()}
-        >
-          Remove selection
-        </Button>
-      )}
-      {capture.annotation && capture.area && (
-        <details className="text-xs">
-          <summary className="cursor-pointer">Original screenshot</summary>
-          <AttachmentImage source={capture.area} label="Original screenshot" />
-        </details>
-      )}
-      <details className="text-xs text-muted-foreground">
-        <summary className="cursor-pointer">Selection details</summary>
-        <div className="mt-2 space-y-2 break-all">
+      <details className="col-span-2 text-xs text-muted-foreground">
+        <summary className="cursor-pointer">Capture details</summary>
+        <div className="mt-2 space-y-2 break-words">
+          <p>{new Date(capture.at).toLocaleString()}</p>
           <p>{capture.url}</p>
+          {capture.annotation && capture.area && (
+            <details>
+              <summary className="cursor-pointer">Original screenshot</summary>
+              <AttachmentImage
+                source={capture.area}
+                label="Original screenshot"
+              />
+            </details>
+          )}
           {(capture.selections || [capture]).map((selection, i) => (
             <div key={i}>
-              <code>{selection.selector}</code>
+              <code className="break-all">{selection.selector}</code>
               <p>{selection.element?.text}</p>
               <p>{selection.components.map((c) => c.name).join(" → ")}</p>
               <pre className="max-h-36 overflow-auto whitespace-pre-wrap">
@@ -141,8 +165,19 @@ function Capture({
           ))}
           {capture.context && (
             <p>
-              Saved context: <code>{capture.context.id}</code>
+              Saved context:{" "}
+              <code className="break-all">{capture.context.id}</code>
             </p>
+          )}
+          {onRemove && (
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={busy}
+              onClick={() => void remove()}
+            >
+              Remove selection
+            </Button>
           )}
         </div>
       </details>
@@ -157,6 +192,7 @@ export function WebEvidence({
   messages = [],
   onRemove,
   onDrawing,
+  saved = false,
 }: {
   value: unknown;
   onChange?: (web: WebReview) => void;
@@ -168,6 +204,7 @@ export function WebEvidence({
   messages?: ReviewMessage[];
   onRemove?: (index: number, key: string) => Promise<void>;
   onDrawing?: (open: boolean) => void;
+  saved?: boolean;
 }) {
   const web = webReview(value);
   if (!web) return null;
@@ -190,9 +227,10 @@ export function WebEvidence({
     }
   }
   const drawing = editable && (onChange || onAnnotate);
+  const captures = [web.before, ...(web.additional || [])];
   return (
-    <div className="my-3 grid gap-3">
-      {[web.before, ...(web.additional || [])].map((capture, i) => (
+    <div className="grid gap-3">
+      {captures.map((capture, i) => (
         <Capture
           key={`selection-${i}`}
           capture={capture}
@@ -216,7 +254,8 @@ export function WebEvidence({
               ? () => onRemove(i, webSelectionKey(capture))
               : undefined
           }
-          label={`Selection ${i + 1}`}
+          label={`${captures.length > 1 ? `${i + 1}. ` : ""}${captureName(capture)}`}
+          saved={saved}
         />
       ))}
       {web.after.map((capture, i) => (
@@ -238,7 +277,8 @@ export function WebEvidence({
               : undefined
           }
           onDrawing={onDrawing}
-          label={`After ${i + 1}`}
+          label={`After ${i + 1} · ${captureName(capture)}`}
+          saved={saved}
         />
       ))}
       <CaptureComparison web={web} messages={messages} />

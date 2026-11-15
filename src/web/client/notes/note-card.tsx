@@ -37,6 +37,8 @@ export function NoteCard({
   onJump,
   editor,
   editorDraft,
+  embedded = false,
+  onAddCapture,
 }: {
   note: ReviewNote;
   file?: DiffFile;
@@ -46,6 +48,8 @@ export function NoteCard({
   onJump?: () => void;
   editor?: React.ReactNode;
   editorDraft?: Draft;
+  embedded?: boolean;
+  onAddCapture?: () => void;
 }) {
   const { settings } = useUi();
   const state = useNoteState();
@@ -69,6 +73,18 @@ export function NoteCard({
   const icon = (label: string, element: React.ReactElement) => (
     <Tooltip label={label}>{element}</Tooltip>
   );
+  const header = (
+    <NoteHeader note={note} status={embedded ? undefined : note.status}>
+      {state.unread(note) > 0 && (
+        <span className="rounded bg-primary/15 px-2 py-1 text-[10px] text-primary">
+          {state.unread(note)} new
+        </span>
+      )}
+      {state.resolved(note) && (
+        <span className="text-[10px] text-emerald-500">Resolved</span>
+      )}
+    </NoteHeader>
+  );
   return (
     <article
       ref={entrance}
@@ -79,16 +95,17 @@ export function NoteCard({
       onFocus={() => state.read(note)}
       id={`${inline ? "diff-note" : "note"}-${reference}`}
     >
-      <NoteHeader note={note} status={note.status}>
-        {state.unread(note) > 0 && (
-          <span className="rounded bg-primary/15 px-2 py-1 text-[10px] text-primary">
-            {state.unread(note)} new
-          </span>
-        )}
-        {state.resolved(note) && (
-          <span className="text-[10px] text-emerald-500">Resolved</span>
-        )}
-      </NoteHeader>
+      {embedded ? (
+        <details className="border-b">
+          <summary className="cursor-pointer px-3 py-2 text-xs text-muted-foreground">
+            <span>Note details</span>
+            <span className="float-right">{note.status}</span>
+          </summary>
+          {header}
+        </details>
+      ) : (
+        header
+      )}
       <div className="space-y-3 p-4">
         {note.code && (
           <>
@@ -112,14 +129,16 @@ export function NoteCard({
               variant="outline"
               disabled={action.isPending}
               onClick={() =>
-                action.mutate({
-                  url: "/api/web/focus",
-                  method: "POST",
-                  body: { id: note.id },
-                })
+                onAddCapture
+                  ? onAddCapture()
+                  : action.mutate({
+                      url: "/api/web/focus",
+                      method: "POST",
+                      body: { id: note.id },
+                    })
               }
             >
-              Select more / reply on page
+              {onAddCapture ? "Add capture" : "Select on page"}
             </Button>
             <Button
               size="sm"
@@ -158,6 +177,7 @@ export function NoteCard({
           value={note.web}
           editable={editable && !editingNote}
           messages={note.messages}
+          saved
           onAnnotate={async (target, annotation) => {
             await action.mutateAsync({
               url: "/api/web/annotation",

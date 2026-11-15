@@ -46,9 +46,25 @@ export interface AnnotationSource {
   /** Captured CSS width preserves tool sizing for high-DPI browser screenshots. */
   cssWidth?: number;
   key?: string;
+  applyLabel?: "Use drawing" | "Save drawing";
 }
 
 type Tool = AnnotationMark["tool"] | "select" | "pan";
+const TOOL_NAMES: Record<Tool, string> = {
+  select: "Select",
+  pan: "Pan",
+  pen: "Pen",
+  highlighter: "Highlighter",
+  arrow: "Arrow",
+  rectangle: "Rectangle",
+  ellipse: "Ellipse",
+  triangle: "Triangle",
+  line: "Line",
+  path: "Vector path",
+  text: "Text",
+  callout: "Callout",
+  magnifier: "Magnifier",
+};
 type PathMark = Extract<AnnotationMark, { tool: "path" }>;
 type Gesture = {
   id: number;
@@ -216,66 +232,79 @@ function editAnnotation(
   dialog.dataset.annotationEditor = "";
   dialog.setAttribute("aria-label", "Draw on screenshot");
   dialog.setAttribute("aria-describedby", "annotation-help");
-  dialog.innerHTML = `<div class="annotation-tools" role="toolbar" aria-label="Drawing tools">
-        <div class="annotation-group" role="group" aria-label="Tools">
+  dialog.innerHTML = `<div class="annotation-tools">
+        <div class="annotation-header">
+          <strong class="annotation-active-tool" aria-live="polite">Pen</strong>
+          <div class="annotation-group" role="group" aria-label="History">
+            <button type="button" data-command="undo" aria-label="Undo drawing" data-tooltip="Undo (⌘/Ctrl Z)">${SVG.reply}</button>
+            <button type="button" data-command="redo" aria-label="Redo drawing" data-tooltip="Redo (⌘/Ctrl Shift Z)">${SVG.ref}</button>
+          </div>
+          <div class="annotation-group annotation-commit" role="group" aria-label="Finish drawing">
+            <button type="button" data-command="apply" class="annotation-apply"></button>
+            <button type="button" data-command="cancel" aria-label="Close drawing editor" data-tooltip="Close drawing editor (Esc)">${SVG.x}</button>
+          </div>
+        </div>
+        <div class="annotation-group annotation-common-tools" role="toolbar" aria-label="Drawing tools">
           <button type="button" data-tool="select" aria-pressed="false" aria-label="Select and edit drawings" data-tooltip="Select / resize / edit points">${SVG.cursor}</button>
-          <button type="button" data-tool="pan" aria-pressed="false" aria-label="Pan image" data-tooltip="Hand / pan image">${SVG.hand}</button>
           <button type="button" data-tool="pen" aria-pressed="true" aria-label="Draw with pen" data-tooltip="Pen">${SVG.edit}</button>
-          <button type="button" data-tool="highlighter" aria-pressed="false" aria-label="Highlight screenshot" data-tooltip="Highlighter">${SVG.highlighter}</button>
           <button type="button" data-tool="arrow" aria-pressed="false" aria-label="Draw an arrow" data-tooltip="Arrow">${SVG.open}</button>
           <button type="button" data-tool="rectangle" aria-pressed="false" aria-label="Draw a rectangle" data-tooltip="Rectangle">${SVG.box}</button>
-          <button type="button" data-tool="ellipse" aria-pressed="false" aria-label="Draw a circle or ellipse" data-tooltip="Circle / ellipse (Shift for circle)">${SVG.circle}</button>
-          <button type="button" data-tool="triangle" aria-pressed="false" aria-label="Draw a triangle" data-tooltip="Triangle">${SVG.triangle}</button>
-          <button type="button" data-tool="line" aria-pressed="false" aria-label="Draw a line" data-tooltip="Line">${SVG.line}</button>
-          <button type="button" data-tool="path" aria-pressed="false" aria-label="Draw a vector path" data-tooltip="Path: click points; drag for curves">${SVG.path}</button>
           <button type="button" data-tool="text" aria-pressed="false" aria-label="Add text" data-tooltip="Text">${SVG.text}</button>
           <button type="button" data-tool="callout" aria-pressed="false" aria-label="Add numbered callout" data-tooltip="Numbered callout: click for badge; drag to point">${SVG.callout}</button>
-          <button type="button" data-tool="magnifier" aria-pressed="false" aria-label="Magnify screenshot detail" data-tooltip="Magnify: drag over original detail">${SVG.magnifier}</button>
+          <button type="button" class="annotation-labeled" data-command="more-tools" popovertarget="annotation-more-tools" aria-haspopup="dialog" aria-expanded="false" aria-controls="annotation-more-tools">More tools ${SVG.chevD}</button>
         </div>
-        <button type="button" class="annotation-color" data-command="colors" aria-label="Drawing color" aria-haspopup="dialog" aria-expanded="false" aria-controls="annotation-colors" data-tooltip="Drawing color"></button>
-        <div class="annotation-properties">
-          <label data-property="width" data-tooltip="Stroke width"><span aria-hidden="true">${SVG.minus}</span><input type="number" data-field="width" min="1" max="${LIMITS.maxWidth}" step="1" value="3" aria-label="Stroke width in image pixels"></label>
-          <label data-property="smoothing" data-tooltip="Pen smoothing — new strokes only"><span aria-hidden="true">${SVG.sliders}</span><input type="range" data-field="smoothing" min="0" max="100" step="10" value="0" aria-label="Pen smoothing"><output class="annotation-smoothing">0%</output></label>
-          <label data-property="radius" data-tooltip="Corner radius" hidden><span aria-hidden="true">${SVG.box}</span><input type="number" data-field="radius" min="0" step="1" value="8" aria-label="Rectangle corner radius in image pixels"></label>
-          <label data-property="size" data-tooltip="Text size" hidden><span aria-hidden="true">${SVG.text}</span><input type="number" data-field="size" min="1" max="${LIMITS.maxTextSize}" step="1" value="20" aria-label="Text size in image pixels"></label>
-          <label data-property="opacity" hidden data-tooltip="Highlight / fill opacity"><span>Opacity</span><input type="range" data-field="opacity" min="0" max="100" step="5" value="30" aria-label="Highlight or fill opacity"></label>
-          <label data-property="fill" hidden><input type="checkbox" data-field="fill" aria-label="Fill shape">Fill<input type="color" data-field="fill-color" value="#eab308" aria-label="Shape fill color"></label>
-          <label data-property="wrap" hidden data-tooltip="Text wrapping width in image pixels"><span>Wrap</span><input type="number" data-field="wrap" min="1" max="${LIMITS.maxDimension}" value="240" aria-label="Text wrapping width"></label>
-          <label data-property="background" hidden><input type="checkbox" data-field="background" checked aria-label="Text background">Background<input type="color" data-field="background-color" value="#ffffff" aria-label="Text background color"></label>
-          <label data-property="text-outline" hidden><input type="checkbox" data-field="text-outline" aria-label="Outline text">Outline</label>
-          <label data-property="text-leader" hidden><input type="checkbox" data-field="text-leader" aria-label="Connect text to target">Leader</label>
-          <label data-property="label" hidden><input type="text" data-field="label" maxlength="200" placeholder="Callout label" aria-label="Callout label"></label>
-          <label data-property="scale" hidden><span>Magnify</span><input type="number" data-field="scale" min="1" max="8" step="0.5" value="3" aria-label="Detail magnification"></label>
-          <button type="button" data-command="edit-text" aria-label="Edit text in place" data-tooltip="Edit text in place" hidden>${SVG.edit}</button>
-          <label data-property="mark" hidden><select data-field="mark" aria-label="Select an editable drawing"><option value="-1">No drawing selected</option></select></label>
-          <button type="button" data-command="delete" aria-label="Delete selected drawing" data-tooltip="Delete selected drawing" hidden>${SVG.trash}</button>
-          <button type="button" data-command="visibility" aria-label="Hide selected drawing" data-tooltip="Hide selected drawing (preview only)" hidden>${SVG.eye}</button>
-        </div>
-        <div class="annotation-group" data-path-tools role="group" aria-label="Path editing" hidden>
-          <button type="button" data-command="finish-path" aria-label="Finish open path" data-tooltip="Finish path (Enter)">${SVG.check}</button>
-          <button type="button" data-command="close-path" aria-label="Close path" data-tooltip="Close / open path">${SVG.box}</button>
-          <button type="button" data-command="smooth-node" aria-label="Smooth selected path point" data-tooltip="Smooth point">${SVG.path}</button>
-          <button type="button" data-command="corner-node" aria-label="Make selected path point a corner" data-tooltip="Corner point">${SVG.triangle}</button>
-          <button type="button" data-command="delete-node" aria-label="Delete selected path point" data-tooltip="Delete point">${SVG.trash}</button>
-        </div>
-        <div class="annotation-group" role="group" aria-label="History">
-          <button type="button" data-command="undo" aria-label="Undo drawing" data-tooltip="Undo (⌘/Ctrl Z)">${SVG.reply}</button>
-          <button type="button" data-command="redo" aria-label="Redo drawing" data-tooltip="Redo (⌘/Ctrl Shift Z)">${SVG.ref}</button>
-          <button type="button" data-command="clear" aria-label="Clear all drawings" data-tooltip="Clear all drawings">${SVG.trash}</button>
-        </div>
-        <button type="button" data-command="original" aria-label="Show original screenshot" aria-pressed="false" data-tooltip="Show original (hold O); preview only">${SVG.eyeOff}</button>
-        <div class="annotation-group annotation-zoom-tools" role="group" aria-label="Zoom">
-          <button type="button" data-command="out" aria-label="Zoom out" data-tooltip="Zoom out (−)">${SVG.minus}</button>
-          <button type="button" data-command="actual" class="annotation-zoom" aria-label="Actual image size" data-tooltip="100% (1)">100%</button>
-          <button type="button" data-command="in" aria-label="Zoom in" data-tooltip="Zoom in (+)">${SVG.plus}</button>
-          <button type="button" data-command="fit" aria-label="Fit image" data-tooltip="Fit image (0)">${SVG.fit}</button>
-        </div>
-        <div class="annotation-group annotation-commit" role="group" aria-label="Finish drawing">
-          <button type="button" data-command="apply" class="annotation-apply" aria-label="Apply drawing" data-tooltip="Apply drawing">${SVG.check}</button>
-          <button type="button" data-command="cancel" aria-label="Close drawing editor" data-tooltip="Close drawing editor (Esc)">${SVG.x}</button>
+        <div class="annotation-properties annotation-primary-properties" role="group" aria-label="Tool properties">
+          <button type="button" class="annotation-color" data-command="colors" aria-label="Drawing color" aria-haspopup="dialog" aria-expanded="false" aria-controls="annotation-colors" data-tooltip="Drawing color"></button>
+          <label data-property="width"><span>Width</span><input type="number" data-field="width" min="1" max="${LIMITS.maxWidth}" step="1" value="3" aria-label="Stroke width in image pixels"></label>
+          <label data-property="size" hidden><span>Text size</span><input type="number" data-field="size" min="1" max="${LIMITS.maxTextSize}" step="1" value="20" aria-label="Text size in image pixels"></label>
+          <button type="button" class="annotation-labeled" data-command="options" popovertarget="annotation-options" aria-haspopup="dialog" aria-expanded="false" aria-controls="annotation-options">Options ${SVG.chevD}</button>
         </div>
       </div>
-      <div id="annotation-colors" class="annotation-colors" popover="auto" role="dialog" aria-label="Drawing colors">
+      <div id="annotation-more-tools" class="annotation-popover annotation-more-tools" popover="auto" role="dialog" aria-label="More drawing tools">
+        <div class="annotation-extra-tools" role="group" aria-label="Additional tools">
+          <button type="button" data-tool="highlighter" aria-pressed="false" aria-label="Highlight screenshot">${SVG.highlighter} Highlighter</button>
+          <button type="button" data-tool="ellipse" aria-pressed="false" aria-label="Draw a circle or ellipse">${SVG.circle} Ellipse</button>
+          <button type="button" data-tool="triangle" aria-pressed="false" aria-label="Draw a triangle">${SVG.triangle} Triangle</button>
+          <button type="button" data-tool="line" aria-pressed="false" aria-label="Draw a line">${SVG.line} Line</button>
+          <button type="button" data-tool="path" aria-pressed="false" aria-label="Draw a vector path">${SVG.path} Vector path</button>
+          <button type="button" data-tool="magnifier" aria-pressed="false" aria-label="Magnify screenshot detail">${SVG.magnifier} Magnifier</button>
+          <button type="button" data-tool="pan" aria-pressed="false" aria-label="Pan image">${SVG.hand} Pan <small>Space + drag</small></button>
+        </div>
+        <div class="annotation-secondary-actions" role="group" aria-label="Drawing actions">
+          <button type="button" data-command="original" aria-label="Show original screenshot" aria-pressed="false">${SVG.eyeOff} Show original <small>Hold O</small></button>
+          <button type="button" data-command="clear" aria-label="Clear all drawings">${SVG.trash} Clear all drawings</button>
+        </div>
+      </div>
+      <div id="annotation-options" class="annotation-popover annotation-properties annotation-options" popover="auto" role="dialog" aria-label="Drawing options">
+        <label data-property="smoothing"><span>Smoothing</span><input type="range" data-field="smoothing" min="0" max="100" step="10" value="0" aria-label="Pen smoothing"><output class="annotation-smoothing">0%</output></label>
+        <label data-property="radius" hidden><span>Corner radius</span><input type="number" data-field="radius" min="0" step="1" value="8" aria-label="Rectangle corner radius in image pixels"></label>
+        <label data-property="opacity" hidden><span>Opacity</span><input type="range" data-field="opacity" min="0" max="100" step="5" value="30" aria-label="Highlight or fill opacity"></label>
+        <label data-property="fill" hidden><input type="checkbox" data-field="fill" aria-label="Fill shape">Fill<input type="color" data-field="fill-color" value="#eab308" aria-label="Shape fill color"></label>
+        <label data-property="wrap" hidden><span>Wrap width</span><input type="number" data-field="wrap" min="1" max="${LIMITS.maxDimension}" value="240" aria-label="Text wrapping width"></label>
+        <label data-property="background" hidden><input type="checkbox" data-field="background" checked aria-label="Text background">Background<input type="color" data-field="background-color" value="#ffffff" aria-label="Text background color"></label>
+        <label data-property="text-outline" hidden><input type="checkbox" data-field="text-outline" aria-label="Outline text">Outline</label>
+        <label data-property="text-leader" hidden><input type="checkbox" data-field="text-leader" aria-label="Connect text to target">Leader</label>
+        <label data-property="label" hidden><span>Label</span><input type="text" data-field="label" maxlength="200" placeholder="Callout label" aria-label="Callout label"></label>
+        <label data-property="scale" hidden><span>Magnify</span><input type="number" data-field="scale" min="1" max="8" step="0.5" value="3" aria-label="Detail magnification"></label>
+        <label data-property="mark" hidden><select data-field="mark" aria-label="Select an editable drawing"><option value="-1">No drawing selected</option></select></label>
+        <button type="button" data-command="edit-text" aria-label="Edit text in place" hidden>${SVG.edit} Edit text</button>
+        <button type="button" data-command="delete" aria-label="Delete selected drawing" hidden>${SVG.trash} Delete drawing</button>
+        <button type="button" data-command="visibility" aria-label="Hide selected drawing" hidden>${SVG.eye} Hide drawing</button>
+        <div class="annotation-path-tools" data-path-tools role="group" aria-label="Path editing" hidden>
+          <button type="button" data-command="finish-path" aria-label="Finish open path">${SVG.check} Finish path <small>Enter</small></button>
+          <button type="button" data-command="close-path" aria-label="Close path">${SVG.box} Close path</button>
+          <button type="button" data-command="smooth-node" aria-label="Smooth selected path point">${SVG.path} Smooth point</button>
+          <button type="button" data-command="corner-node" aria-label="Make selected path point a corner">${SVG.triangle} Corner point</button>
+          <button type="button" data-command="delete-node" aria-label="Delete selected path point">${SVG.trash} Delete point</button>
+        </div>
+      </div>
+      <div class="annotation-group annotation-zoom-tools" role="group" aria-label="Zoom">
+        <button type="button" data-command="out" aria-label="Zoom out" data-tooltip="Zoom out (−)">${SVG.minus}</button>
+        <button type="button" data-command="actual" class="annotation-zoom" aria-label="Actual image size" data-tooltip="100% (1)">100%</button>
+        <button type="button" data-command="in" aria-label="Zoom in" data-tooltip="Zoom in (+)">${SVG.plus}</button>
+        <button type="button" data-command="fit" aria-label="Fit image" data-tooltip="Fit image (0)">${SVG.fit}</button>
+      </div>
+      <div id="annotation-colors" class="annotation-popover annotation-colors" popover="auto" role="dialog" aria-label="Drawing colors">
         <div class="annotation-palette" role="group" aria-label="Saved drawing colors"></div>
         <label>Custom color <input type="color" data-field="color" value="${color}" aria-label="Custom drawing color"></label>
       </div>
@@ -299,6 +328,13 @@ function editAnnotation(
   const button = (name: string) =>
     find<HTMLButtonElement>('[data-command="' + name + '"]');
   const colorPopup = find<HTMLElement>(".annotation-colors");
+  const moreTools = find<HTMLElement>("#annotation-more-tools"),
+    optionsPopup = find<HTMLElement>("#annotation-options");
+  const popups = [
+    { popup: colorPopup, command: "colors" },
+    { popup: moreTools, command: "more-tools" },
+    { popup: optionsPopup, command: "options" },
+  ];
   const scene = createAnnotationScene(canvas);
   let draftStore: ReturnType<typeof createAnnotationDraftStore> | null = null;
   let recoverable: AnnotationDraft | null = null;
@@ -372,13 +408,10 @@ function editAnnotation(
     button("apply").disabled = busy || !image;
     button("in").disabled = busy || zoom >= 8;
     button("out").disabled = busy || zoom <= 0.01;
-    const applyLabel = saving
-      ? "Applying drawing…"
-      : marks.length || pathDraft
-        ? "Apply drawing"
-        : "Apply without drawings";
+    const applyLabel = capture.applyLabel ?? "Use drawing";
+    button("apply").textContent = applyLabel;
     button("apply").setAttribute("aria-label", applyLabel);
-    button("apply").dataset.tooltip = applyLabel;
+    button("apply").setAttribute("aria-busy", String(saving));
     button("apply").toggleAttribute("data-dirty", dirty());
     button("colors").style.setProperty("--annotation-color", color);
     dialog
@@ -412,6 +445,12 @@ function editAnnotation(
     find<HTMLOutputElement>(".annotation-smoothing").value = smoothing + "%";
     const current = marks[selected];
     const activeTool: Tool = selected >= 0 ? (current?.tool ?? tool) : tool;
+    find<HTMLElement>(".annotation-active-tool").textContent =
+      TOOL_NAMES[activeTool];
+    button("more-tools").setAttribute(
+      "aria-pressed",
+      String(!!moreTools.querySelector(`[data-tool="${tool}"]`)),
+    );
     find<HTMLElement>('[data-property="width"]').hidden =
       activeTool === "text" || activeTool === "select" || activeTool === "pan";
     find<HTMLElement>('[data-property="radius"]').hidden =
@@ -439,16 +478,17 @@ function editAnnotation(
       "text",
       "callout",
     ].includes(activeTool);
-    find<HTMLElement>('[data-property="mark"]').hidden = !marks.length;
-    find<HTMLElement>('[data-property="smoothing"]').hidden = ![
-      "pen",
-      "highlighter",
-    ].includes(tool);
-    button("colors").hidden = tool === "pan";
+    find<HTMLElement>('[data-property="mark"]').hidden =
+      !marks.length || (tool !== "select" && selected < 0);
+    find<HTMLElement>('[data-property="smoothing"]').hidden =
+      selected >= 0 || !["pen", "highlighter"].includes(tool);
+    button("colors").hidden = activeTool === "pan" || activeTool === "select";
     button("edit-text").hidden = current?.tool !== "text";
     button("visibility").hidden = selected < 0;
     const invisible = !!current && hidden.has(current);
-    button("visibility").innerHTML = invisible ? SVG.eyeOff : SVG.eye;
+    button("visibility").innerHTML =
+      (invisible ? SVG.eyeOff : SVG.eye) +
+      (invisible ? " Show drawing" : " Hide drawing");
     button("visibility").setAttribute(
       "aria-label",
       invisible ? "Show selected drawing" : "Hide selected drawing",
@@ -469,6 +509,15 @@ function editAnnotation(
       busy || !pathDraft || pathDraft.nodes.length < 2;
     button("close-path").disabled = busy || !path || path.nodes.length < 3;
     button("close-path").setAttribute("aria-pressed", String(!!path?.closed));
+    button("close-path").innerHTML =
+      SVG.box + (path?.closed ? " Open path" : " Close path");
+    button("close-path").setAttribute(
+      "aria-label",
+      path?.closed ? "Open path" : "Close path",
+    );
+    button("options").hidden = !optionsPopup.querySelector(
+      ":scope > :not([hidden])",
+    );
     for (const command of ["smooth-node", "corner-node", "delete-node"])
       button(command).disabled = busy || !!pathDraft || selectedNode < 0;
     message.hidden = !pathDraft;
@@ -793,7 +842,8 @@ function editAnnotation(
   }
   const resize = new ResizeObserver(() => {
     if (fitted) fit();
-    if (colorPopup.matches(":popover-open")) positionColors();
+    for (const { popup, command } of popups)
+      if (popup.matches(":popover-open")) positionPopup(popup, command);
   });
   viewport.addEventListener(
     "wheel",
@@ -1594,22 +1644,37 @@ function editAnnotation(
       palette.append(swatch);
     });
   }
-  function positionColors() {
-    const at = button("colors").getBoundingClientRect(),
-      box = colorPopup.getBoundingClientRect();
-    colorPopup.style.left =
+  function positionPopup(popup: HTMLElement, command: string) {
+    const at = button(command).getBoundingClientRect(),
+      box = popup.getBoundingClientRect();
+    popup.style.left =
       Math.max(0, Math.min(innerWidth - box.width, at.left)) + "px";
-    colorPopup.style.top =
+    popup.style.top =
       (at.bottom + box.height <= innerHeight
         ? at.bottom
         : Math.max(0, at.top - box.height)) + "px";
   }
-  colorPopup.addEventListener("toggle", () =>
-    button("colors").setAttribute(
-      "aria-expanded",
-      String(colorPopup.matches(":popover-open")),
-    ),
-  );
+  for (const { popup, command } of popups) {
+    popup.addEventListener("toggle", () => {
+      const open = popup.matches(":popover-open");
+      button(command).setAttribute("aria-expanded", String(open));
+      if (open) {
+        positionPopup(popup, command);
+        if (popup === moreTools)
+          (
+            popup.querySelector<HTMLButtonElement>(
+              '[data-tool][aria-pressed="true"]',
+            ) ?? popup.querySelector<HTMLButtonElement>("[data-tool]")
+          )?.focus();
+        else if (popup === optionsPopup)
+          popup
+            .querySelector<HTMLElement>(
+              "label:not([hidden]) :is(input, select), button:not([hidden]):not(:disabled)",
+            )
+            ?.focus();
+      }
+    });
+  }
   renderColors();
   function canLeave(next: string | null) {
     if (saving) return false;
@@ -1708,6 +1773,10 @@ function editAnnotation(
     }
     if (loading || saving) return;
     if (target.dataset.tool) {
+      if (moreTools.matches(":popover-open")) {
+        moreTools.hidePopover();
+        canvas.focus({ preventScroll: true });
+      }
       cancelGesture();
       if (pathDraft) {
         if (pathDraft.nodes.length >= 2) finishPath();
@@ -1734,6 +1803,15 @@ function editAnnotation(
       changeProperty("color", target.dataset.color);
       colorPopup.hidePopover();
       return;
+    }
+    const actionPopup = target.closest<HTMLElement>(".annotation-popover");
+    if (
+      actionPopup &&
+      actionPopup !== colorPopup &&
+      actionPopup.matches(":popover-open")
+    ) {
+      actionPopup.hidePopover();
+      canvas.focus({ preventScroll: true });
     }
     switch (target.dataset.command) {
       case "restore-draft": {
@@ -1826,7 +1904,8 @@ function editAnnotation(
         break;
       case "colors":
         colorPopup.togglePopover();
-        if (colorPopup.matches(":popover-open")) positionColors();
+        if (colorPopup.matches(":popover-open"))
+          positionPopup(colorPopup, "colors");
         break;
       case "in":
         setZoom(zoom * 1.25);
@@ -1851,8 +1930,11 @@ function editAnnotation(
     if (event.key === "Escape") {
       event.preventDefault();
       event.stopImmediatePropagation();
-      if (colorPopup.matches(":popover-open")) colorPopup.hidePopover();
-      else if (textEditing) {
+      const opened = popups.find(({ popup }) => popup.matches(":popover-open"));
+      if (opened) {
+        opened.popup.hidePopover();
+        button(opened.command).focus({ preventScroll: true });
+      } else if (textEditing) {
         textEditing = false;
         sync();
         paint();
@@ -1876,7 +1958,12 @@ function editAnnotation(
       if (event.key !== "Tab") event.stopImmediatePropagation();
       return;
     }
-    if (!typing && event.key === "Enter" && pathDraft) {
+    if (
+      !typing &&
+      !target.closest("button") &&
+      event.key === "Enter" &&
+      pathDraft
+    ) {
       event.preventDefault();
       event.stopImmediatePropagation();
       if (!loading && !saving) finishPath();
@@ -1896,7 +1983,7 @@ function editAnnotation(
       paint();
       return;
     }
-    if (!typing && event.code === "Space") {
+    if (!typing && !target.closest("button") && event.code === "Space") {
       event.preventDefault();
       event.stopImmediatePropagation();
       space = true;

@@ -91,9 +91,11 @@ for the captured lines. Drop or paste files, or use **Attach file**, to attach t
 directly to a note or reply (up to 12 MiB each). Files are kept beside the review
 and linked relatively; external images are not loaded.
 Attached images have inline thumbnails, a zoom viewer, and **Draw / edit**. Drawings
-retain editable shapes, text, paths, callouts and other tools when reopened. Image
-diffs also support clicking or dragging a region to capture it in a comment. Audio
-diffs have before/after players.
+retain editable shapes, text, paths, callouts and other tools when reopened.
+**More tools** holds less-used drawing tools; **Options** contains settings for
+the active tool or selected drawing. **Use drawing** returns the result to the
+editor without saving the note. Image diffs also support clicking or dragging a
+region to capture it in a comment. Audio diffs have before/after players.
 
 **Save note** writes immediately. With ACP configured, **Save & ask AI** also queues
 that note; **Save only** persists without dispatch. Enter saves by default;
