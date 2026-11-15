@@ -15,7 +15,7 @@ import {
 import { useUi } from "../app/ui-preferences.tsx";
 import { useStored } from "../app/preferences.ts";
 
-function useMedia(query: string) {
+export function useMedia(query: string) {
   const subscribe = useCallback(
     (notify: () => void) => {
       const media = matchMedia(query);
@@ -126,31 +126,47 @@ export function ReviewLayout({
   children,
   notes,
   navOpen,
+  fileDrawerOpen,
   notesOpen,
 }: {
   files: ReactNode;
   children: ReactNode;
   notes: ReactNode;
   navOpen: boolean;
+  fileDrawerOpen: boolean;
   notesOpen: boolean;
 }) {
   const { settings, update } = useUi();
   const [notesWidth, setNotesWidth] = useStored("lcr:v2:notes-width", 390);
-  const wide = useMedia("(min-width: 768px)");
-  const inlineNotes = useMedia("(min-width: 640px)");
+  const wide = useMedia("(min-width: 1280px)");
+  const inlineNotes = useMedia("(min-width: 960px)");
   const reducedMotion = useMedia("(prefers-reduced-motion: reduce)");
-  const filesVisible = wide && navOpen;
+  const filesVisible = wide ? navOpen : fileDrawerOpen;
   const filesMotion = usePanelMotion(filesVisible, reducedMotion);
   const notesMotion = usePanelMotion(notesOpen, reducedMotion);
-  const showFiles = filesVisible;
+  const showFiles = wide && navOpen;
   const showNotes = inlineNotes && notesOpen;
   const [motion, setMotion] = useState({
     files: showFiles,
     notes: showNotes,
+    wide,
+    inlineNotes,
     enabled: false,
   });
-  if (motion.files !== showFiles || motion.notes !== showNotes)
-    setMotion({ files: showFiles, notes: showNotes, enabled: true });
+  if (
+    motion.files !== showFiles ||
+    motion.notes !== showNotes ||
+    motion.wide !== wide ||
+    motion.inlineNotes !== inlineNotes
+  )
+    setMotion({
+      files: showFiles,
+      notes: showNotes,
+      wide,
+      inlineNotes,
+      // Intermediate breakpoint widths reflow virtual rows and move the reading anchor.
+      enabled: motion.wide === wide && motion.inlineNotes === inlineNotes,
+    });
   const filesSize = usePanelWidth(
     settings.navWidth || 256,
     showFiles,
@@ -249,14 +265,14 @@ export function ReviewLayout({
         maxSize={showFiles ? "60%" : "0px"}
         groupResizeBehavior="preserve-pixel-size"
         className="h-full"
-        style={{ overflow: "hidden" }}
+        style={{ overflow: wide ? "hidden" : "visible" }}
       >
         <div
           ref={filesMotion.content}
           className="h-full transition-[opacity,transform] duration-[180ms] ease-out motion-reduce:transition-none"
           style={{
             opacity: filesVisible ? 1 : 0,
-            transform: filesVisible ? "none" : "translateX(-8px)",
+            transform: wide && !filesVisible ? "translateX(-8px)" : "none",
             visibility: filesMotion.present ? "visible" : "hidden",
           }}
         >
@@ -278,10 +294,10 @@ export function ReviewLayout({
           }}
         />
       )}
-      {/* The diff yields to both sidebars, even when a compact window leaves <240px. */}
+      {/* Keep code readable; compact layouts move secondary panes out of the flow. */}
       <ResizablePanel
         id="diff-pane"
-        minSize="0px"
+        minSize={inlineNotes ? "480px" : "0px"}
         className="h-full"
         style={{ overflow: "hidden" }}
       >
@@ -308,7 +324,7 @@ export function ReviewLayout({
         panelRef={notesSize.panel}
         onResize={notesMotion.onResize}
         defaultSize={notesSize.defaultSize}
-        minSize={showNotes ? "280px" : "0px"}
+        minSize={showNotes ? "320px" : "0px"}
         maxSize={showNotes ? "65%" : "0px"}
         groupResizeBehavior="preserve-pixel-size"
         className="h-full"

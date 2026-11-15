@@ -81,6 +81,7 @@ function Capture({
   async function remove() {
     if (!onRemove || busy) return;
     setBusy(true);
+    setError("");
     try {
       await onRemove();
     } catch (error) {
@@ -96,26 +97,44 @@ function Capture({
     capture.page;
   const src = image && attachmentSrc(image);
   return (
-    <figure className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3 gap-y-2 rounded-lg border bg-muted/30 p-3">
-      <figcaption
-        className={`min-w-0 text-xs font-medium ${src ? "col-start-2" : "col-span-2"}`}
-        title={label}
-      >
-        <span className="block truncate">{label}</span>
+    <figure className="min-w-0 space-y-2 rounded-md bg-muted/30 p-2">
+      <figcaption className="flex flex-wrap items-center gap-2" title={label}>
+        <span className="min-w-0 flex-1 break-words text-xs font-medium">
+          {label}
+        </span>
+        {onRemove && (
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label={`Remove capture: ${label}`}
+            disabled={busy}
+            onClick={() => void remove()}
+          >
+            Remove capture
+          </Button>
+        )}
       </figcaption>
       {src && (
-        <div className="col-start-1 row-start-1 row-span-2">
-          <AttachmentImage
-            source={image!}
-            label={label}
-            thumbnail
-            onDraw={onAnnotate ? () => void draw() : undefined}
-          />
-        </div>
+        <AttachmentImage
+          source={image!}
+          label={label}
+          thumbnail
+          onDraw={onAnnotate ? () => void draw() : undefined}
+          size={
+            capture.annotation
+              ? {
+                  width:
+                    capture.annotation.width + 2 * capture.annotation.padding,
+                  height:
+                    capture.annotation.height + 2 * capture.annotation.padding,
+                }
+              : image === capture.area
+                ? capture.rect
+                : undefined
+          }
+        />
       )}
-      <div
-        className={`space-y-2 ${src ? "col-start-2 row-start-2" : "col-span-2"}`}
-      >
+      <div className="flex flex-wrap items-center gap-2">
         {capture.annotation && (
           <p className="text-xs text-muted-foreground">
             Drawing attached · original retained
@@ -131,16 +150,16 @@ function Capture({
             disabled={busy}
             onClick={() => void draw()}
           >
-            {capture.annotation ? "Edit drawing" : "Draw"}
+            {capture.annotation ? "Edit drawing" : "Annotate"}
           </Button>
         )}
       </div>
       {error && (
-        <p role="alert" className="col-span-2 text-xs text-destructive">
+        <p role="alert" className="text-xs text-destructive">
           {error}
         </p>
       )}
-      <details className="col-span-2 text-xs text-muted-foreground">
+      <details className="text-xs text-muted-foreground">
         <summary className="cursor-pointer">Capture details</summary>
         <div className="mt-2 space-y-2 break-words">
           <p>{new Date(capture.at).toLocaleString()}</p>
@@ -169,16 +188,6 @@ function Capture({
               source={capture.context.id}
               label={`Additional context: ${capture.context.label}`}
             />
-          )}
-          {onRemove && (
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={busy}
-              onClick={() => void remove()}
-            >
-              Remove selection
-            </Button>
           )}
         </div>
       </details>

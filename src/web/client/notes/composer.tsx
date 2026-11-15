@@ -35,11 +35,13 @@ import {
   Pencil,
   LoaderCircle,
   Plus,
+  Ellipsis,
 } from "lucide-react";
 import type { ReviewComment } from "../../../shared/review-types.ts";
 import { noteKey } from "../../../shared/note-id.ts";
 import { request, useAction } from "../app/api.ts";
 import { Button } from "../components/ui/button.tsx";
+import { ActionMenu, ActionMenuItem } from "../components/ui/action-menu.tsx";
 import { Tooltip } from "../components/ui/tooltip.tsx";
 import { ComposerImages } from "../components/images.tsx";
 import { Markdown } from "../components/markdown.tsx";
@@ -84,6 +86,7 @@ export function Composer({
   webDraftId,
   onWebDrawing,
   onAddCapture,
+  draftStorageError,
 }: {
   draft: Draft;
   onChange: (draft: Draft) => void;
@@ -95,6 +98,7 @@ export function Composer({
   webDraftId?: string;
   onWebDrawing?: (open: boolean) => void;
   onAddCapture?: () => void;
+  draftStorageError?: string;
 }) {
   const action = useAction();
   const { settings } = useUi();
@@ -439,27 +443,12 @@ export function Composer({
         <div
           role="toolbar"
           aria-label="Text formatting"
-          className="flex flex-wrap items-center gap-0.5"
+          className="flex flex-wrap items-center gap-1"
         >
           {[
             { label: "Bold", Icon: Bold, before: "**", after: "**" },
             { label: "Italic", Icon: Italic, before: "_", after: "_" },
             { label: "Inline code", Icon: CodeIcon, before: "`", after: "`" },
-            {
-              label: "Code block",
-              Icon: SquareCode,
-              before: "\n```\n",
-              after: "\n```\n",
-            },
-            { label: "Quote", Icon: Quote, before: "\n> ", after: "" },
-            { label: "List", Icon: List, before: "\n- ", after: "" },
-            {
-              label: "Checklist",
-              Icon: ListTodo,
-              before: "\n- [ ] ",
-              after: "",
-            },
-            { label: "Link", Icon: Link, before: "[", after: "](https://)" },
           ].map(({ label, Icon, before, after }) => (
             <Tooltip key={label} label={label}>
               <Button
@@ -475,18 +464,54 @@ export function Composer({
               </Button>
             </Tooltip>
           ))}
-          <Tooltip label={preview ? "Write" : "Preview"}>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-8"
-              aria-label={preview ? "Write" : "Preview"}
-              aria-pressed={preview}
-              onClick={() => setPreview(!preview)}
-            >
-              {preview ? <Pencil /> : <Eye />}
-            </Button>
-          </Tooltip>
+          <ActionMenu
+            align="start"
+            finalFocus={textarea}
+            trigger={
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8"
+                aria-label="More formatting"
+                title="More formatting"
+                disabled={preview}
+              >
+                <Ellipsis />
+              </Button>
+            }
+          >
+            {[
+              {
+                label: "Code block",
+                Icon: SquareCode,
+                before: "\n```\n",
+                after: "\n```\n",
+              },
+              { label: "Quote", Icon: Quote, before: "\n> ", after: "" },
+              { label: "List", Icon: List, before: "\n- ", after: "" },
+              {
+                label: "Checklist",
+                Icon: ListTodo,
+                before: "\n- [ ] ",
+                after: "",
+              },
+              { label: "Link", Icon: Link, before: "[", after: "](https://)" },
+            ].map(({ label, Icon, before, after }) => (
+              <ActionMenuItem
+                key={label}
+                onClick={() => {
+                  textarea.current?.setSelectionRange(
+                    caret.current.start,
+                    caret.current.end,
+                  );
+                  wrap(before, after);
+                }}
+              >
+                <Icon />
+                {label}
+              </ActionMenuItem>
+            ))}
+          </ActionMenu>
           {code && (
             <Tooltip label="Suggest change">
               <Button
@@ -515,6 +540,28 @@ export function Composer({
               <Paperclip />
             </Button>
           </Tooltip>
+          <div className="ml-auto flex items-center gap-1 rounded-md bg-muted/50 p-0.5">
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-pressed={!preview}
+              className={!preview ? "bg-background shadow-sm" : ""}
+              onClick={() => setPreview(false)}
+            >
+              <Pencil />
+              Write
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-pressed={preview}
+              className={preview ? "bg-background shadow-sm" : ""}
+              onClick={() => setPreview(true)}
+            >
+              <Eye />
+              Preview
+            </Button>
+          </div>
           <input
             ref={picker}
             type="file"
@@ -562,7 +609,13 @@ export function Composer({
                 updateCompletion(event.currentTarget);
               }}
               onFocus={(event) => updateCompletion(event.currentTarget)}
-              onBlur={() => setCompletion(null)}
+              onBlur={(event) => {
+                caret.current = {
+                  start: event.currentTarget.selectionStart,
+                  end: event.currentTarget.selectionEnd,
+                };
+                setCompletion(null);
+              }}
               onCompositionStart={() => {
                 composing.current = true;
                 setCompletion(null);
@@ -646,7 +699,7 @@ export function Composer({
                 }
               }}
               placeholder="Write feedback, ask a question, or type # for a note or @ for a file…"
-              className={`w-full border-0 bg-muted/50 px-3 py-2 text-sm leading-relaxed placeholder:text-muted-foreground placeholder:opacity-60 outline-none focus-visible:outline-1 focus-visible:outline-ring ${embedded ? "min-h-20 max-h-[30dvh] resize-none" : "min-h-18 resize-y"}`}
+              className={`w-full rounded-md border-0 bg-muted/50 px-3 py-3 text-[15px] leading-relaxed text-foreground placeholder:text-muted-foreground outline-none focus-visible:outline-1 focus-visible:outline-ring ${embedded ? "min-h-20 max-h-[30dvh] resize-none" : "min-h-18 resize-y"}`}
             />
             {completion && (
               <div
@@ -707,7 +760,25 @@ export function Composer({
             {action.error?.message || uploadError}
           </p>
         )}
-        <div className="flex flex-wrap items-center gap-2 border-t pt-2">
+        <div className="flex flex-wrap items-center gap-3 border-t pt-3">
+          <div className="flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            {draftStorageError !== undefined &&
+              (draftStorageError ? (
+                <p role="alert" className="min-w-0 text-destructive">
+                  Draft not saved locally. {draftStorageError}
+                </p>
+              ) : hasContent ? (
+                <p role="status">
+                  {draft.editing && body === draft.original
+                    ? "No text changes"
+                    : "Draft saved locally"}
+                </p>
+              ) : null)}
+            <p>
+              {settings.enterSaves ? "Enter" : "Shift+Enter"} or Ctrl/Cmd+Enter{" "}
+              to submit
+            </p>
+          </div>
           {onAddCapture && (
             <Button
               size="sm"

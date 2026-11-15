@@ -1,9 +1,7 @@
 import type { ReactNode } from "react";
-import { Copy } from "lucide-react";
 import type { ReviewComment } from "../../../shared/review-types.ts";
 import { noteKey } from "../../../shared/note-id.ts";
-import { Button, cn } from "../components/ui/button.tsx";
-import { Tooltip } from "../components/ui/tooltip.tsx";
+import { cn } from "../components/ui/button.tsx";
 
 /** Drafts and saved conversations keep the same identity row and spacing. */
 export function NoteHeader({
@@ -15,49 +13,62 @@ export function NoteHeader({
   status?: string;
   children?: ReactNode;
 }) {
-  const reference = note.id?.split("|#").at(-1);
-  const label = note.web ? "Web note" : noteKey(note);
+  const fullLocation = note.web
+    ? `Web note · ${note.web.before.title || note.web.before.url}`
+    : noteKey(note);
+  const basename = note.file.split("/").at(-1) || note.file;
+  const location = note.web
+    ? "Web note"
+    : note.scope === "global"
+      ? "Overall note"
+      : basename;
+  const lines =
+    note.web || note.scope === "global"
+      ? ""
+      : note.scope === "file"
+        ? "whole file"
+        : note.label ||
+          (note.start === note.end
+            ? `${note.start}`
+            : `${note.start}–${note.end}`);
+  const statusLabel =
+    status === "needs-input"
+      ? "Agent needs input"
+      : status && ["applied", "answered", "skipped"].includes(status)
+        ? `Agent ${status}`
+        : status;
   return (
-    <header className="flex min-h-14 items-center gap-2 border-b px-4 py-3">
-      <span className="min-w-0 truncate text-xs font-medium" title={label}>
-        {label}
-      </span>
-      {reference && (
-        <div className="shrink-0">
-          <Tooltip label="Copy note reference">
-            <Button
-              size="sm"
-              variant="ghost"
-              aria-label="Copy note reference"
-              onClick={() =>
-                void navigator.clipboard
-                  .writeText(`#${reference}`)
-                  .catch(() => {})
-              }
+    <header className="space-y-1.5 border-b px-3 py-2">
+      <div
+        className="flex min-w-0 items-baseline gap-1 text-sm font-medium"
+        title={fullLocation}
+        aria-label={fullLocation}
+      >
+        <span className="min-w-0 truncate">{location}</span>
+        {lines && (
+          <span className="shrink-0 text-xs text-muted-foreground">
+            · {lines}
+          </span>
+        )}
+      </div>
+      {(children || statusLabel) && (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+          {children}
+          {statusLabel && (
+            <span
+              className={cn(
+                "text-xs",
+                status && ["applied", "answered"].includes(status)
+                  ? "text-success"
+                  : status === "needs-input"
+                    ? "text-warning"
+                    : "text-muted-foreground",
+              )}
             >
-              <Copy />
-              <span className="max-w-24 truncate font-mono text-[10px]">
-                #{reference.slice(-8)}
-              </span>
-            </Button>
-          </Tooltip>
-        </div>
-      )}
-      <div className="ml-auto" />
-      {children}
-      {status && (
-        <span
-          className={cn(
-            "rounded-full border px-2 py-0.5 text-[10px] font-medium",
-            ["applied", "answered"].includes(status)
-              ? "border-success/25 bg-success/10 text-success"
-              : status === "needs-input"
-                ? "border-warning/25 bg-warning/10 text-warning"
-                : "text-muted-foreground",
+              {statusLabel}
+            </span>
           )}
-        >
-          {status}
-        </span>
+        </div>
       )}
     </header>
   );

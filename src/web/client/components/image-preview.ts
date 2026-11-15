@@ -56,12 +56,23 @@ export function openImagePreview(
   const title = document.createElement("strong");
   title.textContent = label;
   tools.append(title);
-  const command = (label: string, action: () => void) => {
+  const zoomTools = document.createElement("div");
+  zoomTools.className = "image-viewer-zoom";
+  zoomTools.setAttribute("role", "group");
+  zoomTools.setAttribute("aria-label", "Zoom");
+  const command = (
+    label: string,
+    action: () => void,
+    group = tools,
+    accessibleLabel = label,
+  ) => {
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = label;
+    button.setAttribute("aria-label", accessibleLabel);
+    button.title = accessibleLabel;
     button.onclick = action;
-    tools.append(button);
+    group.append(button);
     return button;
   };
   const viewport = document.createElement("div");
@@ -75,35 +86,55 @@ export function openImagePreview(
     image.style.width = zoom ? image.naturalWidth * zoom + "px" : "";
     image.classList.toggle("actual", !!zoom);
   };
-  command("−", () => {
-    zoom = Math.max(
-      0.1,
-      (zoom || Math.min(1, image.clientWidth / image.naturalWidth)) / 1.25,
-    );
-    resize();
-  });
-  command("+", () => {
-    zoom = Math.min(
-      8,
-      (zoom || Math.min(1, image.clientWidth / image.naturalWidth)) * 1.25,
-    );
-    resize();
-  });
-  command("Fit", () => {
-    zoom = 0;
-    resize();
-  });
-  command("100%", () => {
-    zoom = 1;
-    resize();
-  });
+  command(
+    "−",
+    () => {
+      zoom = Math.max(
+        0.1,
+        (zoom || Math.min(1, image.clientWidth / image.naturalWidth)) / 1.25,
+      );
+      resize();
+    },
+    zoomTools,
+    "Zoom out",
+  );
+  command(
+    "100%",
+    () => {
+      zoom = 1;
+      resize();
+    },
+    zoomTools,
+    "Actual image size",
+  );
+  command(
+    "+",
+    () => {
+      zoom = Math.min(
+        8,
+        (zoom || Math.min(1, image.clientWidth / image.naturalWidth)) * 1.25,
+      );
+      resize();
+    },
+    zoomTools,
+    "Zoom in",
+  );
+  command(
+    "Fit",
+    () => {
+      zoom = 0;
+      resize();
+    },
+    zoomTools,
+    "Fit image",
+  );
   let restoreFocus = true;
   const close = (record = false, focus = true) => {
     restoreFocus = focus;
     dialog.close();
     if (record) setView("image", null, { close: true });
   };
-  if (draw) command("Draw / edit", draw);
+  if (draw) command("Annotate", draw);
   const link = document.createElement("a");
   link.href = src;
   link.target = "_blank";
@@ -119,7 +150,7 @@ export function openImagePreview(
     message.textContent =
       "Could not load this image. Close and reopen to retry.";
   };
-  dialog.append(tools, message, viewport);
+  dialog.append(tools, message, viewport, zoomTools);
   const onKey = (event: KeyboardEvent) => {
     // Keep review navigation shortcuts from moving the page behind the modal.
     event.stopImmediatePropagation();

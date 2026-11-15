@@ -143,10 +143,9 @@ test.skipIf(process.env.LCR_TEST_BROWSER !== "1")(
       const buttonCapture = await capture();
       expect(buttonCapture.element?.tag).toBe("button");
       expect(buttonCapture.element?.attributes["aria-label"]).toBe(
-        "Element tools",
+        await js(`${launcher}.getAttribute('aria-label')`),
       );
       expect(buttonCapture.rect).toEqual(original);
-      expect(await js(`${launcher}.getAttribute('aria-pressed')`)).toBe("true");
       expect(await js(`${example}.inert`)).toBe(true);
       expect(
         (

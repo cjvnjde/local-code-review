@@ -811,7 +811,7 @@ browserTest(
         await js(
           "document.querySelector('.annotation-active-tool').textContent",
         ),
-      ).toBe("Highlighter");
+      ).toBe("Tool: Highlighter");
       expect(
         await js(
           "document.querySelector('[data-command=more-tools]').getAttribute('aria-pressed')",
@@ -874,6 +874,103 @@ browserTest(
           expect(layout.active).toBe("true");
         }
       }
+    });
+  },
+  30000,
+);
+
+browserTest(
+  "drawing workspace distinguishes tool and selection and keeps comparison and margin decoration out of exports",
+  async () => {
+    await withEditor(async ({ js, click, drag, key, save, reopen, resize }) => {
+      await resize(390, 720);
+      const source = await js(
+        "(async()=>Array.from(new Uint8Array(await(await fetch('/api/attachment?name=source.png')).arrayBuffer())))()",
+      );
+      await click("[data-tool=arrow]");
+      expect(
+        await js(
+          "document.querySelector('.annotation-gesture-hint').textContent",
+        ),
+      ).toBe("Drag from the tail to the arrow tip.");
+      await drag({ x: 120, y: 120 }, { x: 280, y: 200 });
+      expect(
+        await js(`({
+          tool:document.querySelector('.annotation-active-tool').textContent,
+          selection:document.querySelector('.annotation-selection').textContent,
+          hint:document.querySelector('.annotation-gesture-hint').textContent,
+        })`),
+      ).toEqual({
+        tool: "Tool: Select",
+        selection: "Selected: Arrow",
+        hint: "Drag to move; drag either endpoint to reshape.",
+      });
+      expect(
+        await js(`(()=>{
+          const original=document.querySelector('[data-command=original]');
+          const padding=document.querySelector('.annotation-padding-hint');
+          const stripe=document.querySelector('.annotation-padding span');
+          const source=document.querySelector('.annotation-source-outline').getBoundingClientRect();
+          const margin=stripe.getBoundingClientRect();
+          const zoom=document.querySelector('.annotation-zoom-tools').getBoundingClientRect();
+          return {
+            originalVisible:original.checkVisibility()&&!original.closest('[popover]'),
+            paddingVisible:padding.checkVisibility()&&padding.textContent.includes('not captured content'),
+            striped:getComputedStyle(stripe).backgroundImage.includes('repeating-linear-gradient'),
+            marginEndsAtSource:Math.abs(margin.bottom-source.top)<1,
+            zoomAtBottom:zoom.top>innerHeight/2&&zoom.right<=innerWidth,
+            zoomLabels:[...document.querySelectorAll('.annotation-zoom-tools button')].map(el=>el.getAttribute('aria-label')),
+          };
+        })()`),
+      ).toEqual({
+        originalVisible: true,
+        paddingVisible: true,
+        striped: true,
+        marginEndsAtSource: true,
+        zoomAtBottom: true,
+        zoomLabels: ["Zoom out", "Actual image size", "Zoom in", "Fit image"],
+      });
+      await key("o");
+      expect(
+        await js(
+          "document.querySelector('[data-command=original]').getAttribute('aria-pressed')",
+        ),
+      ).toBe("false");
+      await click("[data-command=original]");
+      expect(
+        await js(
+          "document.querySelector('[data-command=original]').getAttribute('aria-pressed')",
+        ),
+      ).toBe("true");
+      expect(
+        await js(
+          "document.querySelector('.annotation-gesture-hint').textContent",
+        ),
+      ).toContain("drawings are hidden, not removed");
+      const first = await save();
+      expect(first.marks[0]?.tool).toBe("arrow");
+      expect(
+        await js(`(async()=>{
+          const image=await createImageBitmap(await(await fetch('/api/attachment?name=proposal.png')).blob());
+          const canvas=document.createElement('canvas');canvas.width=image.width;canvas.height=image.height;
+          const context=canvas.getContext('2d');context.drawImage(image,0,0);image.close();
+          const margin=context.getImageData(0,0,canvas.width,capture.annotation.padding).data;
+          return margin.every(value=>value===255);
+        })()`),
+      ).toBe(true);
+      expect(
+        await js(
+          "(async()=>Array.from(new Uint8Array(await(await fetch('/api/attachment?name=source.png')).arrayBuffer())))()",
+        ),
+      ).toEqual(source);
+      await reopen("Save drawing");
+      await click("[data-command=undo]");
+      await click("[data-command=redo]");
+      const second = await save();
+      expect(second.marks).toEqual(first.marks);
+      expect(await js("document.querySelector('#note').value")).toBe(
+        "Keep my note",
+      );
     });
   },
   30000,

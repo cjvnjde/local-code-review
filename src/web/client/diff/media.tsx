@@ -171,7 +171,12 @@ function ImageRegions({
   return (
     <div className="space-y-3">
       <div
-        className="relative mx-auto w-fit max-w-full select-none touch-none"
+        className="relative mx-auto max-w-full select-none touch-none"
+        style={{
+          width: size.width
+            ? Math.min(size.width, (384 * size.width) / size.height)
+            : undefined,
+        }}
         data-image-side={side}
         onPointerDown={(event) => {
           if (
@@ -209,7 +214,7 @@ function ImageRegions({
       >
         <img
           ref={img}
-          className="max-h-96 max-w-full object-contain"
+          className="block h-auto w-full"
           src={`/api/blob?${new URLSearchParams({ side, path: file.path })}`}
           alt={`${side === "old" ? "Before" : "After"}: ${file.path}`}
           draggable={false}
@@ -265,7 +270,7 @@ function ImageRegions({
       >
         {busy ? "Capturing…" : "Comment on image region"}
       </Button>
-      <p className="text-[10px] text-muted-foreground">
+      <p className="text-xs text-muted-foreground">
         Click or drag on the image to capture a region.
       </p>
       {error && (

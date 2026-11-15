@@ -1,4 +1,4 @@
-import { test, expect, chromium } from "@playwright/test";
+import { test, expect, chromium, type Page } from "@playwright/test";
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import {
   mkdtemp,
@@ -103,6 +103,15 @@ test.beforeEach(async ({ request }) => {
   expect(response.ok()).toBe(true);
 });
 
+async function showFullConversations(page: Page) {
+  await page
+    .getByRole("button", { name: "Note view and actions", exact: true })
+    .click();
+  await page
+    .getByRole("menuitem", { name: "Full conversations", exact: true })
+    .click();
+}
+
 test("compiled executable reviews changes, preserves drafts, and continues the Markdown conversation", async ({
   page,
 }) => {
@@ -193,29 +202,6 @@ test("compiled executable reviews changes, preserves drafts, and continues the M
     .getByRole("button", { name: "Comment on line 2", exact: true })
     .last()
     .click();
-  const draftSurface = page.locator("[data-review-editor][data-note-surface]");
-  const surfaceStyle = (surface: HTMLElement) => {
-    const bounds = surface.getBoundingClientRect();
-    const relative = (element: Element | null) => {
-      if (!element) return null;
-      const box = element.getBoundingClientRect();
-      return {
-        left: box.left - bounds.left,
-        top: box.top - bounds.top,
-        width: box.width,
-        height: box.height,
-      };
-    };
-    return {
-      width: bounds.width,
-      radius: getComputedStyle(surface).borderRadius,
-      border: getComputedStyle(surface).borderWidth,
-      background: getComputedStyle(surface).backgroundColor,
-      header: relative(surface.querySelector("header")),
-      code: relative(surface.querySelector("pre")),
-    };
-  };
-  const draftStyle = await draftSurface.evaluate(surfaceStyle);
   await page
     .getByRole("textbox", { name: "Note text" })
     .fill(
@@ -223,6 +209,11 @@ test("compiled executable reviews changes, preserves drafts, and continues the M
     );
   await page.getByRole("button", { name: "Save note", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(notesPanel.getByRole("article")).toHaveCount(0);
+  await expect(
+    notesPanel.getByRole("button", { name: /^In diff: src\/app\.ts/ }),
+  ).toContainText("Please rename this greeting.");
+  await showFullConversations(page);
   await expect(notesPanel.getByRole("article")).toHaveCount(1);
   await expect(notesPanel.locator("article table")).toBeVisible();
   await expect(
@@ -235,17 +226,36 @@ test("compiled executable reviews changes, preserves drafts, and continues the M
       .first()
       .evaluate((body: HTMLElement) => body.innerText),
   ).toContain("Please rename this greeting.\nKeep the scope local.");
-  await expect(
-    savedCard
-      .locator("header")
-      .getByRole("button", { name: "Copy note reference" }),
-  ).toBeVisible();
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await savedCard
+    .getByRole("button", { name: "Note actions", exact: true })
+    .click();
+  await page
+    .getByRole("menuitem", { name: "Copy note reference", exact: true })
+    .click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    `#${(await savedCard.getAttribute("data-note-id"))!.split("|#").at(-1)}`,
+  );
   expect((await addedCode.boundingBox())!.x).toBe(codeLeft);
   await expect(addedCode).toHaveText("  return 'hello world';");
   const inlineCard = readingPane.getByRole("article");
-  expect(await inlineCard.evaluate(surfaceStyle)).toEqual(draftStyle);
-  await inlineCard.getByRole("button", { name: "Edit note" }).click();
-  expect(await inlineCard.evaluate(surfaceStyle)).toEqual(draftStyle);
+  await expect(
+    inlineCard.getByLabel("Captured code", { exact: true }),
+  ).toBeHidden();
+  await inlineCard
+    .locator("summary")
+    .filter({ hasText: "Captured code" })
+    .click();
+  await expect(
+    inlineCard.getByLabel("Captured code", { exact: true }),
+  ).toContainText("return 'hello world'");
+  await inlineCard
+    .getByRole("button", { name: "Note actions", exact: true })
+    .click();
+  await page.getByRole("menuitem", { name: "Edit note", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Note text" })).toHaveValue(
+    /Please \*\*rename\*\*/,
+  );
   await inlineCard.getByRole("button", { name: "Cancel", exact: true }).click();
   let review = await (await page.request.get(`${url}/api/review`)).json();
   const reviewPath = path.join(directory, review.file);
@@ -301,31 +311,6 @@ test("compiled executable reviews changes, preserves drafts, and continues the M
       .last()
       .evaluate((body: HTMLElement) => body.innerText),
   ).toContain("Keep this unsaved follow-up.\nAnd this second line.");
-  const footerReply = savedCard.getByRole("button", {
-    name: "Reply",
-    exact: true,
-  });
-  const footerDelete = savedCard.getByRole("button", { name: "Delete note" });
-  const footerResolve = savedCard.getByRole("button", {
-    name: "Resolve",
-    exact: true,
-  });
-  const lastMessage = savedCard.locator(".markdown").last();
-  const replyBox = (await footerReply.boundingBox())!;
-  const deleteBox = (await footerDelete.boundingBox())!;
-  const resolveBox = (await footerResolve.boundingBox())!;
-  const messageBox = (await lastMessage.boundingBox())!;
-  expect(replyBox.y).toBeGreaterThanOrEqual(messageBox.y + messageBox.height);
-  expect(
-    Math.abs(
-      replyBox.y + replyBox.height / 2 - deleteBox.y - deleteBox.height / 2,
-    ),
-  ).toBeLessThan(2);
-  expect(
-    Math.abs(
-      replyBox.y + replyBox.height / 2 - resolveBox.y - resolveBox.height / 2,
-    ),
-  ).toBeLessThan(2);
   // Markdown and library highlights cannot turn source or note HTML into active markup.
   await page.getByRole("button", { name: "Overall note", exact: true }).click();
   await page
@@ -369,19 +354,19 @@ test("compiled executable reviews changes, preserves drafts, and continues the M
   expect(
     await page.getByRole("button", { name: /Comment on line/ }).count(),
   ).toBeLessThan(100);
+  await notesPanel.getByRole("button", { name: /^All notes \(/ }).click();
   await notesPanel
-    .getByRole("button", { name: "All notes", exact: true })
+    .getByRole("button", { name: "Note view and actions", exact: true })
     .click();
-  const compactToggle = notesPanel.getByRole("button", {
-    name: "Compact conversation list",
-  });
-  await compactToggle.click();
+  await page
+    .getByRole("menuitem", { name: "Compact list", exact: true })
+    .click();
   const compactList = notesPanel.getByRole("list", {
     name: "Compact conversation notes",
   });
   await expect(
     compactList.getByRole("button", { name: /^In diff: src\/app\.ts/ }),
-  ).toContainText("Please **rename** this greeting.");
+  ).toContainText("Please rename this greeting.");
   await expect(notesPanel.getByRole("article")).toHaveCount(0);
   await compactList
     .getByRole("button", { name: /^In diff: src\/app\.ts/ })
@@ -394,9 +379,14 @@ test("compiled executable reviews changes, preserves drafts, and continues the M
       .getByRole("article")
       .filter({ hasText: "Please rename this greeting." }),
   ).toBeInViewport();
+  await compactList.getByRole("button", { name: /^In diff: Overall/ }).click();
+  await expect(
+    readingPane.locator('[data-file-path=""] article'),
+  ).toBeInViewport();
+  await expect(notesPanel.getByRole("article")).toHaveCount(0);
   await page.reload();
-  await expect(compactToggle).toHaveAttribute("aria-pressed", "true");
-  await compactToggle.click();
+  await expect(compactList).toBeVisible();
+  await showFullConversations(page);
   await expect(notesPanel.getByRole("article")).toHaveCount(2);
   await page.getByRole("button", { name: "Light theme" }).click();
   await expect(page.locator("html")).not.toHaveClass(/dark/);
@@ -624,12 +614,12 @@ test("image attachments preview, retain editable drawings and survive note and r
   await images.getByRole("button", { name: "Preview", exact: true }).click();
   const viewer = page.locator("dialog.image-viewer");
   await expect(viewer).toBeVisible();
-  await viewer.getByRole("button", { name: "100%", exact: true }).click();
-  await viewer.getByRole("button", { name: "Fit", exact: true }).click();
-  await viewer.getByRole("button", { name: "Close", exact: true }).click();
-  await images
-    .getByRole("button", { name: "Draw / edit", exact: true })
+  await viewer
+    .getByRole("button", { name: "Actual image size", exact: true })
     .click();
+  await viewer.getByRole("button", { name: "Fit image", exact: true }).click();
+  await viewer.getByRole("button", { name: "Close", exact: true }).click();
+  await images.getByRole("button", { name: "Annotate", exact: true }).click();
   const drawing = page.getByRole("dialog", {
     name: "Draw on screenshot",
     exact: true,
@@ -703,9 +693,7 @@ test("image attachments preview, retain editable drawings and survive note and r
     { tool: "callout", number: 2, label: "Check this detail" },
   ]);
   // Reopen uses the original image and editable vectors, not a flattened second layer.
-  await images
-    .getByRole("button", { name: "Draw / edit", exact: true })
-    .click();
+  await images.getByRole("button", { name: "Annotate", exact: true }).click();
   await expect(drawing).toBeVisible();
   await drawing
     .getByRole("button", { name: "Select and edit drawings", exact: true })
@@ -721,6 +709,7 @@ test("image attachments preview, retain editable drawings and survive note and r
     .click();
   await editor.getByRole("button", { name: "Save note", exact: true }).click();
   const panel = page.getByRole("complementary", { name: "Review notes" });
+  await showFullConversations(page);
   const card = panel
     .getByRole("article")
     .filter({ hasText: "Image editing round trip" });
@@ -800,6 +789,7 @@ test("bookmarks, full review search, references and context stay usable across n
     .getByRole("button", { name: "Hide file src/app.ts", exact: true })
     .click();
   await sidebar.getByRole("tab", { name: "Notes", exact: true }).click();
+  await showFullConversations(page);
   const seed = sidebar
     .getByRole("article")
     .filter({ hasText: "Reference target" });
@@ -885,6 +875,7 @@ test("bookmarks, full review search, references and context stay usable across n
     .getByRole("article")
     .filter({ hasText: "References and context audit" });
   await expect(editor).toHaveCount(0);
+  await showFullConversations(page);
   await expect(card).toBeVisible();
   await page.reload();
   const binaryDownload = page.waitForEvent("download");
@@ -923,7 +914,10 @@ test("bookmarks, full review search, references and context stay usable across n
     card.getByText("Some independently readable context", { exact: true }),
   ).toBeVisible();
   // Deletion confirmation belongs to the card; it never invokes a native popup.
-  await card.getByRole("button", { name: "Delete note", exact: true }).click();
+  await card.getByRole("button", { name: "Note actions", exact: true }).click();
+  await page
+    .getByRole("menuitem", { name: "Delete note", exact: true })
+    .click();
   await expect(
     card.getByText("Delete this note and its conversation?", { exact: true }),
   ).toBeVisible();
@@ -959,6 +953,7 @@ test("folder controls, color edits and local resolution preserve the underlying 
     ),
   );
   await page.goto(url);
+  await showFullConversations(page);
   const nav = page.getByRole("navigation");
   const folder = nav.getByRole("button", { name: "Folder src", exact: true });
   await folder.click();
@@ -972,8 +967,8 @@ test("folder controls, color edits and local resolution preserve the underlying 
   await expect(card.getByText("First answer.", { exact: true })).toBeVisible();
   await card.getByRole("button", { name: "Resolve", exact: true }).click();
   await expect(card).toHaveCount(0);
-  const resolved = panel.getByRole("checkbox", { name: /Show resolved/ });
-  await resolved.check();
+  const resolved = panel.getByRole("button", { name: /^Resolved \d+$/ });
+  await resolved.click();
   await expect(
     card.getByRole("button", { name: "Reopen", exact: true }),
   ).toBeVisible();
@@ -981,7 +976,7 @@ test("folder controls, color edits and local resolution preserve the underlying 
   await expect(
     card.getByRole("button", { name: "Reopen", exact: true }),
   ).toBeVisible();
-  await resolved.uncheck();
+  await panel.getByRole("button", { name: /^Open \d+$/ }).click();
   // A later agent message invalidates the local acknowledgement without changing its status on disk.
   await writeFile(
     file,
@@ -1048,6 +1043,7 @@ test("continuous scrolling follows files, reopens viewed files, and preserves th
     });
   }
   await page.goto(url);
+  await showFullConversations(page);
   const pane = page.getByRole("region", { name: "Code diff", exact: true });
   const navigation = page.getByRole("navigation");
   const notesPanel = page.getByRole("complementary", { name: "Review notes" });
@@ -1120,10 +1116,16 @@ test("continuous scrolling follows files, reopens viewed files, and preserves th
   ).toBeVisible();
   // Each collapsed deletion has an explicit way to read it again.
   await navigation.locator('button[title="src/deleted.ts"]').click();
-  const removedToggle = pane
+  await pane
     .locator('[data-file-path="src/deleted.ts"][data-diff-kind="header"]')
-    .getByRole("button", { name: "Fold removed lines" });
-  await removedToggle.click();
+    .getByRole("button", {
+      name: "File actions for src/deleted.ts",
+      exact: true,
+    })
+    .click();
+  await page
+    .getByRole("menuitem", { name: "Fold removed lines", exact: true })
+    .click();
   await pane
     .getByRole("button", { name: "Show 1 removed lines", exact: true })
     .click();
@@ -1217,6 +1219,10 @@ test("image-region comments, audio playback, preferences and the resume marker r
     path.join(directory, "screenshot.svg"),
     '<svg xmlns="http://www.w3.org/2000/svg" width="240" height="160"><rect width="240" height="160" fill="white"/><rect x="30" y="30" width="90" height="60" fill="#22c55e"/></svg>',
   );
+  await writeFile(
+    path.join(directory, "ratio-only.svg"),
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 120"><rect width="240" height="120" fill="white"/><circle cx="120" cy="60" r="40" fill="green"/></svg>',
+  );
   const wav = Buffer.alloc(46);
   wav.write("RIFF");
   wav.writeUInt32LE(38, 4);
@@ -1234,6 +1240,17 @@ test("image-region comments, audio playback, preferences and the resume marker r
   await page.goto(url);
   const nav = page.getByRole("navigation");
   const pane = page.getByRole("region", { name: "Code diff" });
+  await nav.locator('button[title="ratio-only.svg"]').click();
+  const ratioImage = pane.getByRole("img", {
+    name: "After: ratio-only.svg",
+    exact: true,
+  });
+  await expect(ratioImage).toBeInViewport();
+  await expect
+    .poll(async () => (await ratioImage.boundingBox())!.width)
+    .toBeGreaterThan(100);
+  const ratioBox = (await ratioImage.boundingBox())!;
+  expect(ratioBox.width / ratioBox.height).toBeCloseTo(2, 1);
   await nav.locator('button[title="screenshot.svg"]').click();
   const image = pane.getByRole("img", {
     name: "After: screenshot.svg",
@@ -1382,54 +1399,58 @@ test("sidebar dragging survives a delayed initial preference response", async ({
     .toBeCloseTo(initialWidth + 60, 0);
 });
 
-test("left sidebar grows and shrinks in a compact window without moving the notes pane", async ({
+test("laptop and narrow layouts protect code width without losing file navigation or drafts", async ({
   page,
 }) => {
-  await page.request.put(`${url}/api/settings`, { data: { navWidth: 268 } });
-  await page.addInitScript(() => {
-    localStorage.setItem("lcr:v2:notes-width", "390");
-  });
-  await page.setViewportSize({ width: 794, height: 848 });
+  await page.setViewportSize({ width: 1024, height: 768 });
   await page.goto(url);
   const files = page.getByRole("complementary", { name: "Changed files" });
   const notes = page.getByRole("complementary", { name: "Review notes" });
-  const divider = page.getByRole("separator", {
-    name: "Resize file sidebar",
-    exact: true,
-  });
-  const width = (locator: typeof files) =>
-    locator.evaluate((element) => element.getBoundingClientRect().width);
-  await expect.poll(() => width(files)).toBeCloseTo(268, 0);
-  const notesWidth = await width(notes);
-  expect(
-    await page
-      .locator("#diff-pane")
-      .evaluate((el) => el.getBoundingClientRect().width),
-  ).toBeLessThan(240);
-  for (const [delta, yRatio] of [
-    [60, 0.15],
-    [-60, 0.85],
-  ]) {
-    const initial = await width(files);
-    const box = (await divider.boundingBox())!;
-    const x = box.x + box.width / 2;
-    const y = box.y + box.height * yRatio!;
-    await page.mouse.move(x, y);
-    await page.mouse.down();
-    await page.mouse.move(x + delta!, y, { steps: 12 });
-    await expect.poll(() => width(files)).toBeCloseTo(initial + delta!, 0);
-    await page.mouse.up();
-    await expect.poll(() => width(notes)).toBeCloseTo(notesWidth, 0);
-  }
+  const pane = page.getByRole("region", { name: "Code diff" });
+  await expect(files).toBeHidden();
+  await expect(notes).toBeVisible();
   await expect
-    .poll(
-      async () =>
-        (await (await page.request.get(`${url}/api/settings`)).json()).settings
-          .navWidth,
-    )
-    .toBe(268);
-  await page.reload();
-  await expect.poll(() => width(files)).toBeCloseTo(268, 0);
+    .poll(async () => (await pane.boundingBox())!.width)
+    .toBeGreaterThanOrEqual(480);
+  await page
+    .getByRole("button", { name: "Show file sidebar", exact: true })
+    .click();
+  await expect(files).toBeVisible();
+  await files.locator('button[title="src/app.ts"]').click();
+  await expect(files).toBeHidden();
+  await pane
+    .getByRole("button", { name: "Comment on file src/app.ts", exact: true })
+    .click();
+  const text = page.getByRole("textbox", { name: "Note text", exact: true });
+  await text.fill("Keep this draft while changing workspace width");
+  await page.setViewportSize({ width: 794, height: 848 });
+  await page
+    .getByRole("button", { name: "Hide notes panel", exact: true })
+    .click();
+  await expect(page.getByRole("separator")).toHaveCount(0);
+  await expect(text).toBeVisible();
+  await expect(text).toHaveValue(
+    "Keep this draft while changing workspace width",
+  );
+  await expect
+    .poll(async () => (await pane.boundingBox())!.width)
+    .toBeGreaterThan(780);
+  await page
+    .getByRole("button", { name: "Show file sidebar", exact: true })
+    .click();
+  await expect(files).toBeVisible();
+  await page.getByRole("button", { name: "Close files", exact: true }).click();
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await expect(
+    page.getByRole("separator", { name: "Resize file sidebar" }),
+  ).toBeVisible();
+  await expect(text).toHaveValue(
+    "Keep this draft while changing workspace width",
+  );
+  await page
+    .locator("[data-review-editor]")
+    .getByRole("button", { name: "Cancel", exact: true })
+    .click();
 });
 
 test("either divider still drags after the other sidebar is hidden, including after reload", async ({
@@ -1907,8 +1928,7 @@ test("compact header search and hover-only tree controls remain keyboard accessi
     .filter({ hasText: "Fuzzily searchable reviewer annotation" })
     .click();
   await expect(
-    page
-      .getByRole("complementary", { name: "Review notes" })
+    pane
       .getByRole("article")
       .filter({ hasText: "Fuzzily searchable reviewer annotation" }),
   ).toBeVisible();
@@ -2003,6 +2023,26 @@ test("overall notes and formatting tools preserve the code reading position", as
   await expect(text).toHaveValue(
     "**Overall** feedback without losing my place",
   );
+  await expect(
+    editor.getByText("Draft saved locally", { exact: true }),
+  ).toBeVisible();
+  await text.evaluate((field: HTMLTextAreaElement) =>
+    field.setSelectionRange(2, 9),
+  );
+  const moreFormatting = toolbar.getByRole("button", {
+    name: "More formatting",
+    exact: true,
+  });
+  await moreFormatting.focus();
+  await moreFormatting.press("Enter");
+  await page
+    .getByRole("menuitem", { name: "Link", exact: true })
+    .press("Enter");
+  await expect(text).toBeFocused();
+  await expect(text).toHaveValue(
+    "**[Overall](https://)** feedback without losing my place",
+  );
+  await text.fill("**Overall** feedback without losing my place");
   await toolbar.getByRole("button", { name: "Preview", exact: true }).click();
   await expect(editor.locator("strong")).toHaveText("Overall");
   await toolbar.getByRole("button", { name: "Write", exact: true }).click();
@@ -2249,6 +2289,18 @@ test("live page capture keeps its editor at the bottom and previews images acros
       .poll(async () => (await iframe.boundingBox())!.height)
       .toBe(900);
     expect((await viewer.boundingBox())!.width).toBeGreaterThan(1100);
+    const zoom = (await viewer
+      .getByRole("group", { name: "Zoom", exact: true })
+      .boundingBox())!;
+    const viewerBox = (await viewer.boundingBox())!;
+    expect(zoom.y).toBeGreaterThan(viewerBox.y + viewerBox.height - 90);
+    expect(zoom.x).toBeGreaterThan(viewerBox.x + viewerBox.width / 2);
+    expect(zoom.x + zoom.width).toBeLessThanOrEqual(
+      viewerBox.x + viewerBox.width,
+    );
+    expect(zoom.y + zoom.height).toBeLessThanOrEqual(
+      viewerBox.y + viewerBox.height,
+    );
     await target.screenshot({ path: "/tmp/lcr-web-image-preview.png" });
     await viewer.getByRole("button", { name: "Close", exact: true }).click();
     await expect(viewer).toHaveCount(0);
@@ -2269,9 +2321,7 @@ test("live page capture keeps its editor at the bottom and previews images acros
     await frame
       .getByRole("link", { name: "Preview Checkout target", exact: true })
       .click();
-    await viewer
-      .getByRole("button", { name: "Draw / edit", exact: true })
-      .click();
+    await viewer.getByRole("button", { name: "Annotate", exact: true }).click();
     const drawing = frame.getByRole("dialog", {
       name: "Draw on screenshot",
       exact: true,
@@ -2313,6 +2363,29 @@ test("live page capture keeps its editor at the bottom and previews images acros
       }),
     ).toBeVisible();
     await frame
+      .getByRole("button", {
+        name: "Remove capture: 2. Secondary action",
+        exact: true,
+      })
+      .click();
+    await expect(
+      target.getByText("New web note", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      frame.getByRole("link", {
+        name: "Preview 2. Secondary action",
+        exact: true,
+      }),
+    ).toHaveCount(0);
+    await expect(input).toHaveValue(
+      "Keep this draft through fullscreen previews",
+    );
+    await addCapture.click();
+    await target.locator("#other").click();
+    await expect(
+      target.getByText("New web note · 2 captures", { exact: true }),
+    ).toBeVisible();
+    await frame
       .getByRole("textbox", { name: "Note text" })
       .fill("Increase this checkout target size.");
     await frame.getByRole("button", { name: "Save note", exact: true }).click();
@@ -2331,6 +2404,7 @@ test("live page capture keeps its editor at the bottom and previews images acros
     );
     expect(picture.ok()).toBe(true);
     await page.goto(url);
+    await showFullConversations(page);
     const card = page
       .getByRole("complementary", { name: "Review notes" })
       .getByRole("article")

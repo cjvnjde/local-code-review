@@ -11,21 +11,22 @@ It requires installed Chrome, Chromium, or Edge. Only local HTTP(S) URLs are acc
 
 The overlay in the reviewed page lets you select an element or area. Its editor
 is the same React note editor as the main review, embedded in a frame from the lcr
-server. Write feedback, add images or a suggestion, and save. Captured screenshots
+server. Write feedback, annotate images or add a suggestion, and save. Captured screenshots
 and element metadata remain in the review file, with pictures stored beside it.
 **Full review** in the window header returns to the complete conversation.
 
 The note window starts compact and can be moved, resized, or minimized. Captures
-use named thumbnails; clicking one opens a viewer across the browser viewport.
-Closing the viewer restores the window and its draft. **Capture details** holds
-timestamps, element metadata, original screenshots, and selection removal. The
-input and save controls stay visible while evidence scrolls above them.
+use named, aspect-ratio-aware thumbnails; clicking one opens a viewport-wide
+viewer. Closing it restores the window and draft. **Remove capture** is beside
+each editable capture. **Capture details** holds timestamps, element metadata,
+original screenshots, and additional context. The input and save controls stay
+visible while evidence scrolls above them.
 
-The floating button shows the active capture mode. Click it to choose element,
-block, multiple-element, area, or point targeting. **Browse page** lets you use
-the app normally; **Annotate page** restores targeting. Hold Alt to interact
-temporarily, or drag the floating button out of the way. Point captures retain
-metadata without a screenshot.
+The floating launcher keeps **Browse / Annotate** visible. Browse lets you use
+the app normally; Annotate restores targeting. A separate targeting menu selects
+an element, containing block, multiple elements, area, or point, with short hints
+for each choice. Hold Alt to interact temporarily, or drag the launcher out of
+the way. Point captures retain metadata without a screenshot.
 
 **Add capture** temporarily minimizes the note so you can select more evidence.
 The editor returns with its text intact after capture; Escape cancels selection
@@ -33,13 +34,16 @@ and returns without discarding the draft. Selecting another element directly
 while composing still adds it to the same draft. On a saved note, new captures
 belong to a reply rather than replacing its original evidence.
 
-Choose **Draw** or **Edit drawing** beside a thumbnail to annotate it. Common
-tools stay visible; **More tools** holds additional shapes, paths, magnification,
-and original-image preview. **Options** shows settings for the active tool or
-selection. Undo/redo and completion stay visible even in a narrow window.
-**Use drawing** returns an image to the draft; **Save note** still saves the note.
-**Save drawing** updates a drawing on an already-saved note. Originals and
-editable drawing data are retained.
+Choose **Annotate** or **Edit drawing** beside a capture. Common tools stay visible;
+**More tools** holds additional shapes, paths, and magnification. **Show original**
+is directly accessible; hold O for temporary comparison. **Options** controls the
+active tool or selection. The header distinguishes the active tool from the
+selected drawing, with contextual gesture hints. Striped, labelled margins are
+annotation space, not captured page context; these guides are not exported.
+Preview and drawing share bottom-right zoom controls. Undo/redo and completion
+remain accessible in narrow windows. **Use drawing** returns an image to the draft;
+**Save note** still saves the note. **Save drawing** updates an already-saved note.
+Originals and editable drawing data are retained.
 
 ## Browser profiles
 

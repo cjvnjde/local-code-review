@@ -31,11 +31,13 @@ export function AttachmentImage({
   label,
   onDraw,
   thumbnail = false,
+  size,
 }: {
   source: string;
   label: string;
   onDraw?: () => void;
   thumbnail?: boolean;
+  size?: { width: number; height: number };
 }) {
   const src = attachmentSrc(source);
   if (!src) return null;
@@ -45,6 +47,7 @@ export function AttachmentImage({
       target="_blank"
       rel="noreferrer noopener"
       aria-label={`Preview ${label}`}
+      className="block min-w-0 max-w-full"
       onClick={(event) => {
         if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
           return;
@@ -60,10 +63,17 @@ export function AttachmentImage({
       <img
         src={src}
         alt={label}
+        width={size?.width}
+        height={size?.height}
+        style={
+          thumbnail && size
+            ? { width: Math.min(size.width, (224 * size.width) / size.height) }
+            : undefined
+        }
         loading="lazy"
         className={
           thumbnail
-            ? "h-24 w-24 rounded-md border object-contain"
+            ? "h-auto max-h-56 w-auto max-w-full rounded object-contain"
             : "max-h-80 max-w-full rounded-lg border object-contain"
         }
       />
@@ -207,7 +217,7 @@ export function ComposerImages({
                   onClick={() => void edit(token, index)}
                 >
                   <Pencil />
-                  Draw / edit
+                  Annotate
                 </Button>
               </div>
             </div>

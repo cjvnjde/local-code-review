@@ -65,6 +65,21 @@ const TOOL_NAMES: Record<Tool, string> = {
   callout: "Callout",
   magnifier: "Magnifier",
 };
+const TOOL_HINTS: Record<Tool, string> = {
+  select: "Click a drawing to select it; drag handles to resize.",
+  pan: "Drag to pan; wheel to zoom.",
+  pen: "Drag to draw; Space + drag to pan.",
+  highlighter: "Drag to highlight; adjust opacity in Options.",
+  arrow: "Drag from the tail to the arrow tip.",
+  rectangle: "Drag to draw; hold Shift for a square.",
+  ellipse: "Drag to draw; hold Shift for a circle.",
+  triangle: "Drag to draw a triangle.",
+  line: "Drag between the line endpoints.",
+  path: "Click points, drag for curves; Enter to finish.",
+  text: "Click to place text, then type your label.",
+  callout: "Click for a numbered badge; drag to point.",
+  magnifier: "Drag from source detail to the magnified inset.",
+};
 type PathMark = Extract<AnnotationMark, { tool: "path" }>;
 type Gesture = {
   id: number;
@@ -234,7 +249,7 @@ function editAnnotation(
   dialog.setAttribute("aria-describedby", "annotation-help");
   dialog.innerHTML = `<div class="annotation-tools">
         <div class="annotation-header">
-          <strong class="annotation-active-tool" aria-live="polite">Pen</strong>
+          <strong class="annotation-title">Drawing</strong>
           <div class="annotation-group" role="group" aria-label="History">
             <button type="button" data-command="undo" aria-label="Undo drawing" data-tooltip="Undo (⌘/Ctrl Z)">${SVG.reply}</button>
             <button type="button" data-command="redo" aria-label="Redo drawing" data-tooltip="Redo (⌘/Ctrl Shift Z)">${SVG.ref}</button>
@@ -243,6 +258,10 @@ function editAnnotation(
             <button type="button" data-command="apply" class="annotation-apply"></button>
             <button type="button" data-command="cancel" aria-label="Close drawing editor" data-tooltip="Close drawing editor (Esc)">${SVG.x}</button>
           </div>
+        </div>
+        <div class="annotation-context">
+          <div class="annotation-state" aria-live="polite"><span class="annotation-active-tool">Tool: Pen</span><span class="annotation-selection">Selected: None</span></div>
+          <button type="button" class="annotation-labeled" data-command="original" aria-label="Show original screenshot" aria-pressed="false" data-tooltip="Show original screenshot (hold O)">${SVG.eyeOff} Show original</button>
         </div>
         <div class="annotation-group annotation-common-tools" role="toolbar" aria-label="Drawing tools">
           <button type="button" data-tool="select" aria-pressed="false" aria-label="Select and edit drawings" data-tooltip="Select / resize / edit points">${SVG.cursor}</button>
@@ -271,7 +290,6 @@ function editAnnotation(
           <button type="button" data-tool="pan" aria-pressed="false" aria-label="Pan image">${SVG.hand} Pan <small>Space + drag</small></button>
         </div>
         <div class="annotation-secondary-actions" role="group" aria-label="Drawing actions">
-          <button type="button" data-command="original" aria-label="Show original screenshot" aria-pressed="false">${SVG.eyeOff} Show original <small>Hold O</small></button>
           <button type="button" data-command="clear" aria-label="Clear all drawings">${SVG.trash} Clear all drawings</button>
         </div>
       </div>
@@ -309,8 +327,10 @@ function editAnnotation(
         <label>Custom color <input type="color" data-field="color" value="${color}" aria-label="Custom drawing color"></label>
       </div>
       <div class="annotation-recovery" role="status" hidden><span>Unfinished drawing found.</span><button type="button" data-command="restore-draft">Restore draft</button><button type="button" data-command="discard-draft">Discard draft</button></div>
-      <p id="annotation-help" class="annotation-help">Select a drawing to resize it using handles. Drag line endpoints or path points and curve handles. Double-click a path segment to add a point. Path tool: click points, drag for curves, Enter or double-click to finish; click the first point to close. Shift draws squares and circles. Escape cancels an active gesture or unfinished path. White margins are drawing space, not page context. Wheel to zoom; Space and drag to pan.</p>
-      <div class="annotation-viewport"><div class="annotation-surface"><div data-drawing-surface tabindex="0" role="img" aria-label="Screenshot drawing canvas. Select to resize or edit points. Path: click points, drag for curves, Enter to finish."></div><div class="annotation-source-outline" aria-hidden="true"></div><label class="annotation-text-label" hidden><textarea data-field="text" rows="2" maxlength="${LIMITS.maxText}" aria-label="Text to draw" placeholder="Type your label"></textarea></label></div></div>
+      <p class="annotation-gesture-hint"></p>
+      <p class="annotation-padding-hint">Striped margins: drawing space, not captured content.</p>
+      <p id="annotation-help" class="annotation-help">Select a drawing to resize it using handles. Drag line endpoints or path points and curve handles. Double-click a path segment to add a point. Path tool: click points, drag for curves, Enter or double-click to finish; click the first point to close. Shift draws squares and circles. Escape cancels an active gesture or unfinished path. Striped margins are drawing space, not captured content; the stripes and labels are not exported. Hold O or use Show original to compare. Wheel to zoom; Space and drag to pan.</p>
+      <div class="annotation-viewport"><div class="annotation-surface"><div data-drawing-surface tabindex="0" role="img" aria-label="Screenshot drawing canvas. Select to resize or edit points. Path: click points, drag for curves, Enter to finish."></div><div class="annotation-padding" aria-hidden="true"><span></span><span></span><span></span><span></span></div><div class="annotation-source-outline" aria-hidden="true"></div><label class="annotation-text-label" hidden><textarea data-field="text" rows="2" maxlength="${LIMITS.maxText}" aria-label="Text to draw" placeholder="Type your label"></textarea></label></div></div>
       <div class="annotation-feedback"><div class="annotation-message" role="status" aria-live="polite">Loading original screenshot…</div>
         <div class="annotation-error" role="alert" hidden></div><button type="button" data-command="retry" hidden>Retry image load</button></div>`;
   const find = <T extends Element>(selector: string) =>
@@ -446,7 +466,21 @@ function editAnnotation(
     const current = marks[selected];
     const activeTool: Tool = selected >= 0 ? (current?.tool ?? tool) : tool;
     find<HTMLElement>(".annotation-active-tool").textContent =
-      TOOL_NAMES[activeTool];
+      "Tool: " + TOOL_NAMES[tool];
+    find<HTMLElement>(".annotation-selection").textContent =
+      "Selected: " + (current ? TOOL_NAMES[current.tool] : "None");
+    find<HTMLElement>(".annotation-gesture-hint").textContent =
+      original || heldOriginal
+        ? "Original comparison — drawings are hidden, not removed."
+        : tool === "select" && current
+          ? current.tool === "path"
+            ? "Drag points or curve handles; double-click a segment to add a point."
+            : current.tool === "text"
+              ? "Drag to move; double-click to edit text."
+              : current.tool === "arrow" || current.tool === "line"
+                ? "Drag to move; drag either endpoint to reshape."
+                : "Drag to move; drag handles to resize."
+          : TOOL_HINTS[tool];
     button("more-tools").setAttribute(
       "aria-pressed",
       String(!!moreTools.querySelector(`[data-tool="${tool}"]`)),
@@ -802,6 +836,8 @@ function editAnnotation(
     canvas.style.height = height * zoom + "px";
     surface.style.width = width * zoom + "px";
     surface.style.height = height * zoom + "px";
+    surface.style.setProperty("--annotation-padding", padding * zoom + "px");
+    find<HTMLElement>(".annotation-padding-hint").hidden = padding === 0;
     Object.assign(outline.style, {
       left: padding * zoom + "px",
       top: padding * zoom + "px",

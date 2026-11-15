@@ -1,5 +1,5 @@
 import { webReview } from "../../../shared/web-review.ts";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNoteState, canResolve } from "./review-state.tsx";
 import { AttachmentImage } from "../components/images.tsx";
 import {
@@ -9,11 +9,13 @@ import {
   Sparkles,
   ArrowRight,
   LoaderCircle,
+  Copy,
+  MoreHorizontal,
 } from "lucide-react";
 import type { DiffFile, ReviewNote } from "../../../shared/review-types.ts";
 import { noteKey } from "../../../shared/note-id.ts";
 import { Button, cn } from "../components/ui/button.tsx";
-import { Tooltip } from "../components/ui/tooltip.tsx";
+import { ActionMenu, ActionMenuItem } from "../components/ui/action-menu.tsx";
 import { Markdown } from "../components/markdown.tsx";
 import { Code } from "../components/code.tsx";
 import { useAction, useDiff } from "../app/api.ts";
@@ -27,6 +29,7 @@ import {
 import { useUi } from "../app/ui-preferences.tsx";
 import { useNoteEntrance } from "./note-motion.tsx";
 import { NoteHeader } from "./note-header.tsx";
+import { refOf, refToken } from "./note-ref.ts";
 
 export function NoteCard({
   note,
@@ -37,7 +40,6 @@ export function NoteCard({
   onJump,
   editor,
   editorDraft,
-  embedded = false,
   onAddCapture,
 }: {
   note: ReviewNote;
@@ -62,6 +64,33 @@ export function NoteCard({
     action.variables?.url === "/api/note" &&
     action.variables?.method === "POST";
   const [removing, setRemoving] = useState<string | null>(null);
+  const [copyResult, setCopyResult] = useState<"copied" | "failed" | null>(
+    null,
+  );
+  const confirmation = useRef<HTMLButtonElement>(null);
+  const menuTriggers = useRef(new Map<string, HTMLElement>());
+  useEffect(() => {
+    if (!removing) return;
+    const frame = requestAnimationFrame(() => confirmation.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [removing]);
+  const cancelRemoval = () => {
+    if (removing) menuTriggers.current.get(removing)?.focus();
+    setRemoving(null);
+  };
+  const menuTrigger = (key: string, label: string) => (
+    <Button
+      ref={(element) => {
+        if (element) menuTriggers.current.set(key, element);
+        else menuTriggers.current.delete(key);
+      }}
+      size="icon"
+      variant="ghost"
+      aria-label={label}
+    >
+      <MoreHorizontal />
+    </Button>
+  );
   const editable =
     !note.messages.some((m) => m.role === "agent") &&
     !["applied", "answered", "skipped"].includes(note.status);
@@ -70,58 +99,68 @@ export function NoteCard({
   const editingNote = !!editor && editorDraft?.kind === "note";
   const editingReply =
     editor && editorDraft?.kind === "reply" ? editorDraft.at : undefined;
-  const icon = (label: string, element: React.ReactElement) => (
-    <Tooltip label={label}>{element}</Tooltip>
-  );
   const header = (
-    <NoteHeader note={note} status={embedded ? undefined : note.status}>
+    <NoteHeader
+      note={note}
+      status={
+        ["pending", "unknown"].includes(note.status) ? undefined : note.status
+      }
+    >
+      <span
+        className={
+          state.resolved(note) ? "text-success" : "text-muted-foreground"
+        }
+        title="Reviewer acknowledgement saved only in this browser. Conversation changes reopen this note."
+      >
+        {state.resolved(note) ? "Resolved" : "Open"} · this browser
+      </span>
       {state.unread(note) > 0 && (
-        <span className="rounded bg-primary/15 px-2 py-1 text-[10px] text-primary">
-          {state.unread(note)} new
+        <span className="text-xs font-medium text-primary">
+          {state.unread(note)} new from agent
         </span>
-      )}
-      {state.resolved(note) && (
-        <span className="text-[10px] text-success">Resolved</span>
       )}
     </NoteHeader>
   );
   return (
     <article
       ref={entrance}
-      className="min-w-0 w-full rounded-xl border bg-card shadow-sm"
+      className="min-w-0 w-full rounded-lg border bg-card"
       data-note-id={note.id}
       data-note-surface
       onPointerEnter={() => state.read(note)}
       onFocus={() => state.read(note)}
       id={`${inline ? "diff-note" : "note"}-${reference}`}
     >
-      {embedded ? (
-        <details className="border-b">
-          <summary className="cursor-pointer px-3 py-2 text-xs text-muted-foreground">
-            <span>Note details</span>
-            <span className="float-right">{note.status}</span>
-          </summary>
-          {header}
-        </details>
-      ) : (
-        header
-      )}
-      <div className="space-y-3 p-4">
-        {note.code && (
-          <>
-            {outdated && (
-              <p className="text-xs text-muted-foreground">
-                Captured code · no longer in diff
-              </p>
-            )}
-            <pre
-              aria-label="Captured code"
-              className="max-h-48 overflow-auto border-y bg-muted/30 py-3 text-xs"
-            >
-              <Code value={note.code} language="diff" />
-            </pre>
-          </>
-        )}
+      {header}
+      <div className="space-y-3 p-3">
+        {note.code &&
+          (inline ? (
+            <details className="text-xs">
+              <summary className="cursor-pointer text-muted-foreground">
+                Captured code{outdated ? " · no longer in diff" : ""}
+              </summary>
+              <pre
+                aria-label="Captured code"
+                className="mt-2 max-h-48 overflow-auto bg-muted/30 py-2 text-xs"
+              >
+                <Code value={note.code} language="diff" />
+              </pre>
+            </details>
+          ) : (
+            <div>
+              {outdated && (
+                <p className="mb-1 text-xs text-muted-foreground">
+                  Captured code · no longer in diff
+                </p>
+              )}
+              <pre
+                aria-label="Captured code"
+                className="max-h-48 overflow-auto bg-muted/30 py-2 text-xs"
+              >
+                <Code value={note.code} language="diff" />
+              </pre>
+            </div>
+          ))}
         {webEnabled && note.web && (
           <div className="flex flex-wrap gap-2">
             <Button
@@ -194,7 +233,7 @@ export function NoteCard({
           }}
         />
         {note.image && (
-          <div className="rounded-lg border p-3 text-xs">
+          <div className="text-xs">
             <p className="mb-2">
               Screenshot region ·{" "}
               {note.image.side === "old" ? "before" : "after"} ·{" "}
@@ -237,7 +276,7 @@ export function NoteCard({
           <section
             key={message.at || i}
             data-note-message={i}
-            className="space-y-3 border-t bg-muted/15 p-4"
+            className="space-y-2 border-t bg-muted/15 p-3"
           >
             <div className="flex items-center gap-2 text-xs">
               <span
@@ -253,41 +292,29 @@ export function NoteCard({
               </span>
               <div className="ml-auto" />
               {own && editingReply !== message.at && (
-                <>
-                  {icon(
-                    "Edit reply",
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      aria-label="Edit reply"
-                      onClick={() =>
-                        onCompose({
-                          kind: "reply",
-                          id: note.id,
-                          at: message.at,
-                          body: message.body,
-                          label: noteKey(note),
-                          file: note.file,
-                          code: note.code,
-                        })
-                      }
-                    >
-                      <Pencil />
-                    </Button>,
-                  )}
-                  {icon(
-                    "Delete reply",
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      aria-label="Delete reply"
-                      disabled={action.isPending}
-                      onClick={() => setRemoving(message.at!)}
-                    >
-                      <Trash2 />
-                    </Button>,
-                  )}
-                </>
+                <ActionMenu trigger={menuTrigger(message.at!, "Reply actions")}>
+                  <ActionMenuItem
+                    onClick={() =>
+                      onCompose({
+                        kind: "reply",
+                        id: note.id,
+                        at: message.at,
+                        body: message.body,
+                        label: noteKey(note),
+                        file: note.file,
+                        code: note.code,
+                      })
+                    }
+                  >
+                    <Pencil /> Edit reply
+                  </ActionMenuItem>
+                  <ActionMenuItem
+                    disabled={action.isPending}
+                    onClick={() => setRemoving(message.at!)}
+                  >
+                    <Trash2 /> Delete reply
+                  </ActionMenuItem>
+                </ActionMenu>
               )}
             </div>
             {editingReply && editingReply === message.at ? (
@@ -303,10 +330,10 @@ export function NoteCard({
         );
       })}
       {editor && !editingNote && !editingReply && (
-        <div className="border-t p-4">{editor}</div>
+        <div className="border-t p-3">{editor}</div>
       )}
       {!editingNote && (
-        <footer className="flex flex-wrap items-center gap-1 border-t px-4 py-2">
+        <footer className="flex flex-wrap items-center gap-1 border-t px-3 py-1.5">
           {!editor && (
             <Button
               size="sm"
@@ -338,38 +365,42 @@ export function NoteCard({
               variant="ghost"
               size="sm"
               disabled={!!editor}
+              title="Reviewer acknowledgement in this browser only; conversation changes reopen the note."
               onClick={() => state.toggle(note)}
             >
               {state.resolved(note) ? "Reopen" : "Resolve"}
             </Button>
           )}
-          {editable &&
-            icon(
-              "Edit note",
-              <Button
-                size="icon"
-                variant="ghost"
-                aria-label="Edit note"
+          <ActionMenu trigger={menuTrigger("note", "Note actions")}>
+            <ActionMenuItem
+              disabled={!refOf(note.id)}
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(refToken(note));
+                  setCopyResult("copied");
+                } catch {
+                  setCopyResult("failed");
+                }
+              }}
+            >
+              <Copy /> Copy note reference
+            </ActionMenuItem>
+            {editable && !editor && (
+              <ActionMenuItem
                 onClick={() =>
                   onCompose({ kind: "note", comment: { ...note } })
                 }
               >
-                <Pencil />
-              </Button>,
+                <Pencil /> Edit note
+              </ActionMenuItem>
             )}
-          {icon(
-            "Delete note",
-            <Button
-              size="icon"
-              variant="ghost"
-              className="text-muted-foreground hover:text-destructive"
-              aria-label="Delete note"
-              disabled={action.isPending}
+            <ActionMenuItem
+              disabled={action.isPending || !!editor}
               onClick={() => setRemoving("note")}
             >
-              <Trash2 />
-            </Button>,
-          )}
+              <Trash2 /> Delete note
+            </ActionMenuItem>
+          </ActionMenu>
           {agent && settings.aiAnswers && (
             <Button
               size="sm"
@@ -399,8 +430,39 @@ export function NoteCard({
           )}
         </footer>
       )}
+      {copyResult && (
+        <p
+          className={cn(
+            "px-3 py-2 text-xs",
+            copyResult === "failed"
+              ? "text-destructive"
+              : "text-muted-foreground",
+          )}
+          role={copyResult === "failed" ? "alert" : "status"}
+        >
+          {copyResult === "copied" ? (
+            "Note reference copied."
+          ) : (
+            <>
+              Could not copy. Select and copy this reference:{" "}
+              <code className="select-all break-all">{refToken(note)}</code>
+            </>
+          )}
+        </p>
+      )}
       {removing && (
-        <div className="flex items-center gap-3 border-t p-3 text-xs">
+        <div
+          role="group"
+          aria-label="Confirm deletion"
+          className="flex flex-wrap items-center gap-2 border-t p-3 text-xs"
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              event.stopPropagation();
+              cancelRemoval();
+            }
+          }}
+        >
           <span className="flex-1">
             Delete{" "}
             {removing === "note"
@@ -408,7 +470,12 @@ export function NoteCard({
               : "this reply"}
             ?
           </span>
-          <Button size="sm" variant="ghost" onClick={() => setRemoving(null)}>
+          <Button
+            ref={confirmation}
+            size="sm"
+            variant="ghost"
+            onClick={cancelRemoval}
+          >
             Keep
           </Button>
           <Button
@@ -423,7 +490,13 @@ export function NoteCard({
                       : `/api/reply?${new URLSearchParams({ id: note.id, at: removing })}`,
                   method: "DELETE",
                 },
-                { onSuccess: () => setRemoving(null) },
+                {
+                  onSuccess: () => {
+                    if (removing !== "note")
+                      menuTriggers.current.get("note")?.focus();
+                    setRemoving(null);
+                  },
+                },
               )
             }
           >

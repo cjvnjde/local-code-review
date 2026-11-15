@@ -4,6 +4,7 @@ import { request, type DiffResponse, type ReviewResponse } from "../app/api.ts";
 import { useStored } from "../app/preferences.ts";
 import { Composer, draftBody, type Draft } from "../notes/composer.tsx";
 import { NoteCard } from "../notes/note-card.tsx";
+import { NoteState, useReviewState } from "../notes/review-state.tsx";
 import { makeComment } from "../diff/model.ts";
 import { webReview } from "../../../shared/web-review.ts";
 
@@ -25,6 +26,9 @@ export function EmbeddedReview({
   diff: DiffResponse;
   review?: ReviewResponse;
 }) {
+  const noteState = useReviewState(
+    `${diff.repo}:${diff.id ? `#${diff.id}` : diff.range}`,
+  );
   const [draft, setDraft, storageError] = useStored<Draft | null>(
     `lcr:v2:embed:${diff.repo}:${embedToken}`,
     null,
@@ -116,6 +120,13 @@ export function EmbeddedReview({
       editOriginal: draft?.kind === "note" && !!noteId,
     });
   }, [draft, busy, capturing]);
+  const editedEvidence =
+    draft?.kind === "note" ? draft.comment.web : draft?.web;
+  const editingEvidence = !!draft && !draft.editing;
+  useEffect(() => {
+    if (editingEvidence)
+      tell("evidence-changed", { web: editedEvidence ?? null });
+  }, [editingEvidence, editedEvidence]);
   const close = () => {
     if (busy || capturing) return;
     setDraft(null);
@@ -129,53 +140,58 @@ export function EmbeddedReview({
   };
   const note = review?.notes.find((n) => n.id === noteId);
   return (
-    <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-background text-foreground">
-      {(evidence.error || storageError) && (
-        <p role="alert" className="p-4 text-sm text-destructive">
-          {evidence.error?.message || storageError}
-        </p>
-      )}
-      {capturing && (
-        <p role="status" className="p-3 text-xs text-muted-foreground">
-          Capturing selection…
-        </p>
-      )}
-      {draft ? (
-        <Composer
-          draft={draft}
-          onChange={setDraft}
-          onClose={close}
-          onSaved={saved}
-          agent={!!diff.agent}
-          embedded
-          onBusy={setBusy}
-          webDraftId={draftId || undefined}
-          onAddCapture={
-            !capturing && !draft.editing && (draft.kind === "reply" || !noteId)
-              ? () => tell("add-capture")
-              : undefined
-          }
-          onWebDrawing={(open) =>
-            tell("annotation", { open, ...(draftId ? { draftId } : {}) })
-          }
-        />
-      ) : note ? (
-        <div className="min-h-0 flex-1 overflow-auto p-3">
-          <NoteCard
-            note={note}
+    <NoteState value={noteState}>
+      <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-background text-foreground">
+        {(evidence.error || storageError) && (
+          <p role="alert" className="p-4 text-sm text-destructive">
+            {evidence.error?.message || storageError}
+          </p>
+        )}
+        {capturing && (
+          <p role="status" className="p-3 text-xs text-muted-foreground">
+            Capturing selection…
+          </p>
+        )}
+        {draft ? (
+          <Composer
+            draft={draft}
+            draftStorageError={storageError}
+            onChange={setDraft}
+            onClose={close}
+            onSaved={saved}
             agent={!!diff.agent}
-            onCompose={setDraft}
             embedded
-            onAddCapture={() => tell("add-capture")}
+            onBusy={setBusy}
+            webDraftId={draftId || undefined}
+            onAddCapture={
+              !capturing &&
+              !draft.editing &&
+              (draft.kind === "reply" || !noteId)
+                ? () => tell("add-capture")
+                : undefined
+            }
+            onWebDrawing={(open) =>
+              tell("annotation", { open, ...(draftId ? { draftId } : {}) })
+            }
           />
-        </div>
-      ) : (
-        <p className="p-5 text-sm text-muted-foreground">
-          {draftId
-            ? "Loading captured selection…"
-            : "This note is no longer in the review."}
-        </p>
-      )}
-    </div>
+        ) : note ? (
+          <div className="min-h-0 flex-1 overflow-auto p-3">
+            <NoteCard
+              note={note}
+              agent={!!diff.agent}
+              onCompose={setDraft}
+              embedded
+              onAddCapture={() => tell("add-capture")}
+            />
+          </div>
+        ) : (
+          <p className="p-5 text-sm text-muted-foreground">
+            {draftId
+              ? "Loading captured selection…"
+              : "This note is no longer in the review."}
+          </p>
+        )}
+      </div>
+    </NoteState>
   );
 }

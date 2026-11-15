@@ -1,10 +1,10 @@
 import { Tabs } from "@base-ui/react/tabs";
-import { ReviewLayout } from "../navigation/review-layout.tsx";
+import { ReviewLayout, useMedia } from "../navigation/review-layout.tsx";
 import { FileTree } from "../navigation/file-tree.tsx";
 import { NoteMotion, useNoteMotion } from "../notes/note-motion.tsx";
 import { NoteState, useReviewState } from "../notes/review-state.tsx";
 import { setView } from "../navigation/ui-navigation.ts";
-import { refOf } from "../notes/note-ref.ts";
+import { plainRefs, refOf } from "../notes/note-ref.ts";
 import { noteKey } from "../../../shared/note-id.ts";
 import {
   useReadingNavigation,
@@ -51,6 +51,7 @@ import {
 } from "./api.ts";
 import { useStored } from "./preferences.ts";
 import { Button, cn } from "../components/ui/button.tsx";
+import { ActionMenu, ActionMenuItem } from "../components/ui/action-menu.tsx";
 import { Tooltip } from "../components/ui/tooltip.tsx";
 import { Select } from "../components/ui/select.tsx";
 import { Dialog, DialogContent } from "../components/ui/dialog.tsx";
@@ -125,6 +126,9 @@ function Workspace({
   refreshing: boolean;
 }) {
   const { settings, update } = useUi();
+  const wideLayout = useMedia("(min-width: 1280px)");
+  const notesInline = useMedia("(min-width: 960px)");
+  const [fileDrawerOpen, setFileDrawerOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [advancedSearch, setAdvancedSearch] = useState(false);
   const [activeSearchResult, setActiveSearchResult] = useState<string>();
@@ -142,7 +146,7 @@ function Workspace({
   const noteState = useReviewState(scope);
   useReplyNotifications(review, scope, (note) => {
     jumpToNote(note);
-    if (matchMedia("(max-width: 639px)").matches) setNotesOpen(false);
+    if (!notesInline) setNotesOpen(false);
   });
   const [bulkDelete, setBulkDelete] = useState<string[]>([]);
   const [draft, setDraft, storageError] = useStored<Draft | null>(
@@ -159,18 +163,26 @@ function Workspace({
   const [navOpen, setNavOpen] = useStored("lcr:v2:sidebar", true);
   const [selected, setSelected] = useState("");
   const [search, setSearch] = useState("");
-  const [notesOpen, setNotesOpen] = useStored("lcr:v2:notes-panel", true);
+  const [notesOpen, setNotesOpen] = useStored(
+    "lcr:v2:notes-panel",
+    notesInline,
+  );
+  const fileSidebarVisible = wideLayout ? navOpen : fileDrawerOpen;
   const [rightTab, setRightTab] = useStored<"notes" | "bookmarks">(
     "lcr:v2:right-tab",
     "notes",
     "session",
   );
-  const [allNotes, setAllNotes] = useStored("lcr:v2:all-notes", false);
-  const [filter, setFilter] = useStored("lcr:v2:note-filter", "all");
+  const [allNotes, setAllNotes] = useStored("lcr:v2:all-notes", true);
+  const [filter, setFilter] = useStored<"all" | "open" | "resolved">(
+    "lcr:v2:note-state-filter",
+    "open",
+  );
   const [compactNotes, setCompactNotes] = useStored(
     "lcr:v2:compact-notes",
-    false,
+    true,
   );
+  const [expandedNote, setExpandedNote] = useState<string | null>(null);
   const [dialog, setDialog] = useState<"settings" | "history" | "agent" | null>(
     null,
   );
@@ -201,13 +213,23 @@ function Workspace({
   }
   function jumpToFile(path: string) {
     reveal(path, () => diffView.current?.scrollToFile(path));
+    setFileDrawerOpen(false);
   }
   function jumpToNote(
     note: import("../../../shared/review-types.ts").ReviewNote,
   ) {
     noteState.read(note);
     setRightTab("notes");
-    if (noteState.resolved(note)) noteState.setShowResolved(true);
+    if (noteState.resolved(note)) setFilter("all");
+    if (
+      note.scope !== "global" &&
+      !files.some((entry) => entry.path === note.file)
+    ) {
+      setExpandedNote(note.id);
+      setAllNotes(true);
+      setFilter("all");
+      setNotesOpen(true);
+    }
     const reference = refOf(note.id);
     if (reference) {
       followed.current = reference;
@@ -283,7 +305,7 @@ function Workspace({
         !(owner && overallEditor.current?.contains(owner)) &&
         !(
           target instanceof Element &&
-          target.closest("[role=listbox], [role=tooltip]")
+          target.closest("[role=listbox], [role=tooltip], [role=menu]")
         )
       )
         setOverallOpen(false);
@@ -325,10 +347,10 @@ function Workspace({
       notes.filter(
         (note) =>
           !noteState.resolved(note) ||
-          noteState.showResolved ||
+          filter !== "open" ||
           activeDraft === note.id,
       ),
-    [notes, noteState, activeDraft],
+    [notes, noteState, filter, activeDraft],
   );
   const followed = useRef("");
   useEffect(() => {
@@ -360,15 +382,17 @@ function Workspace({
 
   const agent = { ...incomingDiff, ...review };
   const fileOrder = new Map(files.map((f, i) => [f.path, i]));
-  const listed = [...visibleNotes]
+  const fileNotes = notes.filter((note) => note.file === file?.path);
+  const scopedNotes = allNotes ? notes : fileNotes;
+  const resolvedCount = scopedNotes.filter(noteState.resolved).length;
+  const listed = notes
     .filter(
       (note) =>
         (draft?.host === "panel" &&
           (draft.kind === "note" ? draft.comment.id : draft.id) === note.id) ||
-        ((allNotes || note.file === file?.path || note.scope === "global") &&
+        ((allNotes || note.file === file?.path) &&
           (filter === "all" ||
-            (filter === "done") ===
-              ["applied", "answered", "skipped"].includes(note.status))),
+            (filter === "resolved") === noteState.resolved(note))),
     )
     .sort(
       (a, b) =>
@@ -379,9 +403,7 @@ function Workspace({
     );
   const viewed = files.filter((f) => marks[f.path] === f.hash).length;
   const progress = files.length ? Math.round((viewed / files.length) * 100) : 0;
-  const open = notes.filter(
-    (n) => !["applied", "answered", "skipped"].includes(n.status),
-  ).length;
+  const open = notes.filter((note) => !noteState.resolved(note)).length;
   function stepNote(direction: number) {
     const targets = allNotes ? listed : notes;
     noteAt.current = stepAt(targets.length, noteAt.current, direction);
@@ -535,7 +557,7 @@ function Workspace({
     ) {
       setRightTab("notes");
       setNotesOpen(true);
-    } else if (matchMedia("(max-width: 639px)").matches) setNotesOpen(false);
+    } else if (!notesInline) setNotesOpen(false);
     return true;
   };
   const closeDraft = () => {
@@ -591,9 +613,12 @@ function Workspace({
           <div className="flex h-dvh min-w-0 flex-col bg-background text-foreground">
             <header className="relative z-30 flex h-12 shrink-0 items-center gap-1 border-b bg-card px-2 sm:gap-2 sm:px-3">
               {icon(
-                navOpen ? "Hide file sidebar" : "Show file sidebar",
-                navOpen ? <PanelLeftClose /> : <PanelLeft />,
-                () => setNavOpen(!navOpen),
+                fileSidebarVisible ? "Hide file sidebar" : "Show file sidebar",
+                fileSidebarVisible ? <PanelLeftClose /> : <PanelLeft />,
+                () =>
+                  wideLayout
+                    ? setNavOpen(!navOpen)
+                    : setFileDrawerOpen(!fileDrawerOpen),
               )}
               <div className="hidden size-7 items-center justify-center text-primary sm:flex">
                 <GitPullRequest className="size-4" />
@@ -620,7 +645,7 @@ function Workspace({
               </div>
               <Select
                 label="Select file"
-                className="h-8 w-9 shrink-0 gap-0 px-2 [&>span:first-child]:hidden md:hidden"
+                className="h-8 w-9 shrink-0 gap-0 px-2 [&>span:first-child]:hidden xl:hidden"
                 value={file?.path || ""}
                 onValueChange={jumpToFile}
                 options={files.map((f) => ({ value: f.path, label: f.path }))}
@@ -743,6 +768,7 @@ function Workspace({
                     >
                       <Composer
                         draft={draft}
+                        draftStorageError={storageError}
                         onChange={setDraft}
                         onClose={closeDraft}
                         onSaved={() => setDraft(null)}
@@ -838,12 +864,23 @@ function Workspace({
             )}
             <ReviewLayout
               navOpen={navOpen}
+              fileDrawerOpen={fileDrawerOpen}
               notesOpen={notesOpen}
               files={
                 <aside
-                  className="flex h-full min-w-0 flex-col bg-card/50"
+                  className="flex h-full min-w-0 flex-col bg-card max-xl:fixed max-xl:inset-y-12 max-xl:left-0 max-xl:z-40 max-xl:h-auto max-xl:w-72 max-xl:max-w-[calc(100vw-24px)] max-xl:border-r max-xl:shadow-xl"
                   aria-label="Changed files"
                 >
+                  <div className="flex items-center justify-between border-b px-3 py-2 xl:hidden">
+                    <span className="text-sm font-medium">Changed files</span>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setFileDrawerOpen(false)}
+                    >
+                      Close files
+                    </Button>
+                  </div>
                   <nav
                     ref={navigation}
                     className="min-h-0 flex-1 overflow-auto px-2 py-3"
@@ -925,7 +962,7 @@ function Workspace({
               }
               notes={
                 <aside
-                  className="flex h-full min-w-0 flex-col bg-muted/15 max-sm:fixed max-sm:inset-x-0 max-sm:top-12 max-sm:bottom-10 max-sm:z-20 max-sm:h-auto max-sm:w-full max-sm:bg-background"
+                  className="flex h-full min-w-0 flex-col bg-muted/15 max-[960px]:fixed max-[960px]:inset-x-0 max-[960px]:top-12 max-[960px]:bottom-10 max-[960px]:z-20 max-[960px]:h-auto max-[960px]:w-full max-[960px]:bg-background"
                   aria-label="Review notes"
                 >
                   <Tabs.Root
@@ -957,7 +994,7 @@ function Workspace({
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="sm:hidden"
+                        className="min-[960px]:hidden"
                         onClick={() => {
                           if (draft?.host === "panel") focusEditor();
                           else setNotesOpen(false);
@@ -971,57 +1008,124 @@ function Workspace({
                       keepMounted
                       className="flex min-h-0 flex-1 flex-col data-hidden:hidden"
                     >
-                      <div className="flex items-center gap-2 border-b px-4 py-3">
-                        <h2 className="text-sm font-semibold">Conversation</h2>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label="Previous note"
-                          onClick={() => stepNote(-1)}
+                      <div className="space-y-2 border-b px-3 py-3">
+                        <h2 className="sr-only">Conversation</h2>
+                        <div
+                          className="flex items-center gap-1"
+                          role="group"
+                          aria-label="Note scope"
                         >
-                          <ArrowUp />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label="Next note"
-                          onClick={() => stepNote(1)}
-                        >
-                          <ArrowDown />
-                        </Button>
-                        <span className="text-xs text-muted-foreground">
-                          {listed.length}
-                        </span>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="ml-auto"
-                          onClick={() => setAllNotes(!allNotes)}
-                        >
-                          {allNotes ? "This file" : "All notes"}
-                        </Button>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2 text-xs">
-                        <label className="flex items-center gap-2">
-                          <input
-                            type="checkbox"
-                            checked={noteState.showResolved}
-                            onChange={(event) =>
-                              noteState.setShowResolved(event.target.checked)
-                            }
-                          />
-                          Show resolved (
-                          {notes.filter(noteState.resolved).length})
-                        </label>
-                        <details className="ml-auto">
-                          <summary className="cursor-pointer text-muted-foreground">
-                            Manage
-                          </summary>
-                          <div className="mt-2 flex flex-wrap gap-2">
+                          <Button
+                            size="sm"
+                            variant={allNotes ? "outline" : "ghost"}
+                            aria-pressed={allNotes}
+                            onClick={() => setAllNotes(true)}
+                          >
+                            All notes ({notes.length})
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant={!allNotes ? "outline" : "ghost"}
+                            aria-pressed={!allNotes}
+                            disabled={!file}
+                            onClick={() => setAllNotes(false)}
+                          >
+                            This file ({fileNotes.length})
+                          </Button>
+                          <div className="ml-auto flex">
                             <Button
-                              size="sm"
                               variant="ghost"
-                              disabled={!!draft}
+                              size="icon"
+                              className="size-8"
+                              aria-label="Previous note"
+                              disabled={!listed.length}
+                              onClick={() => stepNote(-1)}
+                            >
+                              <ArrowUp />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-8"
+                              aria-label="Next note"
+                              disabled={!listed.length}
+                              onClick={() => stepNote(1)}
+                            >
+                              <ArrowDown />
+                            </Button>
+                          </div>
+                        </div>
+                        {!allNotes && file && (
+                          <p
+                            className="truncate text-xs text-muted-foreground"
+                            title={file.path}
+                          >
+                            {file.path}
+                          </p>
+                        )}
+                        <div className="flex items-center gap-1">
+                          <div
+                            className="flex flex-1 gap-1"
+                            role="group"
+                            aria-label="Note state"
+                          >
+                            {(["all", "open", "resolved"] as const).map(
+                              (kind) => (
+                                <Button
+                                  key={kind}
+                                  size="sm"
+                                  variant={
+                                    filter === kind ? "outline" : "ghost"
+                                  }
+                                  aria-pressed={filter === kind}
+                                  onClick={() => {
+                                    setFilter(kind);
+                                  }}
+                                >
+                                  {kind === "all"
+                                    ? "All"
+                                    : kind === "open"
+                                      ? "Open"
+                                      : "Resolved"}
+                                  <span className="text-muted-foreground">
+                                    {kind === "all"
+                                      ? scopedNotes.length
+                                      : kind === "open"
+                                        ? scopedNotes.length - resolvedCount
+                                        : resolvedCount}
+                                  </span>
+                                </Button>
+                              ),
+                            )}
+                          </div>
+                          <ActionMenu
+                            trigger={
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                aria-label="Note view and actions"
+                              >
+                                View
+                              </Button>
+                            }
+                          >
+                            <ActionMenuItem
+                              onClick={() => setCompactNotes(true)}
+                              disabled={draft?.host === "panel"}
+                            >
+                              Compact list{compactNotes && <Check />}
+                            </ActionMenuItem>
+                            <ActionMenuItem
+                              onClick={() => setCompactNotes(false)}
+                              disabled={draft?.host === "panel"}
+                            >
+                              Full conversations{!compactNotes && <Check />}
+                            </ActionMenuItem>
+                            <ActionMenuItem
+                              disabled={
+                                !!draft ||
+                                !notes.some((note) => note.status === "applied")
+                              }
                               onClick={() =>
                                 setBulkDelete(
                                   notes
@@ -1030,20 +1134,19 @@ function Workspace({
                                 )
                               }
                             >
-                              Remove applied
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              disabled={!!draft}
+                              Remove applied notes
+                            </ActionMenuItem>
+                            <ActionMenuItem
+                              className="text-destructive"
+                              disabled={!!draft || !notes.length}
                               onClick={() =>
                                 setBulkDelete(notes.map((note) => note.id))
                               }
                             >
                               Clear notes
-                            </Button>
-                          </div>
-                        </details>
+                            </ActionMenuItem>
+                          </ActionMenu>
+                        </div>
                       </div>
                       {bulkDelete.length > 0 && (
                         <div className="flex flex-wrap items-center gap-2 border-b p-3 text-xs">
@@ -1074,35 +1177,6 @@ function Workspace({
                           </Button>
                         </div>
                       )}
-                      <div className="flex gap-1 border-b px-3 py-2">
-                        {["all", "open", "done"].map((kind) => (
-                          <Button
-                            key={kind}
-                            variant={filter === kind ? "outline" : "ghost"}
-                            size="sm"
-                            onClick={() => setFilter(kind)}
-                            className="capitalize"
-                          >
-                            {kind}
-                          </Button>
-                        ))}
-                        <Button
-                          variant={compactNotes ? "outline" : "ghost"}
-                          size="sm"
-                          className="ml-auto"
-                          aria-label="Compact conversation list"
-                          aria-pressed={compactNotes}
-                          disabled={draft?.host === "panel"}
-                          title={
-                            draft?.host === "panel"
-                              ? "Finish the conversation editor before changing view"
-                              : "Toggle between note cards and a compact list"
-                          }
-                          onClick={() => setCompactNotes(!compactNotes)}
-                        >
-                          {compactNotes ? "List" : "Cards"}
-                        </Button>
-                      </div>
                       <div
                         className={cn(
                           "min-h-0 flex-1 overflow-auto p-3",
@@ -1119,7 +1193,7 @@ function Workspace({
                           const noteFile = files.find(
                             (file) => file.path === note.file,
                           );
-                          const inDiff = note.scope !== "global" && !!noteFile;
+                          const inDiff = note.scope === "global" || !!noteFile;
                           const label = noteKey(note);
                           return (
                             <div
@@ -1127,6 +1201,7 @@ function Workspace({
                               role={compactNotes ? "listitem" : undefined}
                             >
                               {compactNotes &&
+                              expandedNote !== note.id &&
                               !(
                                 draft?.host === "panel" &&
                                 activeDraft === note.id
@@ -1144,13 +1219,10 @@ function Workspace({
                                   onClick={() => {
                                     if (inDiff) {
                                       jumpToNote(note);
-                                      if (
-                                        matchMedia("(max-width: 639px)").matches
-                                      )
-                                        setNotesOpen(false);
+                                      if (!notesInline) setNotesOpen(false);
                                     } else {
                                       noteState.read(note);
-                                      setCompactNotes(false);
+                                      setExpandedNote(note.id);
                                       requestAnimationFrame(() =>
                                         document
                                           .getElementById(
@@ -1169,21 +1241,35 @@ function Workspace({
                                       {label}
                                     </span>
                                     {noteState.unread(note) > 0 && (
-                                      <span className="shrink-0 text-[10px] text-primary">
+                                      <span className="shrink-0 text-xs text-primary">
                                         {noteState.unread(note)} new
                                       </span>
                                     )}
-                                    <span className="shrink-0 text-[10px] text-muted-foreground">
+                                    <span className="shrink-0 text-xs text-muted-foreground">
                                       {noteState.resolved(note)
                                         ? "Resolved"
-                                        : note.status}
+                                        : "Open"}
                                     </span>
                                   </span>
                                   <span className="mt-1 line-clamp-2 whitespace-normal break-words text-xs text-muted-foreground">
-                                    {note.body}
+                                    {plainRefs(note.body).replace(
+                                      /[*_`#>]/g,
+                                      "",
+                                    ) ||
+                                      (note.web
+                                        ? "Captured page feedback"
+                                        : "No written feedback")}
                                   </span>
+                                  {note.messages.length > 0 && (
+                                    <span className="mt-2 block text-xs text-muted-foreground">
+                                      {note.messages.length}{" "}
+                                      {note.messages.length === 1
+                                        ? "reply"
+                                        : "replies"}
+                                    </span>
+                                  )}
                                   {!inDiff && (
-                                    <span className="mt-1 block text-[10px] text-muted-foreground">
+                                    <span className="mt-1 block text-xs text-muted-foreground">
                                       {note.scope === "global"
                                         ? "Open conversation"
                                         : "File no longer in diff · Open conversation"}
@@ -1191,45 +1277,52 @@ function Workspace({
                                   )}
                                 </button>
                               ) : (
-                                <NoteCard
-                                  note={note}
-                                  file={noteFile}
-                                  agent={!!agent.agent}
-                                  editorDraft={draft ?? undefined}
-                                  onCompose={(next) =>
-                                    compose({ ...next, host: "panel" })
-                                  }
-                                  editor={
-                                    draft?.host === "panel" &&
-                                    (draft.kind === "note"
-                                      ? draft.comment.id
-                                      : draft.id) === note.id ? (
-                                      <Composer
-                                        draft={draft}
-                                        onChange={setDraft}
-                                        onClose={closeDraft}
-                                        onSaved={() => setDraft(null)}
-                                        agent={!!agent.agent}
-                                        onBusy={setBusy}
-                                      />
-                                    ) : undefined
-                                  }
-                                  onJump={
-                                    note.scope === "global" ||
-                                    files.some(
-                                      (file) => file.path === note.file,
-                                    )
-                                      ? () => {
-                                          jumpToNote(note);
-                                          if (
-                                            matchMedia("(max-width: 639px)")
-                                              .matches
-                                          )
-                                            setNotesOpen(false);
-                                        }
-                                      : undefined
-                                  }
-                                />
+                                <div className="space-y-2">
+                                  {compactNotes && expandedNote === note.id && (
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      disabled={draft?.host === "panel"}
+                                      onClick={() => setExpandedNote(null)}
+                                    >
+                                      Back to note list
+                                    </Button>
+                                  )}
+                                  <NoteCard
+                                    note={note}
+                                    file={noteFile}
+                                    agent={!!agent.agent}
+                                    editorDraft={draft ?? undefined}
+                                    onCompose={(next) =>
+                                      compose({ ...next, host: "panel" })
+                                    }
+                                    editor={
+                                      draft?.host === "panel" &&
+                                      (draft.kind === "note"
+                                        ? draft.comment.id
+                                        : draft.id) === note.id ? (
+                                        <Composer
+                                          draft={draft}
+                                          draftStorageError={storageError}
+                                          onChange={setDraft}
+                                          onClose={closeDraft}
+                                          onSaved={() => setDraft(null)}
+                                          agent={!!agent.agent}
+                                          onBusy={setBusy}
+                                        />
+                                      ) : undefined
+                                    }
+                                    onJump={
+                                      inDiff
+                                        ? () => {
+                                            jumpToNote(note);
+                                            if (!notesInline)
+                                              setNotesOpen(false);
+                                          }
+                                        : undefined
+                                    }
+                                  />
+                                </div>
                               )}
                             </div>
                           );
@@ -1238,12 +1331,35 @@ function Workspace({
                           <div className="px-4 py-12 text-center">
                             <MessageSquare className="mx-auto mb-4 size-6 text-muted-foreground/50" />
                             <p className="text-sm font-medium">
-                              Room for a conversation
+                              {!notes.length
+                                ? "Start your review"
+                                : !allNotes && !fileNotes.length
+                                  ? "No notes for this file"
+                                  : filter === "resolved"
+                                    ? "No resolved notes"
+                                    : filter === "open"
+                                      ? "No open notes"
+                                      : "No matching notes"}
                             </p>
                             <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                              Comment on a code line or add an overall note.
-                              Notes and replies are saved to Markdown.
+                              {!notes.length
+                                ? "Comment on a code line or add an overall note. Your review is saved to Markdown."
+                                : !allNotes
+                                  ? `${notes.length} ${notes.length === 1 ? "note is" : "notes are"} available across this review.`
+                                  : filter === "resolved"
+                                    ? "Resolve a conversation when you have finished reviewing it. Resolution is saved in this browser."
+                                    : "Change the state filter to see your other conversations."}
                             </p>
+                            {notes.length > 0 && !allNotes && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="mt-4"
+                                onClick={() => setAllNotes(true)}
+                              >
+                                Show all notes
+                              </Button>
+                            )}
                           </div>
                         )}
                       </div>
@@ -1343,6 +1459,7 @@ function Workspace({
                   onCompose={(next) => compose({ ...next, host: "diff" })}
                   agent={!!agent.agent}
                   draft={draft}
+                  draftStorageError={storageError}
                   onChangeDraft={setDraft}
                   onCloseDraft={closeDraft}
                   onSavedDraft={() => setDraft(null)}
@@ -1366,7 +1483,7 @@ function Workspace({
                 −{files.reduce((sum, f) => sum + f.removed, 0)}
               </span>
               <span className="hidden sm:inline">
-                {open} open · {notes.length - open} done ·{" "}
+                {open} open · {notes.length - open} resolved ·{" "}
                 {notes.reduce(
                   (count, note) => count + noteState.unread(note),
                   0,

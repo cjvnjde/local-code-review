@@ -119,9 +119,7 @@ browserTest(
       await until("!!window.overlay");
       const mode = (value: string) =>
         value === "browse"
-          ? js(
-              `if(${root}.querySelector('[data-launcher]').getAttribute('aria-pressed')==='true')${root}.querySelector('[data-toggle]').click()`,
-            )
+          ? js(`${root}.querySelector('[data-browse]').click()`)
           : js(`${root}.querySelector('[data-mode="${value}"]').click()`);
       const control = (selector: string) =>
         js(`${root}.querySelector(${JSON.stringify(selector)}).click()`);
@@ -174,21 +172,67 @@ browserTest(
           });
       };
       const at = await center("#target");
+      const pressed = (selector: string) =>
+        js(
+          `${root}.querySelector(${JSON.stringify(selector)}).getAttribute('aria-pressed')`,
+        );
+      expect(await pressed("[data-annotate]")).toBe("true");
+      expect(await pressed("[data-browse]")).toBe("false");
+      expect(await js(`${root}.querySelector('.bar').hidden`)).toBe(true);
+      await click(await pinCenter("[data-browse]"));
+      expect(await pressed("[data-browse]")).toBe("true");
+      expect(await pressed("[data-annotate]")).toBe("false");
+      expect(await js(`${root}.querySelector('.bar').hidden`)).toBe(true);
+      await click(await pinCenter("[data-annotate]"));
+      expect(await pressed("[data-annotate]")).toBe("true");
       await control("[data-launcher]");
       expect(await js(`${root}.querySelector('.bar').hidden`)).toBe(false);
-      expect(await js(`${root}.querySelector('.mode-state').textContent`)).toBe(
-        "Element",
+      for (const target of ["block", "area", "point", "element"]) {
+        await control(`[data-mode="${target}"]`);
+        expect(await pressed(`[data-mode="${target}"]`)).toBe("true");
+        expect(await pressed("[data-annotate]")).toBe("true");
+        expect(await js(`${root}.querySelector('.bar').hidden`)).toBe(true);
+        await control("[data-launcher]");
+      }
+      await control("[data-multiple]");
+      expect(await pressed("[data-multiple]")).toBe("true");
+      await click(at);
+      expect(await js(`${root}.querySelector('.selection-tools').hidden`)).toBe(
+        false,
       );
-      await control("[data-toggle]");
-      expect(await js(`${root}.querySelector('.mode-state').textContent`)).toBe(
-        "Browse",
+      expect(await captures()).toHaveLength(0);
+      await send("Input.dispatchKeyEvent", {
+        type: "keyDown",
+        key: "Escape",
+        code: "Escape",
+      });
+      await send("Input.dispatchKeyEvent", {
+        type: "keyUp",
+        key: "Escape",
+        code: "Escape",
+      });
+      expect(await js(`${root}.querySelector('.selection-tools').hidden`)).toBe(
+        true,
       );
-      expect(await js(`${root}.querySelector('.bar').hidden`)).toBe(true);
-      await control("[data-launcher]");
-      expect(
-        await js(`${root}.querySelector('[data-toggle]').textContent`),
-      ).toBe("Annotate page");
-      await control("[data-toggle]");
+      await control('[data-mode="element"]');
+      for (const type of ["keyDown", "keyUp"]) {
+        await send("Input.dispatchKeyEvent", {
+          type,
+          key: "Alt",
+          code: "AltLeft",
+          modifiers: type === "keyDown" ? 1 : 0,
+        });
+        expect(await pressed("[data-browse]")).toBe(
+          type === "keyDown" ? "true" : "false",
+        );
+        if (type === "keyDown") {
+          await mouse("mouseMoved", at, { modifiers: 1 });
+          await mouse("mousePressed", at, { modifiers: 1 });
+          await mouse("mouseReleased", at, { modifiers: 1 });
+          expect(await js("clicks")).toBe(1);
+          expect(await captures()).toHaveLength(0);
+        }
+      }
       const launcherBefore = await pinCenter("[data-launcher]");
       await mouse("mouseMoved", launcherBefore);
       await mouse("mousePressed", launcherBefore);
@@ -284,9 +328,7 @@ browserTest(
       expect(await js(`${root}.querySelector('.capture-prompt').hidden`)).toBe(
         true,
       );
-      expect(await js(`${root}.querySelector('.mode-state').textContent`)).toBe(
-        "Browse",
-      );
+      expect(await pressed("[data-browse]")).toBe("true");
       expect(
         await js(
           `${root}.querySelector('iframe')===savedFrame && savedFrame.contentDocument.querySelector('#draft').value==='Keep this draft'`,
@@ -314,7 +356,7 @@ browserTest(
         "line-height": "24px",
         color: "rgb(20, 40, 60)",
       });
-      expect(await js("clicks")).toBe(0);
+      expect(await js("clicks")).toBe(1);
       expect(
         await js(
           `${root}.querySelector('iframe')===savedFrame && savedFrame.contentDocument.querySelector('#draft').value==='Keep this draft'`,
@@ -372,7 +414,7 @@ browserTest(
       expect(await js(`${root}.querySelector('.draft-pin')`)).toBeNull();
       await mode("browse");
       await click(at);
-      expect(await js("clicks")).toBe(1);
+      expect(await js("clicks")).toBe(2);
 
       await mode("element");
       await js("window.holdCapture=true");
@@ -616,13 +658,24 @@ browserTest(
         mobile: false,
       });
       await until(
-        `innerWidth===360 && innerHeight===480 && ${root}.querySelector('.dock').offsetWidth===336 && ${root}.querySelector('.dock').offsetHeight===456 && ${root}.querySelector('.dock').getBoundingClientRect().right<=348 && ${root}.querySelector('.dock').getBoundingClientRect().bottom<=468`,
+        `innerWidth===360 && innerHeight===480 && ${root}.querySelector('.dock').offsetWidth===336 && ${root}.querySelector('.dock').offsetHeight===400 && ${root}.querySelector('.dock').getBoundingClientRect().right<=348 && ${root}.querySelector('.dock').getBoundingClientRect().bottom<=412`,
       );
       const compact = await dockBounds();
       expect(compact.width).toBeLessThanOrEqual(336);
-      expect(compact.height).toBeLessThanOrEqual(456);
+      expect(compact.height).toBeLessThanOrEqual(400);
       expect(compact.x + compact.width).toBeLessThanOrEqual(348);
-      expect(compact.y + compact.height).toBeLessThanOrEqual(468);
+      expect(compact.y + compact.height).toBeLessThanOrEqual(412);
+      expect(
+        await js(`(()=>{
+        const panel=${root}.querySelector('.dock').getBoundingClientRect();
+        const launcher=${root}.querySelector('.launcher').getBoundingClientRect();
+        return launcher.top >= panel.bottom && launcher.bottom <= innerHeight &&
+          ['[data-browse]','[data-annotate]','[data-launcher]'].every(selector=>{
+            const button=${root}.querySelector(selector), r=button.getBoundingClientRect();
+            return ${root}.elementFromPoint(r.x+r.width/2,r.y+r.height/2)?.closest(selector)===button;
+          });
+      })()`),
+      ).toBe(true);
       await message("annotation", { open: true });
       expect(await dockBounds()).toEqual({
         x: 0,

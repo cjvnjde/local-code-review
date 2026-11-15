@@ -7,7 +7,7 @@ change; reading, commenting, evidence, and saved conversations must keep working
 | Original capability          | React implementation                                                                                                                                      |
 | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Continuous diff reading      | One virtualized surface, compact sticky headers, wrapped lines or file-local horizontal scrolling, sidebar following and jumps                            |
-| Pane sizing                  | Drag/keyboard resizing, double-click reset, persisted sidebar and conversation widths, draft/scroll retention and mobile drawer                           |
+| Pane sizing                  | Drag/keyboard resizing, persisted widths, draft/scroll retention, readable diff minimum and laptop/mobile drawers                                         |
 | Progress and file controls   | Viewed marks, automatic reading tracking, backtracking, folding, folder controls, hover/focus visibility controls and glob filters                        |
 | Hidden code                  | Up/down/all context expansion, configurable batch size, expandable deleted runs with note protection                                                      |
 | Comment gestures             | Whole-line clicks, Shift extension, forward/reverse drag ranges, character selections across syntax tokens, Alt-drag copying, edge auto-scroll            |
@@ -19,7 +19,7 @@ change; reading, commenting, evidence, and saved conversations must keep working
 | Navigation                   | Session bookmarks, previous/next stepping, persistent reading resume, keyboard shortcuts, narrow-screen navigation                                        |
 | Review search                | Centered global fuzzy search across files, both code sides, notes, captured code, metadata, statuses and replies, including hidden/unmounted content      |
 | Note references              | Stable tokens, `#` suggestions, inline previews including replies, navigation and unavailable/ambiguous handling                                          |
-| Conversation state           | Live replies/statuses, inline reply edits, unread markers, local resolve/reopen invalidated by later conversation changes                                 |
+| Conversation state           | Explicit file/state filters, compact note index, live agent-only unread counts, manual local resolve/reopen invalidated by later conversation changes     |
 | Earlier conversations        | Saved-review switching and continuing demonstrably anchored notes from other reviews with their threads retained                                          |
 | File attachments and context | Arbitrary-file paste/drop/pick, portable local download links, saved context cards, manifest inspection and chunked text reads                            |
 | Color literals               | Safe hex/RGB/HSL inspection, alpha, saved palette, copy and source-preserving edits                                                                       |
@@ -40,7 +40,8 @@ original regression coverage.
 Comment editors and context/color/reference tools stay inline. Explicit image
 preview/drawing actions use a large image workspace. Destructive actions use
 inline confirmation controls. Resolution is a browser acknowledgement, independent
-of an agent's saved verdict; later replies make the note visible again.
+of an agent's saved verdict; later replies make the note visible again. Note
+actions hold secondary commands; redundant captured code is collapsible inline.
 
 The browser storage namespace remains `lcr:v2:*`; old unsaved editor drafts and
 appearance preferences are not migrated automatically. Existing saved Markdown,

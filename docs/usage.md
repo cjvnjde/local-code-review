@@ -32,9 +32,10 @@ Drag the vertical dividers or their full grip handles to resize the file sidebar
 and conversation pane. Focused dividers also accept arrow keys and Home/End;
 double-click resets that pane's width. Widths and panel visibility survive reloads
 and hide/show toggles. Resizing keeps the current code position and open draft;
-narrow screens retain the file picker and conversation drawer.
-Either divider works with the opposite sidebar hidden. The diff yields space to
-either divider instead of locking sidebar growth behind a fixed minimum diff width.
+narrow screens retain the file picker and conversation drawer. Below 1280px the
+file sidebar opens as a drawer; below 960px the notes pane also becomes a drawer.
+Inline panes keep at least 480px for the diff instead of squeezing code behind
+sidebar controls. Either divider works with the opposite sidebar hidden.
 
 The right sidebar has **Notes** and **Bookmarks** tabs. Bookmark a code line from
 its gutter; use the Bookmarks tab or Alt ↑/↓ to return to saved places. Switching
@@ -51,16 +52,16 @@ chevron, or mark it **Viewed** to collapse it and record progress. A navigation 
 reopens it while keeping its viewed mark; a changed file becomes unviewed. Gutter
 arrows reveal omitted context above or below. Middle gaps offer both directions,
 or one unfold control when the batches would meet. The batch size is configurable
-in Settings. The file header's **Fold removed lines**
-button replaces deletions with expandable markers; a run containing a note stays open.
+in Settings. **File actions → Fold removed lines** replaces deletions with
+expandable markers; a run containing a note stays open.
 
-Notes appear inline beside their captured code as well as in the conversation
-pane. **In diff** jumps from a conversation card to that note, reopening its file.
-The pane preserves your reading position when notes or code change. Incoming diff
-updates wait until an open editor closes.
-Captured code is always visible as an integrated diff block in each note, not
-hidden behind a disclosure. Note indicators stay in a fixed gutter slot; saving
-a note never shifts or inserts content into the source line.
+Notes appear inline beside their subject; the conversation pane defaults to a
+compact index rather than duplicating every thread. **In diff** jumps to the
+note, reopening its file. The pane preserves your reading position when notes or
+code change. Incoming diff updates wait until an open editor closes.
+Redundant captured code on inline saved notes is available under **Captured code**.
+Note indicators stay in a fixed gutter slot; saving a note never shifts or
+inserts content into the source line.
 Line-number columns fit the largest old/new line numbers in each file, including
 rows outside the virtualized viewport. They grow when expanded context needs more digits.
 Long code lines wrap by default. Disable **Settings → Wrap long lines** for
@@ -72,8 +73,8 @@ Click code or a line number to comment immediately, drag across lines for a rang
 or drag within a line to select specific characters. Shift-click extends a range;
 Alt-drag keeps normal browser text selection for copying. Comments open directly
 below their subject in a compact bordered card with a distinct input background.
-New, editing, and saved notes share the same card, identity header, and captured-code
-spacing. File-level draft cards keep those same bounds while pinned below a header.
+Locations take precedence over metadata. File-level draft cards remain pinned
+below their file header; saved conversations use a compact identity header.
 **Cancel** clears the selected-line highlight. Re-aiming an overlapping selection
 preserves your draft text and caret; an unrelated click cannot replace a dirty
 draft. The file header offers a file comment; while creating it, the editor stays
@@ -87,12 +88,13 @@ the same compact header; change counts and refresh live in the existing footer.
 
 The editor accepts Markdown, including tables, checklists, and fenced code.
 Typed line breaks remain visible in previews, saved notes, and replies.
-The icon toolbar offers formatting, preview, suggestions, and file attachments;
-hover or focus an icon to see its label. **Suggest change** inserts a fenced replacement
-for the captured lines. Drop or paste files, or use **Attach file**, to attach them
+The toolbar keeps basic formatting and attachments visible, with less-used
+commands under **More formatting** and explicit **Write / Preview** controls.
+**Suggest change** inserts a fenced replacement for the captured lines.
+Drop or paste files, or use **Attach file**, to attach them
 directly to a note or reply (up to 12 MiB each). Files are kept beside the review
 and linked relatively; external images are not loaded.
-Attached images have inline thumbnails, a zoom viewer, and **Draw / edit**. Drawings
+Attached images have inline thumbnails, a zoom viewer, and **Annotate**. Drawings
 retain editable shapes, text, paths, callouts and other tools when reopened.
 **More tools** holds less-used drawing tools; **Options** contains settings for
 the active tool or selected drawing. **Use drawing** returns the result to the
@@ -104,6 +106,8 @@ that note; **Save only** persists without dispatch. Enter saves by default;
 Shift+Enter inserts a newline, and Cmd/Ctrl+Enter always saves. Settings can turn
 off Enter-to-save. The editor retains failed saves and drafts across reloads;
 incoming live updates do not replace their text.
+The editor shows the active submit shortcut and **Draft saved locally** after
+successful browser persistence; storage failures display a warning instead.
 
 AI requests show queued, running, and permission/error states on their note and
 in the footer. Running work includes the agent's current activity when available.
@@ -145,22 +149,23 @@ but never changes captured images, image content, or drawing paint colors.
 
 ## Continue the conversation
 
-The conversation pane shows notes for the selected file plus overall notes.
-**All notes** includes every file, including notes whose file left the diff. Filter
-by **All**, **Open**, or **Done**. The view and filter survive reloads. Applied,
-answered, and skipped notes are done.
+The conversation pane defaults to **All notes** with an **Open** state filter.
+**This file** explicitly scopes the list to the current file; both scopes show
+counts, and empty states distinguish an empty review from a filtered list.
+**All / Open / Resolved** describe reviewer acknowledgement, not agent progress.
+Agent outcomes and activity remain separate.
 
-Use **Cards / List** to toggle a compact Conversation list of paths and note
-previews. Clicking a listed file note jumps to its diff location, reopening hidden
-or viewed files. Overall notes and notes whose files left the diff open their
-conversation instead. The view survives reloads; finish an open conversation editor
-before switching views.
+**View → Compact list / Full conversations** changes how the sidebar presents notes.
+Compact rows show locations, feedback, state, and reply counts. Clicking a note
+jumps to its inline thread, including overall notes. Notes whose files are no
+longer in the diff expand individually in the sidebar; **Back to note list**
+returns to the index. Finish an open conversation
+editor before switching views. View preferences survive reloads.
 
-Reply under a note to follow up. Note actions share a footer below the entire
-conversation, so replies never leave Resolve, Remove, or Ask AI in the middle.
-Unanswered reviewer notes and replies can be edited or deleted. Agent messages
-remain the agent's account. Copy a note's short reference beside its path in the
-header for use in feedback; the full stable ID is kept in the Markdown marker.
+Reply and Resolve stay below the conversation. **Note actions** contains copying
+the stable reference, editing, and deletion; each editable reply has **Reply
+actions**. Agent messages remain the agent's account. Unread counts include only
+incoming agent messages, never your own replies.
 References expand in place to show their note and conversation. Type `#` in a note
 or reply to search notes by reference, file, or text. Use ↑/↓ and Enter/Tab, or click
 a suggestion, to insert its reference; Escape dismisses suggestions. Type `@` to
@@ -242,7 +247,8 @@ Preferences changed in Settings persist under `ui` in
 `$XDG_CONFIG_HOME/lcr/config.json`, or `~/.config/lcr/config.json` when XDG is unset.
 Startup options and relative ACP profile paths are retained.
 
-**Resolve** acknowledges a completed conversation locally. **Show resolved** brings
-it back, and new replies invalidate the acknowledgement automatically. It does not
-change the verdict in Markdown. Notes from earlier reviews can be inspected and
-continued with their original conversation retained. Deletion controls ask inline.
+**Resolve** acknowledges any saved note in this browser, even without an agent.
+The **Resolved** filter brings it back; **Reopen** reverses the acknowledgement.
+New replies and conversation revisions reopen it automatically. Resolution does
+not change the verdict in Markdown. Notes from earlier reviews can be inspected
+and continued with their original conversation retained. Deletion asks inline.

@@ -85,6 +85,7 @@ export function DiffView({
   onReading,
   onAutoViewed,
   draft,
+  draftStorageError,
   onChangeDraft,
   onCloseDraft,
   onSavedDraft,
@@ -105,6 +106,7 @@ export function DiffView({
   onBookmark: (file: DiffFile, row: DiffRow) => void;
   onReading: (anchor: ReadingAnchor) => void;
   draft: Draft | null;
+  draftStorageError: string;
   onChangeDraft: (draft: Draft) => void;
   onCloseDraft: () => void;
   onSavedDraft: () => void;
@@ -569,6 +571,7 @@ export function DiffView({
     draft && draft.host !== "panel" ? (
       <Composer
         draft={draft}
+        draftStorageError={draftStorageError}
         onChange={onChangeDraft}
         onClose={onCloseDraft}
         onSaved={onSavedDraft}
