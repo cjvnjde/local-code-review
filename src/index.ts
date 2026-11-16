@@ -44,7 +44,7 @@ import { startServer } from "./server/http.ts";
 import { collectStatuses } from "./review/status.ts";
 import { hydrateContextDoc } from "./review/web-context.ts";
 import { parseReview } from "./review/thread.ts";
-import { VERSION } from "./version.ts";
+import { RELEASE_VERSION, VERSION } from "./version.ts";
 import { createWebReview } from "./web-review/controller.ts";
 import { isNoise, watchDir, watchTree } from "./server/watch.ts";
 
@@ -70,7 +70,7 @@ async function main() {
   }
   // Asked before anything else: which build this is is answerable outside a repository too.
   if (explicit.version) {
-    console.log(VERSION);
+    console.log(`${VERSION} (${RELEASE_VERSION})`);
     process.exit(0);
   }
   const configFile = userConfigFile();

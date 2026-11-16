@@ -80,7 +80,7 @@ export interface CliOptions {
    * is identified by that name instead of by the diff it was opened on.
    */
   id: string;
-  /** `--version` asks what build this is and nothing else: it prints the stamp and never starts. */
+  /** Print the build stamp and release version without starting a server. */
   version: boolean;
   /** Print usage without touching Git or starting a server. */
   help: boolean;

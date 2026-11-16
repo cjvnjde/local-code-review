@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { VERSION } from "../version.ts";
+import { RELEASE_VERSION, VERSION } from "../version.ts";
 
 const entry = fileURLToPath(new URL("../index.ts", import.meta.url));
 
@@ -44,10 +44,12 @@ test("help and version exit successfully outside a repository", async () => {
       expect(result.stdout).not.toContain("http://localhost:");
       expect(result.stderr).toBe("");
     }
-    const version = await cli(cwd, ["--version"]);
-    expect(version.code).toBe(0);
-    expect(version.stdout.trim()).toBe(VERSION);
-    expect(version.stderr).toBe("");
+    for (const flag of ["--version", "-v"]) {
+      const version = await cli(cwd, [flag]);
+      expect(version.code).toBe(0);
+      expect(version.stdout.trim()).toBe(`${VERSION} (${RELEASE_VERSION})`);
+      expect(version.stderr).toBe("");
+    }
   } finally {
     await rm(cwd, { recursive: true, force: true });
   }

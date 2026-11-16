@@ -129,7 +129,7 @@ Library notices:
 
 Options:
   -h, --help                 Show this help and exit
-  -v, --version              Print the build stamp and exit
+  -v, --version              Print the build stamp and release version, then exit
   --port <number>            Starting port (default: 7777; 0 picks a free port)
   --out <directory>          Review output directory (default: .review)
   --context <lines>          Surrounding diff lines (default: 5)
