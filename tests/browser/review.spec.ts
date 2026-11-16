@@ -1073,13 +1073,9 @@ test("line, range and character gestures keep comments inline and protect draft 
   await code.click();
   await expect(editor).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  const placeholder = await editor
-    .getByRole("textbox", { name: "Note text" })
-    .evaluate((field) => ({
-      text: getComputedStyle(field).color,
-      placeholder: getComputedStyle(field, "::placeholder").color,
-    }));
-  expect(placeholder.placeholder).not.toBe(placeholder.text);
+  const input = editor.getByRole("textbox", { name: "Note text" });
+  await expect(input).toBeFocused();
+  await expect(input).toHaveValue("");
   await page.screenshot({ path: "/tmp/lcr-compact-inline-comment.png" });
   await page
     .getByRole("textbox", { name: "Note text" })

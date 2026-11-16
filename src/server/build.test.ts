@@ -3,7 +3,7 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-test("production bundle processes Tailwind without warnings and preserves highlight styles", async () => {
+test("production bundle compiles React and Tailwind and preserves highlight styles", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "lcr-build-"));
   try {
     const build = Bun.spawn(
@@ -30,6 +30,18 @@ test("production bundle processes Tailwind without warnings and preserves highli
     expect(stdout).toContain("Bundled lcr");
 
     const files = await readdir(directory, { recursive: true });
+    const scripts = (
+      await Promise.all(
+        files
+          .filter((file) => file.endsWith(".js"))
+          .map((file) => Bun.file(path.join(directory, file)).text()),
+      )
+    ).join("\n");
+    // A runtime reference alone does not prove our components were compiled.
+    expect(
+      scripts.match(/Symbol\.for\("react\.memo_cache_sentinel"\)/g)?.length ??
+        0,
+    ).toBeGreaterThan(20);
     const css = (
       await Promise.all(
         files
@@ -49,4 +61,4 @@ test("production bundle processes Tailwind without warnings and preserves highli
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
-});
+}, 30_000);

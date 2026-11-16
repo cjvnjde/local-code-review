@@ -1,5 +1,11 @@
 import { Autocomplete } from "@base-ui/react/autocomplete";
-import { useEffect, useMemo, useState, type RefObject } from "react";
+import {
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useState,
+  type RefObject,
+} from "react";
 import { X } from "lucide-react";
 import type { DiffFile, ReviewNote } from "../../../shared/review-types.ts";
 import {
@@ -18,22 +24,39 @@ export function useSearchResults(
   notes: ReviewNote[],
   query: string,
 ) {
-  const documents = useMemo(
-    () =>
-      searchDocuments(
-        files,
-        notes,
-        new Map(notes.map((note) => [note.id, note.messages])),
-        new Map(
-          notes.map((note) => [
-            note.id,
-            { status: note.status, detail: note.detail },
-          ]),
-        ),
-      ),
-    [files, notes],
+  const deferredQuery = useDeferredValue(query);
+  const active = !!deferredQuery.trim();
+  // Code only changes with the diff. A new note must not rebuild tens of
+  // thousands of code documents, especially while search is unused.
+  const codeDocuments = useMemo(
+    () => (active ? searchDocuments(files, [], new Map(), new Map()) : []),
+    [files, active],
   );
-  return useMemo(() => searchReview(documents, query), [documents, query]);
+  const noteDocuments = useMemo(
+    () =>
+      active
+        ? searchDocuments(
+            [],
+            notes,
+            new Map(notes.map((note) => [note.id, note.messages])),
+            new Map(
+              notes.map((note) => [
+                note.id,
+                { status: note.status, detail: note.detail },
+              ]),
+            ),
+          )
+        : [],
+    [notes, active],
+  );
+  const documents = useMemo(
+    () => [...codeDocuments, ...noteDocuments],
+    [codeDocuments, noteDocuments],
+  );
+  return useMemo(
+    () => searchReview(documents, deferredQuery),
+    [documents, deferredQuery],
+  );
 }
 
 function ResultContent({

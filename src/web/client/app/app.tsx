@@ -27,7 +27,7 @@ import { useUi } from "./ui-preferences.tsx";
 import { useThemes } from "./themes.tsx";
 import { ImageScope } from "../components/images.tsx";
 import { imageEditorOwner } from "../components/image-preview.ts";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   GitPullRequest,
   Search,
@@ -129,6 +129,24 @@ export function App() {
 const reviewFilename = (value: string) =>
   value.slice(Math.max(value.lastIndexOf("/"), value.lastIndexOf("\\")) + 1);
 
+function HeaderButton({
+  label,
+  children,
+  onClick,
+}: {
+  label: string;
+  children: React.ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <Tooltip label={label}>
+      <Button variant="ghost" size="icon" aria-label={label} onClick={onClick}>
+        {children}
+      </Button>
+    </Tooltip>
+  );
+}
+
 function Workspace({
   diff: incomingDiff,
   review,
@@ -162,10 +180,6 @@ function Workspace({
   const navigation = useRef<HTMLElement>(null);
   const scope = `${diff.repo}:${diff.id ? `#${diff.id}` : diff.range}`;
   const noteState = useReviewState(scope);
-  useReplyNotifications(review, scope, (note) => {
-    jumpToNote(note);
-    if (!notesInline) setNotesOpen(false);
-  });
   const [bulkDelete, setBulkDelete] = useState<string[]>([]);
   const [draft, setDraft, storageError] = useStored<Draft | null>(
     `lcr:v2:draft:${scope}`,
@@ -225,6 +239,8 @@ function Workspace({
     `lcr:v2:visibility:${scope}`,
     {},
   );
+  const files = useMemo(() => orderFiles(diff.files), [diff.files]);
+  const followed = useRef("");
   function reveal(path: string, go: () => void) {
     const target = diff.files.find((file) => file.path === path);
     if (!target || !fileHidden(target, settings, visibility)) {
@@ -263,6 +279,10 @@ function Workspace({
     }
     reveal(note.file, () => diffView.current?.scrollToNote(note));
   }
+  useReplyNotifications(review, scope, (note) => {
+    jumpToNote(note);
+    if (!notesInline) setNotesOpen(false);
+  });
   useEffect(() => {
     if (
       !roundTarget ||
@@ -297,17 +317,18 @@ function Workspace({
     window.addEventListener("beforeunload", guard);
     return () => window.removeEventListener("beforeunload", guard);
   }, [draft, busy]);
-  const files = useMemo(() => orderFiles(diff.files), [diff.files]);
+  const { hide, hideEnabled, disabledHide, hideDeleted } = settings;
   const visibleFiles = useMemo(
-    () => files.filter((file) => !fileHidden(file, settings, visibility)),
-    [
-      files,
-      settings.hide,
-      settings.hideEnabled,
-      settings.disabledHide,
-      settings.hideDeleted,
-      visibility,
-    ],
+    () =>
+      files.filter(
+        (file) =>
+          !fileHidden(
+            file,
+            { hide, hideEnabled, disabledHide, hideDeleted },
+            visibility,
+          ),
+      ),
+    [files, hide, hideEnabled, disabledHide, hideDeleted, visibility],
   );
   const reading = useReadingNavigation(scope, files);
   const bookmarkAt = useRef(-1);
@@ -401,6 +422,7 @@ function Workspace({
   }, [overallDraft, overallOpen]);
   const activeDraft =
     draft && (draft.kind === "note" ? draft.comment.id : draft.id);
+  const draftFile = draft?.kind === "note" ? draft.comment.file : draft?.file;
   const visibleNotes = useMemo(
     () =>
       notes.filter(
@@ -411,7 +433,6 @@ function Workspace({
       ),
     [notes, noteState, filter, activeDraft, triageFilter],
   );
-  const followed = useRef("");
   useEffect(() => {
     const follow = (event?: HashChangeEvent) => {
       const ref = new URLSearchParams(location.hash.slice(1)).get("note");
@@ -448,20 +469,21 @@ function Workspace({
   const listed = notes
     .filter(
       (note) =>
-        (draft?.host === "panel" &&
-          (draft.kind === "note" ? draft.comment.id : draft.id) === note.id) ||
+        (draft?.host === "panel" && activeDraft === note.id) ||
         ((allNotes || note.file === file?.path) &&
           (triageFilter === "all" || (note.triage || "") === triageFilter) &&
           (filter === "all" ||
             (filter === "resolved") === noteState.resolved(note))),
     )
-    .sort(
-      (a, b) =>
-        (a.scope === "global" ? -1 : (fileOrder.get(a.file) ?? 1e9)) -
-          (b.scope === "global" ? -1 : (fileOrder.get(b.file) ?? 1e9)) ||
+    .sort((a, b) => {
+      const aFile = a.scope === "global" ? -1 : (fileOrder.get(a.file) ?? 1e9);
+      const bFile = b.scope === "global" ? -1 : (fileOrder.get(b.file) ?? 1e9);
+      if (aFile !== bFile) return aFile - bFile;
+      return (
         (a.scope === "file" ? -1 : a.start) -
-          (b.scope === "file" ? -1 : b.start),
-    );
+        (b.scope === "file" ? -1 : b.start)
+      );
+    });
   const viewed = files.filter((f) => marks[f.path] === f.hash).length;
   const progress = files.length ? Math.round((viewed / files.length) * 100) : 0;
   const open = notes.filter((note) => !noteState.resolved(note)).length;
@@ -536,6 +558,14 @@ function Workspace({
         ?.focus({ preventScroll: true });
     } else diffView.current?.focusEditor();
   }
+  // File visibility is an event, not rendered draft state. Keep its callback
+  // stable so opening/closing an editor does not rerender every file-tree row.
+  const visibilityGuard = useRef<{ file?: string; focus: () => void } | null>(
+    null,
+  );
+  useLayoutEffect(() => {
+    visibilityGuard.current = { file: draftFile, focus: focusEditor };
+  }, [draftFile, focusEditor]);
   const compose = (next: Draft) => {
     if (!review || busy || (draft && draft.review !== review.file)) {
       focusEditor();
@@ -622,12 +652,13 @@ function Workspace({
       focusEditor();
       return;
     }
+    const mutation = {
+      url: "/api/review",
+      method: name ? "PUT" : "DELETE",
+      ...(name ? { body: { file: name } } : {}),
+    };
     try {
-      await action.mutateAsync({
-        url: "/api/review",
-        method: name ? "PUT" : "DELETE",
-        ...(name ? { body: { file: name } } : {}),
-      });
+      await action.mutateAsync(mutation);
       setDraft(null);
       if (target) setRoundTarget(target);
       if (!name) {
@@ -639,13 +670,6 @@ function Workspace({
       /* Show the server error without discarding the draft. */
     }
   }
-  const icon = (label: string, content: React.ReactNode, click: () => void) => (
-    <Tooltip label={label}>
-      <Button variant="ghost" size="icon" aria-label={label} onClick={click}>
-        {content}
-      </Button>
-    </Tooltip>
-  );
   return (
     <Autocomplete.Root
       items={suggestions}
@@ -676,16 +700,20 @@ function Workspace({
           >
             <div className="flex h-dvh min-w-0 flex-col bg-background text-foreground">
               <header className="relative z-30 flex h-12 shrink-0 items-center gap-1 border-b bg-card px-2 sm:gap-2 sm:px-3">
-                {icon(
-                  fileSidebarVisible
-                    ? "Hide file sidebar"
-                    : "Show file sidebar",
-                  fileSidebarVisible ? <PanelLeftClose /> : <PanelLeft />,
-                  () =>
+                <HeaderButton
+                  label={
+                    fileSidebarVisible
+                      ? "Hide file sidebar"
+                      : "Show file sidebar"
+                  }
+                  onClick={() =>
                     wideLayout
                       ? setNavOpen(!navOpen)
-                      : setFileDrawerOpen(!fileDrawerOpen),
-                )}
+                      : setFileDrawerOpen(!fileDrawerOpen)
+                  }
+                >
+                  {fileSidebarVisible ? <PanelLeftClose /> : <PanelLeft />}
+                </HeaderButton>
                 <Tooltip label="New review">
                   <Button
                     variant="ghost"
@@ -836,17 +864,24 @@ function Workspace({
                     )}
                   </div>
                   <div className="hidden sm:contents">
-                    {icon("Review history", <HistoryIcon />, () =>
-                      setDialog("history"),
-                    )}
-                    {icon(
-                      dark ? "Light theme" : "Dark theme",
-                      dark ? <Sun /> : <Moon />,
-                      toggleMode,
-                    )}
-                    {icon("Settings", <Settings2 />, () =>
-                      setDialog("settings"),
-                    )}
+                    <HeaderButton
+                      label="Review history"
+                      onClick={() => setDialog("history")}
+                    >
+                      <HistoryIcon />
+                    </HeaderButton>
+                    <HeaderButton
+                      label={dark ? "Light theme" : "Dark theme"}
+                      onClick={toggleMode}
+                    >
+                      {dark ? <Sun /> : <Moon />}
+                    </HeaderButton>
+                    <HeaderButton
+                      label="Settings"
+                      onClick={() => setDialog("settings")}
+                    >
+                      <Settings2 />
+                    </HeaderButton>
                   </div>
                   <details
                     className="relative sm:hidden"
@@ -889,15 +924,16 @@ function Workspace({
                       </Button>
                     </div>
                   </details>
-                  {icon(
-                    notesOpen ? "Hide notes panel" : "Show notes panel",
-                    notesOpen ? <PanelRightClose /> : <PanelRight />,
-                    () => {
+                  <HeaderButton
+                    label={notesOpen ? "Hide notes panel" : "Show notes panel"}
+                    onClick={() => {
                       if (notesOpen && draft?.host === "panel" && !overallDraft)
                         focusEditor();
                       else setNotesOpen(!notesOpen);
-                    },
-                  )}
+                    }}
+                  >
+                    {notesOpen ? <PanelRightClose /> : <PanelRight />}
+                  </HeaderButton>
                 </div>
               </header>
               {draft && (
@@ -959,15 +995,12 @@ function Workspace({
                         visibility={visibility}
                         onJump={jumpToFile}
                         onHide={(paths, hidden) => {
+                          const guard = visibilityGuard.current;
                           if (
-                            draft &&
-                            paths.includes(
-                              draft.kind === "note"
-                                ? draft.comment.file
-                                : draft.file,
-                            )
+                            guard?.file !== undefined &&
+                            paths.includes(guard.file)
                           ) {
-                            focusEditor();
+                            guard.focus();
                             return;
                           }
                           setVisibility((current) => ({

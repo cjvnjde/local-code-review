@@ -19,6 +19,7 @@ type FolderNode = {
   name: string;
   directories: Map<string, FolderNode>;
   files: DiffFile[];
+  descendants: DiffFile[];
 };
 export function FileTree({
   files,
@@ -50,10 +51,12 @@ export function FileTree({
       name: "",
       directories: new Map(),
       files: [],
+      descendants: [],
     };
     for (const file of files) {
       const parts = file.path.split("/");
       let node = root;
+      node.descendants.push(file);
       for (const name of parts.slice(0, -1)) {
         const path = node.path ? `${node.path}/${name}` : name;
         if (!node.directories.has(name))
@@ -62,8 +65,10 @@ export function FileTree({
             name,
             directories: new Map(),
             files: [],
+            descendants: [],
           });
         node = node.directories.get(name)!;
+        node.descendants.push(file);
       }
       node.files.push(file);
     }
@@ -74,9 +79,7 @@ export function FileTree({
     return (
       <>
         {[...node.directories.values()].map((directory) => {
-          const descendants = files.filter((file) =>
-            file.path.startsWith(directory.path + "/"),
-          );
+          const descendants = directory.descendants;
           const closed = folded.includes(directory.path);
           return (
             <div key={directory.path}>

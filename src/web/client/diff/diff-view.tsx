@@ -115,6 +115,9 @@ export function DiffView({
   onBusy: (busy: boolean) => void;
   ref?: Ref<DiffViewHandle>;
 }) {
+  "use no memo";
+  // TanStack Virtual exposes a stable mutable instance. Its range and measured
+  // offsets must be read on every scroll render, not cached by React Compiler.
   const { settings } = useUi();
   const manualTop = useRef({ top: 0, at: Date.now() });
   const lastScroll = useRef(0);
@@ -234,13 +237,20 @@ export function DiffView({
       settings.wrapLines,
     ],
   );
-  const editorIndex = items.findIndex(
-    (item) =>
-      item.kind === "editor" ||
-      (item.kind === "note" &&
-        draft?.host !== "panel" &&
-        (draft?.kind === "note" ? draft.comment.id : draft?.id) ===
-          item.note.id),
+  const editingId =
+    draft?.host !== "panel"
+      ? draft?.kind === "note"
+        ? draft.comment.id
+        : draft?.id
+      : undefined;
+  const editorIndex = useMemo(
+    () =>
+      items.findIndex(
+        (item) =>
+          item.kind === "editor" ||
+          (item.kind === "note" && editingId === item.note.id),
+      ),
+    [items, editingId],
   );
   const stickyEditor =
     editorIndex >= 0 &&

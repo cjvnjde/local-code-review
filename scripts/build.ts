@@ -1,5 +1,6 @@
 import tailwind from "bun-plugin-tailwind";
 import path from "node:path";
+import reactCompiler from "./react-compiler.ts";
 
 // One pipeline for local checks, standalone builds, and release cross-compilation.
 const args = process.argv.slice(2);
@@ -17,7 +18,7 @@ const result = await Bun.build({
   entrypoints: [path.resolve(import.meta.dir, "../src/index.ts")],
   target: "bun",
   minify: true,
-  plugins: [tailwind],
+  plugins: [reactCompiler, tailwind],
   define: { "process.env.NODE_ENV": JSON.stringify("production") },
   ...(bundle
     ? { outdir: outfile }

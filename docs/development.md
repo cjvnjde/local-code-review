@@ -14,7 +14,21 @@ bun run dev
 
 `bun run start -- --no-open` runs once without opening a browser. `bun run dev`
 restarts the server when source changes. Bun's HTML bundler handles React and CSS;
-`bunfig.toml` enables the Tailwind plugin for source runs.
+`bunfig.toml` enables the React Compiler and Tailwind plugins for source runs.
+
+`scripts/react-compiler.ts` runs the stable React Compiler on browser TypeScript
+and JSX before Bun transforms them. The release build uses the same plugin;
+Babel and the compiler are development dependencies only. Compiler diagnostics
+are checked against the workspace, file tree, and reference provider in
+`src/server/react-compiler.test.ts`, so installing the plugin without actually
+optimizing these components fails validation. The production bundle test also
+checks for emitted memoization. The mutable TanStack virtualizer explicitly opts
+out of automatic memoization so scroll ranges and measurements stay current.
+
+Keep navigation callbacks independent of draft text. Reading a draft inside a
+callback passed to the file tree can invalidate thousands of rows on each key.
+Code search documents are built only when searching and cached separately from
+the conversation documents.
 
 ## Stack
 
@@ -109,10 +123,9 @@ bun run test:browser
 ```
 
 `check` type-checks the React application, CLI, backend, and shared imports, runs
-Bun tests, and bundles the whole application. The build script uses the same Tailwind plugin
+Bun tests, and bundles the whole application. The build script uses the same React Compiler and Tailwind plugins
 and compiles both the server and HTML assets into one executable. Use this script
-instead of calling `bun build` directly, which does not register the Tailwind
-build plugin.
+instead of calling `bun build` directly, which does not register these build plugins.
 
 For a custom executable name, use `bun run build -- --outfile lcr2`. The script
 already enables minification and compilation. Direct `bun build` leaves Tailwind
@@ -144,6 +157,12 @@ notes and live agent replies, recover a draft, test a large diff and narrow layo
 and restart the executable to verify Markdown adoption. Traces are kept on failure.
 The source-level CDP lifecycle and page-overlay tests remain available with
 `LCR_TEST_BROWSER=1 bun test ./src`.
+
+`bun run test:browser tests/browser/performance.spec.ts` exercises 1,982 files,
+26,838 additions, and 58,880 deletions under 4× CPU throttling. It measures
+input-to-paint inside the page, checks a bounded virtual window, and reloads to
+verify synchronous draft persistence. Set `LCR_TEST_BINARY` to compare an existing
+standalone executable without rebuilding it.
 
 Format changed files on demand:
 
