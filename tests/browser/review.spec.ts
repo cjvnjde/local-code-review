@@ -906,18 +906,47 @@ test("file headers stay pinned before scroll handlers run and retain focus witho
   });
   for (const offset of offsets) expect(Math.abs(offset)).toBeLessThan(1);
 
-  const actions = header.getByRole("button", {
-    name: "File actions for untracked.ts",
+  await page.route("**/api/open-file", (route) =>
+    route.fulfill({ json: { ok: true } }),
+  );
+  const openInEditor = header.getByRole("button", {
+    name: "Open untracked.ts in editor",
     exact: true,
   });
   const top = await pane.evaluate((element) => element.scrollTop);
+  await openInEditor.focus();
+  await expect(openInEditor).toBeFocused();
+  const opening = page.waitForRequest("**/api/open-file");
+  await openInEditor.press("Enter");
+  const request = await opening;
+  expect(request.method()).toBe("POST");
+  expect(request.postDataJSON()).toEqual({
+    path: "untracked.ts",
+    editor: DEFAULT_UI_SETTINGS.editor,
+  });
+  await expect(openInEditor).toBeEnabled();
+  expect(await pane.evaluate((element) => element.scrollTop)).toBe(top);
+
+  // Files with removed lines still offer both actions in a menu.
+  await page
+    .getByRole("navigation")
+    .locator('button[title="src/app.ts"]')
+    .click();
+  const actions = pane.getByRole("button", {
+    name: "File actions for src/app.ts",
+    exact: true,
+  });
+  const menuTop = await pane.evaluate((element) => element.scrollTop);
   await actions.click();
   await expect(
     page.getByRole("menuitem", { name: "Open in editor", exact: true }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("menuitem", { name: "Fold removed lines", exact: true }),
+  ).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(actions).toBeFocused();
-  expect(await pane.evaluate((element) => element.scrollTop)).toBe(top);
+  expect(await pane.evaluate((element) => element.scrollTop)).toBe(menuTop);
 });
 
 test("adding an offscreen editor and saving a note never navigates away from the reader", async ({
@@ -1415,6 +1444,9 @@ test("bookmarks, full review search, references and context stay usable across n
   await seed.getByRole("button", { name: "Reply", exact: true }).click();
   const reply = seed.getByRole("textbox", { name: "Note text", exact: true });
   await reply.fill("Keep this draft across sidebar tabs");
+  await expect(
+    seed.getByRole("button", { name: "Delete note", exact: true }),
+  ).toBeDisabled();
   await bookmarksTab.click();
   await expect(reply).toBeHidden();
   await sidebar.getByRole("tab", { name: "Notes", exact: true }).click();
@@ -1537,14 +1569,42 @@ test("bookmarks, full review search, references and context stay usable across n
     card.getByText("Some independently readable context", { exact: true }),
   ).toBeHidden();
   // Deletion confirmation belongs to the card; it never invokes a native popup.
-  await card.getByRole("button", { name: "Note actions", exact: true }).click();
+  const deleteNote = card.getByRole("button", {
+    name: "Delete note",
+    exact: true,
+  });
+  await card.getByRole("button", { name: "Reply", exact: true }).click();
+  await card
+    .getByRole("textbox", { name: "Note text", exact: true })
+    .fill("Temporary reviewer reply");
+  await card.getByRole("button", { name: "Send reply", exact: true }).click();
+  const ownReply = card.getByRole("region", {
+    name: "Your reply",
+    exact: true,
+  });
+  await ownReply.getByRole("button", { name: "Reply actions" }).click();
   await page
-    .getByRole("menuitem", { name: "Delete note", exact: true })
+    .getByRole("menuitem", { name: "Delete reply", exact: true })
     .click();
+  await card.getByRole("button", { name: "Delete", exact: true }).click();
+  await expect(ownReply).toHaveCount(0);
+  await expect(deleteNote).toBeFocused();
+
+  await deleteNote.click();
   await expect(
     card.getByText("Delete this note and its conversation?", { exact: true }),
   ).toBeVisible();
-  await card.getByRole("button", { name: "Keep", exact: true }).click();
+  const keep = card.getByRole("button", { name: "Keep", exact: true });
+  await expect(keep).toBeFocused();
+  await keep.press("Escape");
+  await expect(deleteNote).toBeFocused();
+  await expect(keep).toHaveCount(0);
+  await deleteNote.press("Enter");
+  await keep.click();
+  await expect(deleteNote).toBeFocused();
+  await deleteNote.click();
+  await card.getByRole("button", { name: "Delete", exact: true }).click();
+  await expect(card).toHaveCount(0);
 });
 
 test("folder controls, color edits and local resolution preserve the underlying conversation", async ({

@@ -71,21 +71,21 @@ export function NoteCard({
   const [removing, setRemoving] = useState<string | null>(null);
   const [copyFailed, setCopyFailed] = useState(false);
   const confirmation = useRef<HTMLButtonElement>(null);
-  const menuTriggers = useRef(new Map<string, HTMLElement>());
+  const actionTriggers = useRef(new Map<string, HTMLElement>());
   useEffect(() => {
     if (!removing) return;
     const frame = requestAnimationFrame(() => confirmation.current?.focus());
     return () => cancelAnimationFrame(frame);
   }, [removing]);
   const cancelRemoval = () => {
-    if (removing) menuTriggers.current.get(removing)?.focus();
+    if (removing) actionTriggers.current.get(removing)?.focus();
     setRemoving(null);
   };
   const menuTrigger = (key: string, label: string) => (
     <Button
       ref={(element) => {
-        if (element) menuTriggers.current.set(key, element);
-        else menuTriggers.current.delete(key);
+        if (element) actionTriggers.current.set(key, element);
+        else actionTriggers.current.delete(key);
       }}
       size="icon"
       variant="ghost"
@@ -182,14 +182,21 @@ export function NoteCard({
           {state.resolved(note) ? "Reopen" : "Resolve"}
         </Button>
       )}
-      <ActionMenu trigger={menuTrigger("note", "Note actions")}>
-        <ActionMenuItem
-          disabled={action.isPending || !!editor}
-          onClick={() => setRemoving("note")}
-        >
-          <Trash2 /> Delete note
-        </ActionMenuItem>
-      </ActionMenu>
+      <Button
+        ref={(element) => {
+          if (element) actionTriggers.current.set("note", element);
+          else actionTriggers.current.delete("note");
+        }}
+        size="icon"
+        variant="ghost"
+        className="size-7 rounded"
+        aria-label="Delete note"
+        title="Delete note"
+        disabled={action.isPending || !!editor}
+        onClick={() => setRemoving("note")}
+      >
+        <Trash2 />
+      </Button>
     </NoteHeader>
   );
   return (
@@ -480,8 +487,11 @@ export function NoteCard({
                 },
                 {
                   onSuccess: () => {
+                    // Wait for the note action to re-enable after the mutation.
                     if (removing !== "note")
-                      menuTriggers.current.get("note")?.focus();
+                      requestAnimationFrame(() =>
+                        actionTriggers.current.get("note")?.focus(),
+                      );
                     setRemoving(null);
                   },
                 },

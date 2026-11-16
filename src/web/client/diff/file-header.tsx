@@ -38,6 +38,12 @@ export function FileHeader({
 }) {
   const action = useAction();
   const { settings } = useUi();
+  const openInEditor = () =>
+    action.mutate({
+      url: "/api/open-file",
+      method: "POST",
+      body: { path: file.path, editor: settings.editor },
+    });
   return (
     <div className="relative min-w-0 max-w-full border-y bg-card [overflow-wrap:anywhere]">
       <div className="flex min-h-10 min-w-0 items-center gap-1 px-2 py-1">
@@ -88,38 +94,42 @@ export function FileHeader({
             <MessageSquarePlus />
           </Button>
         </Tooltip>
-        <ActionMenu
-          trigger={
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-8"
-              aria-label={`File actions for ${file.path}`}
-            >
-              <MoreHorizontal />
-            </Button>
-          }
-        >
-          {file.removed > 0 && (
+        {file.removed > 0 ? (
+          <ActionMenu
+            trigger={
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8"
+                aria-label={`File actions for ${file.path}`}
+              >
+                <MoreHorizontal />
+              </Button>
+            }
+          >
             <ActionMenuItem onClick={onRemoved}>
               <ListMinus />
               {removed ? "Show removed lines" : "Fold removed lines"}
             </ActionMenuItem>
-          )}
-          <ActionMenuItem
-            disabled={action.isPending}
-            onClick={() =>
-              action.mutate({
-                url: "/api/open-file",
-                method: "POST",
-                body: { path: file.path, editor: settings.editor },
-              })
-            }
-          >
-            <ExternalLink />
-            Open in editor
-          </ActionMenuItem>
-        </ActionMenu>
+            <ActionMenuItem disabled={action.isPending} onClick={openInEditor}>
+              <ExternalLink />
+              Open in editor
+            </ActionMenuItem>
+          </ActionMenu>
+        ) : (
+          <Tooltip label="Open in editor">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8"
+              aria-label={`Open ${file.path} in editor`}
+              disabled={action.isPending}
+              onClick={openInEditor}
+            >
+              <ExternalLink />
+            </Button>
+          </Tooltip>
+        )}
         <RelatedReviews file={file} blocked={blocked} />
       </div>
       {action.error && (
