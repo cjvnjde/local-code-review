@@ -39,14 +39,14 @@ mise upgrade github:cjvnjde/local-code-review
 To pin a release for a project, run this in that project's directory:
 
 ```sh
-mise use github:cjvnjde/local-code-review@2.0.2
+mise use github:cjvnjde/local-code-review@2.0.3
 ```
 
-This writes the version to `mise.toml`; others can run `mise install` to install it. The version is the release tag without its leading `v`. `lcr --version` prints both the executable's source build stamp and release version, for example `2026-11-16.1 (v2.0.2)`. The release version comes from `package.json`, which matches the release tag, and is embedded in the executable; source builds show the same release version until it is bumped.
+This writes the version to `mise.toml`; others can run `mise install` to install it. The version is the release tag without its leading `v`. `lcr --version` prints both the executable's source build stamp and release version, for example `2026-11-16.4 (v2.0.3)`. The release version comes from `package.json`, which matches the release tag, and is embedded in the executable; source builds show the same release version until it is bumped.
 
 Mise's [minimum-release-age policy](https://mise.jdx.dev/configuration/settings.html#minimum_release_age)
 can keep `@latest` and upgrades on an older release immediately after publication.
-Use an explicit version such as `@2.0.2` to install a just-published release without
+Use an explicit version such as `@2.0.3` to install a just-published release without
 changing your global safety settings.
 
 If you previously installed `lcr` in `~/.local/bin`, check `which lcr` (or `where.exe lcr` on Windows) after switching. An older executable earlier on `PATH` can still take precedence. `mise exec github:cjvnjde/local-code-review@latest -- lcr --version` explicitly runs the mise-managed version. Restart running lcr instances after updating.
