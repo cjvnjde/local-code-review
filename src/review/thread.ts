@@ -136,6 +136,17 @@ const namesNote = (key: string): boolean =>
   WHOLE_FILE.test(key) ||
   LEGACY.test(key.replace(OLD_SIDE, ""));
 
+/** A file section starts with the heading of one of that file's notes. */
+function groupsNote(group: string, next: string): boolean {
+  const heading = H3.exec(next)?.[1];
+  if (!heading) return false;
+  const key = heading.replace(MARKER, "").replace(OLD_SIDE, "").trim();
+  if (OVERALL.test(key)) return group.toLowerCase() === "overall";
+  return WHOLE_FILE.test(key)
+    ? key.replace(WHOLE_FILE, "") === group
+    : LEGACY.exec(key)?.[1] === group;
+}
+
 /** Tracks fenced regions so captured code containing anything at all cannot be read as structure. */
 class Fences {
   private open = "";
@@ -280,12 +291,15 @@ function split(
   const head: Preamble = { range: "", id: "", branch: "", base: "" };
   let current: RawSection | null = null;
   let inGeneral = false;
-  // Whether the section being read has reached its thread. A thread only exists in a file this
-  // version wrote, and this version marks every heading it writes, so an unmarked heading below one
-  // is the agent writing Markdown in its reply rather than a note starting.
+  // Replies can start with a speaker line or directly after the verdict in a hand-edited review.
   let threaded = false;
 
-  for (const line of markdown.split("\n")) {
+  // lcr writes LF separators, but captured CRLF source rows can carry a literal trailing CR.
+  // Only remove CR as a Markdown line ending when the document itself uses CRLF.
+  const usesCRLF = markdown[markdown.indexOf("\n") - 1] === "\r";
+  const lines = markdown.split(usesCRLF ? /\r?\n/ : "\n");
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index]!;
     // A sealed line is lcr's own structure, so it closes a fence rather than being read inside one.
     const seal = sealed(line);
     if (seal) fences.reset();
@@ -300,8 +314,7 @@ function split(
       threaded = false;
       continue;
     }
-    // The speaker line stays in the section — it is what `readSection` cuts the thread on.
-    if (seal && MESSAGE.test(line)) threaded = true;
+    if (current && (MESSAGE.test(line) || STATUS.test(line))) threaded = true;
     const third = H3.exec(line);
     if (third && (seal || !threaded || namesNote(third[1] as string))) {
       current = { heading: third[1] as string, lines: [] };
@@ -310,16 +323,31 @@ function split(
       threaded = false;
       continue;
     }
-    // A file heading, a rule, and a title stay boundaries inside a thread as well: they are what a
-    // file older than `lcr:end` ends on, and a `##` in a reply is rarer than the `###` above.
     const second = H2.exec(line);
+    const rule = /^-{3,}\s*$/.test(line);
+    if (current && threaded && (second || rule || H1.test(line))) {
+      // Agents write ordinary Markdown directly. Keep headings and rules in their replies
+      // unless they introduce the next file's notes or the working agreement in an older file.
+      let next = index + 1;
+      while (next < lines.length && !lines[next]!.trim()) next++;
+      const following = lines[next] ?? "";
+      const footer = "## How to work through this file";
+      if (
+        !(second && groupsNote(second[1]!, following)) &&
+        line !== footer &&
+        !(rule && following === footer)
+      ) {
+        current.lines.push(line);
+        continue;
+      }
+    }
     if (second) {
       current = null;
       inGeneral = (second[1] as string).trim().toLowerCase() === "overall";
       threaded = false;
       continue;
     }
-    if (H1.test(line) || /^-{3,}\s*$/.test(line)) {
+    if (H1.test(line) || rule) {
       current = null;
       inGeneral = false;
       threaded = false;

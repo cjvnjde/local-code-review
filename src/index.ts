@@ -32,7 +32,12 @@ import {
 } from "./git/diff.ts";
 import { openInEditor } from "./cli/editor.ts";
 import { createHub } from "./server/events.ts";
-import { currentBranch, findRepoRoot, runGit } from "./git/commands.ts";
+import {
+  currentBranch,
+  findRepoRoot,
+  gitIndexPath,
+  runGit,
+} from "./git/commands.ts";
 import { collectGhosts, describeReviews } from "./review/history.ts";
 import {
   deleteReviews,
@@ -101,10 +106,11 @@ async function main() {
 
   // The revisions the diff is between are fixed by the arguments it was started with, so they are
   // worked out once; what they point at — the working tree, the index — is re-read on every request.
-  const [branch, base, sides] = await Promise.all([
+  const [branch, base, sides, indexPath] = await Promise.all([
     currentBranch(repoRoot),
     diffBase(diffSource),
     diffSides(diffSource),
+    gitIndexPath(repoRoot),
   ]);
   const backend = createTreeSitter({ enabled: options.treeSitter });
   const syntax = createDiffSyntax(
@@ -307,17 +313,21 @@ async function main() {
   };
 
   /** Fingerprint of the whole diff, so a save that changes nothing does not repaint the page. */
-  let digest = fingerprint(
+  let digest: string | undefined = fingerprint(
     initialDiff.map((file) => `${file.path}:${file.hash}`).join("\n"),
   );
   let checking = false;
   let recheck = false;
   async function checkDiff(): Promise<void> {
-    // A change is only worth announcing while a page is listening for it.
-    if (!hub.size) return;
     // An edit that lands while git is running would otherwise be the one nobody hears about.
     if (checking) {
       recheck = true;
+      return;
+    }
+    // A reconnecting page fetches its own snapshot. A later edit can restore the
+    // old fingerprint while still changing what that page currently displays.
+    if (!hub.size) {
+      digest = undefined;
       return;
     }
     checking = true;
@@ -326,7 +336,7 @@ async function main() {
       const next = fingerprint(
         files.map((file) => `${file.path}:${file.hash}`).join("\n"),
       );
-      if (digest && next !== digest) hub.emit({ type: "diff" });
+      if (next !== digest) hub.emit({ type: "diff" });
       digest = next;
     } catch {
       // A diff that cannot be produced right now is reported by the page's own fetch.
@@ -341,6 +351,13 @@ async function main() {
 
   const watchers = [
     watchTree(repoRoot, () => checkDiff(), { ignore: ignoreTree }),
+    // Staging changes only the index. Git replaces it atomically, including in linked worktrees.
+    watchDir(
+      path.dirname(indexPath),
+      checkDiff,
+      120,
+      (file) => file !== path.basename(indexPath),
+    ),
     watchDir(
       outPath,
       () => {

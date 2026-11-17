@@ -123,6 +123,15 @@ export async function findRepoRoot(): Promise<string> {
   return (await runGit(["rev-parse", "--show-toplevel"])).trim();
 }
 
+export async function gitIndexPath(repoRoot: string): Promise<string> {
+  return (
+    await runGit(
+      ["rev-parse", "--path-format=absolute", "--git-path", "index"],
+      repoRoot,
+    )
+  ).trimEnd();
+}
+
 /** Name of the checked-out branch, or empty on a detached HEAD or when git cannot say. */
 export async function currentBranch(cwd?: string): Promise<string> {
   try {

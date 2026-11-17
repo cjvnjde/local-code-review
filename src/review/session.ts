@@ -533,10 +533,12 @@ export function createSession(
       id: string,
       target: WebAnnotationTarget,
       annotation: WebAnnotation | null,
+      expectedReview?: string,
     ): Promise<ReviewNote | null> {
       const clean = annotation === null ? null : webAnnotation(annotation),
         where = webAnnotationTarget(target);
       return serialise(async () => {
+        assertReview(expectedReview);
         if (!where || (annotation !== null && !clean))
           throw new WebAnnotationInvalid("Invalid screenshot annotation.");
         const doc = await read(),
@@ -572,8 +574,10 @@ export function createSession(
       id: string,
       index: number,
       key: string,
+      expectedReview?: string,
     ): Promise<ReviewNote | null> {
       return serialise(async () => {
+        assertReview(expectedReview);
         const doc = await read();
         const note = doc.notes.find((entry) => entry.id === id);
         if (!note?.web || note.scope !== "global") return null;

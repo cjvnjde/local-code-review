@@ -2274,15 +2274,24 @@ test("simple text and empty-type uploads cannot be written by another browser or
 });
 
 describe("review conversation APIs", () => {
-  test("stale clients cannot write notes or replies into another selected review", async () => {
+  test("stale clients cannot mutate notes, replies, or capture evidence in another selected review", async () => {
     const started = await startTestServer();
     const session = started.options.session;
-    await session.save({ comments: [comment] });
+    const visual: ReviewComment = {
+      id: "|@|@|#visual",
+      scope: "global",
+      file: "",
+      start: 0,
+      end: 0,
+      body: "Inspect the capture.",
+      web: { before: webCapture, after: [] },
+    };
+    await session.save({ comments: [comment, visual] });
     const original = session.shownFile;
     const originalName = session.file;
     await session.run(async () => session.startFresh());
     await session.save({
-      comments: [{ ...comment, body: "The other review." }],
+      comments: [{ ...comment, body: "The other review." }, visual],
     });
     const selected = session.file;
     const headers = {
@@ -2299,6 +2308,23 @@ describe("review conversation APIs", () => {
         { comments: [{ ...comment, body: "Stale submission." }] },
       ],
       ["/api/reply", { id: comment.id, body: "Stale reply.", ask: false }],
+      [
+        "/api/web/annotation",
+        {
+          id: visual.id,
+          target: {
+            kind: "selection",
+            index: 0,
+            key: webSelectionKey(webCapture),
+            expected: "",
+          },
+          annotation: null,
+        },
+      ],
+      [
+        "/api/web/selection",
+        { id: visual.id, index: 0, key: webSelectionKey(webCapture) },
+      ],
       [
         "/api/import",
         { from: { file: originalName, id: comment.id }, comment },
@@ -2328,6 +2354,9 @@ describe("review conversation APIs", () => {
       body: "The other review.",
       messages: [],
     });
+    expect((await session.readNote(selected, visual.id!))?.web).toEqual(
+      visual.web,
+    );
     const unidentified = await fetch(`${started.base}/api/note`, {
       method: "POST",
       headers: { "content-type": "application/json" },

@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
+import { lock } from "proper-lockfile";
 import { z } from "zod";
 import type { CliOptions } from "../shared/review-types.ts";
 import {
@@ -146,6 +147,23 @@ export async function saveUiSettings(
   settingsFile = userConfigFile(),
 ): Promise<void> {
   const validated = parseUiSettings(patch);
+  await mkdir(path.dirname(settingsFile), { recursive: true });
+  // All lcr processes share this file, even when reviewing different repositories.
+  const release = await lock(settingsFile, {
+    realpath: false, // A first save also needs a lock before the config file exists.
+    retries: { retries: 200, factor: 1.2, minTimeout: 10, maxTimeout: 100 },
+  });
+  try {
+    await mergeUiSettings(settingsFile, validated);
+  } finally {
+    await release();
+  }
+}
+
+async function mergeUiSettings(
+  settingsFile: string,
+  patch: Partial<UiSettings>,
+) {
   let current: Record<string, unknown> = {};
   try {
     const value: unknown = JSON.parse(await readFile(settingsFile, "utf8"));
@@ -159,8 +177,7 @@ export async function saveUiSettings(
         { cause: error },
       );
   }
-  const ui = { ...parseUiSettings(current.ui ?? {}), ...validated };
-  await mkdir(path.dirname(settingsFile), { recursive: true });
+  const ui = { ...parseUiSettings(current.ui ?? {}), ...patch };
   const temporary = `${settingsFile}.${crypto.randomUUID()}.tmp`;
   try {
     await writeFile(

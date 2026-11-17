@@ -584,6 +584,7 @@ function Workspace({
       focusEditor();
       return false;
     }
+    const initialized = initializeDraft(next, review);
     if (draft) {
       const same =
         draft.kind === next.kind &&
@@ -602,6 +603,7 @@ function Workspace({
         draft.kind === "note" &&
         next.kind === "note" &&
         !draft.editing &&
+        !initialized.editing &&
         !draft.comment.scope &&
         !next.comment.scope &&
         draft.comment.file === next.comment.file &&
@@ -627,15 +629,15 @@ function Workspace({
         return false;
       }
     }
-    const known =
-      next.kind === "note"
-        ? notes.find((note) => note.id === next.comment.id)
-        : notes.find((note) => note.id === next.id);
     setSearchOpen(false);
-    setDraft(initializeDraft(next, review));
+    setDraft(initialized);
     if (
       next.host === "panel" &&
-      !(next.kind === "note" && next.comment.scope === "global" && !known)
+      !(
+        next.kind === "note" &&
+        next.comment.scope === "global" &&
+        !initialized.editing
+      )
     ) {
       setRightTab("notes");
       setNotesOpen(true);

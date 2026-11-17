@@ -515,6 +515,7 @@ function serve(options: ServerOptions, port: number) {
             payload.id as string,
             target,
             annotation,
+            reviewTarget(request, options.session),
           );
           if (!note?.web)
             return Response.json(
@@ -570,6 +571,7 @@ function serve(options: ServerOptions, port: number) {
             payload.id as string,
             payload.index,
             payload.key,
+            reviewTarget(request, options.session),
           );
           if (!note)
             return Response.json(

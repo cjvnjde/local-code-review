@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, spyOn, test } from "bun:test";
 import {
   existsSync,
   mkdtempSync,
@@ -15,6 +15,7 @@ import {
 } from "./managed-agent.ts";
 import { createSession } from "../review/session.ts";
 import { reviewerRevision } from "./agent-queue.ts";
+import * as contextDiscovery from "../review/context-discovery.ts";
 import {
   createReviewRoundStore,
   type ReviewRoundStore,
@@ -409,6 +410,83 @@ test("cancelling while the pre-dispatch file read is pending never starts the ta
   expect(f.tasks()[0].state).toBe("cancelled");
   expect(f.started(1)).toBe(false);
   f.session.readNote = read;
+});
+
+test.each(["cancel", "close"])(
+  "%s during the final note read after baseline capture prevents dispatch",
+  async (action) => {
+    const f = await setup("", (root) =>
+      createReviewRoundStore({
+        repoRoot: root,
+        outDir: ".review",
+        listFiles: async () => [],
+      }),
+    );
+    const gate = Promise.withResolvers<void>();
+    const entered = Promise.withResolvers<void>();
+    const read = f.session.readNote;
+    f.session.readNote = async (...args) => {
+      if (f.agent.snapshot().activity === "Capturing review baseline") {
+        entered.resolve();
+        await gate.promise;
+      }
+      return read(...args);
+    };
+    try {
+      await f.send("baseline-read");
+      await entered.promise;
+      const stopping =
+        action === "close"
+          ? f.agent.close()
+          : f.agent.control("cancel", f.tasks()[0].id);
+      gate.resolve();
+      await stopping;
+      const state = action === "close" ? "uncertain" : "cancelled";
+      await until(() => f.tasks()[0].state === state);
+      expect(
+        f
+          .rpc()
+          .some(
+            (message: { method?: string }) =>
+              message.method === "session/prompt",
+          ),
+      ).toBe(false);
+    } finally {
+      gate.resolve();
+      f.session.readNote = read;
+    }
+  },
+);
+
+test("cancelling during context discovery without review rounds prevents dispatch", async () => {
+  const f = await setup();
+  const entered = Promise.withResolvers<void>();
+  const gate = Promise.withResolvers<void>();
+  const discovery = spyOn(
+    contextDiscovery,
+    "discoverContexts",
+  ).mockImplementation(async () => {
+    entered.resolve();
+    await gate.promise;
+    return { entries: [], omittedContexts: 0 };
+  });
+  try {
+    await f.send("inventory");
+    await entered.promise;
+    await f.agent.control("cancel", f.tasks()[0].id);
+    gate.resolve();
+    await until(() => f.tasks()[0].state === "cancelled");
+    expect(
+      f
+        .rpc()
+        .some(
+          (message: { method?: string }) => message.method === "session/prompt",
+        ),
+    ).toBe(false);
+  } finally {
+    gate.resolve();
+    discovery.mockRestore();
+  }
 });
 
 test("reviewer reply withdrawal updates pending work without minting a new task", async () => {

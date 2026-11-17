@@ -50,6 +50,16 @@ const decode = (value: Uint8Array | null) =>
   value === null ? null : new TextDecoder().decode(value);
 
 describe("Git diff isolation and revision boundaries", () => {
+  test("adding another changed file preserves the first file's viewed fingerprint", async () => {
+    const root = await repository();
+    const selected = source(root);
+    await writeFile(path.join(root, "app.txt"), "edited\n");
+    const [before] = await getDiff(selected);
+    await writeFile(path.join(root, "second.txt"), "unrelated\n");
+    const [after] = await getDiff(selected);
+    expect(after).toEqual(before);
+  });
+
   test("reversed diffs resolve blob sides in displayed order and keep untracked files", async () => {
     const root = await repository();
     const committed = await readFile(path.join(root, "app.txt"), "utf8");
@@ -349,18 +359,22 @@ describe("Git diff isolation and revision boundaries", () => {
   test("Git formatting and external diff configuration cannot replace the review diff", async () => {
     const root = await repository();
     const file = "naïve file.txt";
-    await writeFile(path.join(root, file), "old\n");
+    await writeFile(path.join(root, file), "header\n\nold\n");
     await runGit(["add", "--", file], root);
     await commit(root, "unicode file");
     await runGit(["config", "core.quotepath", "true"], root);
     await runGit(["config", "diff.noprefix", "true"], root);
+    await runGit(["config", "diff.suppressBlankEmpty", "true"], root);
     await runGit(["config", "diff.external", "false"], root);
-    await writeFile(path.join(root, file), "new\n");
-    const files = await getDiff(source(root));
+    await writeFile(path.join(root, file), "header\n\nnew\n");
+    const files = await getDiff({ ...source(root), context: 3 });
     expect(files).toHaveLength(1);
     expect(files[0]).toMatchObject({ path: file, added: 1, removed: 1 });
-    expect(files[0]!.rows.filter((row) => row.t === "add")).toEqual([
-      { t: "add", n: 1, text: "new" },
+    expect(files[0]!.rows.slice(1)).toEqual([
+      { t: "ctx", n: 1, o: 1, text: "header" },
+      { t: "ctx", n: 2, o: 2, text: "" },
+      { t: "del", o: 3, text: "old" },
+      { t: "add", n: 3, text: "new" },
     ]);
   });
 
@@ -417,6 +431,56 @@ describe("Git diff isolation and revision boundaries", () => {
 });
 
 describe("context and blob filesystem boundaries", () => {
+  test("expansion of an edited rename keeps the old line numbers and literal new name", async () => {
+    const root = await repository();
+    const file = ":(literal)renamed.txt";
+    await runGit(["mv", "--", "app.txt", file], root);
+    await writeFile(
+      path.join(root, file),
+      "inserted\none\ntwo\nthree\nfour\nfive\n",
+    );
+    const selected = source(root, ["-U0", "HEAD"]);
+    expect(await getDiff(selected)).toMatchObject([
+      { status: "renamed", from: "app.txt", path: file },
+    ]);
+    expect(await getFileContext(selected, file, 3, 4)).toEqual([
+      { t: "ctx", o: 2, n: 3, text: "two" },
+      { t: "ctx", o: 3, n: 4, text: "three" },
+    ]);
+  });
+
+  test("requesting context cannot widen the review's path selection", async () => {
+    const root = await repository();
+    await writeFile(
+      path.join(root, "app.txt"),
+      "one\nTWO\nthree\nfour\nfive\n",
+    );
+    const selected = source(root, ["HEAD", "--", "other.txt"]);
+    expect(await getFileContext(selected, "app.txt", 3, 3)).toEqual([]);
+  });
+
+  test("expands paths displayed with Git's relative prefix and optional patch stats", async () => {
+    const root = await repository();
+    await mkdir(path.join(root, "src"));
+    await runGit(["mv", "app.txt", "src/app.txt"], root);
+    await commit(root, "move app");
+    await writeFile(
+      path.join(root, "src/app.txt"),
+      "one\nTWO\nthree\nfour\nfive\n",
+    );
+    const selected = source(root, [
+      "--relative=src",
+      "--patch",
+      "--stat",
+      "--unified=0",
+      "HEAD",
+    ]);
+    expect(await getDiff(selected)).toMatchObject([{ path: "app.txt" }]);
+    expect(await getFileContext(selected, "app.txt", 4, 4)).toEqual([
+      { t: "ctx", o: 4, n: 4, text: "four" },
+    ]);
+  });
+
   test("expands unchanged new-side lines with shifted old numbers after an insertion", async () => {
     const root = await repository();
     await writeFile(

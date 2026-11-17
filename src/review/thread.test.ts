@@ -87,7 +87,11 @@ describe("note triage metadata", () => {
   );
 
   test("agent messages containing a sealed triage line remain messages", () => {
-    const note = noteFromComment({ ...comment, triage: "bug" });
+    const note = noteFromComment({
+      ...comment,
+      code: "-before\r\n+after\r",
+      triage: "bug",
+    });
     note.messages.push({
       role: "agent",
       at: "now",
@@ -203,6 +207,19 @@ describe("parseReview", () => {
       status: "pending",
       messages: [],
     });
+  });
+
+  test("a CRLF review retains captured code, triage, and thread text across saves", () => {
+    const note = noteFromComment({ ...comment, triage: "bug" });
+    note.messages.push({
+      role: "agent",
+      at: "now",
+      body: "Changed both calls.\n\nVerified the rename.",
+    });
+    const doc = { range: "HEAD", notes: [note] };
+    const reopened = parseReview(renderMarkdown(doc).replaceAll("\n", "\r\n"));
+    expect(reopened).toEqual(doc);
+    expect(parseReview(renderMarkdown(reopened))).toEqual(doc);
   });
 
   test("round-trips a whole-file note", () => {
@@ -475,6 +492,43 @@ describe("parseReview", () => {
         { role: "agent", at: "", body: reply },
       ]);
       expect(again.notes.map((n) => n.id)).toEqual(["|@|@|#g1", comment.id]);
+    });
+
+    test("titles, section headings, and rules in a raw reply survive the next save", () => {
+      const reply =
+        "# Findings\n\nCorrected the retry.\n\n---\n\n## Verification\n\nRan the regression.";
+      const doc = answered(reply);
+      expect(doc.notes.map((note) => note.id)).toEqual([
+        "|@|@|#g1",
+        comment.id,
+      ]);
+      expect(doc.notes[0]!.messages).toEqual([
+        { role: "agent", at: "", body: reply },
+      ]);
+      expect(parseReview(renderMarkdown(doc))).toEqual(doc);
+    });
+
+    test("a heading can start an agent reply immediately after its verdict", () => {
+      const body = "## Findings\n\nThis path was unreachable.";
+      const raw = write([comment]).replace(
+        "Status: pending",
+        `Status: answered\n\n${body}`,
+      );
+      expect(parseReview(raw).notes[0]!.messages).toEqual([
+        { role: "agent", at: "", body },
+      ]);
+    });
+
+    test("the separator before a legacy working agreement still ends the reply", () => {
+      const raw = write([comment])
+        .replace(
+          "Status: pending",
+          "Status: answered\n\n**Agent** <!-- lcr:m -->\n\nDone.",
+        )
+        .replace("<!-- lcr:end -->\n\n", "");
+      expect(parseReview(raw).notes[0]!.messages).toEqual([
+        { role: "agent", at: "", body: "Done." },
+      ]);
     });
 
     test("the reviewer's follow-up under it is still its own message", () => {

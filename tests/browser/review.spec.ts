@@ -119,6 +119,28 @@ test.beforeEach(async ({ request }) => {
   expect(response.ok()).toBe(true);
 });
 
+test("a staged review follows unstaging and restaging without a working-tree edit", async ({
+  page,
+}) => {
+  await stop();
+  await launch(["--staged"]);
+  try {
+    await page.goto(url);
+    const file = page.locator(
+      '[data-diff-kind="header"][data-file-path="staged.txt"]',
+    );
+    await expect(file).toBeVisible();
+    git("restore", "--staged", "--", "staged.txt");
+    await expect(file).toHaveCount(0);
+    git("add", "--", "staged.txt");
+    await expect(file).toBeVisible();
+  } finally {
+    await stop();
+    git("add", "--", "staged.txt");
+    await launch();
+  }
+});
+
 async function showFullConversations(page: Page) {
   await page
     .getByRole("button", { name: "Note view and actions", exact: true })
@@ -809,6 +831,47 @@ test("captured code flows with narrow notes and collapsed captures still seed ed
       (element) => element.scrollWidth <= element.clientWidth,
     ),
   ).toBe(true);
+});
+
+test("editing a saved note cannot retarget an unsaved note on the same line", async ({
+  page,
+}) => {
+  await page.request.delete(`${url}/api/review`);
+  const comment = {
+    id: "src/app.ts|n2|n2|#original",
+    file: "src/app.ts",
+    start: 2,
+    end: 2,
+    side: "new",
+    code: "+  return 'hello world';",
+    body: "Original feedback.",
+  };
+  const saved = await page.request.post(`${url}/api/note`, {
+    headers: await reviewHeaders(page.request),
+    data: { comment, ask: false },
+  });
+  expect(saved.ok()).toBe(true);
+  await page.goto(url);
+  const pane = page.getByRole("region", { name: "Code diff" });
+  await pane
+    .locator("[data-code-cell]")
+    .filter({ hasText: "hello world" })
+    .click();
+  const input = pane.getByRole("textbox", { name: "Note text" });
+  await input.fill("Separate feedback for the same line.");
+  const card = pane.locator(`[data-note-id="${comment.id}"]`);
+  await card.getByRole("button", { name: "Edit note", exact: true }).click();
+  await expect(input).toHaveValue("Separate feedback for the same line.");
+  await pane.getByRole("button", { name: "Save note", exact: true }).click();
+  await expect(input).toHaveCount(0);
+  const review = await (await page.request.get(`${url}/api/review`)).json();
+  expect(review.notes).toHaveLength(2);
+  expect(review.notes).toContainEqual(
+    expect.objectContaining({ id: comment.id, body: comment.body }),
+  );
+  expect(review.notes).toContainEqual(
+    expect.objectContaining({ body: "Separate feedback for the same line." }),
+  );
 });
 
 test("classification changes and stale editor saves preserve the latest category", async ({

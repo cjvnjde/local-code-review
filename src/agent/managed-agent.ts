@@ -248,6 +248,7 @@ export function createManagedAgent(options: Options): ManagedAgent {
           path.basename(task.review),
           task.noteId,
         );
+        if (closing) return;
         if (task.detail === "Cancellation requested." || !latest) {
           task.state = "cancelled";
           task.finished = stamp();
@@ -286,20 +287,24 @@ export function createManagedAgent(options: Options): ManagedAgent {
               },
             ],
           });
+          if (closing) return;
           if (round.baseline === "failed")
             throw new Error(
               "Review baseline capture failed; agent handoff was not dispatched. See review rounds for missing evidence.",
             );
-          if (closing) return;
-          if (
-            task.detail === "Cancellation requested." ||
-            !(await route.readNote(path.basename(task.review), task.noteId))
-          ) {
-            task.state = "cancelled";
-            task.finished = stamp();
-            persist();
-            continue;
-          }
+        }
+        // Evidence collection and this read may yield to deletion, cancellation or shutdown.
+        const remaining = await route.readNote(
+          path.basename(task.review),
+          task.noteId,
+        );
+        if (closing) return;
+        if (!remaining || task.detail === "Cancellation requested.") {
+          task.state = "cancelled";
+          task.finished = stamp();
+          activity = "";
+          persist();
+          continue;
         }
         activity = "Working";
         prompted = true;

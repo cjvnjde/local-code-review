@@ -1,7 +1,7 @@
 import { copyFile, mkdtemp, rm, stat, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { runGit } from "./commands.ts";
+import { gitIndexPath, runGit } from "./commands.ts";
 import type { DiffFile, DiffRow, FileStatus } from "../shared/review-types.ts";
 
 interface MutableDiffFile {
@@ -183,12 +183,7 @@ async function withDiffIndex<T>(
     git: (args: string[], input?: string) => Promise<string>,
   ) => Promise<T>,
 ): Promise<T> {
-  const index = (
-    await runGit(
-      ["rev-parse", "--path-format=absolute", "--git-path", "index"],
-      source.repoRoot,
-    )
-  ).trim();
+  const index = await gitIndexPath(source.repoRoot);
   const directory = await mkdtemp(path.join(tmpdir(), "lcr-index-"));
   const isolatedIndex = path.join(directory, "index");
   const git = (args: string[], input?: string) =>
@@ -246,6 +241,8 @@ async function withDiffIndex<T>(
 const DIFF_ARGS = [
   "-c",
   "core.quotepath=false",
+  "-c",
+  "diff.suppressBlankEmpty=false",
   "diff",
   "--no-color",
   "--no-ext-diff",
@@ -279,16 +276,47 @@ export async function getFileContext(
     return [];
   const last = Math.min(end, start + MAX_CONTEXT_ROWS - 1);
   const args = await gitDiffArgs(source);
-  const whole = [...DIFF_ARGS, `-U${FULL_CONTEXT}`, ...args];
-  // Narrowing to one file keeps the re-diff cheap, but arguments already carrying a pathspec can
-  // reject a second one, so a rejected narrow run falls back to diffing everything.
-  const scoped = args.includes("--")
-    ? [...whole, path]
-    : [...whole, "--", path];
-  const raw = await withDiffIndex(source, true, (git) =>
-    git(scoped).catch(() => git(whole)),
-  );
-  return contextRows(parseDiff(raw), path, start, last);
+  return withDiffIndex(source, true, async (git) => {
+    // Let Git apply the review's pathspecs and identify both names of an edited rename.
+    // Diffing only its new name makes Git report an addition with no unchanged lines.
+    const status = await git([...DIFF_ARGS, "--name-status", "-z", ...args]);
+    const paths = pathsForContext(status, path);
+    if (!paths.length) return [];
+
+    const separator = whereDashDash(args);
+    const full = [
+      ...DIFF_ARGS,
+      `-U${FULL_CONTEXT}`,
+      ...args
+        .slice(0, separator)
+        .filter((arg) => !/^(-U\d*|--unified(?:=\d+)?)$/.test(arg)),
+    ];
+    const originalSelection = () => git([...full, ...args.slice(separator)]);
+    // --relative=<prefix> rewrites displayed paths. Keep Git's original selection
+    // in that mode. An implicit pathspec before -- also requires the original arguments.
+    const raw = full.some((arg) => arg.startsWith("--relative="))
+      ? await originalSelection()
+      : await git([
+          ...full,
+          "--",
+          ...paths.map((name) => `:(literal)${name}`),
+        ]).catch(originalSelection);
+    return contextRows(parseDiff(raw), path, start, last);
+  });
+}
+
+/** Git's NUL-delimited name-status records contain a second path for renames and copies. */
+function pathsForContext(status: string, path: string): string[] {
+  const fields = status.split("\0");
+  for (let i = 0; i < fields.length - 1;) {
+    const paired = /^[RC]/.test(fields[i++]!);
+    const first = fields[i++]!;
+    if (paired) {
+      const second = fields[i++]!;
+      if (second === path) return [first, second];
+    } else if (first === path) return [first];
+  }
+  return [];
 }
 
 /** Context rows of one file inside an inclusive new-side line range. */
@@ -384,7 +412,8 @@ export function parseDiff(raw: string): DiffFile[] {
   let oldNo = 0;
   let newNo = 0;
 
-  for (const line of raw.split("\n")) {
+  // The final line terminator belongs to Git's output, not to the last file's fingerprint.
+  for (const line of raw.replace(/\n$/, "").split("\n")) {
     if (line.startsWith("diff --git ")) {
       file = {
         path: pathFromGitLine(line),

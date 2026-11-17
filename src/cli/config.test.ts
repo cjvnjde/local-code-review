@@ -278,6 +278,22 @@ test("UI persistence creates the configuration directory and refuses to destroy 
   }
 });
 
+test("concurrent settings writers merge their changes on the first save and subsequent saves", async () => {
+  const f = await fixture();
+  for (const enabled of [true, false]) {
+    await Promise.all([
+      saveUiSettings({ aiAnswers: enabled }, f.settings),
+      saveUiSettings({ lineNumbers: enabled }, f.settings),
+      saveUiSettings({ enterSaves: enabled }, f.settings),
+    ]);
+    expect((await loadUserSettings({}, f.settings)).ui).toEqual({
+      aiAnswers: enabled,
+      lineNumbers: enabled,
+      enterSaves: enabled,
+    });
+  }
+});
+
 test("startup schemas reject oversized strings and argument lists without rewriting config", async () => {
   const f = await fixture();
   for (const value of [
