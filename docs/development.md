@@ -114,24 +114,30 @@ code is retained in Markdown; missing or ambiguous anchors stay with their file.
 
 ## Agent skills and design ownership
 
-Repository guidance routes agents to two project-local skills:
+The [task guidance in AGENTS.md](../AGENTS.md#task-guidance) routes agents to seven
+development skills. Six are reusable: design, React components, TypeScript
+contracts, accessibility, UI testing, and Bun packaging. The seventh,
+[lcr-development](../.agents/skills/lcr-development/SKILL.md), owns project behavior:
+the review workflow, Markdown conversation integrity, live updates, draft recovery,
+and continuous reading. Editor lifecycle rules belong there rather than in a
+separate live-editor skill.
 
-- [quiet-workspace-design](../.agents/skills/quiet-workspace-design/SKILL.md) owns
-  the reusable visual language, action placement, note/editor consistency, concise
-  product copy, and reading/editing behavior. Update it when a shared design
-  decision changes. Icon buttons are preferred for familiar utilities; named
-  actions such as **Save note** remain useful where they communicate intent.
-- [react-typescript-workspaces](../.agents/skills/react-typescript-workspaces/SKILL.md)
-  covers component reuse, state ownership, effects, typed boundaries, and rendering
-  performance. This guide owns the lcr-specific architecture and commands.
+The [design skill](../.agents/skills/quiet-workspace-design/SKILL.md) remains the
+single description of the visual language, action placement, note/editor
+consistency, and concise product copy. Update it when a reusable design decision
+changes. It includes a starter palette; actual theme tokens remain authoritative.
+This guide owns the implementation map, library inventory, and exact commands.
 
-Each skill is a standalone `SKILL.md`: copy its folder into another project's
-`.agents/skills/` and reference it from that project's agent instructions if
-needed. Neither requires lcr paths or imports. The design skill includes a starter
-palette, while the destination project's actual theme tokens remain authoritative.
-These are development skills; the separately distributed `apply-lcr` skill is for
-consuming review feedback. Keep the new guidance in one place rather than adding
-another mirrored copy under `skills/`.
+Each reusable skill is a standalone `SKILL.md`: copy its folder into another
+project's `.agents/skills/` and reference it from that project's agent instructions
+if needed. They do not require lcr paths or imports; `bun-packaging` applies only
+where Bun executables are relevant. Keep `lcr-development` with this repository.
+Load only the skills needed for a change. For example, a note action may need
+design, React, accessibility, and lcr behavior; an API schema change may need
+TypeScript contracts and lcr behavior.
+
+The separately distributed `apply-lcr` skill is for consuming review feedback.
+Keep development guidance here rather than adding mirrored copies under `skills/`.
 
 Use this map to apply the portable rules here:
 
@@ -153,9 +159,9 @@ fixture, not lcr's visual style.
 
 ### External guidance considered
 
-The local React/TypeScript skill links primary React, TypeScript, and TanStack
-documentation at the relevant decisions. Its rules are adapted to this project's
-client-rendered Bun application and existing React Compiler integration.
+The focused skills link primary React, TypeScript, TanStack, WAI, Playwright, and
+Bun documentation at the relevant decisions. Apply their guidance using this
+project's client-rendered Bun application and existing React Compiler integration.
 
 Two optional upstream skills are useful references from
 [Vercel's official collection](https://github.com/vercel-labs/agent-skills):
@@ -165,8 +171,8 @@ Two optional upstream skills are useful references from
 | `react-best-practices`  | Investigating request waterfalls, large imports, and avoidable rendering work. | Also covers Next.js and server rendering. Apply only relevant rules; don't introduce those architectures or blanket manual memoization here. |
 | `web-design-guidelines` | A focused accessibility, keyboard/focus, and interaction audit.                | Complements the local visual language; it does not define this product's palette or layout.                                                  |
 
-These external packs are recommendations, not installed dependencies. The two
-small local skills are the default guidance. Consider upstream material for a
+These external packs are recommendations, not installed dependencies. The local
+skills are the default guidance. Consider upstream material for a
 specific audit or demonstrated gap instead of loading overlapping rule sets for
 every edit. Reassess the upstream content before adopting it.
 

@@ -120,22 +120,12 @@ field. Switching preview preserves text, selection where applicable, and context
 Let the field grow with its content within the available space. Attachments and
 captured evidence stay associated with their draft.
 
-Editing behavior is part of the design:
-
-- Opening a draft captures its subject and destination. Background updates must
-  not overwrite text, retarget the draft, steal focus, move the caret, or jump the
-  reader to another item.
-- Preserve a dirty draft through navigation, pane changes, refreshes, and failures
-  according to the host's persistence policy. Explicit discard can remove it;
-  successful save clears the saved draft. Failed saves keep it available to retry.
-- Save visibly commits the edit. Pending operations prevent duplicate submission
-  and show a compact busy state. Don't imply that saving also launches an agent
-  or another workflow unless that is the named action.
-- Preserve the host's shortcuts. For a new multiline editor, Enter inserts a line
-  break and Ctrl/Cmd+Enter may submit when valid, outside IME composition. Escape
-  should dismiss a transient popup first and must not silently discard dirty text.
-- Keep reading anchors stable when content expands or updates. If a live refresh
-  cannot preserve the editor and its context, defer the disruptive refresh.
+Editing behavior is part of the design. Preserve the user's work, focus, and
+reading position across view changes and background updates. Make saving, busy
+states, failures, and recovery clear with minimal copy. Follow the host's draft
+persistence and keyboard conventions; don't silently discard changed text or
+change what a pending edit applies to. Keep the detailed synchronization and
+storage contracts in the host project's guidance.
 
 ## Check and evolve the design
 

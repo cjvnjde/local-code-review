@@ -5,15 +5,27 @@ libraries and clear React components over custom infrastructure.
 
 ## Task guidance
 
-- For UI layout, styling, notes, editors, and interactions, read and follow
-  [.agents/skills/quiet-workspace-design/SKILL.md](.agents/skills/quiet-workspace-design/SKILL.md).
-  Keep reusable design decisions there so all views share one visual language.
-- For React components, hooks, client data flow, and TypeScript UI models, read and
-  follow [.agents/skills/react-typescript-workspaces/SKILL.md](.agents/skills/react-typescript-workspaces/SKILL.md).
-- Read [docs/development.md](docs/development.md) for the implementation map,
-  existing libraries, live-update invariants, and validation commands. These
-  project-local skills are standalone; keep lcr-specific paths and contracts in
-  the development guide. Load only the guidance relevant to the task.
+Read and follow the skills relevant to the task; don't load the entire catalog
+for every change. Combine skills when the work crosses their boundaries.
+
+| Task                                                                          | Skill                                                                    |
+| ----------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Visual language, layout, note/editor appearance, product copy                 | [quiet-workspace-design](.agents/skills/quiet-workspace-design/SKILL.md) |
+| React components, hooks, state, and rendering performance                     | [react-components](.agents/skills/react-components/SKILL.md)             |
+| Domain types, validation, serialization, and module boundaries                | [typescript-contracts](.agents/skills/typescript-contracts/SKILL.md)     |
+| Control semantics, keyboard/focus behavior, accessibility review              | [ui-accessibility](.agents/skills/ui-accessibility/SKILL.md)             |
+| Browser regressions, test fixtures, and visual verification                   | [ui-testing](.agents/skills/ui-testing/SKILL.md)                         |
+| Bun build plugins, embedded assets, dependencies, standalone packaging        | [bun-packaging](.agents/skills/bun-packaging/SKILL.md)                   |
+| lcr workflows, architecture, live updates, draft recovery, review persistence | [lcr-development](.agents/skills/lcr-development/SKILL.md)               |
+
+Keep reusable design decisions in the design skill. Keep lcr-specific behavioral
+rules in `lcr-development`; [docs/development.md](docs/development.md) supplies
+the implementation map, library inventory, and validation commands. The other
+six skills can be copied independently to another project.
+
+Applying saved lcr feedback uses the existing
+[apply-lcr](.agents/skills/apply-lcr/SKILL.md) skill; developing lcr itself uses
+the skills above.
 
 ## Project constraints
 
