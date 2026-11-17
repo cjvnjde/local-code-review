@@ -47,6 +47,7 @@ import {
   Circle,
   LoaderCircle,
   ChevronDown,
+  Network,
 } from "lucide-react";
 import {
   useDiff,
@@ -240,6 +241,9 @@ function Workspace({
     {},
   );
   const files = useMemo(() => orderFiles(diff.files), [diff.files]);
+  const treeSitter = files.some((file) =>
+    file.rows.some((row) => row.syntax !== undefined),
+  );
   const followed = useRef("");
   function reveal(path: string, go: () => void) {
     const target = diff.files.find((file) => file.path === path);
@@ -1591,6 +1595,18 @@ function Workspace({
                     aria-label="Local review"
                     className="size-2 fill-success text-success"
                   />
+                  {treeSitter && (
+                    <Tooltip label="Tree-sitter highlighting active. Unsupported files use highlight.js.">
+                      <span
+                        role="img"
+                        aria-label="Tree-sitter highlighting active"
+                        tabIndex={0}
+                        className="inline-flex size-5 shrink-0 items-center justify-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <Network aria-hidden="true" className="size-3.5" />
+                      </span>
+                    </Tooltip>
+                  )}
                   {files.length}{" "}
                   <span className="hidden sm:inline">changed</span> files
                 </span>
