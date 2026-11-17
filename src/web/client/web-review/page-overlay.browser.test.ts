@@ -836,6 +836,81 @@ browserTest(
       });
       await message("annotation", { open: false });
       expect(await dockBounds()).toEqual(compact);
+
+      const launcherPosition = () =>
+        js(`(()=>{
+        const rect=${root}.querySelector('.launcher').getBoundingClientRect();
+        return {x:rect.x,y:rect.y};
+      })()`);
+      const settledLayout = () =>
+        js(`new Promise(resolve=>
+        requestAnimationFrame(()=>requestAnimationFrame(()=>resolve(true))))`);
+      await control("[data-close]");
+      await send("Emulation.clearDeviceMetricsOverride", {});
+      await until("innerWidth>600");
+      await settledLayout();
+      const launcherViewport = await js(
+        "({width:innerWidth,height:innerHeight})",
+      );
+      const preferred = await launcherPosition();
+      const storedPosition = await js(
+        "sessionStorage.getItem('lcr:launcher:'+location.origin)",
+      );
+      // Browser screenshots can briefly shrink the viewport before restoring it.
+      await send("Emulation.setDeviceMetricsOverride", {
+        width: 1,
+        height: 1,
+        deviceScaleFactor: 1,
+        mobile: false,
+      });
+      await until("innerWidth===1 && innerHeight===1");
+      await settledLayout();
+      expect((await launcherPosition()).y).toBeLessThan(preferred.y);
+      await send("Emulation.clearDeviceMetricsOverride", {});
+      await until(
+        `innerWidth===${launcherViewport.width} && innerHeight===${launcherViewport.height}`,
+      );
+      await settledLayout();
+      expect(await launcherPosition()).toEqual(preferred);
+      expect(
+        await js("sessionStorage.getItem('lcr:launcher:'+location.origin)"),
+      ).toBe(storedPosition);
+
+      // A deliberate drag starts where the clamped control is actually displayed.
+      await send("Emulation.setDeviceMetricsOverride", {
+        width: 360,
+        height: 480,
+        deviceScaleFactor: 1,
+        mobile: false,
+      });
+      await until("innerWidth===360 && innerHeight===480");
+      await settledLayout();
+      const compactLauncher = await launcherPosition();
+      const compactTarget = await pinCenter("[data-launcher]");
+      const draggedTarget = {
+        x: compactTarget.x - 20,
+        y: compactTarget.y - 40,
+      };
+      await mouse("mouseMoved", compactTarget);
+      await mouse("mousePressed", compactTarget);
+      await mouse("mouseMoved", draggedTarget, { buttons: 1 });
+      await mouse("mouseReleased", draggedTarget);
+      const draggedPosition = {
+        x: compactLauncher.x - 20,
+        y: compactLauncher.y - 40,
+      };
+      expect(await launcherPosition()).toEqual(draggedPosition);
+      await send("Emulation.clearDeviceMetricsOverride", {});
+      await until(
+        `innerWidth===${launcherViewport.width} && innerHeight===${launcherViewport.height}`,
+      );
+      await settledLayout();
+      expect(await launcherPosition()).toEqual(draggedPosition);
+      expect(
+        await js(
+          "JSON.parse(sessionStorage.getItem('lcr:launcher:'+location.origin))",
+        ),
+      ).toEqual(draggedPosition);
     } finally {
       await chrome?.close();
       server.stop(true);

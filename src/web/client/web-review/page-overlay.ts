@@ -313,39 +313,38 @@ export function installPageReview(config: {
   function positionLauncher() {
     const width = launcher.offsetWidth,
       height = launcher.offsetHeight;
-    launcherPosition.x = Math.max(
+    // Layout may clamp the control, but only dragging changes the user's preferred position.
+    // Screenshot capture can temporarily resize even a desktop viewport to 1×1.
+    const x = Math.max(
       12,
       Math.min(innerWidth - width - 12, launcherPosition.x),
     );
-    launcherPosition.y =
+    let y =
       innerWidth <= 600 && (!dock.hidden || selected.length > 0)
         ? innerHeight - height - 12
         : Math.max(12, Math.min(innerHeight - height - 12, launcherPosition.y));
     if (innerWidth > 600 && selected.length) {
       const tools = $(".selection-tools").getBoundingClientRect();
       if (
-        launcherPosition.x < tools.right &&
-        launcherPosition.x + width > tools.left &&
-        launcherPosition.y < tools.bottom &&
-        launcherPosition.y + height > tools.top
+        x < tools.right &&
+        x + width > tools.left &&
+        y < tools.bottom &&
+        y + height > tools.top
       )
-        launcherPosition.y = Math.max(12, tools.top - height - 8);
+        y = Math.max(12, tools.top - height - 8);
     }
-    launcher.style.left = launcherPosition.x + "px";
-    launcher.style.top = launcherPosition.y + "px";
+    launcher.style.left = x + "px";
+    launcher.style.top = y + "px";
     launcher.style.bottom = "auto";
     bar.style.left =
-      Math.max(
-        12,
-        Math.min(innerWidth - bar.offsetWidth - 12, launcherPosition.x),
-      ) + "px";
-    const above = launcherPosition.y - bar.offsetHeight - 8;
+      Math.max(12, Math.min(innerWidth - bar.offsetWidth - 12, x)) + "px";
+    const above = y - bar.offsetHeight - 8;
     bar.style.top =
       Math.max(
         12,
         Math.min(
           innerHeight - bar.offsetHeight - 12,
-          above >= 12 ? above : launcherPosition.y + height + 8,
+          above >= 12 ? above : y + height + 8,
         ),
       ) + "px";
   }
@@ -2877,11 +2876,12 @@ export function installPageReview(config: {
   targeting.onpointerdown = (e) => {
     if (e.button !== 0 || launcherPress) return;
     suppressLauncherClick = false;
+    const rendered = launcher.getBoundingClientRect();
     const press = {
       id: e.pointerId,
       x: e.clientX,
       y: e.clientY,
-      origin: { ...launcherPosition },
+      origin: { x: rendered.x, y: rendered.y },
       moved: false,
     };
     launcherPress = press;
@@ -2905,10 +2905,14 @@ export function installPageReview(config: {
   function endLauncher(cancelled = false) {
     if (!launcherPress) return;
     suppressLauncherClick = cancelled || launcherPress.moved;
+    if (launcherPress.moved) {
+      const rendered = launcher.getBoundingClientRect();
+      launcherPosition = { x: rendered.x, y: rendered.y };
+      try {
+        sessionStorage.setItem(positionKey, JSON.stringify(launcherPosition));
+      } catch {}
+    }
     launcherPress = null;
-    try {
-      sessionStorage.setItem(positionKey, JSON.stringify(launcherPosition));
-    } catch {}
   }
   targeting.onpointerup = (e) => {
     if (e.pointerId === launcherPress?.id) endLauncher();
