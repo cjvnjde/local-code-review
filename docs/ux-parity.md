@@ -10,7 +10,7 @@ change; reading, commenting, evidence, and saved conversations must keep working
 | Pane sizing                  | Drag/keyboard resizing, persisted widths, draft/scroll retention, readable diff minimum and laptop/mobile drawers                                         |
 | Progress and file controls   | Viewed marks, automatic reading tracking, backtracking, folding, folder controls, hover/focus visibility controls and glob filters                        |
 | Hidden code                  | Up/down/all context expansion, configurable batch size, expandable deleted runs with note protection                                                      |
-| Comment gestures             | Whole-line clicks, Shift extension, forward/reverse drag ranges, character selections across syntax tokens, Alt-drag copying, edge auto-scroll            |
+| Comment gestures             | Line clicks, Shift extension, forward/reverse ranges, character selection across syntax tokens, copying with an open editor or Alt-drag, edge auto-scroll |
 | Editing without losing place | Compact inline editors, retained toggleable overall-note popup, protected drafts/carets, deferred diff refreshes and reload recovery                      |
 | Markdown authoring           | GFM, syntax highlighting, suggestions, formatting shortcuts and toolbar, preview, safe local images                                                       |
 | Images in notes/replies      | Paste/drop/pick, thumbnails, zoom/fit/actual-size viewer, editable drawings stored with immutable PNG attachments                                         |

@@ -86,9 +86,12 @@ File headers, comments, and the rest of the review stay fixed horizontally.
 Hover over code to highlight a commentable row and show its gutter affordance.
 Click code or a line number to comment immediately, drag across lines for a range,
 or drag within a line to select specific characters. Shift-click extends a range;
-Alt-drag keeps normal browser text selection for copying. Comments open directly
-below their subject in a compact card. Wide panes align cards with the code text;
-the left inset shrinks with the diff pane's width, down to 8px in narrow panes.
+Alt-drag keeps normal browser text selection for copying. While a note editor is
+open, ordinary code drags also select text for copying with Ctrl+C or Cmd+C,
+without changing the draft or its target. Use line-number gestures or hold Shift
+to adjust the note's range. Comments open directly below their subject in a compact
+card. Wide panes align cards with the code text; the left inset shrinks with the
+diff pane's width, down to 8px in narrow panes.
 Cards and editors have solid backgrounds and small corner radii;
 the surrounding area matches the code pane. **Settings → Inline note width →
 Full width** removes the compact width cap. The choice survives reloads and also

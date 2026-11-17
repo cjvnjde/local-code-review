@@ -175,6 +175,7 @@ export function DiffView({
     scroll,
     prepared,
     onComment,
+    !!draft,
   );
   const anchor = useRef<ReadingAnchor | null>(null);
   const pendingJump = useRef<{

@@ -2,6 +2,7 @@ import {
   test,
   expect,
   chromium,
+  type Locator,
   type Page,
   type APIRequestContext,
 } from "@playwright/test";
@@ -124,6 +125,24 @@ async function showFullConversations(page: Page) {
   await page
     .getByRole("menuitem", { name: "Full conversations", exact: true })
     .click();
+}
+
+async function codePoint(cell: Locator, offset: number) {
+  return cell.evaluate((cell, offset) => {
+    const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT);
+    let left = offset;
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (left <= node.textContent!.length) {
+        const range = document.createRange();
+        range.setStart(node, left);
+        range.collapse(true);
+        const rect = range.getBoundingClientRect();
+        return { x: rect.x + 0.2, y: rect.y + rect.height / 2 };
+      }
+      left -= node.textContent!.length;
+    }
+    throw new Error("No character position");
+  }, offset);
 }
 
 test("compiled executable reviews changes, preserves drafts, and continues the Markdown conversation", async ({
@@ -1040,6 +1059,97 @@ test("adding an offscreen editor and saving a note never navigates away from the
   ).toMatchObject({ file: "untracked.ts" });
 });
 
+test("code selections copy to the clipboard while an open note keeps its text and target", async ({
+  page,
+}) => {
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto(url);
+  const pane = page.getByRole("region", { name: "Code diff" });
+  const editor = page.locator("[data-review-editor]");
+  const input = editor.getByRole("textbox", { name: "Note text", exact: true });
+  const code = pane
+    .locator('[data-file-path="src/app.ts"] [data-code-cell]')
+    .filter({ hasText: "hello world" });
+  const copy = async (
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+    expected: string,
+  ) => {
+    await page.evaluate(() => navigator.clipboard.writeText("Before copying"));
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(to.x, to.y, { steps: 8 });
+    await page.mouse.up();
+    await expect
+      .poll(() => page.evaluate(() => window.getSelection()?.toString()))
+      .not.toBe("");
+    await expect(input).not.toBeFocused();
+    await page.keyboard.press("ControlOrMeta+c");
+    await expect
+      .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+      .toBe(expected);
+  };
+
+  await code.click();
+  await expect(input).toBeFocused();
+  // Even an empty draft keeps its full-line target when a word is copied.
+  await copy(await codePoint(code, 10), await codePoint(code, 15), "hello");
+  await expect(input).toHaveValue("");
+  await input.fill("Copied into my note: ");
+  await input.press("ControlOrMeta+v");
+  await expect(input).toHaveValue("Copied into my note: hello");
+  await input.selectText();
+  await input.press("ControlOrMeta+c");
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toBe("Copied into my note: hello");
+
+  // Native selection can cross syntax tokens, including a reverse drag.
+  await copy(
+    await codePoint(code, 23),
+    await codePoint(code, 2),
+    "return 'hello world';",
+  );
+  await expect(input).toHaveValue("Copied into my note: hello");
+  await page.screenshot({ path: "/tmp/lcr-copy-with-open-note.png" });
+
+  // Copy multiple lines from another file without moving or replacing the draft.
+  await page
+    .getByRole("navigation")
+    .locator('button[title="untracked.ts"]')
+    .click();
+  const rows = pane.locator('[data-file-path="untracked.ts"]');
+  const first = rows.locator('[data-row-key="n2"] [data-code-cell]');
+  const last = rows.locator('[data-row-key="n4"] [data-code-cell]');
+  await expect(last).toBeInViewport();
+  await copy(
+    await codePoint(last, 18),
+    await codePoint(first, 13),
+    "item1 = 1;\nexport const item2 = 2;\nexport const item3",
+  );
+  await expect(input).toHaveValue("Copied into my note: hello");
+  await expect(editor).toHaveCount(1);
+
+  await page
+    .getByRole("navigation")
+    .locator('button[title="src/app.ts"]')
+    .click();
+  await editor.getByRole("button", { name: "Save note", exact: true }).click();
+  await expect(editor).toHaveCount(0);
+  const review = await (await page.request.get(`${url}/api/review`)).json();
+  const saved = review.notes.find(
+    (note: { body: string }) => note.body === "Copied into my note: hello",
+  );
+  expect(saved).toMatchObject({
+    file: "src/app.ts",
+    start: 2,
+    end: 2,
+    code: "+  return 'hello world';",
+  });
+  expect(saved.ca).toBeUndefined();
+  expect(saved.cb).toBeUndefined();
+});
+
 test("line, range and character gestures keep comments inline and protect draft text", async ({
   page,
 }) => {
@@ -1098,24 +1208,8 @@ test("line, range and character gestures keep comments inline and protect draft 
     .click();
   await expect(code).toBeInViewport();
   // A real native drag through syntax-highlighted text, then save/reload its columns.
-  const point = async (offset: number) =>
-    code.evaluate((cell, offset) => {
-      const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT);
-      let left = offset;
-      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-        if (left <= node.textContent!.length) {
-          const range = document.createRange();
-          range.setStart(node, left);
-          range.collapse(true);
-          const rect = range.getBoundingClientRect();
-          return { x: rect.x + 0.2, y: rect.y + rect.height / 2 };
-        }
-        left -= node.textContent!.length;
-      }
-      throw new Error("No character position");
-    }, offset);
-  const from = await point(10),
-    to = await point(15);
+  const from = await codePoint(code, 10),
+    to = await codePoint(code, 15);
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
   await page.mouse.move(to.x, to.y, { steps: 8 });
@@ -1140,8 +1234,8 @@ test("line, range and character gestures keep comments inline and protect draft 
   await page.reload();
   await expect(code).toBeVisible();
   // Alt-drag leaves native browser text selection and does not open an editor.
-  const a = await point(10),
-    b = await point(15);
+  const a = await codePoint(code, 10),
+    b = await codePoint(code, 15);
   await page.keyboard.down("Alt");
   await page.mouse.move(a.x, a.y);
   await page.mouse.down();

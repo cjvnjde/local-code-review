@@ -32,6 +32,7 @@ interface Press {
   off: number | null;
   extended: boolean;
   wandered: boolean;
+  native: boolean;
   previous: CodeSelection | null;
 }
 function offsetAt(cell: HTMLElement, node: Node, offset: number) {
@@ -75,12 +76,13 @@ export function useCodeSelection(
   pane: RefObject<HTMLDivElement | null>,
   files: DiffFile[],
   submit: (comment: ReviewComment) => boolean | void,
+  editorOpen: boolean,
 ) {
   const [selection, setSelection] = useState<CodeSelection | null>(null);
   const [pressed, setPressed] = useState<string | null>(null);
   const press = useRef<Press | null>(null);
-  const latest = useRef({ files, submit, selection });
-  latest.current = { files, submit, selection };
+  const latest = useRef({ files, submit, selection, editorOpen });
+  latest.current = { files, submit, selection, editorOpen };
   const clearSelection = useCallback(() => setSelection(null), []);
   useEffect(() => {
     const root = pane.current;
@@ -96,7 +98,7 @@ export function useCodeSelection(
     }
     function locate(x: number, y: number) {
       const current = press.current;
-      if (!current) return;
+      if (!current || current.native) return;
       current.px = x;
       current.py = y;
       const row = document
@@ -177,8 +179,12 @@ export function useCodeSelection(
         off: cell ? caretAt(cell, event.clientX, event.clientY) : null,
         extended,
         wandered: false,
+        native: !!cell && latest.current.editorOpen && !event.shiftKey,
         previous,
       };
+      // With a draft open, let the browser own text dragging and auto-scroll.
+      // Gutter and Shift gestures still adjust the comment's selected range.
+      if (press.current.native) return;
       setPressed(itemKey(file.path, String(index)));
       paint(press.current);
       frame = requestAnimationFrame(autoScroll);
@@ -198,6 +204,9 @@ export function useCodeSelection(
         setSelection(current.previous);
         return;
       }
+      const selected = window.getSelection();
+      if (current.native && selected && !selected.isCollapsed) return;
+      // A plain click keeps the existing comment/focus behavior.
       let chars =
         !current.extended && !current.wandered ? nativeRange(current) : null;
       if (
@@ -233,8 +242,46 @@ export function useCodeSelection(
       if (accepted !== false) setSelection(next);
       else setSelection(current.previous);
     }
+    function copy(event: ClipboardEvent) {
+      const selected = window.getSelection();
+      if (
+        !event.clipboardData ||
+        !selected ||
+        selected.isCollapsed ||
+        selected.rangeCount !== 1 ||
+        (event.target instanceof Element &&
+          event.target.closest("input, textarea, [contenteditable]"))
+      )
+        return;
+      const range = selected.getRangeAt(0);
+      const cellAt = (node: Node) =>
+        (node instanceof Element ? node : node.parentElement)?.closest(
+          "[data-code-cell]",
+        );
+      const first = cellAt(range.startContainer),
+        last = cellAt(range.endContainer);
+      if (
+        !first ||
+        !last ||
+        first === last ||
+        !root?.contains(first) ||
+        !root.contains(last) ||
+        first.closest<HTMLElement>("[data-file-path]")?.dataset.filePath !==
+          last.closest<HTMLElement>("[data-file-path]")?.dataset.filePath
+      )
+        return;
+      // Native copying inserts extra newlines between the positioned diff rows.
+      // The cloned cells retain partial endpoints without gutters or layout text.
+      const cells = range.cloneContents().querySelectorAll("[data-code-cell]");
+      event.clipboardData.setData(
+        "text/plain",
+        Array.from(cells, (cell) => cell.textContent).join("\n"),
+      );
+      event.preventDefault();
+    }
     const cancel = () => release();
     root.addEventListener("pointerdown", down);
+    root.addEventListener("copy", copy);
     document.addEventListener("pointermove", move);
     document.addEventListener("pointerup", release);
     document.addEventListener("pointercancel", cancel);
@@ -242,6 +289,7 @@ export function useCodeSelection(
     return () => {
       cancelAnimationFrame(frame);
       root.removeEventListener("pointerdown", down);
+      root.removeEventListener("copy", copy);
       document.removeEventListener("pointermove", move);
       document.removeEventListener("pointerup", release);
       document.removeEventListener("pointercancel", cancel);
