@@ -48,17 +48,27 @@ export async function runGit(
 export async function runGitBytes(
   args: string[],
   cwd?: string,
+  maxBytes = MAX_GIT_OUTPUT_BYTES,
 ): Promise<Uint8Array> {
   const process = Bun.spawn(["git", ...args], {
     cwd,
     stdout: "pipe",
     stderr: "pipe",
   });
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(process.stdout).bytes(),
-    readOutput(process.stderr, MAX_GIT_OUTPUT_BYTES),
-    process.exited,
-  ]);
+  let stdout: Uint8Array;
+  let stderr: string;
+  let exitCode: number;
+  try {
+    [stdout, stderr, exitCode] = await Promise.all([
+      readBytes(process.stdout, maxBytes),
+      readOutput(process.stderr, MAX_GIT_OUTPUT_BYTES),
+      process.exited,
+    ]);
+  } catch (error) {
+    process.kill();
+    await process.exited;
+    throw error;
+  }
 
   if (exitCode !== 0) {
     throw new GitError(
@@ -67,10 +77,25 @@ export async function runGitBytes(
       exitCode,
     );
   }
-  if (stdout.byteLength > MAX_GIT_OUTPUT_BYTES) {
-    throw new Error(`git output exceeded ${MAX_GIT_OUTPUT_BYTES} bytes`);
-  }
   return stdout;
+}
+
+async function readBytes(
+  stream: ReadableStream<Uint8Array>,
+  maxBytes: number,
+): Promise<Uint8Array> {
+  const chunks: Uint8Array[] = [];
+  const reader = stream.getReader();
+  let length = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    length += value.byteLength;
+    if (length > maxBytes)
+      throw new Error(`git output exceeded ${maxBytes} bytes`);
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks, length);
 }
 
 async function readOutput(

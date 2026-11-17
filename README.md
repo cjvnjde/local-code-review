@@ -100,6 +100,33 @@ The browser opens at `http://localhost:7777`; if the port is taken, lcr prints t
 2. **Save note** writes that note to `.review/review-<timestamp>.md` without starting an agent. The output directory is ignored by Git.
 3. Ask your agent to address that file. Replies and status changes appear live; keep the conversation going under each note.
 
+### Tree-sitter highlighting
+
+lcr automatically prefers an installed `tree-sitter` CLI for code diffs when its
+language grammars and highlight queries are configured. Unsupported languages,
+missing tools, and failed highlighting fall back to bundled highlight.js. Markdown
+code blocks continue to use highlight.js.
+
+```sh
+lcr --no-tree-sitter           # Use highlight.js for this run
+lcr --tree-sitter              # Override a disabled user default
+```
+
+Set `"treeSitter": false` in your user lcr configuration to disable automatic
+detection. No Tree-sitter installation or grammar download is required to use lcr.
+
+Installing the CLI alone does not install language grammars. Use
+`tree-sitter init-config` and configure its `parser-directories` to point at a
+directory containing grammar repositories such as `tree-sitter-javascript`.
+Check `tree-sitter dump-languages` and `tree-sitter highlight path/to/file.js`.
+See the [Tree-sitter setup guide](https://tree-sitter.github.io/tree-sitter/3-syntax-highlighting.html).
+lcr uses that user configuration and never downloads or configures grammars for you.
+Restart lcr after changing the Tree-sitter installation or configuration.
+
+Highlighting uses complete old/new file versions, including staged and committed
+content, and keeps lcr's selected theme. Large files (over 1 MiB per side) use the
+fallback.
+
 ## Themes
 
 Choose **Settings → Appearance → Theme**. The four built-in palettes cover light

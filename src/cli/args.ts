@@ -23,6 +23,7 @@ export function parseArgs(
   let outDir = defaults.outDir ?? ".review";
   let context = defaults.context ?? 5;
   let open = defaults.open ?? true;
+  let treeSitter = defaults.treeSitter;
   let id = normalizeId(defaults.id ?? "");
   let version = false;
   let help = false;
@@ -46,6 +47,8 @@ export function parseArgs(
     else if (arg === "--id") id = normalizeId(argv[++i] ?? "");
     else if (arg === "--web") web = localWebUrl(argv[++i] ?? "");
     else if (arg === "--no-web") web = "";
+    else if (arg === "--tree-sitter") treeSitter = true;
+    else if (arg === "--no-tree-sitter") treeSitter = false;
     else if (arg === "--browser-profile") {
       const value = argv[++i];
       if (value !== "shared" && value !== "project" && value !== "existing")
@@ -93,6 +96,7 @@ export function parseArgs(
     ...(web ? { web } : {}),
     ...(browserProfile ? { browserProfile } : {}),
     ...(browserDataDir ? { browserDataDir } : {}),
+    ...(treeSitter === undefined ? {} : { treeSitter }),
     port,
     outDir,
     context,
@@ -133,6 +137,8 @@ Options:
   --port <number>            Starting port (default: 7777; 0 picks a free port)
   --out <directory>          Review output directory (default: .review)
   --context <lines>          Surrounding diff lines (default: 5)
+  --tree-sitter              Prefer installed Tree-sitter grammars (default)
+  --no-tree-sitter           Use bundled highlight.js only
   --web <url>                Also annotate a localhost UI in Chrome
   --no-web                   Ignore a configured live page
   --browser-profile <scope>  Browser: shared (default), project, or existing

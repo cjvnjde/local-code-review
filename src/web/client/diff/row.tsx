@@ -67,11 +67,11 @@ export function CodeRow({
     };
     paint(changes[0], changes[1]);
     return () => paint();
-  }, [changes?.[0], changes?.[1], row.t, row.text]);
+  }, [changes?.[0], changes?.[1], row.t, row.text, row.syntax]);
   useLayoutEffect(() => {
     if (cell.current && !pressing)
       highlightCharacters(cell.current, characters?.ca, characters?.cb);
-  }, [characters?.ca, characters?.cb, pressing, row.text]);
+  }, [characters?.ca, characters?.cb, pressing, row.text, row.syntax]);
   useLayoutEffect(() => {
     if (cell.current)
       highlightCharacters(
@@ -81,7 +81,7 @@ export function CodeRow({
         "lcr-notes",
         noteCharacters,
       );
-  }, [noteCharacters, row.text]);
+  }, [noteCharacters, row.text, row.syntax]);
   useEffect(() => {
     const element = cell.current;
     return () => {
@@ -265,6 +265,7 @@ export function CodeRow({
           >
             <Code
               value={row.text}
+              tokens={row.syntax}
               language={languageFor(file.path)}
               className={
                 settings.wrapLines

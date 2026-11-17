@@ -41,6 +41,8 @@ import {
 } from "./review/output.ts";
 import { createSession } from "./review/session.ts";
 import { startServer } from "./server/http.ts";
+import { createDiffSyntax } from "./server/diff-syntax.ts";
+import { createTreeSitter, MAX_SYNTAX_BYTES } from "./server/tree-sitter.ts";
 import { collectStatuses } from "./review/status.ts";
 import { hydrateContextDoc } from "./review/web-context.ts";
 import { parseReview } from "./review/thread.ts";
@@ -103,6 +105,16 @@ async function main() {
     diffBase(diffSource),
     diffSides(diffSource),
   ]);
+  const syntax = createDiffSyntax(
+    (side, file) =>
+      readBlob(
+        repoRoot,
+        side === "old" ? sides.old : sides.new,
+        file,
+        MAX_SYNTAX_BYTES,
+      ),
+    createTreeSitter({ enabled: options.treeSitter }),
+  );
   const session = createSession(repoRoot, options.outDir, range, {
     range,
     branch,
@@ -209,9 +221,12 @@ async function main() {
       saveUiSettings: (patch) => saveUiSettings(patch, configFile),
       getThemes: () => loadThemes(configFile),
       saveTheme: (draft) => saveTheme(draft, configFile),
-      getDiff: () => getDiff(diffSource),
-      getContext: (file, start, end) =>
-        getFileContext(diffSource, file, start, end),
+      getDiff: async () => syntax.files(await getDiff(diffSource)),
+      getContext: async (file, start, end) =>
+        syntax.context(
+          file,
+          await getFileContext(diffSource, file, start, end),
+        ),
       readBlob: (side, file) =>
         readBlob(repoRoot, side === "old" ? sides.old : sides.new, file),
       // Beside the review file, because that is what a note's link to one resolves against.

@@ -63,6 +63,7 @@ export async function readBlob(
   repoRoot: string,
   side: string,
   file: string,
+  maxBytes?: number,
 ): Promise<Uint8Array | null> {
   if (!file) return null;
   try {
@@ -79,6 +80,7 @@ export async function readBlob(
       // belong to this repository. Check the resolved path before reading any media bytes.
       if (!resolved.startsWith(root + path.sep)) return null;
       const handle = Bun.file(resolved);
+      if (maxBytes !== undefined && handle.size > maxBytes) return null;
       return (await handle.exists())
         ? new Uint8Array(await handle.arrayBuffer())
         : null;
@@ -86,6 +88,7 @@ export async function readBlob(
     return await runGitBytes(
       ["show", `${side === INDEX ? "" : side}:${file}`],
       repoRoot,
+      maxBytes,
     );
   } catch {
     return null;

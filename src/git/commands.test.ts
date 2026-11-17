@@ -20,6 +20,18 @@ async function repository() {
 }
 
 describe("Git subprocess contracts", () => {
+  test("optional byte limits stop oversized blob reads and accept the exact boundary", async () => {
+    const root = await repository();
+    const hash = (
+      await runGit(["hash-object", "-w", "--stdin"], root, "12345")
+    ).trim();
+    expect(await runGitBytes(["cat-file", "blob", hash], root, 5)).toEqual(
+      new TextEncoder().encode("12345"),
+    );
+    await expect(
+      runGitBytes(["cat-file", "blob", hash], root, 4),
+    ).rejects.toThrow("exceeded 4 bytes");
+  });
   test("streams large Unicode stdin through a real blob without losing decoder boundaries", async () => {
     const root = await repository();
     const contents = "αβ🙂雪\n".repeat(20000) + "last line without newline";

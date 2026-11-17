@@ -29,6 +29,7 @@ export const startupSettingsSchema = z.strictObject({
   outDir: directory.optional(),
   context: z.number().int().nonnegative().optional(),
   open: z.boolean().optional(),
+  treeSitter: z.boolean().optional(),
   id: configString.optional(),
   web: configString
     .transform((value, ctx) => {

@@ -6,6 +6,12 @@ import axePackage from "../../node_modules/axe-core/package.json";
 import culori from "../../node_modules/culori/LICENSE" with { type: "text" };
 import freehand from "../../node_modules/perfect-freehand/LICENSE" with { type: "text" };
 import gracefulFs from "../../node_modules/graceful-fs/LICENSE.md" with { type: "text" };
+import htmlparser2 from "../../node_modules/htmlparser2/LICENSE" with { type: "text" };
+import domhandler from "../../node_modules/domhandler/LICENSE" with { type: "text" };
+import domelementtype from "../../node_modules/domelementtype/LICENSE" with { type: "text" };
+import domutils from "../../node_modules/domutils/LICENSE" with { type: "text" };
+import domSerializer from "../../node_modules/dom-serializer/LICENSE" with { type: "text" };
+import entities from "../../node_modules/entities/LICENSE" with { type: "text" };
 import pixelmatch from "../../node_modules/pixelmatch/LICENSE" with { type: "text" };
 import pngjs from "../../node_modules/pngjs/LICENSE" with { type: "text" };
 import properLockfile from "../../node_modules/proper-lockfile/LICENSE" with { type: "text" };
@@ -27,6 +33,12 @@ export function libraryNotices(): string {
       ["axe-core bundled dependencies", axeDependencies],
       ["culori", culori],
       ["graceful-fs", gracefulFs],
+      ["htmlparser2", htmlparser2],
+      ["domhandler", domhandler],
+      ["domelementtype", domelementtype],
+      ["domutils", domutils],
+      ["dom-serializer", domSerializer],
+      ["entities", entities],
       ["perfect-freehand", freehand],
       ["pixelmatch", pixelmatch],
       ["pngjs", pngjs],

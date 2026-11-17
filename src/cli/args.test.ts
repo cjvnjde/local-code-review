@@ -2,6 +2,23 @@ import { describe, expect, test } from "bun:test";
 import { normalizeId, parseArgs } from "./args.ts";
 
 describe("parseArgs", () => {
+  test("Tree-sitter defaults can be overridden without forwarding flags to Git", () => {
+    expect(
+      parseArgs(["--tree-sitter", "--staged"], { treeSitter: false }),
+    ).toMatchObject({ treeSitter: true, diffArgs: ["--staged"] });
+    expect(
+      parseArgs(["--no-tree-sitter"], { treeSitter: true }).treeSitter,
+    ).toBe(false);
+    expect(parseArgs(["--tree-sitter", "--no-tree-sitter"]).treeSitter).toBe(
+      false,
+    );
+    expect(parseArgs(["--no-tree-sitter", "--tree-sitter"]).treeSitter).toBe(
+      true,
+    );
+    expect(
+      parseArgs(["--", "--tree-sitter"], { treeSitter: false }),
+    ).toMatchObject({ treeSitter: false, diffArgs: ["--", "--tree-sitter"] });
+  });
   test("extracts tool flags and preserves Git argument order", () => {
     expect(
       parseArgs([

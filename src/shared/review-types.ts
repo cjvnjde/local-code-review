@@ -1,4 +1,5 @@
 import type { ImageRegion } from "./image-region.ts";
+import type { SyntaxToken } from "./syntax.ts";
 
 export type FileStatus = "modified" | "added" | "deleted" | "renamed";
 export type DiffRowType = "hunk" | "add" | "del" | "ctx";
@@ -10,6 +11,8 @@ export interface DiffRow {
   o?: number;
   /** Section heading git appended to a hunk header, kept so the header can be rebuilt after expansion. */
   head?: string;
+  /** Optional tokens from the complete source version, with exactly the row's text. */
+  syntax?: SyntaxToken[];
 }
 
 export interface DiffFile {
@@ -94,6 +97,8 @@ export interface CliOptions {
   browserProfile?: "shared" | "project" | "existing";
   /** Read-only discovery of an existing browser's user data directory. */
   browserDataDir?: string;
+  /** Prefer the installed Tree-sitter CLI; false keeps bundled highlight.js only. */
+  treeSitter?: boolean;
   diffArgs: string[];
 }
 

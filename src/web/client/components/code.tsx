@@ -1,5 +1,6 @@
 import { memo } from "react";
 import hljs from "highlight.js/lib/common";
+import { SYNTAX_CLASSES, type SyntaxToken } from "../../../shared/syntax.ts";
 
 const aliases: Record<string, string> = {
   tsx: "typescript",
@@ -31,11 +32,27 @@ export const Code = memo(function Code({
   value,
   language = "plaintext",
   className,
+  tokens,
 }: {
   value: string;
   language?: string;
   className?: string;
+  tokens?: SyntaxToken[];
 }) {
+  if (tokens)
+    return (
+      <code className={className}>
+        {tokens.map((token, index) =>
+          token.kind === "plain" ? (
+            token.text
+          ) : (
+            <span key={index} className={SYNTAX_CLASSES[token.kind]}>
+              {token.text}
+            </span>
+          ),
+        )}
+      </code>
+    );
   return (
     <code
       className={className}

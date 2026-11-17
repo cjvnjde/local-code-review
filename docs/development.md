@@ -32,32 +32,50 @@ the conversation documents.
 
 ## Stack
 
-| Concern                                    | Implementation                                                              |
-| ------------------------------------------ | --------------------------------------------------------------------------- |
-| UI and editor state                        | React 19 components and hooks                                               |
-| Server state, mutations, refetches         | TanStack Query                                                              |
-| Large code files                           | TanStack Virtual                                                            |
-| Accessible controls, drawing shell, search | [Base UI](https://base-ui.com/react/overview/quick-start)                   |
-| Local UI components                        | shadcn-style Tailwind components, CVA, clsx, tailwind-merge                 |
-| Pane sizing                                | [react-resizable-panels](https://github.com/bvaughn/react-resizable-panels) |
-| Icons                                      | Lucide React                                                                |
-| Image drawing, selection and PNG rendering | [Konva](https://konvajs.org/) with react-konva                              |
-| Optional pressure/tapered strokes          | perfect-freehand, pinned to 1.2.3 with versioned metadata                   |
-| Original screenshot differences            | pixelmatch, lazy browser-side comparisons                                   |
-| Modern CSS color parsing                   | Culori's selective `culori/fn` imports                                      |
-| Explicit accessibility scans               | Bundled axe-core, top-level document and open shadow roots                  |
-| Pre-save screenshot masking                | Pure-JavaScript pngjs; no native addon                                      |
-| ACP framing and stable-v1 dispatch         | Official `@agentclientprotocol/sdk`                                         |
-| Typed CDP commands and events              | Generated `devtools-protocol` types, erased from runtime                    |
-| JSON and persisted-setting boundaries      | Zod plus streamed byte limits before parsing                                |
-| Markdown and GFM                           | react-markdown and remark-gfm                                               |
-| Cross-process review writes                | proper-lockfile plus atomic Markdown replacement                            |
-| Syntax coloring                            | highlight.js                                                                |
-| Suggested replacement diffs                | jsdiff (`diff`)                                                             |
-| Local serving and executable packaging     | Bun                                                                         |
+| Concern                                    | Implementation                                                                            |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| UI and editor state                        | React 19 components and hooks                                                             |
+| Server state, mutations, refetches         | TanStack Query                                                                            |
+| Large code files                           | TanStack Virtual                                                                          |
+| Accessible controls, drawing shell, search | [Base UI](https://base-ui.com/react/overview/quick-start)                                 |
+| Local UI components                        | shadcn-style Tailwind components, CVA, clsx, tailwind-merge                               |
+| Pane sizing                                | [react-resizable-panels](https://github.com/bvaughn/react-resizable-panels)               |
+| Icons                                      | Lucide React                                                                              |
+| Image drawing, selection and PNG rendering | [Konva](https://konvajs.org/) with react-konva                                            |
+| Optional pressure/tapered strokes          | perfect-freehand, pinned to 1.2.3 with versioned metadata                                 |
+| Original screenshot differences            | pixelmatch, lazy browser-side comparisons                                                 |
+| Modern CSS color parsing                   | Culori's selective `culori/fn` imports                                                    |
+| Explicit accessibility scans               | Bundled axe-core, top-level document and open shadow roots                                |
+| Pre-save screenshot masking                | Pure-JavaScript pngjs; no native addon                                                    |
+| ACP framing and stable-v1 dispatch         | Official `@agentclientprotocol/sdk`                                                       |
+| Typed CDP commands and events              | Generated `devtools-protocol` types, erased from runtime                                  |
+| JSON and persisted-setting boundaries      | Zod plus streamed byte limits before parsing                                              |
+| Markdown and GFM                           | react-markdown and remark-gfm                                                             |
+| Cross-process review writes                | proper-lockfile plus atomic Markdown replacement                                          |
+| Syntax coloring                            | Optional local Tree-sitter CLI; bundled highlight.js fallback; htmlparser2 for CLI output |
+| Suggested replacement diffs                | jsdiff (`diff`)                                                                           |
+| Local serving and executable packaging     | Bun                                                                                       |
 
 The small UI components are owned here rather than pulled from a hosted registry
 at runtime. There is no frontend server or CDN in the distributed application.
+
+`src/server/{tree-sitter,syntax-html,diff-syntax}.ts` owns optional syntax coloring.
+Startup detects the CLI and its user-configured grammars lazily on the first diff
+request. `--no-tree-sitter` or the startup setting `treeSitter: false` disables it;
+`--tree-sitter` overrides that setting. The CLI runs in private temporary directories,
+with source files in a separate child directory so repository grammar configuration
+cannot be picked up from the current directory. No runtime dependency is installed.
+Two process slots, a three-second process timeout, 1 MiB source/8 MiB output limits,
+and a 16-entry content cache bound the optional work. Missing grammars and failures
+leave highlight.js in charge; timeouts, excessive output, or launch failures disable
+further attempts for the session. Restart to pick up installation/configuration changes.
+
+Full blobs come from the existing Git side resolver (including rename origins).
+The HTML parser emits only typed text tokens, mapped to the existing palette and
+rendered as React children. Neither external HTML nor inline styles reach the page.
+Tokens are attached only when the source still matches every displayed row on that
+side; context expansion follows the same path. Highlighting travels with the diff
+response, preserving the existing deferred-refresh and reading-anchor behavior.
 
 Review-round snapshots and their independent verification records live beside the
 review output, not in agent task state. Snapshot limits and incomplete evidence are
