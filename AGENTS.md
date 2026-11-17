@@ -3,6 +3,20 @@
 This branch experiments with a library-based lcr. Prefer simple, maintained
 libraries and clear React components over custom infrastructure.
 
+## Task guidance
+
+- For UI layout, styling, notes, editors, and interactions, read and follow
+  [.agents/skills/quiet-workspace-design/SKILL.md](.agents/skills/quiet-workspace-design/SKILL.md).
+  Keep reusable design decisions there so all views share one visual language.
+- For React components, hooks, client data flow, and TypeScript UI models, read and
+  follow [.agents/skills/react-typescript-workspaces/SKILL.md](.agents/skills/react-typescript-workspaces/SKILL.md).
+- Read [docs/development.md](docs/development.md) for the implementation map,
+  existing libraries, live-update invariants, and validation commands. These
+  project-local skills are standalone; keep lcr-specific paths and contracts in
+  the development guide. Load only the guidance relevant to the task.
+
+## Project constraints
+
 - Keep `src/index.ts` as the CLI entry point. Use Bun for development, tests,
   bundling, and compilation. The release must remain one standalone `lcr`
   executable, with its browser assets embedded and no runtime install step.

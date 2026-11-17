@@ -112,6 +112,64 @@ context expansion, note updates, and diff refreshes. Diff refreshes wait while a
 editor is open. The sidebar and note list share a directory-first order. Captured
 code is retained in Markdown; missing or ambiguous anchors stay with their file.
 
+## Agent skills and design ownership
+
+Repository guidance routes agents to two project-local skills:
+
+- [quiet-workspace-design](../.agents/skills/quiet-workspace-design/SKILL.md) owns
+  the reusable visual language, action placement, note/editor consistency, concise
+  product copy, and reading/editing behavior. Update it when a shared design
+  decision changes. Icon buttons are preferred for familiar utilities; named
+  actions such as **Save note** remain useful where they communicate intent.
+- [react-typescript-workspaces](../.agents/skills/react-typescript-workspaces/SKILL.md)
+  covers component reuse, state ownership, effects, typed boundaries, and rendering
+  performance. This guide owns the lcr-specific architecture and commands.
+
+Each skill is a standalone `SKILL.md`: copy its folder into another project's
+`.agents/skills/` and reference it from that project's agent instructions if
+needed. Neither requires lcr paths or imports. The design skill includes a starter
+palette, while the destination project's actual theme tokens remain authoritative.
+These are development skills; the separately distributed `apply-lcr` skill is for
+consuming review feedback. Keep the new guidance in one place rather than adding
+another mirrored copy under `skills/`.
+
+Use this map to apply the portable rules here:
+
+| Concern                                                | Existing implementation                                                       |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------- |
+| Color, type, Markdown, and diff styles                 | `src/web/styles/index.css`; editable palettes in `src/shared/themes.ts`       |
+| Buttons, menus, dialogs, tooltips, and pane primitives | `src/web/client/components/ui/`                                               |
+| Shared note identity, conversation, and editor         | `src/web/client/notes/{note-header,note-card,composer}.tsx`                   |
+| Workspace toolbar and responsive panes                 | `src/web/client/app/app.tsx`, `src/web/client/navigation/review-layout.tsx`   |
+| Continuous reading and protected editor placement      | `src/web/client/diff/diff-view.tsx` and the neighboring reading/anchor models |
+| Remote state and draft persistence                     | `src/web/client/app/api.ts`, `src/web/client/app/preferences.ts`              |
+| Floating web editor                                    | `src/web/client/web-review/embedded.tsx`, sharing `Composer`                  |
+
+The [Dark](local-code-review.png), [Light](review-light.png), and
+[web annotation](web-annotation.png) screenshots provide visual examples, not an
+exhaustive specification of current behavior. Inspect current components when
+changing interactions. The storefront behind the floating web editor is a capture
+fixture, not lcr's visual style.
+
+### External guidance considered
+
+The local React/TypeScript skill links primary React, TypeScript, and TanStack
+documentation at the relevant decisions. Its rules are adapted to this project's
+client-rendered Bun application and existing React Compiler integration.
+
+Two optional upstream skills are useful references from
+[Vercel's official collection](https://github.com/vercel-labs/agent-skills):
+
+| Skill                   | Useful here                                                                    | Scope to keep in mind                                                                                                                        |
+| ----------------------- | ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `react-best-practices`  | Investigating request waterfalls, large imports, and avoidable rendering work. | Also covers Next.js and server rendering. Apply only relevant rules; don't introduce those architectures or blanket manual memoization here. |
+| `web-design-guidelines` | A focused accessibility, keyboard/focus, and interaction audit.                | Complements the local visual language; it does not define this product's palette or layout.                                                  |
+
+These external packs are recommendations, not installed dependencies. The two
+small local skills are the default guidance. Consider upstream material for a
+specific audit or demonstrated gap instead of loading overlapping rule sets for
+every edit. Reassess the upstream content before adopting it.
+
 ## Validation and packaging
 
 ```sh
