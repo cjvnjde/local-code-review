@@ -27,7 +27,14 @@ import { useUi } from "./ui-preferences.tsx";
 import { useThemes } from "./themes.tsx";
 import { ImageScope } from "../components/images.tsx";
 import { imageEditorOwner } from "../components/image-preview.ts";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useEffectEvent,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   GitPullRequest,
   Search,
@@ -69,6 +76,7 @@ import {
   Composer,
   DraftReviewNotice,
   draftChanged,
+  initializeDraft,
   type Draft,
 } from "../notes/composer.tsx";
 import { AgentActivity } from "./agent-activity.tsx";
@@ -161,7 +169,7 @@ function Workspace({
   onRefresh: () => void;
   refreshing: boolean;
 }) {
-  const { settings, update } = useUi();
+  const { settings } = useUi();
   const wideLayout = useMedia("(min-width: 1280px)");
   const notesInline = useMedia("(min-width: 960px)");
   const [fileDrawerOpen, setFileDrawerOpen] = useState(false);
@@ -287,6 +295,7 @@ function Workspace({
     jumpToNote(note);
     if (!notesInline) setNotesOpen(false);
   });
+  const followNote = useEffectEvent(jumpToNote);
   useEffect(() => {
     if (
       !roundTarget ||
@@ -295,7 +304,7 @@ function Workspace({
     )
       return;
     const note = review.notes.find((entry) => entry.id === roundTarget.noteId);
-    if (note) jumpToNote(note);
+    if (note) followNote(note);
     else
       toast.error("That conversation no longer exists in this saved review.");
     setRoundTarget(null);
@@ -352,7 +361,7 @@ function Workspace({
     if (target) jumpBookmark(target.b);
   }
   const file = files.find((f) => f.path === selected) || files[0];
-  const notes = review?.notes || [];
+  const notes = useMemo(() => review?.notes || [], [review?.notes]);
   const searchResults = useSearchResults(files, notes, search);
   const suggestions = useMemo(() => searchResults.slice(0, 8), [searchResults]);
   function selectSearchResult(result: SearchResult) {
@@ -449,7 +458,7 @@ function Workspace({
       if (matches.length !== 1) return;
       followed.current = ref;
       // Restore the URL target without overriding saved panel visibility.
-      jumpToNote(matches[0]!, !!event);
+      followNote(matches[0]!, !!event);
       setAllNotes(true);
       if (event) setNotesOpen(true);
       setFilter("all");
@@ -463,7 +472,7 @@ function Workspace({
     follow();
     window.addEventListener("hashchange", follow);
     return () => window.removeEventListener("hashchange", follow);
-  }, [review?.notes]);
+  }, [notes, setAllNotes, setFilter, setNotesOpen]);
 
   const agent = { ...incomingDiff, ...review };
   const fileOrder = new Map(files.map((f, i) => [f.path, i]));
@@ -569,7 +578,7 @@ function Workspace({
   );
   useLayoutEffect(() => {
     visibilityGuard.current = { file: draftFile, focus: focusEditor };
-  }, [draftFile, focusEditor]);
+  });
   const compose = (next: Draft) => {
     if (!review || busy || (draft && draft.review !== review.file)) {
       focusEditor();
@@ -622,22 +631,8 @@ function Workspace({
       next.kind === "note"
         ? notes.find((note) => note.id === next.comment.id)
         : notes.find((note) => note.id === next.id);
-    const original =
-      next.kind === "note"
-        ? known?.body || ""
-        : next.at
-          ? known?.messages.find((message) => message.at === next.at)?.body ||
-            ""
-          : "";
     setSearchOpen(false);
-    setDraft({
-      ...next,
-      review: review.file,
-      host: next.host || "diff",
-      original,
-      originalTriage: known?.triage,
-      editing: next.kind === "note" && !!known,
-    });
+    setDraft(initializeDraft(next, review));
     if (
       next.host === "panel" &&
       !(next.kind === "note" && next.comment.scope === "global" && !known)

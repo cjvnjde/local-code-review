@@ -1,6 +1,7 @@
 // A real child process exposing only the CDP lifecycle needed by launch tests.
 import { existsSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { browserVersion } from "./protocol.ts";
 const args = process.argv.slice(2);
 const profile = args
   .find((arg) => arg.startsWith("--user-data-dir="))!
@@ -33,7 +34,7 @@ const server = Bun.serve({
         socket.send(
           JSON.stringify({
             id: message.id,
-            result: { product: "LifecycleFixture/1" },
+            result: browserVersion("LifecycleFixture/1"),
           }),
         );
       if (message.method === "Browser.close") {

@@ -1,4 +1,5 @@
 // A stdio peer with independent server-initiated requests and deliberately faulty frames.
+export {};
 const held: { id: number; name: string }[] = [];
 const decisions: unknown[] = [];
 let unsupportedRequest: number | undefined;
@@ -140,7 +141,7 @@ async function receive(message: Message) {
         });
       break;
     case "fixture/exit":
-      process.exit(9);
+      return process.exit(9);
     default:
       if (!message.method) {
         if (message.id === "client-request")

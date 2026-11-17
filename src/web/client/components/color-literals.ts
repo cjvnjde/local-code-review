@@ -8,7 +8,7 @@ import {
   modeOklch,
   modeP3,
   parse,
-  useMode,
+  useMode as registerMode,
 } from "culori/fn";
 
 for (const mode of [
@@ -20,7 +20,7 @@ for (const mode of [
   modeOklch,
   modeP3,
 ])
-  useMode(mode);
+  registerMode(mode);
 const toRgb = converter("rgb");
 
 export interface ColorLiteral {

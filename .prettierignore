@@ -1,0 +1,10 @@
+node_modules/
+build/
+dist/
+coverage/
+test-results/
+playwright-report/
+.review/
+bun.lock
+# Standalone binaries and image evidence are not source formatting inputs.
+lcr

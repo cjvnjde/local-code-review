@@ -42,6 +42,6 @@ export function useReviewState(scope: string) {
             : reviewRevision(note),
         })),
     }),
-    [resolved, seen],
+    [resolved, seen, setResolved, setSeen],
   );
 }

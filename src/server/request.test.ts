@@ -155,7 +155,12 @@ describe("request schemas", () => {
     expect(parseRequest(noteRequestSchema, { comment: note }).comment).toEqual(
       note,
     );
-    for (const triage of ["blocker", "bug", "suggestion", "question"]) {
+    for (const triage of [
+      "blocker",
+      "bug",
+      "suggestion",
+      "question",
+    ] as const) {
       expect(
         parseRequest(noteRequestSchema, { comment: { ...note, triage } })
           .comment.triage,
@@ -217,7 +222,7 @@ describe("request schemas", () => {
       padding: 0,
       marks: [
         {
-          tool: "pen",
+          tool: "pen" as const,
           color: "#ff0000",
           width: 1,
           points: Array.from({ length: 3000 }, () => ({ x: 1, y: 2 })),

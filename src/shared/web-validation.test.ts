@@ -163,7 +163,7 @@ describe("capture validation boundaries", () => {
       styles: {},
     };
     const components = Array.from({ length: 30 }, () => ({
-      framework: "Vue",
+      framework: "Vue" as const,
       name: "View",
       line: 0,
     }));
@@ -273,7 +273,7 @@ describe("capture validation boundaries", () => {
 
   test("annotation targets bound indices, identity and expected storage paths", () => {
     const target = {
-      kind: "selection",
+      kind: "selection" as const,
       index: 100,
       key: "k".repeat(32768),
       expected: "",
@@ -353,7 +353,7 @@ describe("annotation geometry and evidence", () => {
 
   test("reversed rectangles use the shorter absolute edge to bound corner radius", () => {
     const mark = {
-      tool: "rectangle",
+      tool: "rectangle" as const,
       color: "#123456",
       width: 128,
       from: { x: 14, y: 24 },
@@ -377,7 +377,7 @@ describe("annotation geometry and evidence", () => {
 
   test("text accepts maximum content and size but not blank or nonfinite text geometry", () => {
     const mark = {
-      tool: "text",
+      tool: "text" as const,
       color: "#ABCDEF",
       at: { x: 14, y: 24 },
       text: "x".repeat(ANNOTATION_LIMITS.maxText),

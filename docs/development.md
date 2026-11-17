@@ -226,10 +226,38 @@ bun run build -- --outfile /tmp/lcr
 bun run test:browser
 ```
 
-`check` type-checks the React application, CLI, backend, and shared imports, runs
-Bun tests, and bundles the whole application. The build script uses the same React Compiler and Tailwind plugins
-and compiles both the server and HTML assets into one executable. Use this script
-instead of calling `bun build` directly, which does not register these build plugins.
+`check` checks formatting, runs ESLint, type-checks the React application, CLI,
+backend, shared modules, scripts, and tests, verifies the mirrored skill folders,
+runs Bun tests, and bundles the whole application.
+Use `bun run lint` or `bun run typecheck` for a focused check. `bun run lint:fix`
+applies ESLint's available automatic fixes; review the resulting diff.
+
+ESLint enforces the recommended JavaScript and TypeScript checks, hook call order
+and effect dependencies, unused variables, strict equality, and browser/server
+import boundaries. Warnings and focused source tests fail the gate. Existing
+explicit `any` adapters remain supported; Prettier owns formatting independently
+of lint. Generated reviews, dependencies, reports, and build output are excluded.
+
+Typechecking keeps the TypeScript 7 native compiler through the
+`@typescript/native` package alias. ESLint's parser needs the JavaScript compiler
+API, so `typescript` aliases the official `@typescript/typescript6` compatibility
+package. These coexist without executable conflicts: `tsc` runs TypeScript 7 and
+`tsc6` belongs to the compatibility package. This follows the upstream
+[TypeScript 7 migration guidance](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/#running-side-by-side-with-typescript-6-0).
+
+The build script uses the same React Compiler and Tailwind plugins and compiles
+both the server and HTML assets into one executable. Use this script instead of
+calling `bun build` directly, which does not register these build plugins.
+
+The Quality checks workflow runs on branch pushes and pull requests. Its source
+job runs `check` and verifies that the two `apply-lcr` skill directories are
+identical. Its browser job installs Chrome, enables all source browser tests with
+`LCR_TEST_BROWSER=1 bun test ./src`, and runs `tests/browser/review.spec.ts`
+against a newly compiled executable in disposable repositories without adjacent
+source or dependencies. Focused Playwright tests (`test.only`) fail CI, and failed
+browser runs upload traces for seven days. The CPU-throttled performance benchmark
+remains an explicit local check because its absolute latency limits depend on
+the machine running it.
 
 For a custom executable name, use `bun run build -- --outfile lcr2`. The script
 already enables minification and compilation. Direct `bun build` leaves Tailwind
@@ -247,8 +275,10 @@ Cross-compile through the same script:
 bun run build -- --target bun-linux-x64 --outfile /tmp/lcr-linux
 ```
 
-The release workflow installs dependencies with the lockfile before checking and
-building each platform. Only the executable goes into release archives. Users of
+Both quality and release workflows use the Bun version pinned by `packageManager`
+in `package.json` and install dependencies with the lockfile. Release builds run
+the same source checks before building each platform. Only the executable goes
+into release archives. Users of
 the binary need Git, with no Bun, Node.js, package install, or adjacent assets.
 Optional ACP adapters and web capture keep their own requirements.
 License text for the integrated libraries is embedded at build time; `lcr licenses`
@@ -268,7 +298,9 @@ input-to-paint inside the page, checks a bounded virtual window, and reloads to
 verify synchronous draft persistence. Set `LCR_TEST_BINARY` to compare an existing
 standalone executable without rebuilding it.
 
-Format changed files on demand:
+Prettier is a locked development dependency. Check formatting with
+`bun run format:check`, or format the supported project files with `bun run format`.
+The formatter uses Prettier defaults, matching the existing per-file command:
 
 ```sh
 bunx prettier --write --no-config --no-editorconfig <files>
@@ -277,7 +309,7 @@ bunx prettier --write --no-config --no-editorconfig <files>
 Do not format generated review files. The optional skill copies must stay identical:
 
 ```sh
-cmp skills/apply-lcr/SKILL.md .agents/skills/apply-lcr/SKILL.md
+bun run check:skills
 ```
 
 ## Documentation screenshots

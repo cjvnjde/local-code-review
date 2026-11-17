@@ -3,6 +3,7 @@
 
 # Shared repository configuration and project-local skills
 !/.gitignore
+!/.prettierignore
 !/.github/
 !/.agents/
 

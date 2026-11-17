@@ -8,7 +8,7 @@ import {
   X,
 } from "lucide-react";
 import type { DiffFile, DiffRow } from "../../../shared/review-types.ts";
-import { bookmarkOf, orderBookmarks, stepAt } from "./bookmarks.ts";
+import { bookmarkOf, orderBookmarks } from "./bookmarks.ts";
 import { rowKey } from "../diff/model.ts";
 import { useStored } from "../app/preferences.ts";
 import { useUi } from "../app/ui-preferences.tsx";
@@ -16,12 +16,13 @@ import { Button } from "../components/ui/button.tsx";
 import type { ReadingAnchor } from "../diff/reading-model.ts";
 
 export type ReviewBookmark = ReturnType<typeof bookmarkOf>;
+const EMPTY_BOOKMARKS: ReviewBookmark[] = [];
 export function useReadingNavigation(scope: string, files: DiffFile[]) {
   const [record, setRecord] = useStored<{
     scope: string;
     list: ReviewBookmark[];
   }>("lcr:v2:bookmarks", { scope, list: [] }, "session");
-  const bookmarks = record.scope === scope ? record.list : [];
+  const bookmarks = record.scope === scope ? record.list : EMPTY_BOOKMARKS;
   const [reading, setReading] = useStored<ReadingAnchor | null>(
     `lcr:v2:reading:${scope}`,
     null,

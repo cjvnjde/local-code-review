@@ -210,7 +210,7 @@ test("zero and upper port boundaries, empty lists and optional blank ids remain 
 
 test("both browser profile scopes can be configured", async () => {
   const f = await fixture();
-  for (const browserProfile of ["shared", "project", "existing"]) {
+  for (const browserProfile of ["shared", "project", "existing"] as const) {
     await f.write({ browserProfile });
     expect(await loadUserSettings({}, f.settings)).toEqual({ browserProfile });
   }

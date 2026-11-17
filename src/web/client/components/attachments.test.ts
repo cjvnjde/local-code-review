@@ -1,10 +1,15 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import {
   attachmentDownloadSrc,
   attachmentSrc,
   imageTokens,
   uploadAttachment,
 } from "./attachments.ts";
+
+const preconnect = fetch.preconnect;
+const fetchImplementation = (
+  handler: (...args: Parameters<typeof fetch>) => Promise<Response>,
+): typeof fetch => Object.assign(handler, { preconnect });
 
 test("editable image tokens exclude code examples, escaped images and remote content", () => {
   const body = [
@@ -60,53 +65,58 @@ test("download links accept arbitrary local attachment files without treating th
 });
 
 test("binary uploads preserve bytes, unknown MIME and the original filename header", async () => {
-  const originalFetch = globalThis.fetch;
+  const fetchMock = spyOn(globalThis, "fetch");
   const raw = new Uint8Array([0, 255, 254, 128]);
   const file = new File([raw], "résumé report [final].bin");
   try {
-    globalThis.fetch = (async (
-      url: string | URL | Request,
-      init?: RequestInit,
-    ) => {
-      expect(url).toBe("/api/attach");
-      expect(init!.method).toBe("POST");
-      expect(new Headers(init!.headers).get("content-type")).toBe(
-        "application/octet-stream",
-      );
-      expect(
-        decodeURIComponent(
-          new Headers(init!.headers).get("x-attachment-name")!,
-        ),
-      ).toBe(file.name);
-      expect(new Uint8Array(await (init!.body as Blob).arrayBuffer())).toEqual(
-        raw,
-      );
-      return Response.json({ ref: "images/0123456789abcdef-report.bin" });
-    }) as typeof fetch;
+    fetchMock.mockImplementation(
+      fetchImplementation(
+        async (url: string | URL | Request, init?: RequestInit) => {
+          expect(url).toBe("/api/attach");
+          expect(init!.method).toBe("POST");
+          expect(new Headers(init!.headers).get("content-type")).toBe(
+            "application/octet-stream",
+          );
+          expect(
+            decodeURIComponent(
+              new Headers(init!.headers).get("x-attachment-name")!,
+            ),
+          ).toBe(file.name);
+          expect(
+            new Uint8Array(await (init!.body as Blob).arrayBuffer()),
+          ).toEqual(raw);
+          return Response.json({ ref: "images/0123456789abcdef-report.bin" });
+        },
+      ),
+    );
     expect(await uploadAttachment(file, file.name)).toBe(
       "images/0123456789abcdef-report.bin",
     );
   } finally {
-    globalThis.fetch = originalFetch;
+    fetchMock.mockRestore();
   }
 });
 
 test("upload failures expose the limit error and never accept an unsafe returned path", async () => {
-  const originalFetch = globalThis.fetch;
+  const fetchMock = spyOn(globalThis, "fetch");
   try {
-    globalThis.fetch = (async () =>
-      Response.json(
-        { error: "That file exceeds the 12 MiB attachment limit." },
-        { status: 413 },
-      )) as typeof fetch;
+    fetchMock.mockImplementation(
+      fetchImplementation(async () =>
+        Response.json(
+          { error: "That file exceeds the 12 MiB attachment limit." },
+          { status: 413 },
+        ),
+      ),
+    );
     await expect(uploadAttachment(new Blob())).rejects.toThrow("12 MiB");
-    globalThis.fetch = (async () =>
-      Response.json({ ref: "../private.bin" })) as typeof fetch;
+    fetchMock.mockImplementation(
+      fetchImplementation(async () => Response.json({ ref: "../private.bin" })),
+    );
     await expect(uploadAttachment(new Blob())).rejects.toThrow(
       "valid attachment reference",
     );
   } finally {
-    globalThis.fetch = originalFetch;
+    fetchMock.mockRestore();
   }
 });
 

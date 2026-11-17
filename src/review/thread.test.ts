@@ -7,7 +7,7 @@ import { mintNoteId } from "../shared/note-id.ts";
 const write = (comments: ReviewComment[]) =>
   renderMarkdown({ range: "HEAD", notes: comments.map(noteFromComment) });
 
-const comment: ReviewComment = {
+const comment: ReviewComment & { id: string } = {
   id: "src/app.ts|n12|n12|#a1",
   file: "src/app.ts",
   body: "Rename this.",

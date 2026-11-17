@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import type { CdpCommand, CdpParams } from "../../../browser/cdp.ts";
 import {
   launchReviewBrowser,
   type ReviewBrowser,
@@ -47,8 +48,8 @@ async function withEditor(
   if (!sceneBundle.success) throw new AggregateError(sceneBundle.logs);
   const script = await bundle.outputs[0]!.text();
   const sceneScript = await sceneBundle.outputs[0]!.text();
-  let source: Uint8Array = new Uint8Array(),
-    output: Uint8Array = new Uint8Array();
+  let source = new Uint8Array(0),
+    output = new Uint8Array(0);
   const server = Bun.serve({
     port: 0,
     hostname: "127.0.0.1",
@@ -113,7 +114,7 @@ async function withEditor(
       targetId,
       flatten: true,
     });
-    const send = (method: string, params = {}) =>
+    const send = <M extends CdpCommand>(method: M, params: CdpParams<M>) =>
       chrome!.cdp.send(method, params, sessionId);
     await send("Emulation.setDeviceMetricsOverride", {
       width: 1500,
@@ -121,7 +122,7 @@ async function withEditor(
       deviceScaleFactor: dpr,
       mobile: false,
     });
-    await send("Page.enable");
+    await send("Page.enable", {});
     const loaded = Promise.withResolvers<void>();
     const off = chrome.cdp.on("Page.loadEventFired", (_, session) => {
       if (session === sessionId) loaded.resolve();
@@ -194,7 +195,11 @@ async function withEditor(
         clickCount: 1,
       });
     };
-    const mouse = async (type: string, at: Point, extra = {}) => {
+    const mouse = async (
+      type: CdpParams<"Input.dispatchMouseEvent">["type"],
+      at: Point,
+      extra = {},
+    ) => {
       const b = await js(
         '(()=>{const c=document.querySelector("[data-drawing-surface]"),r=c.getBoundingClientRect();return {x:r.x,y:r.y,s:r.width/Number(c.dataset.width)}})()',
       );
@@ -273,7 +278,7 @@ async function withEditor(
       const off = chrome!.cdp.on("Page.loadEventFired", (_, session) => {
         if (session === sessionId) loaded.resolve();
       });
-      await send("Page.reload");
+      await send("Page.reload", {});
       await loaded.promise;
       off();
       await until(
@@ -783,6 +788,8 @@ browserTest(
       await drag({ x: 120, y: 120 }, { x: 140, y: 100 });
       await change("label", "Still editable after reopening");
       const third = await save();
+      if (first.marks[0]?.tool !== "callout")
+        throw new Error("Expected the original callout");
       expect(third.marks[0]).toEqual({
         ...first.marks[0],
         from: { x: 140, y: 100 },

@@ -212,6 +212,7 @@ export function createTreeSitterSetup(options: SetupOptions) {
       if ((error as NodeJS.ErrnoException).code !== "ELOCKED") throw error;
       throw new Error(
         "Another lcr server is installing parsers. Wait for it to finish, then check again.",
+        { cause: error },
       );
     }
     let work: string | undefined;

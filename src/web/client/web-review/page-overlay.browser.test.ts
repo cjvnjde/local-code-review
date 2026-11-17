@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import type { CdpCommand, CdpParams } from "../../../browser/cdp.ts";
 import {
   launchReviewBrowser,
   type ReviewBrowser,
@@ -89,9 +90,9 @@ browserTest(
         targetId,
         flatten: true,
       });
-      const send = (method: string, params = {}) =>
+      const send = <M extends CdpCommand>(method: M, params: CdpParams<M>) =>
         chrome!.cdp.send(method, params, sessionId);
-      await send("Page.enable");
+      await send("Page.enable", {});
       const loaded = Promise.withResolvers<void>();
       const off = chrome.cdp.on("Page.loadEventFired", (_, session) => {
         if (session === sessionId) loaded.resolve();
@@ -137,7 +138,7 @@ browserTest(
           `(()=>{const b=document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();return {x:b.x+b.width/2,y:b.y+b.height/2}})()`,
         );
       const mouse = (
-        type: string,
+        type: CdpParams<"Input.dispatchMouseEvent">["type"],
         at: Point,
         extra: Record<string, unknown> = {},
       ) =>
@@ -163,7 +164,7 @@ browserTest(
           "requests.filter(r=>r.action==='capture').map(r=>r.payload.capture)",
         );
       const freezeKey = async () => {
-        for (const type of ["keyDown", "keyUp"])
+        for (const type of ["keyDown", "keyUp"] as const)
           await send("Input.dispatchKeyEvent", {
             type,
             key: "F",
@@ -215,7 +216,7 @@ browserTest(
         true,
       );
       await control('[data-mode="element"]');
-      for (const type of ["keyDown", "keyUp"]) {
+      for (const type of ["keyDown", "keyUp"] as const) {
         await send("Input.dispatchKeyEvent", {
           type,
           key: "Alt",
@@ -448,7 +449,7 @@ browserTest(
       expect(await js(`${root}.querySelector('.capture-prompt').hidden`)).toBe(
         false,
       );
-      for (const type of ["keyDown", "keyUp"])
+      for (const type of ["keyDown", "keyUp"] as const)
         await send("Input.dispatchKeyEvent", {
           type,
           key: "Escape",

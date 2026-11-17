@@ -367,7 +367,10 @@ export async function saveContext(
       )
         throw error;
       const existing = await readContext(repoRoot, outDir, id);
-      if (!existing) throw new Error("Existing context bundle is incomplete.");
+      if (!existing)
+        throw new Error("Existing context bundle is incomplete.", {
+          cause: error,
+        });
       for (const part of existing.parts)
         if (part.status === "available") await partBytes(root, id, part);
     }

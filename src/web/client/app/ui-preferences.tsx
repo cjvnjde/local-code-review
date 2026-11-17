@@ -47,15 +47,16 @@ export function UiPreferences({ children }: { children: ReactNode }) {
       }
     },
   });
+  const saveSettings = save.mutate;
   const update = useCallback(
     (patch: Partial<UiSettings>) => {
       // Claim local intent synchronously, before an initial GET/refetch can commit.
       pending.current++;
       setSettings((current) => ({ ...current, ...patch }));
       void client.cancelQueries({ queryKey: ["settings"] });
-      save.mutate(patch);
+      saveSettings(patch);
     },
-    [client, save.mutate],
+    [client, saveSettings],
   );
   return (
     <UI value={{ settings, update }}>

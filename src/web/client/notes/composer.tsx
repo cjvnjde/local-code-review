@@ -38,7 +38,12 @@ import {
 } from "lucide-react";
 import type { ReviewComment } from "../../../shared/review-types.ts";
 import { noteKey } from "../../../shared/note-id.ts";
-import { request, useAction, useReview } from "../app/api.ts";
+import {
+  request,
+  useAction,
+  useReview,
+  type ReviewResponse,
+} from "../app/api.ts";
 import { Button } from "../components/ui/button.tsx";
 import { Tooltip } from "../components/ui/tooltip.tsx";
 import { ComposerImages } from "../components/images.tsx";
@@ -78,7 +83,33 @@ export const withBody = (draft: Draft, body: string): Draft =>
     : { ...draft, body };
 export const draftChanged = (draft: Draft) =>
   draftBody(draft) !== (draft.original || "") ||
-  (draft.kind === "note" && draft.comment.triage !== draft.originalTriage);
+  (draft.kind === "note" && draft.comment.triage !== draft.originalTriage) ||
+  (draft.kind === "reply"
+    ? !!draft.web
+    : !draft.editing && !!(draft.comment.web || draft.comment.image));
+
+export function initializeDraft(
+  draft: Draft,
+  review: Pick<ReviewResponse, "file" | "notes">,
+): Draft {
+  const known = review.notes.find(
+    (note) => note.id === (draft.kind === "note" ? draft.comment.id : draft.id),
+  );
+  return {
+    ...draft,
+    review: review.file,
+    host: draft.host || "diff",
+    original:
+      draft.kind === "note"
+        ? known?.body || ""
+        : draft.at
+          ? known?.messages.find((message) => message.at === draft.at)?.body ||
+            ""
+          : "",
+    originalTriage: known?.triage,
+    editing: draft.kind === "note" && !!known,
+  };
+}
 
 export function DraftReviewNotice({
   draft,

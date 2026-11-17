@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useEffectEvent,
   useRef,
   useState,
   type SetStateAction,
@@ -25,8 +26,9 @@ export function useStored<T>(
   const latest = useRef(value);
   latest.current = value;
   const [error, setError] = useState("");
+  const readCurrent = useEffectEvent(read);
   useEffect(() => {
-    const next = read();
+    const next = readCurrent();
     latest.current = next;
     setValue(next);
   }, [key, storageKind]);

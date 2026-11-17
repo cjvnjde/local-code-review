@@ -1,7 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { globRx, compileHide, fileHidden } from "./filters.ts";
-const hides = (patterns: string, path: string) =>
-  compileHide(patterns).some((pattern) => pattern.test(path));
+import { globRx, fileHidden } from "./filters.ts";
 
 describe("globRx", () => {
   test("matches a bare pattern against the file name at any depth", () => {

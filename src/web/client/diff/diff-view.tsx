@@ -20,14 +20,13 @@ import {
   useVirtualizer,
   type VirtualItem,
 } from "@tanstack/react-virtual";
-import { ChevronDown, ChevronRight, Plus } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import type {
   DiffFile,
   DiffRow,
   ReviewComment,
   ReviewNote,
 } from "../../../shared/review-types.ts";
-import { Button } from "../components/ui/button.tsx";
 import { request } from "../app/api.ts";
 import { NoteCard } from "../notes/note-card.tsx";
 import { Composer, type Draft } from "../notes/composer.tsx";
@@ -185,33 +184,38 @@ export function DiffView({
     reading?: ReadingAnchor;
   } | null>(null);
   const [jumpVersion, setJumpVersion] = useState(0);
+  const draftFile = draft?.kind === "note" ? draft.comment.file : draft?.file;
+  const draftHost = draft?.host;
   const folded = useCallback(
     (file: DiffFile) =>
-      draft?.host !== "panel" &&
-      (draft?.kind === "note" ? draft.comment.file : draft?.file) === file.path
+      draftHost !== "panel" && draftFile === file.path
         ? false
         : folds[file.path]?.hash === file.hash
           ? folds[file.path]!.folded
           : false,
-    [
-      folds,
-      marks,
-      draft?.kind,
-      draft?.host,
-      draft?.kind === "note" ? draft.comment.file : draft?.file,
-    ],
+    [folds, draftHost, draftFile],
   );
+  // The reading model needs only the anchor; typing must not rebuild the virtualized diff.
+  const { id, file, scope, side, code, label, start, end } =
+    (draft?.kind === "note" && draft.host !== "panel" && !draft.editing
+      ? draft.comment
+      : undefined) ?? {};
   const editorSubject = useMemo(
     () =>
-      draft?.kind === "note" && draft.host !== "panel" && !draft.editing
-        ? { ...draft.comment, body: "" }
-        : undefined,
-    [
-      draft?.kind,
-      draft?.host,
-      draft?.editing,
-      draft?.kind === "note" ? draft.comment.id : undefined,
-    ],
+      file === undefined
+        ? undefined
+        : {
+            id,
+            file,
+            scope,
+            side,
+            code,
+            label,
+            start: start ?? 0,
+            end: end ?? 0,
+            body: "",
+          },
+    [id, file, scope, side, code, label, start, end],
   );
   const items = useMemo(
     () =>
@@ -802,9 +806,8 @@ export function DiffView({
             onClick={() =>
               setOpenRuns((current) => {
                 const next = new Set(current);
-                next.has(entry.key)
-                  ? next.delete(entry.key)
-                  : next.add(entry.key);
+                if (next.has(entry.key)) next.delete(entry.key);
+                else next.add(entry.key);
                 return next;
               })
             }

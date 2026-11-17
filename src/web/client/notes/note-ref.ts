@@ -1,6 +1,5 @@
 import Fuse from "fuse.js";
 import type { DiffFile } from "../../../shared/review-types.ts";
-import { noteKey } from "../../../shared/note-id.ts";
 const isFileNote = (note: any) => note.scope === "file" || note.a === "*";
 const isGlobalNote = (note: any) => note.scope === "global" || note.a === "@";
 import { regionLabel } from "../../../shared/image-region.ts";

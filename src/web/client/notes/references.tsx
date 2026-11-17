@@ -2,7 +2,7 @@ import { parseColor } from "../components/color-literals.ts";
 import { createContext, useContext, useState, type ReactNode } from "react";
 import type { DiffFile, ReviewNote } from "../../../shared/review-types.ts";
 import { noteKey } from "../../../shared/note-id.ts";
-import { noteByRef, refOf } from "./note-ref.ts";
+import { noteByRef } from "./note-ref.ts";
 import { Button } from "../components/ui/button.tsx";
 
 const References = createContext<{

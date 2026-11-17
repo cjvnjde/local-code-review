@@ -2,7 +2,7 @@ import {
   createContext,
   useContext,
   useEffect,
-  useRef,
+  useEffectEvent,
   useState,
   type ReactNode,
 } from "react";
@@ -146,16 +146,17 @@ export function ComposerImages({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const tokens = imageTokens(body);
-  const latest = useRef(tokens);
-  latest.current = tokens;
+  const restoreImage = useEffectEvent((index: number) => {
+    const token = tokens[index];
+    if (token) void edit(token, index);
+  });
   useEffect(() => {
     const restore = (event: Event) => {
       const route = (event as CustomEvent).detail?.route;
       if (typeof route !== "string" || !route.startsWith(`image:${subject}:`))
         return;
       const index = Number(route.slice(`image:${subject}:`.length));
-      const token = latest.current[index];
-      if (token) void edit(token, index);
+      restoreImage(index);
     };
     document.addEventListener("lcr:annotation-restore", restore);
     return () =>

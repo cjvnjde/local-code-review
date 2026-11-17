@@ -58,7 +58,7 @@ function value<T>(result: AnnotationDraftResult<T>): T {
   if (!result.ok) throw new Error(result.error.message);
   return result.value;
 }
-function error<T>(result: AnnotationDraftResult<T>) {
+function error(result: AnnotationDraftResult<unknown>) {
   if (result.ok) throw new Error("Expected a draft error");
   return result.error;
 }

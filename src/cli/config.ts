@@ -96,15 +96,17 @@ export async function loadUserSettings(
       return {};
     throw new Error(
       `Could not read lcr settings at ${settingsFile}. Check the file or use --no-agent.`,
+      { cause: error },
     );
   }
   let value: unknown;
   try {
     value = JSON.parse(source);
-  } catch {
+  } catch (error) {
     if (explicitAgent) return {};
     throw new Error(
       `Invalid JSON in ${settingsFile}. Fix the settings or use --no-agent.`,
+      { cause: error },
     );
   }
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -154,6 +156,7 @@ export async function saveUiSettings(
     if ((error as NodeJS.ErrnoException).code !== "ENOENT")
       throw new Error(
         `Could not save lcr settings at ${settingsFile}: ${(error as Error).message}`,
+        { cause: error },
       );
   }
   const ui = { ...parseUiSettings(current.ui ?? {}), ...validated };

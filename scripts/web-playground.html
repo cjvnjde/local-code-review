@@ -257,6 +257,8 @@
           document.body.append(controls);
         sync();
       });
+      // The page overlays mount beside body; drawing windows can mount inside it.
+      observer.observe(document.documentElement, { childList: true });
       observer.observe(document.body, { childList: true });
       document.querySelector("#save-workspace").onclick = () => {
         document.querySelector("#save-result").textContent = "Workspace saved.";

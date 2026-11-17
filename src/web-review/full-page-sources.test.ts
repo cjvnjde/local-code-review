@@ -8,7 +8,7 @@ class SourceBrowser {
   source = "body{color:red}";
   async send<M extends CdpCommand>(
     method: M,
-    params: CdpParams<M>,
+    params?: CdpParams<M>,
     session?: string,
   ): Promise<CdpResult<M>> {
     this.calls.push({ method, params, session });

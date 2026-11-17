@@ -296,7 +296,9 @@ export class AcpClient {
       return await this.connection.agent.request<T>(method, params);
     } catch (error) {
       if (error instanceof RequestError)
-        throw new Error(`ACP ${error.code}: ${error.message}`);
+        throw new Error(`ACP ${error.code}: ${error.message}`, {
+          cause: error,
+        });
       throw error;
     } finally {
       clearTimeout(timer);

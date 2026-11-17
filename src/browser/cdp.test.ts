@@ -1,3 +1,4 @@
+import { browserVersion } from "./fixtures/protocol.ts";
 import { afterEach, expect, test } from "bun:test";
 import type { ServerWebSocket } from "bun";
 import { Cdp } from "./cdp.ts";
@@ -106,10 +107,22 @@ test("CDP correlates concurrent out-of-order results and keeps session arguments
   expect(b).toMatchObject({ method: "Target.getTargets", params: {} });
   expect(b).not.toHaveProperty("sessionId");
   expect(a.id).not.toBe(b.id);
-  f.send({ id: b.id, result: { targetInfos: [{ targetId: "tab-b" }] } });
-  expect(await second).toEqual({ targetInfos: [{ targetId: "tab-b" }] });
-  f.send({ id: a.id, result: { result: { value: 2 } } });
-  expect(await first).toEqual({ result: { value: 2 } });
+  const targets = {
+    targetInfos: [
+      {
+        targetId: "tab-b",
+        type: "page",
+        title: "Fixture",
+        url: "about:blank",
+        attached: false,
+        canAccessOpener: false,
+      },
+    ],
+  };
+  f.send({ id: b.id, result: targets });
+  expect(await second).toEqual(targets);
+  f.send({ id: a.id, result: { result: { type: "number", value: 2 } } });
+  expect(await first).toEqual({ result: { type: "number", value: 2 } });
   expect(f.cdp.connected).toBe(true);
 });
 
@@ -128,9 +141,9 @@ test("a CDP protocol error rejects only its request and later traffic still succ
     id: bad.id,
     error: { code: -32602, message: "Invalid navigation URL" },
   });
-  f.send({ id: good.id, result: { product: "Fixture/1" } });
+  f.send({ id: good.id, result: browserVersion("Fixture/1") });
   expect((await rejected).message).toContain("Invalid navigation URL");
-  expect(await successful).toEqual({ product: "Fixture/1" });
+  expect(await successful).toEqual(browserVersion("Fixture/1"));
   expect(f.cdp.connected).toBe(true);
 });
 
@@ -279,6 +292,7 @@ test("generated CDP mappings constrain commands, parameters, responses and event
   f.send({ id: (await f.received(2)).id, result: {} });
   await barrier;
   off();
+  // eslint-disable-next-line no-constant-condition -- Type-only checks must never send invalid protocol messages.
   if (false) {
     // These assertions are checked by TypeScript, never sent over the wire.
     // @ts-expect-error Unknown methods must be explicitly added to a narrow mapping.

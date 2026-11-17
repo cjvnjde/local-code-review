@@ -1,3 +1,4 @@
+import { browserVersion } from "./fixtures/protocol.ts";
 import { afterEach, expect, test } from "bun:test";
 import {
   mkdtemp,
@@ -105,7 +106,7 @@ test.each([true, false])(
           socket.send(
             JSON.stringify({
               id: message.id,
-              result: { product: "ExistingChrome/144" },
+              result: browserVersion("ExistingChrome/144"),
             }),
           );
         },
@@ -127,9 +128,9 @@ test.each([true, false])(
       gate.resolve(allow);
       if (allow) {
         const browser = await pending;
-        expect(await browser.cdp.send("Browser.getVersion")).toEqual({
-          product: "ExistingChrome/144",
-        });
+        expect(await browser.cdp.send("Browser.getVersion")).toEqual(
+          browserVersion("ExistingChrome/144"),
+        );
         await browser.close();
         expect(methods).toEqual(["Browser.getVersion"]);
       } else {

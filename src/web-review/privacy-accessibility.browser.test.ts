@@ -271,7 +271,7 @@ test.skipIf(process.env.LCR_TEST_BROWSER !== "1")(
       ).toBe(0);
       // Frozen source evidence must remain capture-time text after the live DOM changes.
       await js(
-        `window.captureInput={...captureInput,at:new Date().toISOString(),redactions:[]};document.querySelector('style').textContent+='/* capture-source-before */';const script=document.createElement('script');script.type='application/json';script.textContent='{\"marker\":\"capture-script-before\"}';document.head.append(script);`,
+        `window.captureInput={...captureInput,at:new Date().toISOString(),redactions:[]};document.querySelector('style').textContent+='/* capture-source-before */';const script=document.createElement('script');script.type='application/json';script.textContent='{"marker":"capture-script-before"}';document.head.append(script);`,
       );
       const sourceFreeze = await js("rpc('freeze',{capture:captureInput})");
       // Direct freeze RPC does not install the overlay canvas; crop its actual PNG.

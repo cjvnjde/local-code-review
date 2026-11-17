@@ -54,9 +54,11 @@ export function CodeRow({
   const row = file.rows[index]!;
   const { settings } = useUi();
   const cell = useRef<HTMLSpanElement>(null);
+  const changeFrom = changes?.[0];
+  const changeTo = changes?.[1];
   useLayoutEffect(() => {
     const element = cell.current;
-    if (!element || !changes) return;
+    if (!element || changeFrom === undefined || changeTo === undefined) return;
     const group = row.t === "del" ? "lcr-word-del" : "lcr-word-add";
     const paint = (from?: number, to?: number) => {
       highlightCharacters(element, from, to, group);
@@ -65,9 +67,9 @@ export function CodeRow({
         if (highlight) highlight.priority = -1;
       }
     };
-    paint(changes[0], changes[1]);
+    paint(changeFrom, changeTo);
     return () => paint();
-  }, [changes?.[0], changes?.[1], row.t, row.text, row.syntax]);
+  }, [changeFrom, changeTo, row.t, row.text, row.syntax]);
   useLayoutEffect(() => {
     if (cell.current && !pressing)
       highlightCharacters(cell.current, characters?.ca, characters?.cb);

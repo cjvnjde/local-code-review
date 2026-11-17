@@ -1,9 +1,7 @@
-import type { Server } from "bun";
 import {
   mkdir,
   mkdtemp,
   readFile,
-  readdir,
   rm,
   symlink,
   writeFile,
@@ -46,7 +44,7 @@ import type {
 
 const originalLog = console.log;
 const originalError = console.error;
-const servers = new Set<Server>();
+const servers = new Set<ReturnType<typeof startServer>>();
 const serverRoots: string[] = [];
 
 const status: NoteStatus = {
@@ -100,6 +98,15 @@ function webController(
 ): NonNullable<ServerOptions["web"]> {
   return {
     configureContext: () => {},
+    configureTheme: () => {},
+    scanAccessibility: async () => {
+      throw new Error("Accessibility scan was not configured for this test.");
+    },
+    saveAccessibilityFindings: async () => {
+      throw new Error(
+        "Accessibility findings were not configured for this test.",
+      );
+    },
     status: () => ({
       url: webCapture.url,
       state: "closed",
@@ -171,7 +178,7 @@ type StartedServer = {
   base: string;
   hub: Hub;
   options: ServerOptions;
-  server: Server;
+  server: ReturnType<typeof startServer>;
 };
 
 const request = (started: StartedServer, route: string, init?: RequestInit) => {
@@ -276,10 +283,11 @@ describe("optional parser setup", () => {
   });
   test("rejects foreign origins, hosts, arbitrary commands, and oversized requests without starting setup", async () => {
     const f = await fixture();
-    for (const headers of [
+    const forbiddenHeaders: Record<string, string>[] = [
       { origin: "https://foreign.test" },
       { host: "foreign.test" },
-    ]) {
+    ];
+    for (const headers of forbiddenHeaders) {
       expect(
         (await request(f.started, "/api/tree-sitter", { headers })).status,
       ).toBe(403);
@@ -337,7 +345,7 @@ describe("optional parser setup", () => {
 
 describe("review settings handoff", () => {
   test("context settings reach collectors and agents, and retrieval uses the run token", async () => {
-    const configured: boolean[] = [];
+    const configured: (boolean | undefined)[] = [];
     const modes: boolean[] = [];
     const access: { url: string; token: string }[] = [];
     const started = await startTestServer({
@@ -1143,7 +1151,7 @@ describe("combined Git and live-page routes", () => {
     expect((await remove(0, webSelectionKey(third))).status).toBe(404);
     expect(
       (await started.options.session.read()).notes.map((note) => note.id),
-    ).toEqual([comment.id]);
+    ).toEqual([comment.id!]);
     off();
   });
 

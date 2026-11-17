@@ -36,7 +36,10 @@ const workspace = async (...names: string[]) => {
     await writeFile(path.join(dir, name), "# Review notes\n", "utf8");
   return dir;
 };
-const note = (id: string, body = "Rename this."): ReviewComment => ({
+const note = (
+  id: string,
+  body = "Rename this.",
+): ReviewComment & { id: string } => ({
   id,
   file: id.split("|")[0]!,
   body,
@@ -979,6 +982,7 @@ describe("submitted revision ownership", () => {
     expect(result!.messages[1]!.body).toBe("The implementation is deliberate.");
     const restarted = createSession(dir, ".", "HEAD");
     await restarted.adoptNewest();
+    if (!result) throw new Error("Expected an answered note");
     expect((await restarted.read()).notes[0]).toEqual(result);
   });
 
@@ -1002,6 +1006,7 @@ describe("submitted revision ownership", () => {
       );
       expect(result).toMatchObject({ ...a, triage, status: "answered" });
       expect(result!.messages[0]!.body).toBe("Answered.");
+      if (!result) throw new Error("Expected an answered note");
       expect((await session.read()).notes[0]).toEqual(result);
     },
   );
@@ -1084,6 +1089,7 @@ describe("submitted revision ownership", () => {
     expect(result).toMatchObject({ status: "applied", detail: "" });
     expect(result!.messages).toHaveLength(1);
     expect(result!.messages[0]!.body).toBe("Resolved.");
+    if (!result) throw new Error("Expected an answered note");
     expect((await session.read()).notes[0]).toEqual(result);
   });
 

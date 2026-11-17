@@ -342,7 +342,7 @@ describe("status interpretation boundaries", () => {
       "waiting: for staging — not final",
     ],
     ["applied-ish", "unknown", "applied-ish"],
-  ])(
+  ] as const)(
     "interprets the verdict without losing detail: %s",
     (raw, status, detail) => {
       expect(

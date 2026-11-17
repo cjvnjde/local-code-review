@@ -36,7 +36,10 @@ const pathMark = (): Extract<AnnotationMark, { tool: "path" }> => ({
     { x: 140, y: 120, kind: "corner", in: { x: 125, y: 110 } },
   ],
 });
-const boxMarks = (): AnnotationMark[] =>
+const boxMarks = (): Extract<
+  AnnotationMark,
+  { tool: "line" | "ellipse" | "triangle" }
+>[] =>
   (["line", "ellipse", "triangle"] as const).map((tool) => ({
     tool,
     color: "#123abc",
@@ -233,8 +236,10 @@ describe("editable vector annotation schema", () => {
     expect(clean.marks).not.toBe(input.marks);
     const path = clean.marks[0];
     if (path?.tool !== "path") throw new Error("Expected path");
-    expect(path.nodes).not.toBe(input.marks[0]!.nodes);
-    const original = input.marks[0]!.nodes![0]!;
+    const originalMark = input.marks[0]!;
+    if (!("nodes" in originalMark)) throw new Error("Expected original path");
+    expect(path.nodes).not.toBe(originalMark.nodes);
+    const original = originalMark.nodes[0]!;
     expect(path.nodes[0]).not.toBe(original);
     expect(path.nodes[0]!.in).not.toBe(original.in);
     expect(path.nodes[0]!.out).not.toBe(original.out);
@@ -703,6 +708,7 @@ describe("enhanced drawing metadata", () => {
 
   test("rejects invalid or duplicate callout identities and numbers", () => {
     const callout = enhancedMarks()[0]!;
+    if (callout.tool !== "callout") throw new Error("Expected callout");
     for (const id of ["", "not-a-uuid", 1, null])
       rejectsMark({ ...callout, id });
     for (const number of [0, -1, 1.5, Infinity, NaN, "1"])
@@ -734,7 +740,8 @@ describe("enhanced drawing metadata", () => {
   });
 
   test("bounds fill/highlighter opacity and whitelists optional text presentation", () => {
-    for (const mark of enhancedMarks().filter((mark) => "opacity" in mark)) {
+    for (const mark of enhancedMarks()) {
+      if (!("opacity" in mark)) continue;
       for (const opacity of [-0.01, 1.01, NaN, Infinity, "0.5", null])
         rejectsMark({ ...mark, opacity });
       for (const opacity of [0, 1])
@@ -762,6 +769,7 @@ describe("enhanced drawing metadata", () => {
 
   test("magnifiers crop only original pixels and keep the scaled destination inside padding-aware canvas", () => {
     const magnifier = enhancedMarks()[7]!;
+    if (magnifier.tool !== "magnifier") throw new Error("Expected magnifier");
     for (const from of [
       { x: 19.99, y: 20 },
       { x: 20, y: 19.99 },

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { DiffFile, ReviewNote } from "../../../shared/review-types.ts";
+import type { DiffFile } from "../../../shared/review-types.ts";
 import {
   makeComment,
   orderFiles,
@@ -35,6 +35,7 @@ describe("React review anchors", () => {
       makeComment(),
     ]) {
       comment.body = "A comment with **Markdown**.";
+      if (!comment.id) throw new Error("Expected a generated comment ID");
       const note = noteFromComment(comment);
       const read = parseReview(
         `# Review notes\n\n## ${comment.file || "Overall"}\n\n${renderNote(note).join("\n")}\n\n<!-- lcr:end -->`,

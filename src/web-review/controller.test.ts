@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -10,10 +11,26 @@ import {
   WebAnnotationInvalid,
   WebSelectionConflict,
   webSelectionKey,
+  webReview,
+  type WebReview,
   type WebCapture,
   type WebAnnotationTarget,
 } from "../shared/web-review.ts";
 import { createWebReview, type WebReviewController } from "./controller.ts";
+
+function assertWebResult(value: unknown): asserts value is { web: WebReview } {
+  assert(value && typeof value === "object" && "web" in value);
+  assert(
+    webReview(value.web),
+    "Expected a valid web review in the controller result",
+  );
+}
+function assertNullableWebResult(
+  value: unknown,
+): asserts value is { web: WebReview | null } {
+  assert(value && typeof value === "object" && "web" in value);
+  assert(value.web === null || webReview(value.web));
+}
 
 const noteId = "|@|@|#visual";
 const png = Buffer.from(
@@ -145,6 +162,7 @@ describe("web review controller without Chrome", () => {
         target.key = "changed after submitting";
         annotation.marks[0]!.color = "#000000";
         const result = await pending;
+        assertWebResult(result);
         expect(result.web).toEqual({
           before: { ...before, annotation: expected },
           additional: [additional],
@@ -195,6 +213,7 @@ describe("web review controller without Chrome", () => {
           target: { ...target, expected: annotation.image },
           annotation: null,
         });
+        assertWebResult(cleared);
         expect(cleared.web.before.annotation).toBeUndefined();
         expect(
           (await session.read()).notes[0]!.web!.before.annotation,
@@ -265,12 +284,14 @@ describe("web review controller without Chrome", () => {
           index: 0,
           key: webSelectionKey(before),
         });
+        assertNullableWebResult(first);
         expect(first.web).toEqual({ before: additional, after: [] });
         const last = await web.removeSelection({
           id: noteId,
           index: 0,
           key: webSelectionKey(additional),
         });
+        assertNullableWebResult(last);
         expect(last.web).toBeNull();
         const saved = (await session.read()).notes[0]!;
         expect(saved.web).toBeUndefined();
@@ -293,6 +314,7 @@ describe("web review controller without Chrome", () => {
           index: 1,
           key: webSelectionKey(additional),
         });
+        assertWebResult(removed);
         expect(removed.web).toEqual({ before, after: [after] });
         expect((await session.read()).notes[0]!.web).toEqual(removed.web);
       },
@@ -314,7 +336,9 @@ describe("web review controller without Chrome", () => {
           key: webSelectionKey(additional),
         });
         await expect(stale).rejects.toBeInstanceOf(WebSelectionConflict);
-        expect((await valid).web).toEqual({ before, after: [after] });
+        const result = await valid;
+        assertNullableWebResult(result);
+        expect(result.web).toEqual({ before, after: [after] });
         expect(await contents()).not.toBe(original);
         expect(events).toHaveLength(1);
       },

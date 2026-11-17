@@ -1,3 +1,4 @@
+import { browserVersion } from "./fixtures/protocol.ts";
 import { afterEach, expect, test } from "bun:test";
 import {
   chmodSync,
@@ -74,9 +75,9 @@ test.skipIf(process.platform === "win32")(
         0o600,
       );
       expect(browser.cdp.connected).toBe(true);
-      expect(await browser.cdp.send("Browser.getVersion")).toEqual({
-        product: "LifecycleFixture/1",
-      });
+      expect(await browser.cdp.send("Browser.getVersion")).toEqual(
+        browserVersion("LifecycleFixture/1"),
+      );
       const launched: unknown = JSON.parse(
         readFileSync(path.join(profile, "launch.json"), "utf8"),
       );
@@ -158,9 +159,9 @@ test.skipIf(process.platform === "win32")(
       expect(
         readFileSync(path.join(profile, "DevToolsActivePort"), "utf8"),
       ).toBe(endpoint);
-      expect(await first.cdp.send("Browser.getVersion")).toEqual({
-        product: "LifecycleFixture/1",
-      });
+      expect(await first.cdp.send("Browser.getVersion")).toEqual(
+        browserVersion("LifecycleFixture/1"),
+      );
     } finally {
       await first.close();
     }

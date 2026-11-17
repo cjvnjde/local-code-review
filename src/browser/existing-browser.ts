@@ -54,9 +54,11 @@ export async function attachReviewBrowser(
     if (code === "EACCES" || code === "EPERM")
       throw new Error(
         `Cannot read Chrome's connection file in ${dataDir}. Allow your terminal access to Chrome's data in OS privacy settings, or use --browser-data-dir for the running browser.`,
+        { cause: error },
       );
     throw new Error(
       `No readable browser connection in ${dataDir}. Start Chrome 144+, enable remote debugging at chrome://inspect/#remote-debugging, and retry. Use --browser-data-dir for another browser's user data directory.`,
+      { cause: error },
     );
   }
   const endpoint = browserEndpoint(source);
@@ -71,6 +73,7 @@ export async function attachReviewBrowser(
   } catch (error) {
     throw new Error(
       `Could not attach to Chrome. Allow the connection in Chrome's dialog; check chrome://inspect/#remote-debugging if it was denied, revoked, or timed out. ${(error as Error).message}`,
+      { cause: error },
     );
   }
 }

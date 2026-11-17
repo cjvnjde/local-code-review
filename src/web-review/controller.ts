@@ -142,7 +142,7 @@ export function createWebReview(options: WebReviewOptions) {
   const status = () => ({ url, state, detail });
   function send<M extends CdpCommand>(
     method: M,
-    ...args: {} extends CdpParams<M>
+    ...args: Record<string, never> extends CdpParams<M>
       ? [params?: CdpParams<M>]
       : [params: CdpParams<M>]
   ) {
@@ -653,23 +653,9 @@ export function createWebReview(options: WebReviewOptions) {
             regions,
           )
         : Buffer.from(page.data, "base64");
-      const area = regions.length
-        ? null
-        : await send("Page.captureScreenshot", {
-            format: "png",
-            fromSurface: true,
-            captureBeyondViewport: false,
-            clip: {
-              x: clean.rect.x + clean.scroll.x,
-              y: clean.rect.y + clean.scroll.y,
-              width: clean.rect.width,
-              height: clean.rect.height,
-              scale: 1,
-            },
-          });
-      const areaBytes = regions.length
-        ? cropScreenshot(pageBytes, clean.viewport, clean.rect)
-        : Buffer.from(area!.data, "base64");
+      // Crop the same captured frame. A second clipped CDP screenshot can temporarily
+      // resize the viewport and move responsive content or floating controls.
+      const areaBytes = cropScreenshot(pageBytes, clean.viewport, clean.rect);
       const extras: ContextPartInput[] = settings.aiContext
         ? regions.length
           ? privacyParts

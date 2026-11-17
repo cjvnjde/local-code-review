@@ -67,7 +67,7 @@ export function contextRef(value: unknown): ContextRef | null {
     : null;
 }
 export function contextLink(ref: ContextRef): string {
-  const label = ref.label.replace(/[\\\[\]\r\n]/g, " ");
+  const label = ref.label.replace(/[\\[\]\r\n]/g, " ");
   return `[Additional context: ${label}](${contextPath(ref.id)})`;
 }
 /** References stay in prose, so original notes and every kind of reply share one format. */

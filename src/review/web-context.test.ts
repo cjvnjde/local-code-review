@@ -193,6 +193,7 @@ test("a reply retains its exact context after later captures and original note d
 
 test("annotation changes publish new context without replacing optional evidence or old marks", async () => {
   const f = await fixture();
+  if (!f.capture.area) throw new Error("Expected a captured area image");
   const annotation = {
     image: f.capture.area,
     width: 1,

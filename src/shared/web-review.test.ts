@@ -24,7 +24,6 @@ import { saveAttachment } from "../review/attach.ts";
 import {
   noteFromComment,
   parseReview,
-  renderNote,
   applyComment,
 } from "../review/thread.ts";
 import { renderMarkdown } from "../review/render.ts";
@@ -41,7 +40,7 @@ import { WebEvidence } from "../web/client/web-review/evidence.tsx";
 const webCaptureHtml = (value: unknown) =>
   renderToStaticMarkup(createElement(WebEvidence, { value }));
 
-export const capture: WebCapture = {
+export const capture: WebCapture & { page: string; area: string } = {
   url: "http://localhost:3000/checkout?step=2",
   title: "Checkout ` <script>",
   at: "2026-10-31T10:00:00.000Z",
@@ -761,7 +760,20 @@ describe("UI review evidence", () => {
     expect(
       snapshot.notes[0]!.web!.before.selections![1]!.element!.text,
     ).toContain("Total");
-    const text = historyText({ reason: "", changes: [], snapshot }, "snapshot");
+    const text = historyText(
+      {
+        id: "snapshot-1",
+        scope: "test",
+        repo: "/test",
+        at: 0,
+        source: "file",
+        beforeFile: "",
+        reason: "",
+        changes: [],
+        snapshot,
+      },
+      "snapshot",
+    );
     expect(text).toContain('"selector": "[data-testid=\\"total\\"]"');
     expect(text).toContain('"x": 280');
     const html = webCaptureHtml(c.web);

@@ -250,7 +250,7 @@ describe("immutable movement within the output canvas", () => {
         { x: 30, y: 40 },
         { x: 10, y: 20 },
       ],
-    } as AnnotationMark);
+    } satisfies AnnotationMark);
     const moved = moveMark(mark, 13, 17, canvas);
     expect(moved).toEqual({
       ...mark,

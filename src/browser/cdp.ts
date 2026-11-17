@@ -10,7 +10,7 @@ export type CdpResult<M extends CdpCommand> =
 export type CdpEvent = keyof ProtocolMapping.Events;
 export type CdpEventParams<M extends CdpEvent> = ProtocolMapping.Events[M][0];
 type OptionalCdpCommand = {
-  [M in CdpCommand]: {} extends CdpParams<M> ? M : never;
+  [M in CdpCommand]: Record<string, never> extends CdpParams<M> ? M : never;
 }[CdpCommand];
 
 /** Small request/event transport. No browser automation runtime is shipped with lcr. */

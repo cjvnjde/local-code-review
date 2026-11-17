@@ -101,6 +101,12 @@ export interface DiffSides {
  * left out — a run narrowed to a directory reads its sides exactly as an unnarrowed one does.
  */
 export async function diffSides(source: DiffSource): Promise<DiffSides> {
+  const sides = await forwardDiffSides(source);
+  const args = source.diffArgs.slice(0, whereDashDash(source.diffArgs));
+  return args.includes("-R") ? { old: sides.new, new: sides.old } : sides;
+}
+
+async function forwardDiffSides(source: DiffSource): Promise<DiffSides> {
   if (source.diffArgs.length === 0) {
     return {
       old: source.worktreeBase ?? (await resolveWorktreeBase(source.repoRoot)),
@@ -204,7 +210,7 @@ async function withDiffIndex<T>(
     if (
       includeUntracked &&
       (source.diffArgs.length === 0 ||
-        (await diffSides(source)).new === WORKTREE)
+        (await forwardDiffSides(source)).new === WORKTREE)
     ) {
       const untracked = await git([
         "ls-files",
@@ -317,7 +323,8 @@ function headerPath(text: string): string {
 function unquotePath(text: string): string {
   if (text.length < 2 || !text.startsWith('"') || !text.endsWith('"'))
     return text;
-  const inner = text.slice(1, -1);
+  // Iterate Unicode code points so literal non-BMP characters survive alongside C escapes.
+  const inner = Array.from(text.slice(1, -1));
   const bytes: number[] = [];
   const encoder = new TextEncoder();
   for (let i = 0; i < inner.length; i++) {
@@ -362,11 +369,11 @@ function unquotePath(text: string): string {
  */
 function pathFromGitLine(line: string): string {
   const rest = line.slice("diff --git ".length);
-  const quoted = /^"a\/(.*)" "b\/(.*)"$/.exec(rest);
+  const quoted = /^"[ab]\/(.*)" "[ab]\/(.*)"$/.exec(rest);
   if (quoted && quoted[1] === quoted[2]) return unquotePath(`"${quoted[2]}"`);
-  const plain = /^a\/(.*) b\/(.*)$/.exec(rest);
+  const plain = /^[ab]\/(.*) [ab]\/(.*)$/.exec(rest);
   if (plain && plain[1] === plain[2]) return plain[2] as string;
-  const at = rest.lastIndexOf(" b/");
+  const at = Math.max(rest.lastIndexOf(" b/"), rest.lastIndexOf(" a/"));
   return at >= 0 ? unquotePath(rest.slice(at + 3)) : "";
 }
 
@@ -415,13 +422,14 @@ export function parseDiff(raw: string): DiffFile[] {
       }
       if (line.startsWith("+++ ")) {
         const diffPath = headerPath(line.slice(4));
-        if (diffPath !== "/dev/null") file.path = diffPath.replace(/^b\//, "");
+        if (diffPath !== "/dev/null")
+          file.path = diffPath.replace(/^[ab]\//, "");
         continue;
       }
       if (line.startsWith("--- ")) {
         const diffPath = headerPath(line.slice(4));
         if (!file.path && diffPath !== "/dev/null")
-          file.path = diffPath.replace(/^a\//, "");
+          file.path = diffPath.replace(/^[ab]\//, "");
         continue;
       }
       if (line.startsWith("Binary files")) {

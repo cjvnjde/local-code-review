@@ -254,7 +254,7 @@ test("a server bind failure releases the managed owner lock so startup can be re
     expect(await git.exited).toBe(0);
   }
   let blocker: ReturnType<typeof Bun.serve> | undefined;
-  let retry: ReturnType<typeof Bun.spawn> | undefined;
+  let retry: Bun.Subprocess<"ignore", "pipe", "pipe"> | undefined;
   try {
     try {
       blocker = Bun.serve({

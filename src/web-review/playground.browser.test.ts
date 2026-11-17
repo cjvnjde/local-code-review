@@ -1,9 +1,10 @@
 import { expect, test } from "bun:test";
+import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { startWebPlayground } from "../../scripts/web-playground.ts";
-import { Cdp } from "../browser/cdp.ts";
+import { Cdp, type CdpCommand, type CdpParams } from "../browser/cdp.ts";
 import { browserEndpoint } from "../browser/existing-browser.ts";
 import { runGit } from "../git/commands.ts";
 import type { WebCapture } from "../shared/web-review.ts";
@@ -52,11 +53,12 @@ test.skipIf(process.env.LCR_TEST_BROWSER !== "1")(
       const target = (await cdp.send("Target.getTargets")).targetInfos.find(
         (target: { url: string }) => target.url === playground!.url,
       );
-      const { sessionId } = await cdp.send("Target.attachToTarget", {
+      assert(target, "The playground page must exist in the browser");
+      let { sessionId } = await cdp.send("Target.attachToTarget", {
         targetId: target.targetId,
         flatten: true,
       });
-      const send = (method: string, params: Record<string, unknown> = {}) =>
+      const send = <M extends CdpCommand>(method: M, params: CdpParams<M>) =>
         cdp!.send(method, params, sessionId);
       async function js(expression: string) {
         const result = await send("Runtime.evaluate", {
@@ -101,7 +103,10 @@ test.skipIf(process.env.LCR_TEST_BROWSER !== "1")(
         width: number;
         height: number;
       }) => ({ x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 });
-      async function mouse(type: string, point: { x: number; y: number }) {
+      async function mouse(
+        type: CdpParams<"Input.dispatchMouseEvent">["type"],
+        point: { x: number; y: number },
+      ) {
         await send("Input.dispatchMouseEvent", {
           type,
           ...point,
@@ -141,6 +146,7 @@ test.skipIf(process.env.LCR_TEST_BROWSER !== "1")(
       expect(await bounds(`${b}.querySelector('.outline')`)).toEqual(original);
       await click(launcher);
       const buttonCapture = await capture();
+      expect(await bounds(launcher)).toEqual(original);
       expect(buttonCapture.element?.tag).toBe("button");
       expect(buttonCapture.element?.attributes["aria-label"]).toBe(
         await js(`${launcher}.getAttribute('aria-label')`),
@@ -197,8 +203,19 @@ test.skipIf(process.env.LCR_TEST_BROWSER !== "1")(
       expect(await js(`${a}.querySelector('iframe').src`)).toBe(frameUrl);
       expect(await js(`${example}.inert`)).toBe(false);
 
-      await send("Page.navigate", { url: playground.showcaseUrl });
-      await send("Page.bringToFront");
+      // The playground opens the diff in its own tab; keep the example's unsaved draft intact.
+      const showcaseTarget = (
+        await cdp.send("Target.getTargets")
+      ).targetInfos.find(
+        (target) => target.url === playground!.showcaseUrl + "/",
+      );
+      assert(showcaseTarget, "The showcase tab must exist in the browser");
+      await cdp.send("Target.detachFromTarget", { sessionId });
+      ({ sessionId } = await cdp.send("Target.attachToTarget", {
+        targetId: showcaseTarget.targetId,
+        flatten: true,
+      }));
+      await send("Page.bringToFront", {});
       const fileButton =
         "document.querySelector('button[title=\"assets/review-mark.svg\"]')";
       await until(`!!${fileButton}`);

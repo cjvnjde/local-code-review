@@ -30,7 +30,7 @@ describe("UI settings schema", () => {
 
   test("inline note width defaults to compact and accepts only the offered choices", () => {
     expect(DEFAULT_UI_SETTINGS.noteWidth).toBe("compact");
-    for (const noteWidth of ["compact", "full"]) {
+    for (const noteWidth of ["compact", "full"] as const) {
       expect(parseUiSettings({ noteWidth })).toEqual({ noteWidth });
       expect(
         parseUiSettings({ noteWidth, lineNumbers: false, ntFold: true }),

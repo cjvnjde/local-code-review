@@ -635,53 +635,6 @@ function segmentParameter(
     : 0;
 }
 
-function segmentDistance(
-  at: AnnotationPoint,
-  from: AnnotationPoint,
-  to: AnnotationPoint,
-) {
-  const t = segmentParameter(at, from, to);
-  return Math.hypot(
-    at.x - from.x - t * (to.x - from.x),
-    at.y - from.y - t * (to.y - from.y),
-  );
-}
-
-function hitCubic(
-  at: AnnotationPoint,
-  a: AnnotationPoint,
-  b: AnnotationPoint,
-  c: AnnotationPoint,
-  d: AnnotationPoint,
-  radius: number,
-  accuracy: number,
-  depth = 0,
-): boolean {
-  // A control-point hull cheaply rejects distant curves, including loops.
-  if (
-    at.x < Math.min(a.x, b.x, c.x, d.x) - radius ||
-    at.x > Math.max(a.x, b.x, c.x, d.x) + radius ||
-    at.y < Math.min(a.y, b.y, c.y, d.y) - radius ||
-    at.y > Math.max(a.y, b.y, c.y, d.y) + radius
-  )
-    return false;
-  if (
-    depth === 16 ||
-    Math.max(segmentDistance(b, a, d), segmentDistance(c, a, d)) <= accuracy
-  )
-    return segmentDistance(at, a, d) <= radius;
-  const ab = mix(a, b, 0.5),
-    bc = mix(b, c, 0.5),
-    cd = mix(c, d, 0.5),
-    abc = mix(ab, bc, 0.5),
-    bcd = mix(bc, cd, 0.5),
-    middle = mix(abc, bcd, 0.5);
-  return (
-    hitCubic(at, a, ab, abc, middle, radius, accuracy, depth + 1) ||
-    hitCubic(at, middle, bcd, cd, d, radius, accuracy, depth + 1)
-  );
-}
-
 /** Find an insertion parameter on the centerline, independent of zoom and stroke width. */
 export function nearestPathSegment(
   mark: PathMark,

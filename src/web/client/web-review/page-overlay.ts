@@ -127,7 +127,7 @@ export function installPageReview(config: {
   let selected: Element[] = [],
     selectionUrl = location.href,
     multiple = false;
-  let redactions: { x: number; y: number; width: number; height: number }[] =
+  const redactions: { x: number; y: number; width: number; height: number }[] =
     [];
   let redactionView = "";
   const currentRedactionView = () =>
@@ -3251,9 +3251,8 @@ export function installPageReview(config: {
       pending.delete(seq);
       clearTimeout(call.timer);
       lastReply = Date.now();
-      result.ok
-        ? call.resolve(result.value)
-        : call.reject(new Error(result.error));
+      if (result.ok) call.resolve(result.value);
+      else call.reject(new Error(result.error));
     },
     privacyState() {
       return { active: redactions.length > 0, frozen: !!frozen };

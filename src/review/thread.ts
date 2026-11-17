@@ -3,16 +3,8 @@ import type {
   NoteStatusKind,
   ReviewComment,
 } from "../shared/review-types.ts";
-import {
-  webReview,
-  webReviewLines,
-  type WebReview,
-} from "../shared/web-review.ts";
-import {
-  imageRegion,
-  imageRegionLines,
-  type ImageRegion,
-} from "../shared/image-region.ts";
+import { webReview, webReviewLines } from "../shared/web-review.ts";
+import { imageRegion, imageRegionLines } from "../shared/image-region.ts";
 
 /**
  * The review file is the conversation. It is written by lcr and appended to by the agent, and both

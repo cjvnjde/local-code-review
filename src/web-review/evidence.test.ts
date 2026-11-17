@@ -274,7 +274,7 @@ test("late diagnostic enable completion cannot restore recording after disable",
   const recorder = new DiagnosticsEvidence(protocol, "target");
   const pending = recorder.configure(true);
   await recorder.configure(false);
-  enabled.resolve({});
+  enabled.resolve();
   await pending;
   protocol.emit("Runtime.consoleAPICalled", {
     type: "error",
@@ -292,8 +292,16 @@ test("CSS retains ancestor variable definitions and inline declarations without 
   const send = protocol.send.bind(protocol);
   protocol.send = async (method, params, session) => {
     if (method === "DOM.querySelector")
-      return { nodeId: params?.selector === "html" ? 3 : 2 };
-    if (method === "CSS.getMatchedStylesForNode" && params?.nodeId === 3)
+      return {
+        nodeId:
+          (params as CdpParams<"DOM.querySelector">)?.selector === "html"
+            ? 3
+            : 2,
+      };
+    if (
+      method === "CSS.getMatchedStylesForNode" &&
+      (params as CdpParams<"CSS.getMatchedStylesForNode">)?.nodeId === 3
+    )
       return {
         matchedCSSRules: [
           {

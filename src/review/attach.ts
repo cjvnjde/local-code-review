@@ -126,6 +126,7 @@ export async function saveAttachment(
         if (!info.isFile() || info.size !== bytes.byteLength)
           throw new Error(
             "Existing attachment content does not match its immutable name.",
+            { cause: error },
           );
         const saved = await existing.readFile();
         if (
@@ -135,6 +136,7 @@ export async function saveAttachment(
         )
           throw new Error(
             "Existing attachment content does not match its immutable name.",
+            { cause: error },
           );
       } finally {
         await existing.close();

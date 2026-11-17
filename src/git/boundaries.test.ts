@@ -50,6 +50,61 @@ const decode = (value: Uint8Array | null) =>
   value === null ? null : new TextDecoder().decode(value);
 
 describe("Git diff isolation and revision boundaries", () => {
+  test("reversed diffs resolve blob sides in displayed order and keep untracked files", async () => {
+    const root = await repository();
+    const committed = await readFile(path.join(root, "app.txt"), "utf8");
+    await writeFile(path.join(root, "app.txt"), "staged\n");
+    await runGit(["add", "--", "app.txt"], root);
+    await writeFile(path.join(root, "app.txt"), "working\n");
+    await writeFile(path.join(root, "untracked.txt"), "new\n");
+
+    for (const [args, oldText, newText] of [
+      [["-R"], "working\n", "staged\n"],
+      [["--cached", "-R"], "staged\n", committed],
+      [["HEAD", "-R"], "working\n", committed],
+    ] as const) {
+      const selected = source(root, [...args]);
+      const sides = await diffSides(selected);
+      expect(decode(await readBlob(root, sides.old, "app.txt"))).toBe(oldText);
+      expect(decode(await readBlob(root, sides.new, "app.txt"))).toBe(newText);
+      const files = await getDiff(selected);
+      expect(
+        files.find((file) => file.path === "app.txt")!.rows,
+      ).toContainEqual({
+        t: "del",
+        o: 1,
+        text: oldText.trim(),
+      });
+      if (!args.some((arg) => arg === "--cached"))
+        expect(
+          files.find((file) => file.path === "untracked.txt"),
+        ).toMatchObject({
+          status: "deleted",
+          removed: 1,
+        });
+    }
+    expect(await runGit(["ls-files", "--", "untracked.txt"], root)).toBe("");
+  });
+
+  test("reversed binary ranges preserve quoted filenames and display the matching bytes", async () => {
+    const root = await repository();
+    const file = 'emoji🙂"image.png';
+    const before = new Uint8Array([0, 1, 2]);
+    const after = new Uint8Array([0, 3, 4]);
+    await writeFile(path.join(root, file), before);
+    await runGit(["add", "--", file], root);
+    await commit(root, "image before");
+    await writeFile(path.join(root, file), after);
+    await commit(root, "image after");
+    const selected = source(root, ["-R", "HEAD~1..HEAD"]);
+    const files = await getDiff(selected);
+    expect(files).toHaveLength(1);
+    expect(files[0]).toMatchObject({ path: file, binary: true });
+    const sides = await diffSides(selected);
+    expect(await readBlob(root, sides.old, file)).toEqual(after);
+    expect(await readBlob(root, sides.new, file)).toEqual(before);
+  });
+
   test("validation checks arguments without turning untracked files into intent-to-add entries", async () => {
     const root = await repository();
     await writeFile(path.join(root, "untracked.txt"), "new\n");
@@ -316,6 +371,8 @@ describe("Git diff isolation and revision boundaries", () => {
       "line\nname.txt",
       'quote"name.txt',
       "back\\slash.txt",
+      'emoji🙂"name.txt',
+      "emoji🧪\ttab.txt",
     ];
     for (const file of names)
       await writeFile(path.join(root, file), "before\n");

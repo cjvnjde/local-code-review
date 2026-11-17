@@ -70,11 +70,10 @@ describe("hub subscription transitions", () => {
     const first: string[] = [];
     const stable: string[] = [];
     const later: string[] = [];
-    let detachFirst: () => void;
     const receiveLater = (chunk: string) => {
       later.push(chunk);
     };
-    detachFirst = hub.add((chunk) => {
+    const detachFirst = hub.add((chunk) => {
       first.push(chunk);
       hub.add(receiveLater);
       detachFirst();

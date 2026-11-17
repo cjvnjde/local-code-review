@@ -3378,6 +3378,10 @@ test("live page capture grows notes without moving the page and opens drawings a
     });
     const dock = target.locator(".dock");
     const save = frame.getByRole("button", { name: "Save note", exact: true });
+    // Captured evidence is unsaved work even before the reviewer types a body.
+    await input.press("Escape");
+    await expect(input).toBeVisible();
+    await expect(input).toHaveValue("");
     const composerAtBottom = async () => {
       await expect
         .poll(async () => {

@@ -40,13 +40,14 @@ async function fixture() {
 
 test("token, host, and origin checks deny foreign access without CORS", async () => {
   const { request } = await fixture();
-  for (const headers of [
+  const forbiddenHeaders: Record<string, string>[] = [
     { authorization: "" },
     { authorization: "Bearer stale-token" },
     { host: "attacker.test:7777" },
     { origin: "http://attacker.test" },
     { origin: "null" },
-  ]) {
+  ];
+  for (const headers of forbiddenHeaders) {
     const response = await request("/" + "a".repeat(64), { headers });
     expect(response.status).toBe(403);
     expect(response.headers.get("access-control-allow-origin")).toBeNull();

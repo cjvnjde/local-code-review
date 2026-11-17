@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   request,
@@ -10,7 +10,8 @@ import { useStored } from "../app/preferences.ts";
 import {
   Composer,
   DraftReviewNotice,
-  draftBody,
+  draftChanged,
+  initializeDraft,
   type Draft,
 } from "../notes/composer.tsx";
 import { NoteCard } from "../notes/note-card.tsx";
@@ -49,6 +50,7 @@ export function EmbeddedReview({
   const [capturing, setCapturing] = useState(false);
   const [minimumHeight, setMinimumHeight] = useState(0);
   const headerAction = useAction();
+  const mutateHeader = headerAction.mutate;
   const client = useQueryClient();
   const origin = diff.web ? new URL(diff.web.url).origin : "";
   const evidence = useQuery({
@@ -64,13 +66,16 @@ export function EmbeddedReview({
   latest.current = draft;
   const headerBusy = useRef(false);
   headerBusy.current = busy || capturing || headerAction.isPending;
-  const tell = (action: string, values: object = {}) => {
-    if (origin)
-      window.parent.postMessage(
-        { type: "lcr:ui", token: embedToken, action, ...values },
-        origin,
-      );
-  };
+  const tell = useCallback(
+    (action: string, values: object = {}) => {
+      if (origin)
+        window.parent.postMessage(
+          { type: "lcr:ui", token: embedToken, action, ...values },
+          origin,
+        );
+    },
+    [origin],
+  );
   useEffect(() => {
     if (evidence.data && review && !latest.current) {
       const web = webReview(evidence.data.web);
@@ -81,7 +86,7 @@ export function EmbeddedReview({
           comment: { ...makeComment(), web },
         });
     }
-  }, [evidence.data, review?.file]);
+  }, [evidence.data, review, setDraft]);
   useEffect(() => {
     const element = content.current;
     if (!element || !origin) return;
@@ -92,7 +97,7 @@ export function EmbeddedReview({
     );
     observer.observe(element);
     return () => observer.disconnect();
-  }, [origin]);
+  }, [origin, tell]);
   useEffect(() => {
     const preview = () => {
       tell("image-preview", {
@@ -127,7 +132,7 @@ export function EmbeddedReview({
         else if (!current) {
           const note = review?.notes.find((note) => note.id === noteId);
           if (note)
-            headerAction.mutate({
+            mutateHeader({
               url: "/api/note",
               method: "POST",
               body: { comment: { ...commentInput(note), triage }, ask: false },
@@ -175,21 +180,29 @@ export function EmbeddedReview({
       window.removeEventListener("message", receive);
       document.removeEventListener("lcr:image-preview", preview);
     };
-  }, [origin, client, review?.notes, review?.file, headerAction.mutate]);
+  }, [
+    origin,
+    client,
+    review?.notes,
+    review?.file,
+    mutateHeader,
+    setDraft,
+    tell,
+  ]);
   useEffect(() => {
     tell("dirty", {
-      dirty: !!draft && !!draftBody(draft).trim(),
+      dirty: !!draft && draftChanged(draft),
       saving: busy || capturing,
       editOriginal: draft?.kind === "note" && !!noteId,
     });
-  }, [draft, busy, capturing]);
+  }, [draft, busy, capturing, tell]);
   const editedEvidence =
     draft?.kind === "note" ? draft.comment.web : draft?.web;
   const editingEvidence = !!draft && !draft.editing;
   useEffect(() => {
     if (editingEvidence)
       tell("evidence-changed", { web: editedEvidence ?? null });
-  }, [editingEvidence, editedEvidence]);
+  }, [editingEvidence, editedEvidence, tell]);
   const close = () => {
     if (busy || capturing) return;
     setDraft(null);
@@ -210,7 +223,7 @@ export function EmbeddedReview({
       options: classify ? triageOptions : [],
       disabled: busy || capturing || headerAction.isPending,
     });
-  }, [origin, triage, classify, busy, capturing, headerAction.isPending]);
+  }, [origin, triage, classify, busy, capturing, headerAction.isPending, tell]);
   return (
     <NoteState value={noteState}>
       <div
@@ -267,7 +280,9 @@ export function EmbeddedReview({
             <NoteCard
               note={note}
               agent={!!diff.agent}
-              onCompose={(next) => setDraft({ ...next, review: review?.file })}
+              onCompose={(next) => {
+                if (review) setDraft(initializeDraft(next, review));
+              }}
               embedded
             />
           </div>
