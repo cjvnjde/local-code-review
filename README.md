@@ -115,13 +115,149 @@ lcr --tree-sitter              # Override a disabled user default
 Set `"treeSitter": false` in your user lcr configuration to disable automatic
 detection. No Tree-sitter installation or grammar download is required to use lcr.
 
-Installing the CLI alone does not install language grammars. Use
-`tree-sitter init-config` and configure its `parser-directories` to point at a
-directory containing grammar repositories such as `tree-sitter-javascript`.
-Check `tree-sitter dump-languages` and `tree-sitter highlight path/to/file.js`.
-See the [Tree-sitter setup guide](https://tree-sitter.github.io/tree-sitter/3-syntax-highlighting.html).
-lcr uses that user configuration and never downloads or configures grammars for you.
-Restart lcr after changing the Tree-sitter installation or configuration.
+Installing the CLI alone does not install language grammars. The following setup
+is for **macOS/Linux with bash or zsh** and installs JavaScript/JSX, TypeScript/TSX,
+YAML, HTML, CSS, JSON, Bash, Python, Go, and Rust parsers.
+
+#### Install the tools
+
+With [mise](https://mise.jdx.dev/getting-started.html) installed and activated:
+
+```sh
+mise use -g tree-sitter bun
+tree-sitter --version
+```
+
+Git and a C/C++ compiler must also be available. On macOS, run
+`xcode-select --install` if Command Line Tools are missing. On Debian/Ubuntu, use
+`sudo apt-get install git build-essential`. Bun is needed during parser setup to
+install the TypeScript grammar's query dependencies. Normal use of the standalone
+lcr executable does not require Bun.
+
+Other CLI installation options and platform requirements are in the
+[Tree-sitter installation guide](https://tree-sitter.github.io/tree-sitter/creating-parsers/1-getting-started.html).
+
+#### Install from web settings
+
+Open **Settings → Tree-sitter highlighting**. lcr shows whether the CLI is found,
+which language grammars are configured, and any missing setup tools. Choose
+**Install recommended parsers** to download the parsers from their upstream GitHub
+projects, install TypeScript's query dependencies with lifecycle scripts disabled,
+merge the parser directory into your Tree-sitter config, and compile/check samples.
+Installation runs locally on the machine serving lcr. Progress and failures appear
+in Settings; you can close Settings while it runs and retry if a download fails.
+
+Grammars are stored in `${XDG_DATA_HOME:-$HOME/.local/share}/lcr/tree-sitter` on
+macOS/Linux. Existing parser directories and theme settings are preserved. Setup
+reuses existing clones; it does not update them. No download happens until you
+click the button.
+
+Highlighting refreshes when installation finishes, without restarting the server.
+An open note editor keeps its current diff until editing finishes. If you install
+parsers in a terminal, choose **Check again** to reset detection and refresh the
+review. If lcr was started with `--no-tree-sitter`, restart with `--tree-sitter` to
+enable it. If newly installed tools changed your `PATH`, restart lcr so it inherits
+that change.
+
+#### Install and configure common parsers in a terminal
+
+Run this block from any directory. It keeps grammars outside your projects, skips
+existing clones, and adds the grammar directory without removing existing
+Tree-sitter settings. The TypeScript/TSX grammar references JavaScript query files
+through its dependencies, so keep the `bun install` step. Native Node bindings
+are unnecessary for lcr; their install scripts are deliberately skipped.
+
+```sh
+(
+  set -eu
+  lcr_ts_parsers="$HOME/.local/share/tree-sitter/grammars"
+  lcr_ts_config="${XDG_CONFIG_HOME:-$HOME/.config}/tree-sitter/config.json"
+  mkdir -p "$lcr_ts_parsers"
+
+  for lcr_ts_repo in \
+    tree-sitter/tree-sitter-javascript \
+    tree-sitter/tree-sitter-typescript \
+    tree-sitter-grammars/tree-sitter-yaml \
+    tree-sitter/tree-sitter-html \
+    tree-sitter/tree-sitter-css \
+    tree-sitter/tree-sitter-json \
+    tree-sitter/tree-sitter-bash \
+    tree-sitter/tree-sitter-python \
+    tree-sitter/tree-sitter-go \
+    tree-sitter/tree-sitter-rust
+  do
+    lcr_ts_target="$lcr_ts_parsers/${lcr_ts_repo##*/}"
+    if [ ! -d "$lcr_ts_target" ]; then
+      git clone --depth 1 "https://github.com/$lcr_ts_repo.git" "$lcr_ts_target"
+    fi
+  done
+
+  bun install --cwd "$lcr_ts_parsers/tree-sitter-typescript" --production --ignore-scripts
+
+  if [ ! -f "$lcr_ts_config" ]; then
+    tree-sitter init-config
+  fi
+  LCR_TS_CONFIG="$lcr_ts_config" LCR_TS_PARSERS="$lcr_ts_parsers" bun - <<'JS'
+const file = Bun.file(process.env.LCR_TS_CONFIG);
+const config = await file.json();
+config["parser-directories"] = [...new Set([
+  ...(config["parser-directories"] ?? []),
+  process.env.LCR_TS_PARSERS,
+])];
+await Bun.write(file, JSON.stringify(config, null, 2) + "\n");
+JS
+
+  tree-sitter dump-languages
+)
+```
+
+The listing should include `source.ts`, `source.tsx`, `source.yaml`, `source.html`,
+and the other installed languages. `parser-directories` contains the **parent**
+directory of the `tree-sitter-*` repositories. More languages are available in the
+[upstream parser list](https://github.com/tree-sitter/tree-sitter/wiki/List-of-parsers);
+check each grammar's dependency and query requirements before adding it.
+
+#### Compile and verify terminal setup
+
+Run these small samples once to compile and check every installed parser. Initial
+compilation can take longer than lcr's three-second highlighting timeout; doing it
+here prepares Tree-sitter's cache before lcr starts.
+
+```sh
+(
+  set -eu
+  lcr_ts_samples="$(mktemp -d)"
+  trap 'rm -rf "$lcr_ts_samples"' EXIT
+  printf '%s\n' 'const count = 1;' > "$lcr_ts_samples/example.js"
+  printf '%s\n' 'const count: number = 1;' > "$lcr_ts_samples/example.ts"
+  printf '%s\n' 'const view = <div>Hello</div>;' > "$lcr_ts_samples/example.tsx"
+  printf '%s\n' 'enabled: true' > "$lcr_ts_samples/example.yaml"
+  printf '%s\n' '<div class="greeting">Hello</div>' > "$lcr_ts_samples/example.html"
+  printf '%s\n' '.greeting { color: red; }' > "$lcr_ts_samples/example.css"
+  printf '%s\n' '{"enabled": true}' > "$lcr_ts_samples/example.json"
+  printf '%s\n' 'echo "hello"' > "$lcr_ts_samples/example.sh"
+  printf '%s\n' 'print("hello")' > "$lcr_ts_samples/example.py"
+  printf '%s\n' 'package main; func main() {}' > "$lcr_ts_samples/example.go"
+  printf '%s\n' 'fn main() { println!("hello"); }' > "$lcr_ts_samples/example.rs"
+  tree-sitter highlight --quiet "$lcr_ts_samples"/*
+)
+```
+
+Check that the command finishes successfully; parser or query errors need fixing
+before lcr can use the affected language. After terminal setup, choose **Settings
+→ Tree-sitter highlighting → Check again**, or restart your lcr server. Then review
+a change in a supported language. The footer's syntax-tree icon appears only when
+Tree-sitter actually highlights part of the displayed diff; hover or focus it for
+the backend name. Unsupported files can still use highlight.js in the same review.
+
+If the icon is missing, check `tree-sitter dump-languages` and try
+`tree-sitter highlight path/to/a/real/file.ts` to see any parser errors. Also check
+`command -v lcr`, `lcr --version`, and that `lcr --help` lists `--tree-sitter`.
+An older executable on `PATH` or an already-running older server will not gain the
+feature from a page reload. [Build from source](#install-or-update-from-source) if
+your installed release predates it. Substitute `lcr2` throughout if that is your
+custom executable name. See the [Tree-sitter configuration reference](https://tree-sitter.github.io/tree-sitter/cli/init-config.html)
+for additional settings.
 
 Highlighting uses complete old/new file versions, including staged and committed
 content, and keeps lcr's selected theme. Large files (over 1 MiB per side) use the

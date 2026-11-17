@@ -37,6 +37,7 @@ import { loadUserSettings, saveUiSettings } from "../cli/config.ts";
 import { loadThemes, saveTheme } from "../cli/themes.ts";
 import { BUILTIN_THEMES, type ThemeDraft } from "../shared/themes.ts";
 import { JSON_LIMITS } from "./request-schemas.ts";
+import type { TreeSitterStatus } from "../shared/tree-sitter.ts";
 import type {
   DiffFile,
   NoteStatus,
@@ -200,6 +201,118 @@ afterEach(async () => {
 afterAll(() => {
   console.log = originalLog;
   console.error = originalError;
+});
+
+describe("optional parser setup", () => {
+  async function fixture() {
+    const state: TreeSitterStatus = {
+      enabled: true,
+      cli: { path: "/tools/tree-sitter", version: "tree-sitter 0.27.2" },
+      languages: [],
+      directory: "/user/parsers",
+      missingTools: [],
+      error: null,
+      installation: { state: "idle" },
+    };
+    let installs = 0;
+    let refreshes = 0;
+    const started = await startTestServer({
+      treeSitter: {
+        status: async () => state,
+        startInstall: () => {
+          installs++;
+          state.installation = { state: "running", detail: "Downloading…" };
+        },
+        refresh: async () => {
+          refreshes++;
+          return state;
+        },
+      },
+    });
+    return { started, installs: () => installs, refreshes: () => refreshes };
+  }
+  test("reads diagnostics and starts a background install or refresh explicitly", async () => {
+    const f = await fixture();
+    const status = await request(f.started, "/api/tree-sitter");
+    expect(status.headers.get("cache-control")).toBe("no-store");
+    expect((await status.json()).installation.state).toBe("idle");
+    const installed = await request(f.started, "/api/tree-sitter", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "install" }),
+    });
+    expect(installed.status).toBe(202);
+    expect((await installed.json()).installation.state).toBe("running");
+    expect(f.installs()).toBe(1);
+    expect(
+      (
+        await request(f.started, "/api/tree-sitter", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action: "refresh" }),
+        })
+      ).status,
+    ).toBe(200);
+    expect(f.refreshes()).toBe(1);
+  });
+  test("rejects foreign origins, hosts, arbitrary commands, and oversized requests without starting setup", async () => {
+    const f = await fixture();
+    for (const headers of [
+      { origin: "https://foreign.test" },
+      { host: "foreign.test" },
+    ]) {
+      expect(
+        (await request(f.started, "/api/tree-sitter", { headers })).status,
+      ).toBe(403);
+      expect(
+        (
+          await request(f.started, "/api/tree-sitter", {
+            method: "POST",
+            headers: { ...headers, "content-type": "application/json" },
+            body: '{"action":"install"}',
+          })
+        ).status,
+      ).toBe(403);
+    }
+    for (const body of [
+      '{"action":"execute"}',
+      '{"action":"install","command":"anything"}',
+      "{",
+    ]) {
+      expect(
+        (
+          await request(f.started, "/api/tree-sitter", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body,
+          })
+        ).status,
+      ).toBe(400);
+    }
+    expect(
+      (
+        await request(f.started, "/api/tree-sitter", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action: "install", extra: "x".repeat(1100) }),
+        })
+      ).status,
+    ).toBe(413);
+    expect(
+      (
+        await request(f.started, "/api/tree-sitter", {
+          method: "POST",
+          body: '{"action":"install"}',
+        })
+      ).status,
+    ).toBe(415);
+    expect(
+      (await request(f.started, "/api/tree-sitter", { method: "DELETE" }))
+        .status,
+    ).toBe(405);
+    expect(f.installs()).toBe(0);
+    expect(f.refreshes()).toBe(0);
+  });
 });
 
 describe("review settings handoff", () => {

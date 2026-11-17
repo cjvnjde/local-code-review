@@ -43,6 +43,7 @@ import { createSession } from "./review/session.ts";
 import { startServer } from "./server/http.ts";
 import { createDiffSyntax } from "./server/diff-syntax.ts";
 import { createTreeSitter, MAX_SYNTAX_BYTES } from "./server/tree-sitter.ts";
+import { createTreeSitterSetup } from "./server/tree-sitter-setup.ts";
 import { collectStatuses } from "./review/status.ts";
 import { hydrateContextDoc } from "./review/web-context.ts";
 import { parseReview } from "./review/thread.ts";
@@ -105,6 +106,7 @@ async function main() {
     diffBase(diffSource),
     diffSides(diffSource),
   ]);
+  const backend = createTreeSitter({ enabled: options.treeSitter });
   const syntax = createDiffSyntax(
     (side, file) =>
       readBlob(
@@ -113,7 +115,7 @@ async function main() {
         file,
         MAX_SYNTAX_BYTES,
       ),
-    createTreeSitter({ enabled: options.treeSitter }),
+    backend,
   );
   const session = createSession(repoRoot, options.outDir, range, {
     range,
@@ -136,6 +138,14 @@ async function main() {
       );
   }
   const hub = createHub();
+  const treeSitter = createTreeSitterSetup({
+    enabled: options.treeSitter,
+    onRefresh: () => {
+      backend.reset();
+      hub.emit({ type: "diff" });
+      hub.emit({ type: "parsers" });
+    },
+  });
   let webUrl = "";
   const rounds = createReviewRoundStore({
     repoRoot,
@@ -220,6 +230,7 @@ async function main() {
       uiDefaults: settings.ui,
       saveUiSettings: (patch) => saveUiSettings(patch, configFile),
       getThemes: () => loadThemes(configFile),
+      treeSitter,
       saveTheme: (draft) => saveTheme(draft, configFile),
       getDiff: async () => syntax.files(await getDiff(diffSource)),
       getContext: async (file, start, end) =>

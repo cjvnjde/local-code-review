@@ -20,6 +20,7 @@ import path from "node:path";
 import { createServer } from "node:http";
 import { DEFAULT_UI_SETTINGS } from "../../src/shared/settings.ts";
 import { PNG } from "pngjs";
+import type { TreeSitterStatus } from "../../src/shared/tree-sitter.ts";
 
 let root: string,
   directory: string,
@@ -144,6 +145,118 @@ async function codePoint(cell: Locator, offset: number) {
     throw new Error("No character position");
   }, offset);
 }
+
+test("Tree-sitter settings detect missing tools and preserve a retryable background installation", async ({
+  page,
+}) => {
+  let state: TreeSitterStatus = {
+    enabled: true,
+    cli: null,
+    languages: [],
+    directory: "/user/parsers",
+    missingTools: ["tree-sitter"],
+    error: null,
+    installation: { state: "idle" },
+  };
+  let installs = 0;
+  await page.route("**/api/tree-sitter", async (route) => {
+    if (route.request().method() === "POST") {
+      const { action } = route.request().postDataJSON();
+      if (action === "refresh") {
+        state = {
+          ...state,
+          cli: { path: "/tools/tree-sitter", version: "tree-sitter 0.27.2" },
+          missingTools: [],
+        };
+      } else {
+        installs++;
+        state = {
+          ...state,
+          installation: { state: "running", detail: "Installing typescript…" },
+        };
+      }
+    }
+    await route.fulfill({ json: state });
+  });
+  await page.goto(url);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const settings = page.getByRole("dialog", { name: "Settings", exact: true });
+  const install = settings.getByRole("button", {
+    name: "Install recommended parsers",
+  });
+  await expect(install).toBeDisabled();
+  await expect(
+    settings.getByText("Tree-sitter CLI was not found", { exact: false }),
+  ).toBeVisible();
+  await settings
+    .getByRole("button", { name: "Check again", exact: true })
+    .click();
+  await expect(
+    settings.getByText(
+      "Tree-sitter detected · No language parsers configured.",
+      { exact: false },
+    ),
+  ).toBeVisible();
+  await install.focus();
+  await page.keyboard.press("Enter");
+  await expect(settings.getByRole("status")).toHaveText(
+    "Installing typescript…",
+  );
+  await expect(
+    settings.getByRole("button", { name: "Installing parsers…" }),
+  ).toBeDisabled();
+  state = {
+    ...state,
+    installation: {
+      state: "failed",
+      detail: "Download unavailable. Try again.",
+    },
+  };
+  await expect(settings.getByRole("alert")).toHaveText(
+    "Download unavailable. Try again.",
+  );
+  await install.click();
+  await expect(settings.getByRole("status")).toHaveText(
+    "Installing typescript…",
+  );
+  await settings.getByRole("button", { name: "Close dialog" }).click();
+  state = {
+    ...state,
+    languages: ["source.ts", "source.yaml", "source.html"],
+    installation: {
+      state: "complete",
+      detail: "Recommended parsers are ready.",
+    },
+  };
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await expect(settings.getByRole("status")).toContainText(
+    "Recommended parsers are ready.",
+  );
+  await expect(
+    settings.getByText("3 language grammars configured", { exact: false }),
+  ).toBeVisible();
+  expect(installs).toBe(2);
+  await settings.getByText("CLI and parser details", { exact: true }).click();
+  await expect(
+    settings.getByText("Configured scopes:", { exact: false }),
+  ).toContainText("source.yaml");
+  await page.keyboard.press("Escape");
+  await expect(settings).not.toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Settings", exact: true }),
+  ).toBeFocused();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await install.scrollIntoViewIfNeeded();
+  await expect(install).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(settings).not.toBeVisible();
+});
 
 test("compiled executable reviews changes, preserves drafts, and continues the Markdown conversation", async ({
   page,

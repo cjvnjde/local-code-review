@@ -4,7 +4,10 @@ import { createTreeSitter, MAX_SYNTAX_BYTES } from "./tree-sitter.ts";
 
 export function createDiffSyntax(
   read: (side: "old" | "new", file: string) => Promise<Uint8Array | null>,
-  backend = createTreeSitter(),
+  backend: Pick<
+    ReturnType<typeof createTreeSitter>,
+    "available" | "highlight"
+  > = createTreeSitter(),
 ) {
   async function tokens(side: "old" | "new", file: string) {
     try {

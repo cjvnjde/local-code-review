@@ -68,7 +68,20 @@ cannot be picked up from the current directory. No runtime dependency is install
 Two process slots, a three-second process timeout, 1 MiB source/8 MiB output limits,
 and a 16-entry content cache bound the optional work. Missing grammars and failures
 leave highlight.js in charge; timeouts, excessive output, or launch failures disable
-further attempts for the session. Restart to pick up installation/configuration changes.
+further attempts until the backend is reset. Settings → Tree-sitter highlighting →
+Check again resets detection and caches after external installation/configuration changes.
+
+`src/server/tree-sitter-setup.ts` owns CLI diagnostics and explicit installation of
+the recommended grammar catalog. `/api/tree-sitter` uses the review origin/host
+checks, bounded JSON commands, and a background job with status polling. The
+installer needs the optional Tree-sitter CLI, Git, Bun (for upstream TypeScript query
+dependencies), and a C compiler. It clones only the fixed upstream repositories
+outside the reviewed project, skips package lifecycle scripts, merges user config,
+and compiles sample highlights before reporting success. A proper-lockfile lock
+coordinates lcr instances; partial clones are staged and removed on failure.
+Installation and refresh reset the highlighter and emit the existing diff event,
+preserving deferred updates during editing. Normal standalone use needs no Bun or
+parser downloads.
 
 Full blobs come from the existing Git side resolver (including rename origins).
 The HTML parser emits only typed text tokens, mapped to the existing palette and

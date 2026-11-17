@@ -59,6 +59,8 @@ import {
   type ReviewRoundStore,
 } from "../review/rounds.ts";
 import { reviewToolsRoute } from "./review-tools.ts";
+import type { TreeSitterSetup } from "./tree-sitter-setup.ts";
+import { parserSetupRequestSchema } from "./request-schemas.ts";
 
 export interface ServerOptions {
   web?: import("../web-review/controller.ts").WebReviewController;
@@ -114,6 +116,7 @@ export interface ServerOptions {
   saveUiSettings?: (patch: Partial<UiSettings>) => Promise<void>;
   getThemes?: () => Promise<ThemeCatalog>;
   saveTheme?: (draft: ThemeDraft) => Promise<{ theme: Theme; file: string }>;
+  treeSitter?: TreeSitterSetup;
 }
 
 /**
@@ -260,6 +263,47 @@ function serve(options: ServerOptions, port: number) {
         }
         if (url.pathname === "/api/events")
           return events(options, request, server);
+        if (url.pathname === "/api/tree-sitter") {
+          if (!contextRequestAllowed(request, server.port!))
+            return Response.json(
+              { error: "Access parser setup from the review origin." },
+              { status: 403 },
+            );
+          if (!options.treeSitter)
+            return Response.json(
+              { error: "Parser setup is unavailable." },
+              { status: 503 },
+            );
+          const headers = { "cache-control": "no-store" };
+          if (request.method === "GET")
+            return Response.json(await options.treeSitter.status(), {
+              headers,
+            });
+          if (request.method !== "POST")
+            return new Response("method not allowed", {
+              status: 405,
+              headers: { allow: "GET, POST" },
+            });
+          if (!isJsonRequest(request))
+            return Response.json(
+              { error: "JSON body required." },
+              { status: 415 },
+            );
+          const { action } = await readJsonRequest(
+            request,
+            parserSetupRequestSchema,
+            1024,
+          );
+          if (action === "refresh")
+            return Response.json(await options.treeSitter.refresh(), {
+              headers,
+            });
+          options.treeSitter.startInstall();
+          return Response.json(await options.treeSitter.status(), {
+            status: 202,
+            headers,
+          });
+        }
         if (url.pathname === "/api/themes") {
           if (!contextRequestAllowed(request, server.port!))
             return Response.json(

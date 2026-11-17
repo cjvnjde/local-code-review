@@ -145,6 +145,7 @@ export function useLive() {
       void client.invalidateQueries({ queryKey: ["review"] });
       void client.invalidateQueries({ queryKey: ["settings"] });
       void client.invalidateQueries({ queryKey: ["themes"] });
+      void client.invalidateQueries({ queryKey: ["tree-sitter"] });
       void client.invalidateQueries({ queryKey: ["review-rounds"] });
     };
     events.onmessage = (event) => {
@@ -154,6 +155,8 @@ export function useLive() {
           void client.invalidateQueries({ queryKey: ["review-rounds"] });
         if (data.type === "diff")
           void client.invalidateQueries({ queryKey: ["diff"] });
+        else if (data.type === "parsers")
+          void client.invalidateQueries({ queryKey: ["tree-sitter"] });
         else if (data.type === "settings") {
           void client.invalidateQueries({ queryKey: ["settings"] });
           void client.invalidateQueries({ queryKey: ["themes"] });

@@ -4,9 +4,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { SyntaxToken } from "../shared/syntax.ts";
 import { parseSyntaxHtml } from "./syntax-html.ts";
+import { runParserCommand } from "./parser-process.ts";
 
 export const MAX_SYNTAX_BYTES = 1024 * 1024;
-const MAX_OUTPUT_BYTES = 8 * MAX_SYNTAX_BYTES;
 
 interface TreeSitterOptions {
   enabled?: boolean;
@@ -18,68 +18,34 @@ interface TreeSitterOptions {
 
 /** Optional local CLI, with bounded work and no grammar discovery in the reviewed repository. */
 export function createTreeSitter(options: TreeSitterOptions = {}) {
-  const command =
+  const findCommand = () =>
     options.enabled === false
       ? null
       : options.command === undefined
-        ? Bun.which("tree-sitter", { cwd: tmpdir() })
+        ? Bun.which("tree-sitter", { cwd: tmpdir(), PATH: options.env?.PATH })
         : options.command;
+  let command = findCommand();
   const cache = new Map<string, Promise<SyntaxToken[][] | null>>();
   let ready: Promise<boolean> | undefined;
   let disabled = !command;
+  let generation = 0;
   // Two process slots, shared by initial diffs, expansion, and concurrent clients.
   const slots = [Promise.resolve(), Promise.resolve()];
   let slot = 0;
 
   async function run(args: string[], cwd: string) {
-    const child = Bun.spawn([command!, ...args], {
+    const result = await runParserCommand([command!, ...args], {
       cwd,
       env: options.env,
-      stdin: "ignore",
-      stdout: "pipe",
-      stderr: "pipe",
+      timeoutMs: options.timeoutMs,
     });
-    const readers = [child.stdout.getReader(), child.stderr.getReader()];
-    let bytes = 0;
-    const read = async (reader: ReadableStreamDefaultReader<Uint8Array>) => {
-      const decoder = new TextDecoder();
-      let output = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) return output + decoder.decode();
-        bytes += value.byteLength;
-        if (bytes > MAX_OUTPUT_BYTES)
-          throw new Error("Syntax output too large");
-        output += decoder.decode(value, { stream: true });
-      }
-    };
-    let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      child.kill("SIGKILL");
-      for (const reader of readers) void reader.cancel().catch(() => {});
-    }, options.timeoutMs ?? 3000);
-    try {
-      const [stdout, stderr, code] = await Promise.all([
-        read(readers[0]!),
-        read(readers[1]!),
-        child.exited,
-      ]);
-      if (timedOut) throw new Error("Syntax highlighting timed out");
-      return code === 0 ? { stdout, stderr } : null;
-    } finally {
-      clearTimeout(timer);
-      child.kill("SIGKILL");
-      await Promise.all(
-        readers.map((reader) => reader.cancel().catch(() => {})),
-      );
-      await child.exited;
-    }
+    return result.code === 0 ? result : null;
   }
 
   async function available() {
     if (disabled) return false;
     return (ready ??= (async () => {
+      const current = generation;
       let directory: string | undefined;
       try {
         directory = await mkdtemp(path.join(tmpdir(), "lcr-syntax-"));
@@ -90,7 +56,7 @@ export function createTreeSitter(options: TreeSitterOptions = {}) {
           !!output && /^scope:\s*\S/m.test(output.stdout + "\n" + output.stderr)
         );
       } catch {
-        disabled = true;
+        if (current === generation) disabled = true;
         return false;
       } finally {
         if (directory)
@@ -123,6 +89,7 @@ export function createTreeSitter(options: TreeSitterOptions = {}) {
       return cached;
     }
     const index = slot++ % slots.length;
+    const current = generation;
     const result = slots[index]!.then(async () => {
       if (disabled) return null;
       let directory: string | undefined;
@@ -140,7 +107,7 @@ export function createTreeSitter(options: TreeSitterOptions = {}) {
         return html === null ? null : parseSyntaxHtml(html.stdout, source);
       } catch {
         // A broken or hanging executable must not stall every file in a large review.
-        disabled = true;
+        if (current === generation) disabled = true;
         return null;
       } finally {
         if (directory)
@@ -153,5 +120,15 @@ export function createTreeSitter(options: TreeSitterOptions = {}) {
     return result;
   }
 
-  return { available, highlight };
+  return {
+    available,
+    highlight,
+    reset() {
+      generation++;
+      command = findCommand();
+      ready = undefined;
+      disabled = !command;
+      cache.clear();
+    },
+  };
 }

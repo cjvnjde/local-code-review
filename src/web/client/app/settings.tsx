@@ -7,6 +7,7 @@ import { request, useAction, type AgentState } from "./api.ts";
 import { Button } from "../components/ui/button.tsx";
 import { Select } from "../components/ui/select.tsx";
 import { useThemes } from "./themes.tsx";
+import { TreeSitterSettings } from "./tree-sitter-settings.tsx";
 
 const INSTALL_SKILL_COMMAND =
   "npx skills add cjvnjde/local-code-review --skill apply-lcr";
@@ -81,6 +82,7 @@ export function Settings({
           </p>
         ))}
       </section>
+      <TreeSitterSettings />
       <section className="space-y-3">
         <h3 className="text-sm font-semibold">Reading and editing</h3>
         {(

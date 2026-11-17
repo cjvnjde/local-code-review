@@ -3,6 +3,7 @@ export type LiveEvent =
   | { type: "review"; file: string }
   | { type: "diff" }
   | { type: "settings" }
+  | { type: "parsers" }
   | { type: "hello"; file: string };
 
 export type Send = (chunk: string) => void;
