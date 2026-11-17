@@ -153,9 +153,10 @@ export function useLive() {
         const data = JSON.parse(event.data);
         if (data.type === "diff" || data.type === "review")
           void client.invalidateQueries({ queryKey: ["review-rounds"] });
-        if (data.type === "diff")
+        if (data.type === "diff") {
           void client.invalidateQueries({ queryKey: ["diff"] });
-        else if (data.type === "parsers")
+          void client.invalidateQueries({ queryKey: ["tree-sitter"] });
+        } else if (data.type === "parsers")
           void client.invalidateQueries({ queryKey: ["tree-sitter"] });
         else if (data.type === "settings") {
           void client.invalidateQueries({ queryKey: ["settings"] });

@@ -140,6 +140,7 @@ async function main() {
   const hub = createHub();
   const treeSitter = createTreeSitterSetup({
     enabled: options.treeSitter,
+    getFiles: () => getDiff(diffSource),
     onRefresh: () => {
       backend.reset();
       hub.emit({ type: "diff" });

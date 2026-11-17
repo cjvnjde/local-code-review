@@ -16,7 +16,7 @@ export function TreeSitterSettings() {
       query.state.data?.installation.state === "running" ? 1000 : false,
   });
   const action = useMutation({
-    mutationFn: (action: "install" | "refresh") =>
+    mutationFn: (action: "install" | "install-detected" | "refresh") =>
       request<TreeSitterStatus>("/api/tree-sitter", "POST", { action }),
     onSuccess: (status) => client.setQueryData(["tree-sitter"], status),
   });
@@ -24,6 +24,8 @@ export function TreeSitterSettings() {
   const installing = status?.installation.state === "running";
   const busy = installing || action.isPending;
   const failure = action.error || query.error;
+  const missing =
+    status?.review.languages.filter((language) => !language.configured) ?? [];
   return (
     <section className="space-y-3" aria-labelledby="tree-sitter-heading">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -60,6 +62,56 @@ export function TreeSitterSettings() {
           enable it.
         </p>
       )}
+      {status && (
+        <div className="space-y-2">
+          <p className="text-xs font-medium">Detected in this review</p>
+          {status.review.languages.length ? (
+            <>
+              <ul
+                aria-label="Detected review languages"
+                className="space-y-1 text-xs"
+              >
+                {status.review.languages.map((language) => (
+                  <li
+                    key={language.scope}
+                    className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1"
+                  >
+                    <span>
+                      {language.label}{" "}
+                      <span className="text-muted-foreground">
+                        · {language.files}{" "}
+                        {language.files === 1 ? "file" : "files"}
+                      </span>
+                    </span>
+                    <span className="text-muted-foreground">
+                      {language.configured ? "Configured" : "Missing parser"}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <Button
+                variant="outline"
+                disabled={
+                  !missing.length || !!status.review.missingTools.length || busy
+                }
+                onClick={() => action.mutate("install-detected")}
+              >
+                <Download aria-hidden="true" /> Install missing parsers
+              </Button>
+              {!!status.review.missingTools.length && (
+                <p className="text-xs text-muted-foreground">
+                  To install these parsers:{" "}
+                  {status.review.missingTools.join(", ")} required.
+                </p>
+              )}
+            </>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              No file types from the recommended catalog were detected.
+            </p>
+          )}
+        </div>
+      )}
       <p className="text-xs text-muted-foreground">
         Recommended: {RECOMMENDED_PARSER_LABELS.join(", ")}. Downloads from the
         Tree-sitter projects on GitHub, configures discovery, and compiles the
@@ -67,7 +119,7 @@ export function TreeSitterSettings() {
       </p>
       {!!status?.missingTools.length && (
         <div className="space-y-1 text-xs text-muted-foreground">
-          <p>Setup needs: {status.missingTools.join(", ")}.</p>
+          <p>Full recommended setup needs: {status.missingTools.join(", ")}.</p>
           {(status.missingTools.includes("tree-sitter") ||
             status.missingTools.includes("bun")) && (
             <p>
@@ -89,8 +141,7 @@ export function TreeSitterSettings() {
         disabled={!status || !!status.missingTools.length || busy}
         onClick={() => action.mutate("install")}
       >
-        <Download aria-hidden="true" />{" "}
-        {installing ? "Installing parsers…" : "Install recommended parsers"}
+        <Download aria-hidden="true" /> Install recommended parsers
       </Button>
       {status && status.installation.state !== "idle" && (
         <p

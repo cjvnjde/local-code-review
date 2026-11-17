@@ -140,9 +140,18 @@ Other CLI installation options and platform requirements are in the
 #### Install from web settings
 
 Open **Settings → Tree-sitter highlighting**. lcr shows whether the CLI is found,
-which language grammars are configured, and any missing setup tools. Choose
-**Install recommended parsers** to download the parsers from their upstream GitHub
-projects, install TypeScript's query dependencies with lifecycle scripts disabled,
+which language grammars are configured, and any missing setup tools. **Detected in
+this review** identifies supported file types by filename and extension, including
+deleted files and both sides of a rename. It lists file counts and marks each
+language as configured or missing. **Install missing parsers** installs only the
+missing parser packages for those languages. Detection updates as the diff changes;
+it never starts a download on its own. Unknown file types and binary files do not
+trigger parser recommendations. TypeScript and TSX are checked separately but share
+one parser package; only their setup needs Bun.
+
+Alternatively, choose **Install recommended parsers** for the full catalog.
+Both actions download the selected parsers from their upstream GitHub
+projects, install TypeScript's query dependencies when needed with lifecycle scripts disabled,
 merge the parser directory into your Tree-sitter config, and compile/check samples.
 Installation runs locally on the machine serving lcr. Progress and failures appear
 in Settings; you can close Settings while it runs and retry if a download fails.

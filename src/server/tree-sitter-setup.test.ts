@@ -14,6 +14,7 @@ import {
   type TreeSitterSetup,
 } from "./tree-sitter-setup.ts";
 import { createTreeSitter } from "./tree-sitter.ts";
+import type { ParserReviewFile } from "../shared/tree-sitter.ts";
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -21,7 +22,7 @@ afterEach(async () => {
     await rm(root, { recursive: true, force: true });
 });
 
-async function fixture() {
+async function fixture(files: ParserReviewFile[] = []) {
   const root = await mkdtemp(path.join(tmpdir(), "lcr-parser-setup-"));
   roots.push(root);
   const bin = path.join(root, "bin");
@@ -64,9 +65,19 @@ async function fixture() {
       console.log("tree-sitter 0.27.2");
     } else if (args[0] === "dump-languages") {
       const current = await Bun.file(config).json().catch(() => ({}));
-      if (current["parser-directories"]?.some((dir) => dir.endsWith("lcr/tree-sitter")))
-        console.error("scope: source.ts\\nscope: source.yaml\\nscope: source.html");
-      else console.error("Warning: You have not configured any parser directories!");
+      for (const scope of current.testScopes ?? []) console.error("scope: " + scope);
+      const catalog = {
+        javascript: ["source.js"], typescript: ["source.ts", "source.tsx"],
+        yaml: ["source.yaml"], html: ["source.html"], css: ["source.css"],
+        json: ["source.json"], bash: ["source.bash"], python: ["source.python"],
+        go: ["source.go"], rust: ["source.rust"],
+      };
+      for (const directory of current["parser-directories"] ?? []) {
+        for (const [parser, scopes] of Object.entries(catalog)) {
+          if (await Bun.file(path.join(directory, "tree-sitter-" + parser, "tree-sitter.json")).exists())
+            for (const scope of scopes) console.error("scope: " + scope);
+        }
+      }
     } else if (args[0] === "init-config") {
       await Bun.write(config, JSON.stringify({ theme: { keyword: 99 }, "parser-directories": [] }));
     } else if (args[0] === "highlight") {
@@ -91,6 +102,7 @@ async function fixture() {
   let refreshed = 0;
   const options = {
     env,
+    getFiles: async () => files,
     onRefresh: () => {
       backend.reset();
       refreshed++;
@@ -105,6 +117,7 @@ async function fixture() {
       .split("\n")
       .map((line) => JSON.parse(line));
   return {
+    files,
     root,
     config,
     env,
@@ -147,6 +160,79 @@ test("detects the CLI independently of grammars and the disabled preference with
     detail: expect.stringContaining("tree-sitter"),
   });
   expect(await Bun.file(f.config).exists()).toBe(false);
+});
+
+test("detects changing review types without downloads and installs only missing parser packages", async () => {
+  const f = await fixture([{ path: "app.ts" }, { path: "config.yml" }]);
+  await Bun.write(f.config, JSON.stringify({ testScopes: ["source.ts"] }));
+  expect(
+    (await f.setup.status()).review.languages.map(({ label, configured }) => [
+      label,
+      configured,
+    ]),
+  ).toEqual([
+    ["TypeScript", true],
+    ["YAML", false],
+  ]);
+  f.files.push({ path: "view.tsx" }, { path: "archive.html", binary: true });
+  expect(
+    (await f.setup.status()).review.languages.map(({ label }) => label),
+  ).toEqual(["TypeScript", "TSX", "YAML"]);
+  expect((await f.calls()).some((call) => call.tool === "git")).toBe(false);
+  f.setup.startInstall("detected");
+  const status = await finish(f.setup);
+  expect(status.installation).toMatchObject({
+    state: "complete",
+    detail: "Parsers for this review are ready.",
+  });
+  expect(status.review.languages.every((language) => language.configured)).toBe(
+    true,
+  );
+  const clones = (await f.calls()).filter((call) => call.tool === "git");
+  expect(clones.map((call) => call.args.at(-2))).toEqual([
+    "https://github.com/tree-sitter/tree-sitter-typescript.git",
+    "https://github.com/tree-sitter-grammars/tree-sitter-yaml.git",
+  ]);
+  expect(
+    (await f.calls()).filter((call) => call.args.includes("--scope")),
+  ).toHaveLength(3);
+  f.setup.startInstall("detected");
+  expect((await finish(f.setup)).installation).toMatchObject({
+    detail: "No missing parsers for this review.",
+  });
+  expect((await f.calls()).filter((call) => call.tool === "git")).toHaveLength(
+    2,
+  );
+}, 15_000);
+
+test("a detected YAML-only review can install without Bun and ignores files removed before the click", async () => {
+  const f = await fixture([{ path: "config.yaml" }, { path: "source.ts" }]);
+  await rm(path.join(f.bin, "bun"));
+  expect((await f.setup.status()).review.missingTools).toEqual(["bun"]);
+  f.files.pop();
+  expect((await f.setup.status()).review.missingTools).toEqual([]);
+  f.setup.startInstall("detected");
+  expect((await finish(f.setup)).installation.state).toBe("complete");
+  expect(
+    (await f.calls())
+      .filter((call) => call.tool === "git")
+      .map((call) => call.args.at(-2)),
+  ).toEqual(["https://github.com/tree-sitter-grammars/tree-sitter-yaml.git"]);
+  expect((await f.calls()).some((call) => call.tool === "bun")).toBe(false);
+});
+
+test("an empty or unsupported review does not download or create configuration", async () => {
+  const f = await fixture([
+    { path: "README.md" },
+    { path: "image.ts", binary: true },
+  ]);
+  f.setup.startInstall("detected");
+  expect((await finish(f.setup)).installation).toMatchObject({
+    state: "complete",
+    detail: "No missing parsers for this review.",
+  });
+  expect(await Bun.file(f.config).exists()).toBe(false);
+  expect((await f.calls()).some((call) => call.tool === "git")).toBe(false);
 });
 
 test("installs once, preserves concurrent config edits, checks queries, and resets fallback in the same server", async () => {

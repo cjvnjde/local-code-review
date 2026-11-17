@@ -10,7 +10,11 @@ import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { lock } from "proper-lockfile";
 import { z } from "zod";
-import type { TreeSitterStatus } from "../shared/tree-sitter.ts";
+import {
+  reviewParserStatus,
+  type ParserReviewFile,
+  type TreeSitterStatus,
+} from "../shared/tree-sitter.ts";
 import { runParserCommand } from "./parser-process.ts";
 import { parseSyntaxHtml } from "./syntax-html.ts";
 
@@ -66,6 +70,8 @@ const configSchema = z
 interface SetupOptions {
   enabled?: boolean;
   env?: NodeJS.ProcessEnv;
+  /** Uses the same Git diff source as the review, without running highlighting. */
+  getFiles?: () => Promise<readonly ParserReviewFile[]>;
   /** Re-probe highlighting and notify open reviews after setup or an explicit refresh. */
   onRefresh: () => void;
 }
@@ -91,7 +97,14 @@ export function createTreeSitterSetup(options: SetupOptions) {
     "tree-sitter",
   );
   let installation: TreeSitterStatus["installation"] = { state: "idle" };
-  let detected: Promise<Omit<TreeSitterStatus, "installation">> | undefined;
+  type Detected = Omit<TreeSitterStatus, "installation" | "review">;
+  let detected: Promise<Detected> | undefined;
+  const review = async (status: Detected) =>
+    reviewParserStatus(
+      (await options.getFiles?.()) ?? [],
+      status.languages,
+      status.missingTools,
+    );
   const which = (command: string) =>
     Bun.which(command, { cwd: tmpdir(), PATH: env.PATH });
   const run = (args: string[], cwd: string, timeoutMs = 3000) =>
@@ -109,9 +122,9 @@ export function createTreeSitterSetup(options: SetupOptions) {
     return result;
   }
 
-  async function detect(): Promise<Omit<TreeSitterStatus, "installation">> {
+  async function detect(): Promise<Detected> {
     const command = which("tree-sitter");
-    const status: Omit<TreeSitterStatus, "installation"> = {
+    const status: Detected = {
       enabled: options.enabled !== false,
       cli: command ? { path: command, version: "Unknown version" } : null,
       languages: [],
@@ -163,11 +176,25 @@ export function createTreeSitterSetup(options: SetupOptions) {
     }
   }
 
-  async function install() {
+  async function install(mode: "recommended" | "detected") {
     const status = await detect();
-    if (status.missingTools.length)
+    const current = await review(status);
+    const missing = new Set(
+      current.languages
+        .filter((language) => !language.configured)
+        .map((language) => language.parser),
+    );
+    const selected = parsers.filter(
+      ([repo]) =>
+        mode === "recommended" ||
+        [...missing].some((parser) => repo.endsWith(`/tree-sitter-${parser}`)),
+    );
+    if (!selected.length) return "No missing parsers for this review.";
+    const missingTools =
+      mode === "recommended" ? status.missingTools : current.missingTools;
+    if (missingTools.length)
       throw new Error(
-        `Install the missing tools first: ${status.missingTools.join(", ")}. Then check again.`,
+        `Install the missing tools first: ${missingTools.join(", ")}. Then check again.`,
       );
     const command = status.cli!.path;
     // Fail before downloading anything when an existing configuration cannot be merged safely.
@@ -190,7 +217,7 @@ export function createTreeSitterSetup(options: SetupOptions) {
     let work: string | undefined;
     try {
       work = await mkdtemp(path.join(directory, ".install-"));
-      for (const [repo] of parsers) {
+      for (const [repo] of selected) {
         const name = repo.split("/")[1]!;
         const target = path.join(directory, name);
         installation = {
@@ -250,7 +277,7 @@ export function createTreeSitterSetup(options: SetupOptions) {
       } finally {
         await rm(temporary, { force: true });
       }
-      for (const [, samples] of parsers) {
+      for (const [, samples] of selected) {
         for (const [extension, scope, source] of samples) {
           installation = {
             state: "running",
@@ -286,11 +313,15 @@ export function createTreeSitterSetup(options: SetupOptions) {
       if (work) await rm(work, { recursive: true, force: true });
       await release();
     }
+    return mode === "recommended"
+      ? "Recommended parsers are ready."
+      : "Parsers for this review are ready.";
   }
 
   return {
     async status(): Promise<TreeSitterStatus> {
-      return { ...(await (detected ??= detect())), installation };
+      const status = await (detected ??= detect());
+      return { ...status, review: await review(status), installation };
     },
     async refresh() {
       if (installation.state !== "running") {
@@ -299,15 +330,15 @@ export function createTreeSitterSetup(options: SetupOptions) {
       }
       return this.status();
     },
-    startInstall() {
+    startInstall(mode: "recommended" | "detected" = "recommended") {
       if (installation.state === "running") return;
       installation = { state: "running", detail: "Checking setup tools…" };
-      void install()
+      void install(mode)
         .then(
-          () => {
+          (detail) => {
             installation = {
               state: "complete",
-              detail: "Recommended parsers are ready.",
+              detail,
             };
           },
           (error: unknown) => {

@@ -209,18 +209,21 @@ describe("optional parser setup", () => {
       enabled: true,
       cli: { path: "/tools/tree-sitter", version: "tree-sitter 0.27.2" },
       languages: [],
+      review: { languages: [], missingTools: [] },
       directory: "/user/parsers",
       missingTools: [],
       error: null,
       installation: { state: "idle" },
     };
     let installs = 0;
+    let installMode: "recommended" | "detected" | undefined;
     let refreshes = 0;
     const started = await startTestServer({
       treeSitter: {
         status: async () => state,
-        startInstall: () => {
+        startInstall: (mode) => {
           installs++;
+          installMode = mode;
           state.installation = { state: "running", detail: "Downloading…" };
         },
         refresh: async () => {
@@ -229,7 +232,12 @@ describe("optional parser setup", () => {
         },
       },
     });
-    return { started, installs: () => installs, refreshes: () => refreshes };
+    return {
+      started,
+      installs: () => installs,
+      refreshes: () => refreshes,
+      mode: () => installMode,
+    };
   }
   test("reads diagnostics and starts a background install or refresh explicitly", async () => {
     const f = await fixture();
@@ -244,6 +252,17 @@ describe("optional parser setup", () => {
     expect(installed.status).toBe(202);
     expect((await installed.json()).installation.state).toBe("running");
     expect(f.installs()).toBe(1);
+    expect(f.mode()).toBe("recommended");
+    expect(
+      (
+        await request(f.started, "/api/tree-sitter", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action: "install-detected" }),
+        })
+      ).status,
+    ).toBe(202);
+    expect(f.mode()).toBe("detected");
     expect(
       (
         await request(f.started, "/api/tree-sitter", {
@@ -277,6 +296,7 @@ describe("optional parser setup", () => {
     for (const body of [
       '{"action":"execute"}',
       '{"action":"install","command":"anything"}',
+      '{"action":"install-detected","parsers":["untrusted"]}',
       "{",
     ]) {
       expect(

@@ -298,7 +298,9 @@ function serve(options: ServerOptions, port: number) {
             return Response.json(await options.treeSitter.refresh(), {
               headers,
             });
-          options.treeSitter.startInstall();
+          options.treeSitter.startInstall(
+            action === "install-detected" ? "detected" : "recommended",
+          );
           return Response.json(await options.treeSitter.status(), {
             status: 202,
             headers,

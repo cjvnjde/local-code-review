@@ -8,7 +8,7 @@ import { boundedArray } from "./request.ts";
 const KiB = 1024;
 const MiB = KiB * KiB;
 export const parserSetupRequestSchema = z.strictObject({
-  action: z.enum(["install", "refresh"]),
+  action: z.enum(["install", "install-detected", "refresh"]),
 });
 export const JSON_LIMITS = {
   settings: 32 * KiB,

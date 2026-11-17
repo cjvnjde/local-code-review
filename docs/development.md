@@ -83,6 +83,15 @@ Installation and refresh reset the highlighter and emit the existing diff event,
 preserving deferred updates during editing. Normal standalone use needs no Bun or
 parser downloads.
 
+The browser-safe catalog in `src/shared/tree-sitter.ts` maps the recommended
+grammars' file types to scopes and parser packages. Setup status derives language
+counts from the current unhighlighted Git diff, including rename origins and
+excluding binary files. Diff events invalidate the setup query so suggestions
+follow live changes. `install-detected` rechecks the current diff and configured
+scopes before selecting missing packages; request bodies cannot supply arbitrary
+repositories. Detection performs no installs. The full catalog remains a separate
+action, and Bun is required only when the selected packages include TypeScript.
+
 Full blobs come from the existing Git side resolver (including rename origins).
 The HTML parser emits only typed text tokens, mapped to the existing palette and
 rendered as React children. Neither external HTML nor inline styles reach the page.

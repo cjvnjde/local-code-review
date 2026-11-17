@@ -153,6 +153,7 @@ test("Tree-sitter settings detect missing tools and preserve a retryable backgro
     enabled: true,
     cli: null,
     languages: [],
+    review: { languages: [], missingTools: [] },
     directory: "/user/parsers",
     missingTools: ["tree-sitter"],
     error: null,
@@ -202,9 +203,7 @@ test("Tree-sitter settings detect missing tools and preserve a retryable backgro
   await expect(settings.getByRole("status")).toHaveText(
     "Installing typescript…",
   );
-  await expect(
-    settings.getByRole("button", { name: "Installing parsers…" }),
-  ).toBeDisabled();
+  await expect(install).toBeDisabled();
   state = {
     ...state,
     installation: {
@@ -256,6 +255,125 @@ test("Tree-sitter settings detect missing tools and preserve a retryable backgro
   ).toBe(true);
   await page.keyboard.press("Escape");
   await expect(settings).not.toBeVisible();
+});
+
+test("Tree-sitter offers missing review parsers after a live file-type change", async ({
+  page,
+}) => {
+  let state: TreeSitterStatus = {
+    enabled: true,
+    cli: { path: "/tools/tree-sitter", version: "tree-sitter 0.27.2" },
+    languages: ["source.ts"],
+    directory: "/user/parsers",
+    missingTools: [],
+    error: null,
+    installation: { state: "idle" },
+    review: {
+      languages: [
+        {
+          scope: "source.ts",
+          label: "TypeScript",
+          parser: "typescript",
+          files: 3,
+          configured: true,
+        },
+      ],
+      missingTools: [],
+    },
+  };
+  const actions: string[] = [];
+  await page.route("**/api/tree-sitter", async (route) => {
+    if (route.request().method() === "POST") {
+      actions.push(route.request().postDataJSON().action);
+      state = {
+        ...state,
+        installation: { state: "running", detail: "Installing rust…" },
+      };
+    }
+    await route.fulfill({ json: state });
+  });
+  const added = path.join(directory, "detected-parser.rs");
+  try {
+    await page.goto(url);
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    const settings = page.getByRole("dialog", {
+      name: "Settings",
+      exact: true,
+    });
+    const languages = settings.getByRole("list", {
+      name: "Detected review languages",
+    });
+    const install = settings.getByRole("button", {
+      name: "Install missing parsers",
+      exact: true,
+    });
+    await expect(languages.getByRole("listitem")).toHaveCount(1);
+    await expect(languages.getByRole("listitem")).toContainText("TypeScript");
+    await expect(languages.getByRole("listitem")).toContainText("Configured");
+    await expect(install).toBeDisabled();
+    state = {
+      ...state,
+      review: {
+        ...state.review,
+        languages: [
+          ...state.review.languages,
+          {
+            scope: "source.rust",
+            label: "Rust",
+            parser: "rust",
+            files: 1,
+            configured: false,
+          },
+        ],
+      },
+    };
+    await writeFile(added, "fn main() {}\n");
+    await expect(
+      languages.getByRole("listitem").filter({ hasText: "Rust" }),
+    ).toContainText("Missing parser");
+    expect(actions).toEqual([]);
+    await install.focus();
+    await page.keyboard.press("Enter");
+    await expect(settings.getByRole("status")).toHaveText("Installing rust…");
+    expect(actions).toEqual(["install-detected"]);
+    await expect(install).toBeDisabled();
+    await expect(
+      settings.getByRole("button", {
+        name: "Install recommended parsers",
+        exact: true,
+      }),
+    ).toBeDisabled();
+    state = {
+      ...state,
+      languages: ["source.ts", "source.rust"],
+      review: {
+        languages: state.review.languages.map((language) => ({
+          ...language,
+          configured: true,
+        })),
+        missingTools: [],
+      },
+      installation: {
+        state: "complete",
+        detail: "Parsers for this review are ready.",
+      },
+    };
+    await expect(settings.getByRole("status")).toContainText(
+      "Parsers for this review are ready.",
+    );
+    await expect(
+      languages.getByRole("listitem").filter({ hasText: "Rust" }),
+    ).toContainText("Configured");
+    await expect(install).toBeDisabled();
+    await expect(
+      settings.getByRole("button", {
+        name: "Install recommended parsers",
+        exact: true,
+      }),
+    ).toBeEnabled();
+  } finally {
+    await rm(added, { force: true });
+  }
 });
 
 test("compiled executable reviews changes, preserves drafts, and continues the Markdown conversation", async ({
