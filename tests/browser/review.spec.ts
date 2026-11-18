@@ -719,9 +719,13 @@ test("compiled executable reviews changes, preserves drafts, and continues the M
       .filter({ hasText: "Please rename this greeting." }),
   ).toBeInViewport();
   await compactList.getByRole("button", { name: /^In diff: Overall/ }).click();
-  await expect(
-    readingPane.locator('[data-file-path=""] article'),
-  ).toBeInViewport();
+  const overallCard = readingPane.locator('[data-file-path=""] article');
+  await expect(overallCard).toBeInViewport();
+  const fileCard = readingPane.locator('[data-file-path="src/app.ts"] article');
+  expect((await overallCard.boundingBox())!.x).toBeCloseTo(
+    (await fileCard.boundingBox())!.x,
+    0,
+  );
   await expect(notesPanel.getByRole("article")).toHaveCount(0);
   await page.reload();
   await expect(compactList).toBeVisible();
@@ -913,9 +917,11 @@ test("classification changes and stale editor saves preserve the latest category
     (await card.getByRole("combobox", { name: "Note triage" }).boundingBox())!
       .y,
   ).toBeCloseTo(triageTop, 0);
-  await card
-    .getByRole("textbox", { name: "Note text" })
-    .fill("Updated reviewer wording.");
+  const input = card.getByRole("textbox", { name: "Note text" });
+  await expect(input).toBeFocused();
+  const addition = "\nCheck the fallback too.";
+  await page.keyboard.insertText(addition);
+  await expect(input).toHaveValue(comment.body + addition);
   await expect(card.getByRole("combobox", { name: "Note triage" })).toHaveCount(
     1,
   );
@@ -928,7 +934,7 @@ test("classification changes and stale editor saves preserve the latest category
   await card.getByRole("button", { name: "Save note", exact: true }).click();
   await expect(card.getByRole("textbox", { name: "Note text" })).toHaveCount(0);
   await expect.poll(current).toMatchObject({
-    body: "Updated reviewer wording.",
+    body: comment.body + addition,
     triage: "question",
   });
   await card.getByRole("combobox", { name: "Note triage" }).click();
@@ -937,7 +943,7 @@ test("classification changes and stale editor saves preserve the latest category
   await page.reload();
   await expect(
     card.getByRole("region", { name: "Your note", exact: true }),
-  ).toContainText("Updated reviewer wording.");
+  ).toContainText("Check the fallback too.");
 });
 
 test("a draft stays with its original review when another client switches conversations", async ({

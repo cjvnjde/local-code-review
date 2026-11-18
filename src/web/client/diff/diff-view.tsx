@@ -664,7 +664,7 @@ export function DiffView({
   // Keep wide notes aligned to code, but reclaim the gutter as the diff pane narrows.
   // Resolve ch-based widths with code metrics without changing note typography.
   const inlineNoteClass =
-    "flex min-w-0 py-2 pr-2 before:shrink-0 before:w-[clamp(0.5rem,calc(25cqi_-_10rem),var(--code-inset))] before:font-mono before:text-xs before:content-['']";
+    "flex min-w-0 py-2 pr-2 before:shrink-0 before:w-[clamp(0.5rem,calc(25cqi_-_10rem),var(--code-inset,0.5rem))] before:font-mono before:text-xs before:content-['']";
   const inlineNoteContentClass = `min-w-0 flex-1 ${settings.noteWidth === "compact" ? "max-w-4xl" : ""}`;
   const renderItem = (item: VirtualItem, offset = 0) => {
     const entry = items[item.index]!;
@@ -934,6 +934,8 @@ export function DiffView({
       )}
       <div
         ref={scroll}
+        // Notes outside a file align with the first file in the diff.
+        style={gutterStyles.values().next().value}
         className="@container relative min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto [overflow-anchor:none]"
         tabIndex={0}
         role="region"

@@ -247,7 +247,8 @@ export function Composer({
     draft.kind === "note"
       ? draft.comment.id || "new"
       : `${draft.id}:${draft.at || "reply"}`;
-  const caret = useRef({ start: 0, end: 0 });
+  const initialCaret = draft.editing ? body.length : 0;
+  const caret = useRef({ start: initialCaret, end: initialCaret });
   useLayoutEffect(() => {
     const field = textarea.current;
     if (field) {
