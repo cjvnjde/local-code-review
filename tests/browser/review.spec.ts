@@ -3175,10 +3175,14 @@ test("Escape closes only an empty note editor", async ({ page }) => {
   await input.press("Escape");
   await expect(input).toHaveValue("Keep this feedback.");
   await editor.getByRole("button", { name: "Save note", exact: true }).click();
+  await expect(editor).toHaveCount(0);
+  const notesPanel = page.getByRole("complementary", { name: "Review notes" });
+  await notesPanel.getByRole("button", { name: /^In diff: Overall/ }).click();
   const card = page
     .getByRole("region", { name: "Code diff" })
     .getByRole("article")
     .filter({ hasText: "Keep this feedback." });
+  await expect(card).toBeInViewport();
   await card.getByRole("button", { name: "Edit note", exact: true }).click();
   await input.press("Escape");
   await expect(input).toHaveValue("Keep this feedback.");
