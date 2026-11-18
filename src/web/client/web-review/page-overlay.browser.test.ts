@@ -12,7 +12,7 @@ const browserTest = process.env.LCR_TEST_BROWSER === "1" ? test : test.skip;
 type Point = { x: number; y: number };
 
 browserTest(
-  "element selection includes inspection, drafts keep immediate markers, and Point retains frozen evidence",
+  "the reviewed page accepts input until Annotate is selected, and captures keep live evidence and draft markers",
   async () => {
     const bundle = await Bun.build({
       entrypoints: [path.join(import.meta.dir, "page-overlay.ts")],
@@ -38,9 +38,18 @@ browserTest(
           `<!doctype html><style>
         body{margin:0;height:2000px;font:16px Arial}#parent{position:absolute;left:80px;top:100px;padding:24px;display:flex;gap:17px;align-items:center;background:rgb(240,240,240)}
         #target{box-sizing:content-box;width:120px;height:32px;padding:12px;margin:3px;border:2px solid rgb(10,20,30);border-radius:9px;font:600 18px/24px Arial;color:rgb(20,40,60);background:rgb(200,210,220);transform:scale(1.25)}
-      </style><section id="parent"><button id="target">Target</button><span id="other">Another element</span></section><script type="module">
+      </style><button id="page-search">Find</button><dialog id="search-dialog"><input aria-label="Find"></dialog><section id="parent"><button id="target">Target</button><span id="other">Another element</span></section><script type="module">
         import {installPageReview} from '/overlay.js';
         window.requests=[];window.clicks=0;document.querySelector('#target').onclick=()=>window.clicks++;
+        const dialog=document.querySelector('#search-dialog');
+        document.querySelector('#page-search').onclick=()=>dialog.showModal();
+        document.addEventListener('keydown',event=>{
+          if(event.ctrlKey && event.shiftKey && event.code==='KeyF'){
+            event.preventDefault();dialog.showModal();
+          }else if(event.key==='Escape' && dialog.open){
+            event.preventDefault();dialog.close('dismissed by page');
+          }
+        });
         window.bridge=encoded=>{
           const message=JSON.parse(encoded);requests.push(message);
           let value={};
@@ -59,10 +68,6 @@ browserTest(
                 : {before:capture,after:[]};
               value={draftId:'draft',capture,web:window.draftWeb};
             }
-          }
-          if(message.action==='freeze'){
-            const canvas=document.createElement('canvas');canvas.width=innerWidth;canvas.height=innerHeight;
-            value={id:'frozen',data:canvas.toDataURL()};
           }
           const reply=()=>window.overlay.resolve(message.seq,{ok:true,value});
           if(message.action==='capture' && window.holdCapture)window.releaseCapture=reply;
@@ -163,13 +168,13 @@ browserTest(
         js(
           "requests.filter(r=>r.action==='capture').map(r=>r.payload.capture)",
         );
-      const freezeKey = async () => {
+      const press = async (key: string, code: string, modifiers = 0) => {
         for (const type of ["keyDown", "keyUp"] as const)
           await send("Input.dispatchKeyEvent", {
             type,
-            key: "F",
-            code: "KeyF",
-            modifiers: 10,
+            key,
+            code,
+            modifiers,
           });
       };
       const at = await center("#target");
@@ -177,10 +182,23 @@ browserTest(
         js(
           `${root}.querySelector(${JSON.stringify(selector)}).getAttribute('aria-pressed')`,
         );
-      expect(await pressed("[data-annotate]")).toBe("true");
-      expect(await pressed("[data-browse]")).toBe("false");
-      expect(await js(`${root}.querySelector('.bar').hidden`)).toBe(true);
-      await click(await pinCenter("[data-browse]"));
+      await click(await center("#page-search"));
+      expect(await js("document.querySelector('#search-dialog').open")).toBe(
+        true,
+      );
+      await press("Escape", "Escape");
+      expect(
+        await js("document.querySelector('#search-dialog').returnValue"),
+      ).toBe("dismissed by page");
+      await press("F", "KeyF", 10);
+      expect(await js("document.querySelector('#search-dialog').open")).toBe(
+        true,
+      );
+      await press("Escape", "Escape");
+      expect(await js("document.querySelector('#search-dialog').open")).toBe(
+        false,
+      );
+      expect(await captures()).toHaveLength(0);
       expect(await pressed("[data-browse]")).toBe("true");
       expect(await pressed("[data-annotate]")).toBe("false");
       expect(await js(`${root}.querySelector('.bar').hidden`)).toBe(true);
@@ -202,16 +220,7 @@ browserTest(
         false,
       );
       expect(await captures()).toHaveLength(0);
-      await send("Input.dispatchKeyEvent", {
-        type: "keyDown",
-        key: "Escape",
-        code: "Escape",
-      });
-      await send("Input.dispatchKeyEvent", {
-        type: "keyUp",
-        key: "Escape",
-        code: "Escape",
-      });
+      await press("Escape", "Escape");
       expect(await js(`${root}.querySelector('.selection-tools').hidden`)).toBe(
         true,
       );
@@ -449,12 +458,7 @@ browserTest(
       expect(await js(`${root}.querySelector('.capture-prompt').hidden`)).toBe(
         false,
       );
-      for (const type of ["keyDown", "keyUp"] as const)
-        await send("Input.dispatchKeyEvent", {
-          type,
-          key: "Escape",
-          code: "Escape",
-        });
+      await press("Escape", "Escape");
       expect(await dockBounds()).toEqual(resized);
       expect(await js(`${root}.querySelector('.capture-prompt').hidden`)).toBe(
         true,
@@ -679,55 +683,39 @@ browserTest(
       ).toEqual([]);
       await js("document.querySelector('#private-input').remove()");
 
-      await mode("element");
-      await freezeKey();
-      await until(`!!${root}.querySelector('.frozen-page')`);
-      const frozenContext = await js(
-        "requests.filter(r=>r.action==='freeze').at(-1).payload.capture",
-      );
-      await js(
-        "document.querySelector('#target').textContent='Changed after freeze';document.querySelector('#target').style.color='red';document.querySelector('meta[name=lcr-build-id]').content='build-after';document.documentElement.lang='fr';window.overlay.configureContext({...window.contextSettings,aiContext:false})",
-      );
       await mode("point");
+      await js(
+        "document.querySelector('#target').textContent='Updated target';document.querySelector('#target').style.color='red';document.querySelector('meta[name=lcr-build-id]').content='build-after'",
+      );
       await click(at);
-      await until("requests.filter(r=>r.action==='capture').length===6");
-      const frozen = (await captures()).at(-1);
-      expect(frozen.mode).toBe("point");
-      expect(frozen.element.text).toBe("Target");
-      expect(frozen.element.styles.color).toBe("rgb(20, 40, 60)");
-      expect(frozen.rect).toEqual(live.rect);
-      expect(frozen.point).toEqual(at);
+      await until(
+        `${root}.querySelector('iframe')?.contentDocument?.querySelector('#draft')`,
+      );
+      const updated = (await captures()).at(-1);
+      expect(updated.mode).toBe("point");
+      expect(updated.element.text).toBe("Updated target");
+      expect(updated.element.styles.color).toBe("rgb(255, 0, 0)");
+      expect(updated.rect).toEqual(live.rect);
+      expect(updated.point).toEqual(at);
       expect(await pinCenter()).toEqual(at);
-      expect(frozen.contextLayout).toEqual(frozenContext.contextLayout);
-      expect(frozen.contextEnvironment).toEqual(
-        frozenContext.contextEnvironment,
+      expect(JSON.parse(updated.contextEnvironment.data).appBuild.id).toBe(
+        "build-after",
       );
-      expect(frozen.contextInteractions).toEqual(
-        frozenContext.contextInteractions,
-      );
-      expect(JSON.parse(frozen.contextEnvironment.data).appBuild.id).toBe(
-        "build-before",
-      );
-
       await control("[data-close]");
-      await control("[data-resume]");
-      await js(
-        "for(let i=0;i<110;i++){const el=document.createElement('div');el.style.cssText='position:absolute;left:'+(500+i%20*12)+'px;top:'+(400+Math.floor(i/20)*12)+'px;width:10px;height:10px';document.body.prepend(el)}",
-      );
-      await freezeKey();
-      await until(`!!${root}.querySelector('.frozen-page')`);
-      await mode("point");
+      await mode("browse");
+      await js(`window.savedNotes=[{id:'target-note',body:'Target note',web:{before:requests.filter(r=>r.action==='capture').at(-1).payload.capture,after:[]}}];
+        window.overlay.focus('target-note')`);
+      expect(await pressed("[data-browse]")).toBe("true");
+      expect(await pinCenter("[data-active-capture]")).toEqual(at);
+      expect(await js(`${root}.querySelector('.pin')`)).toBeNull();
+      const clicksBefore = await js("clicks");
       await click(at);
-      await until("requests.filter(r=>r.action==='capture').length===7");
-      const truncated = (await captures()).at(-1);
-      expect(truncated.element).toBeUndefined();
-      expect(truncated.selector).toBeUndefined();
-      expect(truncated.contextLayout.truncated).toBe(true);
-      expect(
-        JSON.parse(truncated.contextLayout.data).nodes.length,
-      ).toBeLessThanOrEqual(40);
+      expect(await js("clicks")).toBe(clicksBefore + 1);
       await control("[data-close]");
-      await control("[data-resume]");
+      expect(
+        await js(`${root}.querySelector('[data-active-capture]')`),
+      ).toBeNull();
+      await js("window.savedNotes=[]");
       await mode("point");
       const viewport = await js(
         "({width:document.documentElement.clientWidth,height:innerHeight})",
@@ -751,9 +739,7 @@ browserTest(
       await js(
         `window.savedNotes=[{id:'saved-point',body:'Saved point',web:{before:requests.filter(r=>r.action==='capture').at(-1).payload.capture,after:[]}}]`,
       );
-      await until(
-        `${root}.querySelectorAll('.pin:not(.draft-pin)').length===1`,
-      );
+      await until(`${root}.querySelector('.pin[title="Saved point"]')`);
       expect(await pinCenter(".pin")).toEqual({
         x: viewport.width - 24,
         y: viewport.height - 4,

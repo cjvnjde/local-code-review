@@ -98,16 +98,6 @@ export function createWebReview(options: WebReviewOptions) {
   let latestAccessibility: AccessibilityReport | null = null;
   let diagnostics: DiagnosticsEvidence | undefined;
   let theme = DEFAULT_THEME;
-  type ContextSnapshot = {
-    settings: ContextSettings;
-    extras: ContextPartInput[];
-  };
-  let frozen: {
-    id: string;
-    sourceUrl: string;
-    capture: WebCapture;
-    snapshot: ContextSnapshot;
-  } | null = null;
   function discardDraft(id: string) {
     const owner = draftOwners.get(id);
     if (owner) replyDrafts.delete(owner);
@@ -168,7 +158,6 @@ export function createWebReview(options: WebReviewOptions) {
       `globalThis[${JSON.stringify(key)}].${method}(${JSON.stringify(value)})`,
     );
   async function detachPage() {
-    frozen = null;
     latestAccessibility = null;
     diagnostics?.dispose();
     diagnostics = undefined;
@@ -502,18 +491,11 @@ export function createWebReview(options: WebReviewOptions) {
           },
         ]
       : [];
-    const capture = settings.aiContext
-      ? await saveWebContext(options.repoRoot, options.outDir, metadata, extras)
+    return settings.aiContext
+      ? saveWebContext(options.repoRoot, options.outDir, metadata, extras)
       : metadata;
-    return { capture, snapshot: { settings, extras } };
   }
-  async function screenshot(
-    input: any,
-    freezeId?: unknown,
-  ): Promise<{
-    capture: WebCapture;
-    snapshot: ContextSnapshot;
-  }> {
+  async function screenshot(input: any): Promise<WebCapture> {
     const settings = { ...contextSettings };
     if (input.contextSettings && typeof input.contextSettings === "object") {
       const captured = settingsSnapshot(input.contextSettings);
@@ -560,60 +542,6 @@ export function createWebReview(options: WebReviewOptions) {
           detail: REDACTION_OMISSION,
         }))
       : [];
-    if (freezeId !== undefined) {
-      if (
-        !frozen ||
-        frozen.id !== freezeId ||
-        !["area", "point"].includes(clean.mode) ||
-        clean.url !== frozen.sourceUrl ||
-        clean.at !== frozen.capture.at ||
-        JSON.stringify(clean.viewport) !==
-          JSON.stringify(frozen.capture.viewport) ||
-        JSON.stringify(clean.scroll) !== JSON.stringify(frozen.capture.scroll)
-      )
-        throw new Error(
-          "That frozen view expired. Resume and freeze the page again.",
-        );
-      const savedRegions = frozen.capture.redaction?.regions ?? [];
-      if (JSON.stringify(regions) !== JSON.stringify(savedRegions))
-        throw new Error(
-          "Frozen evidence cannot be retroactively redacted. Resume, select privacy regions, and freeze again.",
-        );
-      const safe = privateCapture(clean, savedRegions);
-      if (clean.mode === "point") {
-        const { settings, extras } = frozen.snapshot;
-        return pointCapture(safe, settings, extras);
-      }
-      const page = frozen.capture.page;
-      const image = savedRegions.length
-        ? await readAttachment(options.repoRoot, options.outDir, page!)
-        : null;
-      if (savedRegions.length && !image)
-        throw new Error("The redacted frozen source is unavailable.");
-      const bytes = image
-        ? cropScreenshot(image.bytes, clean.viewport, clean.rect)
-        : Buffer.from(
-            await api("cropFrozen", { id: freezeId, rect: clean.rect }),
-            "base64",
-          );
-      const area = await saveAttachment(
-        options.repoRoot,
-        options.outDir,
-        bytes,
-        "image/png",
-      );
-      if (!area) throw new Error("Could not save the frozen selection.");
-      const snapshot = frozen.snapshot;
-      let capture: WebCapture = { ...safe, page, area: attachRef(area) };
-      if (snapshot.settings.aiContext)
-        capture = await saveWebContext(
-          options.repoRoot,
-          options.outDir,
-          capture,
-          snapshot.extras,
-        );
-      return { capture, snapshot };
-    }
     const actual = await evaluate(
       "({url:location.href,width:innerWidth,height:innerHeight,dpr:devicePixelRatio,x:scrollX,y:scrollY})",
     );
@@ -639,8 +567,8 @@ export function createWebReview(options: WebReviewOptions) {
               ...(await evidenceParts(input, settings)),
             ],
       );
-    await api("visible", false);
     try {
+      await api("visible", false);
       const page = await send("Page.captureScreenshot", {
         format: "png",
         fromSurface: true,
@@ -702,19 +630,19 @@ export function createWebReview(options: WebReviewOptions) {
       ]);
       if (!pageName || !areaName)
         throw new Error("Could not save screenshots.");
-      let capture: WebCapture = {
+      const capture: WebCapture = {
         ...privateCapture(clean, regions),
         page: attachRef(pageName),
         area: attachRef(areaName),
       };
-      if (settings.aiContext)
-        capture = await saveWebContext(
-          options.repoRoot,
-          options.outDir,
-          capture,
-          extras,
-        );
-      return { capture, snapshot: { settings, extras } };
+      return settings.aiContext
+        ? await saveWebContext(
+            options.repoRoot,
+            options.outDir,
+            capture,
+            extras,
+          )
+        : capture;
     } finally {
       await api("visible", true).catch(() => {});
     }
@@ -730,7 +658,7 @@ export function createWebReview(options: WebReviewOptions) {
       );
     await open(); // A background page can suspend the animation frame that locates its capture.
     const metadata = await api("prepare", note.web.before);
-    const { capture } = await screenshot(metadata);
+    const capture = await screenshot(metadata);
     return {
       capture,
       ...appendReplyCapture(note.id, capture),
@@ -739,29 +667,6 @@ export function createWebReview(options: WebReviewOptions) {
   }
   async function action(name: string, payload: any) {
     if (name === "context-settings") return { ...contextSettings };
-    if (name === "freeze") {
-      const { capture, snapshot } = await screenshot(payload.capture);
-      if (!capture.page)
-        throw new Error("Freeze requires a viewport screenshot.");
-      const image = await readAttachment(
-        options.repoRoot,
-        options.outDir,
-        capture.page,
-      );
-      if (!image) throw new Error("Could not load the frozen view.");
-      const id = crypto.randomUUID();
-      frozen = { id, sourceUrl: payload.capture.url, capture, snapshot };
-      return {
-        id,
-        data:
-          "data:image/png;base64," +
-          Buffer.from(image.bytes).toString("base64"),
-      };
-    }
-    if (name === "resume") {
-      if (frozen?.id === payload.id) frozen = null;
-      return {};
-    }
     if (name === "notes")
       return {
         notes: (await options.session.read()).notes.filter((n) => n.web),
@@ -887,14 +792,13 @@ export function createWebReview(options: WebReviewOptions) {
       const draft = hasDraft ? drafts.get(payload.draftId)! : null;
       if (draft && (draft.additional?.length ?? 0) >= 100)
         throw new Error("This note already has 100 additional selections.");
-      const { capture } = await screenshot(payload.capture, payload.freezeId);
-      const result = { capture };
+      const capture = await screenshot(payload.capture);
       if (hasDraft) {
-        const web: WebReview = draft ?? { before: result.capture, after: [] };
-        if (draft) (web.additional ??= []).push(result.capture);
+        const web: WebReview = draft ?? { before: capture, after: [] };
+        if (draft) (web.additional ??= []).push(capture);
         drafts.set(payload.draftId, web);
         return {
-          ...result,
+          capture,
           web: structuredClone(web),
           draftId: payload.draftId,
           ...(draftOwners.has(payload.draftId) ? { reply: true } : {}),
@@ -903,32 +807,32 @@ export function createWebReview(options: WebReviewOptions) {
       if (hasNote) {
         if (payload.editOriginal !== true)
           return {
-            ...result,
-            ...appendReplyCapture(payload.id, result.capture),
+            capture,
+            ...appendReplyCapture(payload.id, capture),
           };
         try {
           const note = await options.session.addWebSelection(
             payload.id,
-            result.capture,
+            capture,
           );
           if (!note?.web)
             throw new Error(
               "That note was deleted before the selection was saved.",
             );
           options.hub.emit({ type: "review", file: options.session.file });
-          return { ...result, web: note.web };
+          return { capture, web: note.web };
         } catch (error) {
           // An answer arriving during an explicit edit closes that original's evidence.
           if (!(error instanceof WebSelectionConflict)) throw error;
           return {
-            ...result,
-            ...appendReplyCapture(payload.id, result.capture),
+            capture,
+            ...appendReplyCapture(payload.id, capture),
           };
         }
       }
-      const web: WebReview = { before: result.capture, after: [] };
+      const web: WebReview = { before: capture, after: [] };
       const draftId = createDraft(web);
-      return { ...result, web: structuredClone(web), draftId };
+      return { capture, web: structuredClone(web), draftId };
     }
     if (name === "discard") {
       if (typeof payload.draftId !== "string" || !discardDraft(payload.draftId))
@@ -1061,7 +965,6 @@ export function createWebReview(options: WebReviewOptions) {
             if (browser !== connected) return;
             diagnostics?.dispose();
             diagnostics = undefined;
-            frozen = null;
             state = "closed";
             detail = "The browser disconnected. Use Open page to reconnect.";
           });
@@ -1097,7 +1000,6 @@ export function createWebReview(options: WebReviewOptions) {
             if (sid === attachedSession) {
               contextId = 0;
               latestAccessibility = null;
-              frozen = null;
               diagnostics?.clear();
             }
           }),
@@ -1222,7 +1124,7 @@ export function createWebReview(options: WebReviewOptions) {
         await cdp.send("Target.activateTarget", { targetId });
         state = "ready";
         detail =
-          "Click an element or drag an area to annotate. Hold Alt to interact with the app.";
+          "Use the page normally. Choose Annotate to select an element or drag an area.";
         listeners.push(
           cdp.on("Target.detachedFromTarget", (event) => {
             if (
@@ -1232,7 +1134,6 @@ export function createWebReview(options: WebReviewOptions) {
               sessionId = "";
               diagnostics?.dispose();
               diagnostics = undefined;
-              frozen = null;
               contextId = 0;
               state = "closed";
               detail = "The reviewed tab closed. Use Open page to continue.";

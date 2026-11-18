@@ -40,11 +40,11 @@ the floating note window. Reopening a note scrolls to and highlights its capture
 block on the page. In the diff, after-capture and page-targeting actions belong to
 the agent workflow rather than extra note buttons.
 
-The floating launcher keeps **Browse / Annotate** visible. Browse lets you use
-the app normally; Annotate restores targeting. A separate targeting menu selects
-an element, containing block, multiple elements, area, or point. Hold Alt to
-interact temporarily, or drag the launcher out of the way. Point captures retain
-metadata without a screenshot.
+The page opens in **Browse** so you can use the app normally. Choose **Annotate**
+in the floating toolbar to capture an element. Use its targeting menu to select
+a containing block, multiple elements, an area, or a point. Hold Alt to interact
+with the page temporarily, or drag the toolbar out of the way. Point captures
+retain metadata without a screenshot.
 
 **Add capture** temporarily minimizes the note so you can select more evidence.
 The editor returns with its text intact after capture; Escape cancels selection
@@ -71,10 +71,9 @@ transparency compared over white. Existing wipe and side-by-side views remain.
 
 ## Pre-capture privacy
 
-Use the overlay's privacy controls to mark rectangular regions before capturing or
-freezing. Pixels are replaced in memory before either the original screenshot or
-its crop is written. Frozen crops retain those masks server-side. This is not an
-editable drawing layer and cannot be undone from a saved capture.
+Use the overlay's privacy controls to mark rectangular regions before capturing.
+lcr replaces those pixels in memory before it saves the screenshot or its crop.
+The masks are permanent in both saved images.
 
 Masked captures omit DOM/text/style/diagnostic context, full-page images, title,
 and URL path, with explicit omission metadata. Invalid geometry fails closed.
@@ -136,7 +135,7 @@ byte size. Reading one part does not read or require any sibling payload:
   stylesheet/script sources, stored as inert text evidence. External resources
   come from the attached browser, not new server-side fetches. Size/deadline limits
   and unavailable resources are reported per part. Point and privacy-region
-  captures omit these parts; frozen selections reuse their original snapshot.
+  captures omit these parts.
 - **Layout:** selected targets, up to six ancestors and four nearby siblings per
   target, bounded to 40 nodes. Includes geometry, flex/grid constraints,
   overflow/stacking, selected styles, and explicit semantic labels/states.
@@ -162,8 +161,7 @@ byte size. Reading one part does not read or require any sibling payload:
 
 These are historical observations, not a replayable browser session. CSS,
 screenshots, and checkout identity are collected in a bounded interval, not one
-atomic instant. Frozen selections reuse their original evidence rather than
-querying a newer page. Each part reports exclusions, unavailable evidence, or
+atomic instant. Each part reports exclusions, unavailable evidence, or
 truncation; missing evidence never proves that something was absent.
 
 Selected HTML excludes form values, editable/hidden content, scripts, and arbitrary

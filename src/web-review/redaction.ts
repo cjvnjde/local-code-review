@@ -60,7 +60,7 @@ export function redactScreenshot(
   return PNG.sync.write(sanitized);
 }
 
-/** Crop only already-sanitized pixels, including for frozen captures. */
+/** Crop the captured frame after any privacy masks have been applied. */
 export function cropScreenshot(
   bytes: Uint8Array,
   viewport: WebCapture["viewport"],

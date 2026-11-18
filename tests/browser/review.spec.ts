@@ -3404,6 +3404,7 @@ test("live page capture grows notes without moving the page and opens drawings a
     ]);
     const opened = await page.request.post(`${url}/api/web`, { data: {} });
     expect(opened.ok()).toBe(true);
+    await target.getByRole("button", { name: "Annotate", exact: true }).click();
     await target.evaluate(() => {
       document
         .querySelector("#target")!

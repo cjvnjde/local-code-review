@@ -296,9 +296,10 @@ See the [theme gallery and editor guide](docs/usage.md#themes-and-custom-colors)
 lcr --web http://localhost:3000 --id checkout-ui
 ```
 
-Select an element or area in the running app and write feedback in the embedded
-React editor. Captures and code notes share one Markdown conversation. Requires
-installed Chrome, Chromium, or Edge. See the [web capture guide](docs/web-ui.md)
+The app opens in **Browse**. Choose **Annotate** in the floating toolbar, select
+an element or area, and write feedback in the embedded editor. Captures and code
+notes share one Markdown conversation. Web mode requires Chrome, Chromium, or
+Edge. See the [web capture guide](docs/web-ui.md)
 for profiles, existing-browser attachment, and capture context.
 
 [![Live-page capture with the current floating note editor and a checkout screenshot attached](docs/web-annotation.png)](docs/web-annotation.png)

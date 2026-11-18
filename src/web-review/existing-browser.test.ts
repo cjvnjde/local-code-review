@@ -107,21 +107,23 @@ test.skipIf(process.env.LCR_TEST_BROWSER !== "1")(
       expect(web.status().state).toBe("ready");
       expect(await js(`!!${overlay}`)).toBe(true);
 
-      // Make a real capture through the injected toolbar, without reloading the user's page.
       await js("window.scrollTo(0,0)");
-      const point = await js(
-        "(()=>{const r=document.querySelector('#action').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()",
-      );
-      await cdp.send(
-        "Input.dispatchMouseEvent",
-        { type: "mousePressed", button: "left", clickCount: 1, ...point },
-        sid,
-      );
-      await cdp.send(
-        "Input.dispatchMouseEvent",
-        { type: "mouseReleased", button: "left", clickCount: 1, ...point },
-        sid,
-      );
+      async function click(expression: string) {
+        const point = await js(
+          `(()=>{const r=(${expression}).getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`,
+        );
+        for (const type of ["mousePressed", "mouseReleased"] as const)
+          await cdp.send(
+            "Input.dispatchMouseEvent",
+            { type, button: "left", clickCount: 1, ...point },
+            sid,
+          );
+      }
+      const action = "document.querySelector('#action')";
+      await click(action);
+      expect(await js("clicks")).toBe(1);
+      await click(`${overlay}.shadowRoot.querySelector('[data-annotate]')`);
+      await click(action);
       await until(
         () => js(`!!${overlay}?.shadowRoot.querySelector('iframe')`),
         "capture creates a draft",
@@ -130,7 +132,7 @@ test.skipIf(process.env.LCR_TEST_BROWSER !== "1")(
         `new URL(${overlay}.shadowRoot.querySelector('iframe').src).searchParams.get('ui-draft')`,
       );
       expect(web.draft(draftId)?.before.element?.tag).toBe("button");
-      expect(await js("clicks")).toBe(0);
+      expect(await js("clicks")).toBe(1);
       await web.close();
       expect(cdp.connected).toBe(true);
       expect(await js(`!!${overlay}`)).toBe(false);
@@ -138,7 +140,7 @@ test.skipIf(process.env.LCR_TEST_BROWSER !== "1")(
         "unfinished form",
       );
       await js("document.querySelector('#action').click()");
-      expect(await js("clicks")).toBe(1);
+      expect(await js("clicks")).toBe(2);
       expect((await targets()).some((t: any) => t.targetId === unrelated)).toBe(
         true,
       );

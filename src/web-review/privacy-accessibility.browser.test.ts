@@ -11,7 +11,7 @@ import { readContext, readContextPart } from "../review/context.ts";
 
 // Real CDP, real screenshots, real axe and real review persistence; never run unless explicitly enabled.
 test.skipIf(process.env.LCR_TEST_BROWSER !== "1")(
-  "pre-capture and freeze privacy persist only masked pixels; axe excludes the editor and saves only selected findings",
+  "live captures persist only masked pixels and axe saves only selected page findings",
   async () => {
     const root = await mkdtemp(path.join(tmpdir(), "lcr-privacy-browser-"));
     const app = Bun.serve({
@@ -116,44 +116,44 @@ test.skipIf(process.env.LCR_TEST_BROWSER !== "1")(
       const baseline = (await files()).filter((entry) => entry.isFile()).length;
       await expect(
         js(
-          "rpc('freeze',{capture:{...captureInput,redactions:[{x:-1,y:0,width:10,height:10}]}})",
+          "rpc('capture',{capture:{...captureInput,redactions:[{x:-1,y:0,width:10,height:10}]}})",
         ),
       ).rejects.toThrow("Redaction");
       expect((await files()).filter((entry) => entry.isFile())).toHaveLength(
         baseline,
       );
-      const frozen = await js("rpc('freeze',{capture:captureInput})");
-      const frozenPng = PNG.sync.read(
-        Buffer.from(frozen.data.split(",")[1], "base64"),
+      // A paint failure after hiding the toolbar must leave it visible for retry.
+      await js(`{
+        const api = window[${host}.id], visible = api.visible;
+        api.visible = async (value) => {
+          api.visible = visible;
+          await visible(value);
+          throw new Error("Capture paint interrupted");
+        };
+      }`);
+      await expect(js("rpc('capture',{capture:captureInput})")).rejects.toThrow(
+        "Capture paint interrupted",
       );
-      const dpr = await js("devicePixelRatio");
-      const pixel =
-        (Math.floor(100 * dpr) * frozenPng.width + Math.floor(100 * dpr)) * 4;
-      expect([...frozenPng.data.subarray(pixel, pixel + 4)]).toEqual([
-        0, 0, 0, 255,
-      ]);
-      const savedBeforeInvalid = (await files()).filter((entry) =>
-        entry.isFile(),
-      ).length;
-      await expect(
-        js(
-          `rpc('capture',{freezeId:${JSON.stringify(frozen.id)},capture:{...captureInput,redactions:[]}})`,
-        ),
-      ).rejects.toThrow("retroactively");
-      expect((await files()).filter((entry) => entry.isFile())).toHaveLength(
-        savedBeforeInvalid,
-      );
-      // A privacy-preserving frozen crop must never trust a page-supplied canvas or source image.
-      await js(
-        `window[${host}.id].cropFrozen=()=>{throw new Error('unsafe page crop used')}`,
-      );
-      const captured = await js(
-        `rpc('capture',{freezeId:${JSON.stringify(frozen.id)},capture:captureInput})`,
-      );
-      expect(
-        web.draft(captured.draftId)?.before.redaction?.regions,
-      ).toHaveLength(1);
-      const privateContext = web.draft(captured.draftId)!.before.context!;
+      expect(await js(`getComputedStyle(${host}).visibility`)).toBe("visible");
+      const captured = await js("rpc('capture',{capture:captureInput})");
+      const privateCapture = web.draft(captured.draftId)!.before;
+      expect(privateCapture.redaction?.regions).toHaveLength(1);
+      // (100, 100) in the viewport is (60, 40) in the selection crop.
+      for (const [file, x, y] of [
+        [privateCapture.page!, 100, 100],
+        [privateCapture.area!, 60, 40],
+      ] as const) {
+        const png = PNG.sync.read(
+          await readFile(path.join(root, ".review", file)),
+        );
+        const dpr = privateCapture.viewport.dpr;
+        const pixel =
+          (Math.floor(y * dpr) * png.width + Math.floor(x * dpr)) * 4;
+        expect([...png.data.subarray(pixel, pixel + 4)]).toEqual([
+          0, 0, 0, 255,
+        ]);
+      }
+      const privateContext = privateCapture.context!;
       const privateManifest = await readContext(
         root,
         ".review",
@@ -252,37 +252,18 @@ test.skipIf(process.env.LCR_TEST_BROWSER !== "1")(
         true,
       );
       await js(
-        `${shadow}.querySelector('[data-mode="area"]').click();${shadow}.querySelector('[data-freeze]').click()`,
-      );
-      await until(`!!${shadow}.querySelector('.frozen-page')`);
-      expect(
-        await js(`${shadow}.querySelector('[data-mode="redact"]').disabled`),
-      ).toBe(true);
-      expect(
-        await js(`${shadow}.querySelector('[data-freeze-status]').textContent`),
-      ).toContain("already saved");
-      await js(`${shadow}.querySelector('[data-resume]').click()`);
-      await until(`!${shadow}.querySelector('.frozen-page')`);
-      await js(
         `[...${shadow}.querySelectorAll('button')].find(button=>button.textContent==='Remove region 1').click()`,
       );
       expect(
         await js(`${shadow}.querySelector('.privacy-regions').children.length`),
       ).toBe(0);
-      // Frozen source evidence must remain capture-time text after the live DOM changes.
+      // Saved source evidence keeps the text present at capture time.
       await js(
         `window.captureInput={...captureInput,at:new Date().toISOString(),redactions:[]};document.querySelector('style').textContent+='/* capture-source-before */';const script=document.createElement('script');script.type='application/json';script.textContent='{"marker":"capture-script-before"}';document.head.append(script);`,
       );
-      const sourceFreeze = await js("rpc('freeze',{capture:captureInput})");
-      // Direct freeze RPC does not install the overlay canvas; crop its actual PNG.
-      await js(
-        `window[${host}.id].cropFrozen=async({rect})=>{const image=new Image();image.src=${JSON.stringify(sourceFreeze.data)};await image.decode();const canvas=document.createElement('canvas');canvas.width=Math.round(rect.width*devicePixelRatio);canvas.height=Math.round(rect.height*devicePixelRatio);canvas.getContext('2d').drawImage(image,rect.x*devicePixelRatio,rect.y*devicePixelRatio,canvas.width,canvas.height,0,0,canvas.width,canvas.height);return canvas.toDataURL('image/png').split(',')[1]}`,
-      );
+      const sourceCapture = await js("rpc('capture',{capture:captureInput})");
       await js(
         "document.querySelector('style').textContent+='/* capture-source-after */';document.querySelector('script[type=\"application/json\"]').textContent='{\"marker\":\"capture-script-after\"}'",
-      );
-      const sourceCapture = await js(
-        `rpc('capture',{freezeId:${JSON.stringify(sourceFreeze.id)},capture:captureInput})`,
       );
       const sourceContext = web.draft(sourceCapture.draftId)!.before.context!;
       for (const [name, before, after] of [
@@ -302,7 +283,7 @@ test.skipIf(process.env.LCR_TEST_BROWSER !== "1")(
         expect(text).not.toContain(after!);
       }
       const pointCapture = await js(
-        `rpc('capture',{freezeId:${JSON.stringify(sourceFreeze.id)},capture:{...captureInput,mode:'point',rect:{x:40,y:60,width:1,height:1}}})`,
+        `rpc('capture',{capture:{...captureInput,mode:'point',rect:{x:40,y:60,width:1,height:1}}})`,
       );
       const pointContext = web.draft(pointCapture.draftId)!.before.context!;
       const pointManifest = await readContext(root, ".review", pointContext.id);

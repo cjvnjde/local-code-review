@@ -24,7 +24,7 @@ change; reading, commenting, evidence, and saved conversations must keep working
 | File attachments and context | Arbitrary-file paste/drop/pick, portable local download links, saved context cards, manifest inspection and chunked text reads                            |
 | Color literals               | Safe hex/RGB/HSL inspection, alpha, saved palette, copy and source-preserving edits                                                                       |
 | History                      | Append-only snapshots, search, removed conversations, captured evidence, copy changes/snapshots and JSON export                                           |
-| Web review                   | Existing page selection/freeze modes, embedded inline editor, multiple selections/removal, drawing proposals, capture-after and original-only comparisons |
+| Web review                   | Browse and Annotate modes, embedded inline editor, multiple selections/removal, drawing proposals, capture-after and original-only comparisons            |
 | ACP and persistence          | Existing queue/permissions, fresh-file mutation semantics, Markdown contracts and embedded standalone executable                                          |
 
 `tests/browser/review.spec.ts` exercises these workflows against a compiled binary
