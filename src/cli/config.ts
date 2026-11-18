@@ -5,6 +5,7 @@ import { lock } from "proper-lockfile";
 import { z } from "zod";
 import type { CliOptions } from "../shared/review-types.ts";
 import {
+  DEFAULT_UI_SETTINGS,
   parseUiSettings,
   uiSettingsPatchSchema,
   type UiSettings,
@@ -177,7 +178,11 @@ async function mergeUiSettings(
         { cause: error },
       );
   }
-  const ui = { ...parseUiSettings(current.ui ?? {}), ...patch };
+  const ui = {
+    ...DEFAULT_UI_SETTINGS,
+    ...parseUiSettings(current.ui ?? {}),
+    ...patch,
+  };
   const temporary = `${settingsFile}.${crypto.randomUUID()}.tmp`;
   try {
     await writeFile(

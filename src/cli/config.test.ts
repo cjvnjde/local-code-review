@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { parseArgs } from "./args.ts";
+import { DEFAULT_UI_SETTINGS } from "../shared/settings.ts";
 import {
   loadUserSettings,
   resolveAcpPath,
@@ -247,10 +248,16 @@ test("UI writes preserve startup settings and previously saved preferences acros
   expect(JSON.parse(await readFile(f.settings, "utf8"))).toEqual({
     acp: "agents/local.json",
     port: 8123,
-    ui: { enterSaves: false, aiAnswers: false, lineNumbers: false },
+    ui: {
+      ...DEFAULT_UI_SETTINGS,
+      enterSaves: false,
+      aiAnswers: false,
+      lineNumbers: false,
+    },
   });
   const reloaded = await loadUserSettings({}, f.settings);
   expect(reloaded.ui).toEqual({
+    ...DEFAULT_UI_SETTINGS,
     enterSaves: false,
     aiAnswers: false,
     lineNumbers: false,
@@ -260,15 +267,23 @@ test("UI writes preserve startup settings and previously saved preferences acros
   await saveUiSettings({ expand: 50 }, f.settings);
   expect(JSON.parse(await readFile(f.settings, "utf8"))).toEqual({
     port: 9000,
-    ui: { editor: "code", aiAnswers: false, expand: 50 },
+    ui: {
+      ...DEFAULT_UI_SETTINGS,
+      editor: "code",
+      aiAnswers: false,
+      expand: 50,
+    },
   });
 });
 
 test("UI persistence creates the configuration directory and refuses to destroy malformed config", async () => {
   const f = await fixture();
   const nested = path.join(f.root, "new", "lcr", "config.json");
-  await saveUiSettings({ enterSaves: false }, nested);
-  expect((await loadUserSettings({}, nested)).ui?.enterSaves).toBe(false);
+  await saveUiSettings({ hide: "*.spec.*" }, nested);
+  expect((await loadUserSettings({}, nested)).ui).toEqual({
+    ...DEFAULT_UI_SETTINGS,
+    hide: "*.spec.*",
+  });
   for (const invalid of ["{broken", "[]", "null"]) {
     await writeFile(f.settings, invalid);
     await expect(
@@ -287,6 +302,7 @@ test("concurrent settings writers merge their changes on the first save and subs
       saveUiSettings({ enterSaves: enabled }, f.settings),
     ]);
     expect((await loadUserSettings({}, f.settings)).ui).toEqual({
+      ...DEFAULT_UI_SETTINGS,
       aiAnswers: enabled,
       lineNumbers: enabled,
       enterSaves: enabled,

@@ -477,8 +477,9 @@ The optional `browserDataDir` setting selects the user data directory for existi
 it resolves beside `config.json`, while `--browser-data-dir` resolves from the repository root.
 Both accept `~/` paths. These browser settings apply when `--web` or a configured `web` URL is used.
 
-Settings changes persist in `lcr/config.json` under that configuration directory,
-preserving startup options and agent profile paths. **Enable AI answers** turns
+Changing a UI preference saves the full set of UI settings under `ui` in
+`lcr/config.json`, including values that still use their defaults. Existing
+startup options and agent profile paths are preserved. **Enable AI answers** turns
 new AI dispatches on or off without cancelling existing queued/running work.
 Theme selection also persists as `ui.theme`; panel visibility, viewed marks, and
 drafts remain browser-local. Custom palettes live in the adjacent `lcr/themes/`

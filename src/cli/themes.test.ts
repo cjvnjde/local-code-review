@@ -15,6 +15,7 @@ import path from "node:path";
 import { loadThemes, saveTheme } from "./themes.ts";
 import { loadUserSettings, saveUiSettings } from "./config.ts";
 import { BUILTIN_THEMES, type ThemeDraft } from "../shared/themes.ts";
+import { DEFAULT_UI_SETTINGS } from "../shared/settings.ts";
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -73,7 +74,7 @@ test("independent snapshots survive reload beside config and preserve existing p
   expect(JSON.parse(await readFile(config, "utf8"))).toEqual({
     port: 8123,
     outDir: "custom-review",
-    ui: { enterSaves: false, theme: second.theme.id },
+    ui: { ...DEFAULT_UI_SETTINGS, enterSaves: false, theme: second.theme.id },
   });
   expect((await loadUserSettings({}, config)).ui?.theme).toBe(second.theme.id);
 });

@@ -681,7 +681,7 @@ describe("theme security and persistence", () => {
     expect(JSON.parse(await readFile(file, "utf8"))).toEqual({
       port: 8123,
       outDir: "custom-review",
-      ui: { enterSaves: false, theme: saved.theme.id },
+      ui: { ...DEFAULT_UI_SETTINGS, enterSaves: false, theme: saved.theme.id },
     });
     const restarted = await startTestServer({
       ...callbacks,
