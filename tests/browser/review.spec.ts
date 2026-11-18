@@ -802,7 +802,11 @@ test("captured code flows with narrow notes and collapsed captures still seed ed
     `Keep this explanation.\n\n\`\`\`suggestion\n${replacement}\n}\n\`\`\`\n`,
   );
   await expect(captured).toBeHidden();
-  await card.getByRole("button", { name: "Cancel", exact: true }).click();
+  const cancel = card.getByRole("button", { name: "Cancel", exact: true });
+  await cancel.evaluate((button) => button.scrollIntoView({ block: "center" }));
+  await expect(card.locator("summary")).not.toBeInViewport();
+  await cancel.click();
+  await expect(card).toBeInViewport();
   await card.locator("summary").click();
   await expect(captured).toBeVisible();
   await expect

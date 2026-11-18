@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useNoteState, canResolve } from "./review-state.tsx";
 import { AttachmentImage } from "../components/images.tsx";
 import {
@@ -72,6 +72,13 @@ export function NoteCard({
   const [copyFailed, setCopyFailed] = useState(false);
   const confirmation = useRef<HTMLButtonElement>(null);
   const actionTriggers = useRef(new Map<string, HTMLElement>());
+  const focusAfterReplyDeletion = useRef(false);
+  useLayoutEffect(() => {
+    if (focusAfterReplyDeletion.current && !removing && !action.isPending) {
+      focusAfterReplyDeletion.current = false;
+      actionTriggers.current.get("note")?.focus({ preventScroll: true });
+    }
+  }, [removing, action.isPending]);
   useEffect(() => {
     if (!removing) return;
     const frame = requestAnimationFrame(() => confirmation.current?.focus());
@@ -487,11 +494,7 @@ export function NoteCard({
                 },
                 {
                   onSuccess: () => {
-                    // Wait for the note action to re-enable after the mutation.
-                    if (removing !== "note")
-                      requestAnimationFrame(() =>
-                        actionTriggers.current.get("note")?.focus(),
-                      );
+                    focusAfterReplyDeletion.current = removing !== "note";
                     setRemoving(null);
                   },
                 },

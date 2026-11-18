@@ -555,7 +555,19 @@ export function DiffView({
         // before restoring the anchor, or stale estimates undo that correction.
         virtual.getTotalSize();
         const item = virtual.measurementsCache[keep.index];
-        if (item) virtual.scrollToOffset(Math.max(0, item.start - keep.offset));
+        if (item) {
+          let offset = keep.offset;
+          if (scroll.current && items[keep.index]?.kind === "note") {
+            // A tall editor can shrink before ResizeObserver measures its card.
+            // Keep the note below the sticky header if its old offset no longer fits.
+            const height =
+              virtual.elementsCache.get(item.key)?.getBoundingClientRect()
+                .height ?? item.size;
+            const inset = readingInset(scroll.current);
+            if (offset + height <= inset) offset = inset;
+          }
+          virtual.scrollToOffset(Math.max(0, item.start - offset));
+        }
       }
     }
     appliedItems.current = items;
