@@ -279,13 +279,13 @@ test("Tree-sitter settings detect missing tools and preserve a retryable backgro
   await expect(settings).not.toBeVisible();
 });
 
-test("Tree-sitter offers missing review parsers after a live file-type change", async ({
+test("missing review parsers can be dismissed, installed, and retried from a notification", async ({
   page,
 }) => {
   let state: TreeSitterStatus = {
     enabled: true,
     cli: { path: "/tools/tree-sitter", version: "tree-sitter 0.27.2" },
-    languages: ["source.ts"],
+    languages: [],
     directory: "/user/parsers",
     missingTools: [],
     error: null,
@@ -297,7 +297,7 @@ test("Tree-sitter offers missing review parsers after a live file-type change", 
           label: "TypeScript",
           parser: "typescript",
           files: 3,
-          configured: true,
+          configured: false,
         },
       ],
       missingTools: [],
@@ -315,56 +315,56 @@ test("Tree-sitter offers missing review parsers after a live file-type change", 
     await route.fulfill({ json: state });
   });
   const added = path.join(directory, "detected-parser.rs");
+  const notifications = page.getByRole("region", { name: /Notifications/ });
+  const notice = notifications
+    .getByRole("listitem")
+    .filter({ hasText: "Missing Tree-sitter parsers" });
+  const install = notice.getByRole("button", { name: "Install", exact: true });
   try {
     await page.goto(url);
-    await page.getByRole("button", { name: "Settings", exact: true }).click();
-    const settings = page.getByRole("dialog", {
-      name: "Settings",
-      exact: true,
+    await expect(notice).toContainText("TypeScript");
+    await expect(install).toBeVisible();
+    await notice.getByRole("button", { name: "Close toast" }).click();
+    await expect(notice).toHaveCount(0);
+
+    // A file-count change refetches status without repeating a dismissed suggestion.
+    state.review.languages[0]!.files++;
+    await Promise.all([
+      page.waitForResponse((response) =>
+        response.url().endsWith("/api/tree-sitter"),
+      ),
+      writeFile(added, "// live diff change\n"),
+    ]);
+    await expect(notice).toHaveCount(0);
+    state.review.languages.push({
+      scope: "source.rust",
+      label: "Rust",
+      parser: "rust",
+      files: 1,
+      configured: false,
     });
-    const languages = settings.getByRole("list", {
-      name: "Detected review languages",
-    });
-    const install = settings.getByRole("button", {
-      name: "Install missing parsers",
-      exact: true,
-    });
-    await expect(languages.getByRole("listitem")).toHaveCount(1);
-    await expect(languages.getByRole("listitem")).toContainText("TypeScript");
-    await expect(languages.getByRole("listitem")).toContainText("Configured");
-    await expect(install).toBeDisabled();
-    state = {
-      ...state,
-      review: {
-        ...state.review,
-        languages: [
-          ...state.review.languages,
-          {
-            scope: "source.rust",
-            label: "Rust",
-            parser: "rust",
-            files: 1,
-            configured: false,
-          },
-        ],
-      },
-    };
+    state.review.missingTools = ["C compiler"];
     await writeFile(added, "fn main() {}\n");
-    await expect(
-      languages.getByRole("listitem").filter({ hasText: "Rust" }),
-    ).toContainText("Missing parser");
+    await expect(notice).toContainText("TypeScript, Rust");
+    await expect(notice).toContainText("C compiler");
+    await expect(install).toHaveCount(0);
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    state.review.missingTools = [];
+    await writeFile(added, 'fn main() { println!("hello"); }\n');
+    await expect(install).toBeInViewport({ ratio: 1 });
     expect(actions).toEqual([]);
     await install.focus();
     await page.keyboard.press("Enter");
-    await expect(settings.getByRole("status")).toHaveText("Installing rust…");
+    await expect(notifications).toContainText("Installing rust…");
+    await expect(install).toHaveCount(0);
     expect(actions).toEqual(["install-detected"]);
-    await expect(install).toBeDisabled();
-    await expect(
-      settings.getByRole("button", {
-        name: "Install recommended parsers",
-        exact: true,
-      }),
-    ).toBeDisabled();
+
+    state.installation = { state: "failed", detail: "Download unavailable." };
+    await expect(notifications).toContainText("Download unavailable.");
+    await notifications.getByRole("button", { name: "Retry" }).click();
+    await expect(notifications).toContainText("Installing rust…");
+    expect(actions).toEqual(["install-detected", "install-detected"]);
     state = {
       ...state,
       languages: ["source.ts", "source.rust"],
@@ -380,18 +380,21 @@ test("Tree-sitter offers missing review parsers after a live file-type change", 
         detail: "Parsers for this review are ready.",
       },
     };
-    await expect(settings.getByRole("status")).toContainText(
+    await expect(notifications).toContainText(
       "Parsers for this review are ready.",
     );
+    await expect(notice).toHaveCount(0);
+    await page.setViewportSize({ width: 1440, height: 960 });
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    const settings = page.getByRole("dialog", {
+      name: "Settings",
+      exact: true,
+    });
     await expect(
-      languages.getByRole("listitem").filter({ hasText: "Rust" }),
-    ).toContainText("Configured");
-    await expect(install).toBeDisabled();
+      settings.getByRole("list", { name: "Detected review languages" }),
+    ).toHaveCount(0);
     await expect(
-      settings.getByRole("button", {
-        name: "Install recommended parsers",
-        exact: true,
-      }),
+      settings.getByRole("button", { name: "Install recommended parsers" }),
     ).toBeEnabled();
   } finally {
     await rm(added, { force: true });

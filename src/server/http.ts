@@ -461,6 +461,7 @@ function serve(options: ServerOptions, port: number) {
             branch,
             id: options.reviewId,
             context: options.context,
+            treeSitterEnabled: options.treeSitter?.enabled ?? false,
             ...(options.web ? { web: options.web.status() } : {}),
             files,
             statuses,

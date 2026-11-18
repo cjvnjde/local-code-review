@@ -83,6 +83,7 @@ import { AgentActivity } from "./agent-activity.tsx";
 import { ReviewTools } from "./review-tools.tsx";
 import type { RoundNoteReference } from "../../../shared/review-rounds.ts";
 import { toast } from "sonner";
+import { useTreeSitterSetup } from "./use-tree-sitter.ts";
 import { useReplyNotifications } from "./notifications.tsx";
 import { Settings, AgentPanel } from "./settings.tsx";
 import { History, useHistoryCapture } from "../history/history.tsx";
@@ -231,6 +232,9 @@ function Workspace({
   const [expandedNote, setExpandedNote] = useState<string | null>(null);
   const [dialog, setDialog] = useState<"settings" | "history" | "agent" | null>(
     null,
+  );
+  const treeSitterSetup = useTreeSitterSetup(
+    incomingDiff.treeSitterEnabled || dialog === "settings",
   );
   const [busy, setBusy] = useState(false);
   const action = useAction();
@@ -1702,6 +1706,7 @@ function Workspace({
                 >
                   {dialog === "settings" && (
                     <Settings
+                      treeSitter={treeSitterSetup}
                       agent={agent}
                       onOpenReview={(name) => void changeReview(name)}
                     />

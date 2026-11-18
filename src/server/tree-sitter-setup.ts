@@ -96,6 +96,7 @@ export function createTreeSitterSetup(options: SetupOptions) {
     "lcr",
     "tree-sitter",
   );
+  const enabled = options.enabled !== false;
   let installation: TreeSitterStatus["installation"] = { state: "idle" };
   type Detected = Omit<TreeSitterStatus, "installation" | "review">;
   let detected: Promise<Detected> | undefined;
@@ -125,7 +126,7 @@ export function createTreeSitterSetup(options: SetupOptions) {
   async function detect(): Promise<Detected> {
     const command = which("tree-sitter");
     const status: Detected = {
-      enabled: options.enabled !== false,
+      enabled,
       cli: command ? { path: command, version: "Unknown version" } : null,
       languages: [],
       directory,
@@ -320,6 +321,7 @@ export function createTreeSitterSetup(options: SetupOptions) {
   }
 
   return {
+    enabled,
     async status(): Promise<TreeSitterStatus> {
       const status = await (detected ??= detect());
       return { ...status, review: await review(status), installation };

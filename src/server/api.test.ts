@@ -227,6 +227,7 @@ describe("optional parser setup", () => {
     let refreshes = 0;
     const started = await startTestServer({
       treeSitter: {
+        enabled: state.enabled,
         status: async () => state,
         startInstall: (mode) => {
           installs++;
@@ -1643,6 +1644,7 @@ describe("general API routes", () => {
       branch: "",
       id: "security-pass",
       context: 8,
+      treeSitterEnabled: false,
       files: [diffFile()],
       statuses: [status],
     });

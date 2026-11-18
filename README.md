@@ -137,24 +137,22 @@ lcr executable does not require Bun.
 Other CLI installation options and platform requirements are in the
 [Tree-sitter installation guide](https://tree-sitter.github.io/tree-sitter/creating-parsers/1-getting-started.html).
 
-#### Install from web settings
+#### Install parsers from a review
 
-Open **Settings → Tree-sitter highlighting**. lcr shows whether the CLI is found,
-which language grammars are configured, and any missing setup tools. **Detected in
-this review** identifies supported file types by filename and extension, including
-deleted files and both sides of a rename. It lists file counts and marks each
-language as configured or missing. **Install missing parsers** installs only the
-missing parser packages for those languages. Detection updates as the diff changes;
-it never starts a download on its own. Unknown file types and binary files do not
-trigger parser recommendations. TypeScript and TSX are checked separately but share
-one parser package; only their setup needs Bun.
+When Tree-sitter detects missing parsers for the current diff, lcr shows a
+bottom-right notification listing the languages. Choose **Install** to download
+the missing parsers for this review. You can follow progress and retry a failed
+download from the notification, or dismiss the suggestion. Suggestions update
+as files change and include deleted files and both sides of a rename. Unknown
+file types and binary files do not trigger suggestions. TypeScript and TSX
+share one parser package, and only that package requires Bun.
 
-Alternatively, choose **Install recommended parsers** for the full catalog.
-Both actions download the selected parsers from their upstream GitHub
-projects, install TypeScript's query dependencies when needed with lifecycle scripts disabled,
+Open **Settings → Tree-sitter highlighting** to check the CLI, configured grammars,
+and setup tools. Choose **Install recommended parsers** to install the full catalog.
+Both actions download the selected parsers from their upstream GitHub projects,
+install TypeScript's query dependencies when needed with lifecycle scripts disabled,
 merge the parser directory into your Tree-sitter config, and compile/check samples.
-Installation runs locally on the machine serving lcr. Progress and failures appear
-in Settings; you can close Settings while it runs and retry if a download fails.
+Installation runs locally on the machine serving lcr.
 
 Grammars are stored in `${XDG_DATA_HOME:-$HOME/.local/share}/lcr/tree-sitter` on
 macOS/Linux. Existing parser directories and theme settings are preserved. Setup

@@ -7,6 +7,7 @@ import { request, useAction, type AgentState } from "./api.ts";
 import { Button } from "../components/ui/button.tsx";
 import { Select } from "../components/ui/select.tsx";
 import { useThemes } from "./themes.tsx";
+import type { TreeSitterSetup } from "./use-tree-sitter.ts";
 import { TreeSitterSettings } from "./tree-sitter-settings.tsx";
 
 const INSTALL_SKILL_COMMAND =
@@ -14,9 +15,11 @@ const INSTALL_SKILL_COMMAND =
 
 export function Settings({
   agent,
+  treeSitter,
   onOpenReview,
 }: {
   agent: AgentState;
+  treeSitter: TreeSitterSetup;
   onOpenReview: (file: string) => void;
 }) {
   const ui = useUi();
@@ -82,7 +85,7 @@ export function Settings({
           </p>
         ))}
       </section>
-      <TreeSitterSettings />
+      <TreeSitterSettings {...treeSitter} />
       <section className="space-y-3">
         <h3 className="text-sm font-semibold">Reading and editing</h3>
         {(

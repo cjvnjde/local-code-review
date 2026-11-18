@@ -1,31 +1,13 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, Network, RefreshCw } from "lucide-react";
-import {
-  RECOMMENDED_PARSER_LABELS,
-  type TreeSitterStatus,
-} from "../../../shared/tree-sitter.ts";
+import { RECOMMENDED_PARSER_LABELS } from "../../../shared/tree-sitter.ts";
 import { Button } from "../components/ui/button.tsx";
-import { request } from "./api.ts";
+import type { TreeSitterSetup } from "./use-tree-sitter.ts";
 
-export function TreeSitterSettings() {
-  const client = useQueryClient();
-  const query = useQuery({
-    queryKey: ["tree-sitter"],
-    queryFn: () => request<TreeSitterStatus>("/api/tree-sitter"),
-    refetchInterval: (query) =>
-      query.state.data?.installation.state === "running" ? 1000 : false,
-  });
-  const action = useMutation({
-    mutationFn: (action: "install" | "install-detected" | "refresh") =>
-      request<TreeSitterStatus>("/api/tree-sitter", "POST", { action }),
-    onSuccess: (status) => client.setQueryData(["tree-sitter"], status),
-  });
+export function TreeSitterSettings({ query, action }: TreeSitterSetup) {
   const status = query.data;
   const installing = status?.installation.state === "running";
   const busy = installing || action.isPending;
   const failure = action.error || query.error;
-  const missing =
-    status?.review.languages.filter((language) => !language.configured) ?? [];
   return (
     <section className="space-y-3" aria-labelledby="tree-sitter-heading">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -61,56 +43,6 @@ export function TreeSitterSettings() {
           Disabled for this run. Start lcr with <code>--tree-sitter</code> to
           enable it.
         </p>
-      )}
-      {status && (
-        <div className="space-y-2">
-          <p className="text-xs font-medium">Detected in this review</p>
-          {status.review.languages.length ? (
-            <>
-              <ul
-                aria-label="Detected review languages"
-                className="space-y-1 text-xs"
-              >
-                {status.review.languages.map((language) => (
-                  <li
-                    key={language.scope}
-                    className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1"
-                  >
-                    <span>
-                      {language.label}{" "}
-                      <span className="text-muted-foreground">
-                        · {language.files}{" "}
-                        {language.files === 1 ? "file" : "files"}
-                      </span>
-                    </span>
-                    <span className="text-muted-foreground">
-                      {language.configured ? "Configured" : "Missing parser"}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-              <Button
-                variant="outline"
-                disabled={
-                  !missing.length || !!status.review.missingTools.length || busy
-                }
-                onClick={() => action.mutate("install-detected")}
-              >
-                <Download aria-hidden="true" /> Install missing parsers
-              </Button>
-              {!!status.review.missingTools.length && (
-                <p className="text-xs text-muted-foreground">
-                  To install these parsers:{" "}
-                  {status.review.missingTools.join(", ")} required.
-                </p>
-              )}
-            </>
-          ) : (
-            <p className="text-xs text-muted-foreground">
-              No file types from the recommended catalog were detected.
-            </p>
-          )}
-        </div>
       )}
       <p className="text-xs text-muted-foreground">
         Recommended: {RECOMMENDED_PARSER_LABELS.join(", ")}. Downloads from the

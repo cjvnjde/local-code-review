@@ -38,6 +38,7 @@ export interface DiffResponse extends AgentState {
   branch: string;
   id: string;
   context: number;
+  treeSitterEnabled: boolean;
   files: DiffFile[];
   web?: { url: string; state?: string };
 }
