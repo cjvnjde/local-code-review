@@ -71,6 +71,7 @@ function readingInset(element: HTMLElement) {
 
 export function DiffView({
   files,
+  hasHiddenFiles,
   notes,
   context,
   marks,
@@ -93,6 +94,7 @@ export function DiffView({
   ref,
 }: {
   files: DiffFile[];
+  hasHiddenFiles: boolean;
   notes: ReviewNote[];
   context: number;
   marks: Record<string, string>;
@@ -941,7 +943,9 @@ export function DiffView({
       )}
       {!files.length && (
         <div className="p-8 text-center text-sm text-muted-foreground">
-          Working tree is clean. You can still leave an overall note.
+          {hasHiddenFiles
+            ? "All changed files are hidden."
+            : "Working tree is clean. You can still leave an overall note."}
         </div>
       )}
       <div

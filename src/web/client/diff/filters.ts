@@ -1,4 +1,5 @@
-/* ---------- file filters: glob patterns that keep whole groups of files out of the review ---------- */
+import type { UiSettings } from "../../../shared/settings.ts";
+
 const cache = new Map<string, RegExp | null>();
 /**
  * Glob subset: `*` stays inside one path segment, `**` crosses segments, `?` is one character.
@@ -43,30 +44,61 @@ export const hidePatterns = (text: string) => [
       .filter((p) => p && !p.startsWith("#")),
   ),
 ];
-export function compileHide(text: string, disabled: string[] = []) {
-  const off = new Set(Array.isArray(disabled) ? disabled : []);
+function compileHide(text: string, disabled: string[]) {
+  const off = new Set(disabled);
   return hidePatterns(text)
     .filter((p) => !off.has(p))
-    .map(globRx)
-    .filter(Boolean) as RegExp[];
+    .flatMap((pattern) => {
+      const rx = globRx(pattern);
+      return rx ? [{ pattern, rx }] : [];
+    });
 }
 
-export function fileHidden(
-  file: { path: string; status: string },
-  settings: {
-    hide: string;
-    disabledHide: string[];
-    hideEnabled: boolean;
-    hideDeleted: boolean;
-  },
-  overrides: Readonly<Record<string, boolean>>,
+/** A boolean is a manual eye setting. A list records the globs explicitly bypassed for one file. */
+export type VisibilityOverrides = Record<string, boolean | string[]>;
+
+export function filterFiles<T extends { path: string; status: string }>(
+  files: readonly T[],
+  settings: Pick<
+    UiSettings,
+    "hide" | "disabledHide" | "hideEnabled" | "hideDeleted"
+  >,
+  overrides: Readonly<VisibilityOverrides>,
 ) {
-  return (
-    overrides[file.path] ??
-    ((settings.hideDeleted && file.status === "deleted") ||
-      (settings.hideEnabled &&
-        compileHide(settings.hide, settings.disabledHide).some((pattern) =>
-          pattern.test(file.path),
-        )))
-  );
+  const patterns = settings.hideEnabled
+    ? compileHide(settings.hide, settings.disabledHide)
+    : [];
+  const treeFiles: T[] = [];
+  const visibleFiles: T[] = [];
+  const hiddenPaths = new Set<string>();
+  const matchedRules = new Map<string, string[]>();
+  for (const file of files) {
+    const override = overrides[file.path];
+    const matches = patterns
+      .filter(({ rx }) => rx.test(file.path))
+      .map(({ pattern }) => pattern);
+    if (matches.length) {
+      matchedRules.set(file.path, matches);
+      if (
+        !Array.isArray(override) ||
+        !matches.every((pattern) => override.includes(pattern))
+      ) {
+        hiddenPaths.add(file.path);
+        continue;
+      }
+    }
+    treeFiles.push(file);
+    if (
+      override === true ||
+      (!matches.length &&
+        override !== false &&
+        settings.hideDeleted &&
+        file.status === "deleted")
+    ) {
+      hiddenPaths.add(file.path);
+    } else {
+      visibleFiles.push(file);
+    }
+  }
+  return { treeFiles, visibleFiles, hiddenPaths, matchedRules };
 }

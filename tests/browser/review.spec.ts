@@ -150,6 +150,70 @@ async function showFullConversations(page: Page) {
     .click();
 }
 
+test("hide patterns exclude matching files from the tree and diff after a manual show", async ({
+  page,
+}) => {
+  const spec = "src/something.spec.ts";
+  const nav = page.getByRole("navigation");
+  const entry = nav.getByTitle(spec, { exact: true });
+  const pane = page.getByRole("region", { name: "Code diff" });
+  const header = pane.getByRole("heading", { name: spec, exact: true });
+  const settingsButton = page.getByRole("button", {
+    name: "Settings",
+    exact: true,
+  });
+  const settings = page.getByRole("dialog", { name: "Settings", exact: true });
+  await writeFile(path.join(directory, spec), "export const spec = true;\n");
+  try {
+    await page.goto(url);
+    await entry.hover();
+    await nav
+      .getByRole("button", { name: `Hide file ${spec}`, exact: true })
+      .click();
+    await expect(header).toHaveCount(0);
+    await nav
+      .getByRole("button", { name: `Show file ${spec}`, exact: true })
+      .click();
+    await expect(header).toBeVisible();
+    await settingsButton.click();
+    await settings
+      .getByRole("textbox", { name: "Hide file patterns" })
+      .fill("*.spec.*");
+    await settings.getByRole("button", { name: "Close dialog" }).click();
+    await expect(header).toHaveCount(0);
+    await expect(entry).toHaveCount(0);
+    await page.reload();
+    await expect(nav.getByTitle("src/app.ts", { exact: true })).toBeVisible();
+    await expect(entry).toHaveCount(0);
+    await expect(header).toHaveCount(0);
+    await page
+      .getByRole("combobox", { name: "Search review" })
+      .fill("export const spec = true;");
+    await page
+      .getByRole("listbox", { name: "Search suggestions" })
+      .getByRole("option")
+      .filter({ hasText: spec })
+      .filter({ hasText: "Added · new 1" })
+      .click();
+    await expect(header).toBeInViewport();
+    await entry.hover();
+    await nav
+      .getByRole("button", { name: `Hide file ${spec}`, exact: true })
+      .click();
+    await expect(entry).toHaveCount(0);
+    await expect(header).toHaveCount(0);
+    await settingsButton.click();
+    await settings
+      .getByRole("checkbox", { name: "*.spec.*", exact: true })
+      .uncheck();
+    await settings.getByRole("button", { name: "Close dialog" }).click();
+    await expect(entry).toBeVisible();
+    await expect(header).toBeVisible();
+  } finally {
+    await rm(path.join(directory, spec));
+  }
+});
+
 async function codePoint(cell: Locator, offset: number) {
   return cell.evaluate((cell, offset) => {
     const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT);

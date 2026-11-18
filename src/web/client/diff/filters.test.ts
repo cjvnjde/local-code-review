@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { globRx, fileHidden } from "./filters.ts";
+import { globRx, filterFiles } from "./filters.ts";
 
 describe("globRx", () => {
   test("matches a bare pattern against the file name at any depth", () => {
@@ -36,32 +36,53 @@ describe("globRx", () => {
   });
 });
 
-test("manual visibility overrides and independent hide switches keep their meaning", () => {
-  const file = { path: "src/a.test.ts", status: "deleted" };
-  const settings = {
-    hide: "*.test.*",
-    disabledHide: [],
-    hideEnabled: true,
-    hideDeleted: false,
-  };
-  expect(fileHidden(file, settings, {})).toBe(true);
-  expect(fileHidden(file, settings, { [file.path]: false })).toBe(false);
+const settings = {
+  hide: "*.spec.*",
+  disabledHide: [],
+  hideEnabled: true,
+  hideDeleted: false,
+};
+const root = { path: "something.spec.ts", status: "added" };
+const nested = { path: "src/something.spec.ts", status: "modified" };
+const source = { path: "src/something.ts", status: "modified" };
+const files = [root, nested, source];
+
+test("a glob excludes matches from the tree and diff, including previously shown files", () => {
+  const view = filterFiles(files, settings, { [nested.path]: false });
+  expect(view.treeFiles).toEqual([source]);
+  expect(view.visibleFiles).toEqual([source]);
+  expect(view.hiddenPaths).toEqual(new Set([root.path, nested.path]));
+  for (const disabled of [
+    { hideEnabled: false },
+    { disabledHide: ["*.spec.*"] },
+  ]) {
+    expect(
+      filterFiles(files, { ...settings, ...disabled }, {}).visibleFiles,
+    ).toEqual(files);
+  }
+});
+
+test("revealing a filtered file applies only to that file and its matching rule", () => {
+  const overrides = { [nested.path]: ["*.spec.*"] };
+  const view = filterFiles(files, settings, overrides);
+  expect(view.treeFiles).toEqual([nested, source]);
+  expect(view.visibleFiles).toEqual([nested, source]);
   expect(
-    fileHidden(file, { ...settings, disabledHide: ["*.test.*"] }, {}),
-  ).toBe(false);
-  expect(fileHidden(file, { ...settings, hideEnabled: false }, {})).toBe(false);
+    filterFiles(files, { ...settings, hide: "src/**" }, overrides).visibleFiles,
+  ).toEqual([root]);
   expect(
-    fileHidden(
-      file,
-      { ...settings, hideEnabled: false, hideDeleted: true },
-      {},
-    ),
-  ).toBe(true);
+    filterFiles(files, { ...settings, hide: "*.spec.*,src/**" }, overrides)
+      .visibleFiles,
+  ).toEqual([]);
+});
+
+test("manual and deleted-file eye controls remain available in the tree", () => {
+  const deleted = { ...source, status: "deleted" };
+  const prefs = { ...settings, hideDeleted: true, hideEnabled: false };
+  const hidden = filterFiles([deleted, nested], prefs, { [nested.path]: true });
+  expect(hidden.treeFiles).toEqual([deleted, nested]);
+  expect(hidden.visibleFiles).toEqual([]);
   expect(
-    fileHidden(
-      { ...file, status: "added" },
-      { ...settings, hideEnabled: false },
-      { [file.path]: true },
-    ),
-  ).toBe(true);
+    filterFiles([deleted], prefs, { [deleted.path]: false }).visibleFiles,
+  ).toEqual([deleted]);
 });

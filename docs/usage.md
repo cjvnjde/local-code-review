@@ -31,6 +31,12 @@ Only a small window of code and notes is mounted, even for very large diffs.
 File visibility controls appear on row hover or keyboard focus without reserving
 a separate column.
 
+In Settings → File visibility, enter one glob per line or separate them with
+commas. For example, `*.spec.*` hides `something.spec.ts` at any depth in both
+the file tree and the diff. Opening a matching file from search or a bookmark
+reveals that file for the current hide patterns. Use its eye control to hide it
+again.
+
 Drag the vertical dividers or their full grip handles to resize the file sidebar
 and conversation pane. Focused dividers also accept arrow keys and Home/End;
 double-click resets that pane's width. Widths and panel visibility survive reloads

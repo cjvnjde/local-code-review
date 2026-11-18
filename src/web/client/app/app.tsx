@@ -20,7 +20,7 @@ import {
 } from "../search/results.tsx";
 import type { SearchResult } from "../search/search-model.ts";
 import { triageOptions } from "../notes/note-header.tsx";
-import { fileHidden } from "../diff/filters.ts";
+import { filterFiles, type VisibilityOverrides } from "../diff/filters.ts";
 import { ArrowUp, ArrowDown, Copy } from "lucide-react";
 import { ReviewReferences } from "../notes/references.tsx";
 import { useUi } from "./ui-preferences.tsx";
@@ -248,22 +248,46 @@ function Workspace({
   useEffect(() => {
     if (!draft && !busy) setDiff(incomingDiff);
   }, [incomingDiff, draft, busy]);
-  const [visibility, setVisibility] = useStored<Record<string, boolean>>(
+  const [visibility, setVisibility] = useStored<VisibilityOverrides>(
     `lcr:v2:visibility:${scope}`,
     {},
   );
   const files = useMemo(() => orderFiles(diff.files), [diff.files]);
+  const { hide, hideEnabled, disabledHide, hideDeleted } = settings;
+  const { treeFiles, visibleFiles, hiddenPaths, matchedRules } = useMemo(
+    () =>
+      filterFiles(
+        files,
+        { hide, hideEnabled, disabledHide, hideDeleted },
+        visibility,
+      ),
+    [files, hide, hideEnabled, disabledHide, hideDeleted, visibility],
+  );
   const treeSitter = files.some((file) =>
     file.rows.some((row) => row.syntax !== undefined),
   );
   const followed = useRef("");
+  function setFilesHidden(paths: string[], hidden: boolean) {
+    setVisibility((current) => {
+      const next: VisibilityOverrides = Object.assign(
+        Object.create(null),
+        current,
+      );
+      for (const path of paths) {
+        const rules = matchedRules.get(path);
+        if (!hidden) next[path] = rules ?? false;
+        else if (rules) delete next[path];
+        else next[path] = true;
+      }
+      return next;
+    });
+  }
   function reveal(path: string, go: () => void) {
-    const target = diff.files.find((file) => file.path === path);
-    if (!target || !fileHidden(target, settings, visibility)) {
+    if (!hiddenPaths.has(path)) {
       go();
       return;
     }
-    setVisibility((current) => ({ ...current, [path]: false }));
+    setFilesHidden([path], false);
     requestAnimationFrame(() => requestAnimationFrame(go));
   }
   function jumpToFile(path: string) {
@@ -334,19 +358,6 @@ function Workspace({
     window.addEventListener("beforeunload", guard);
     return () => window.removeEventListener("beforeunload", guard);
   }, [draft, busy]);
-  const { hide, hideEnabled, disabledHide, hideDeleted } = settings;
-  const visibleFiles = useMemo(
-    () =>
-      files.filter(
-        (file) =>
-          !fileHidden(
-            file,
-            { hide, hideEnabled, disabledHide, hideDeleted },
-            visibility,
-          ),
-      ),
-    [files, hide, hideEnabled, disabledHide, hideDeleted, visibility],
-  );
   const reading = useReadingNavigation(scope, files);
   const bookmarkAt = useRef(-1);
   const noteAt = useRef<string | null>(null);
@@ -364,7 +375,7 @@ function Workspace({
     const target = reading.ordered[bookmarkAt.current];
     if (target) jumpBookmark(target.b);
   }
-  const file = files.find((f) => f.path === selected) || files[0];
+  const file = visibleFiles.find((f) => f.path === selected) || visibleFiles[0];
   const notes = useMemo(() => review?.notes || [], [review?.notes]);
   const searchResults = useSearchResults(files, notes, search);
   const suggestions = useMemo(() => searchResults.slice(0, 8), [searchResults]);
@@ -993,11 +1004,11 @@ function Workspace({
                       className="min-h-0 flex-1 overflow-auto px-2 py-3"
                     >
                       <FileTree
-                        files={files}
+                        files={treeFiles}
                         selected={file?.path || ""}
                         scope={scope}
                         marks={marks}
-                        visibility={visibility}
+                        hiddenPaths={hiddenPaths}
                         onJump={jumpToFile}
                         onHide={(paths, hidden) => {
                           const guard = visibilityGuard.current;
@@ -1008,12 +1019,7 @@ function Workspace({
                             guard.focus();
                             return;
                           }
-                          setVisibility((current) => ({
-                            ...current,
-                            ...Object.fromEntries(
-                              paths.map((path) => [path, hidden]),
-                            ),
-                          }));
+                          setFilesHidden(paths, hidden);
                         }}
                         onViewed={(paths, viewed) =>
                           setMarks((current) => ({
@@ -1030,7 +1036,7 @@ function Workspace({
                           }))
                         }
                       />
-                      {!files.length && (
+                      {!treeFiles.length && (
                         <p className="p-3 text-xs text-muted-foreground">
                           No matching files.
                         </p>
@@ -1531,6 +1537,7 @@ function Workspace({
                   <DiffView
                     ref={diffView}
                     files={visibleFiles}
+                    hasHiddenFiles={hiddenPaths.size > 0}
                     bookmarks={reading.bookmarks.map(
                       (bookmark) => bookmark.key,
                     )}

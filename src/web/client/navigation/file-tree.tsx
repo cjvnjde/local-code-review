@@ -9,8 +9,6 @@ import {
   Folder,
 } from "lucide-react";
 import type { DiffFile } from "../../../shared/review-types.ts";
-import { fileHidden } from "../diff/filters.ts";
-import { useUi } from "../app/ui-preferences.tsx";
 import { useStored } from "../app/preferences.ts";
 import { Button, cn } from "../components/ui/button.tsx";
 
@@ -26,7 +24,7 @@ export function FileTree({
   selected,
   scope,
   marks,
-  visibility,
+  hiddenPaths,
   onJump,
   onHide,
   onViewed,
@@ -35,12 +33,11 @@ export function FileTree({
   selected: string;
   scope: string;
   marks: Record<string, string>;
-  visibility: Record<string, boolean>;
+  hiddenPaths: ReadonlySet<string>;
   onJump: (path: string) => void;
   onHide: (paths: string[], hidden: boolean) => void;
   onViewed: (paths: string[], viewed: boolean) => void;
 }) {
-  const { settings } = useUi();
   const [folded, setFolded] = useStored<string[]>(
     `lcr:v2:folders:${scope}`,
     [],
@@ -74,7 +71,7 @@ export function FileTree({
     }
     return root;
   }, [files]);
-  const hidden = (file: DiffFile) => fileHidden(file, settings, visibility);
+  const hidden = (file: DiffFile) => hiddenPaths.has(file.path);
   function children(node: FolderNode): React.ReactNode {
     return (
       <>
