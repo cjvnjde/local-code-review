@@ -3711,9 +3711,13 @@ test("live page capture grows notes without moving the page and opens drawings a
     await expect(
       target.getByText("New web note · 2 captures", { exact: true }),
     ).toBeVisible();
-    await frame
-      .getByRole("textbox", { name: "Note text" })
-      .fill("Increase this checkout target size.");
+    await expect(
+      frame.getByRole("link", {
+        name: "Annotate 2. Secondary action",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await input.fill("Increase this checkout target size.");
     await target.route(
       "**/api/note",
       (route) =>
@@ -3724,7 +3728,15 @@ test("live page capture grows notes without moving the page and opens drawings a
         }),
       { times: 1 },
     );
-    await frame.getByRole("button", { name: "Save note", exact: true }).click();
+    const [failedSave] = await Promise.all([
+      target.waitForResponse(
+        (response) =>
+          response.url() === `${url}/api/note` &&
+          response.request().method() === "POST",
+      ),
+      input.press("Control+Enter"),
+    ]);
+    expect(failedSave.status()).toBe(503);
     await expect(
       target.getByText("Could not save note", { exact: true }),
     ).toBeVisible();
