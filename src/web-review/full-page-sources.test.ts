@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { runInNewContext } from "node:vm";
 import type { CdpCommand, CdpParams, CdpResult } from "../browser/cdp.ts";
 import { CONTEXT_MAX_BYTES } from "../shared/context.ts";
 import { fullPageSources } from "./full-page-sources.ts";
@@ -74,6 +75,40 @@ class SourceBrowser {
   }
 }
 const enabled = { enabled: true, private: false, point: false };
+
+test("the page stops reading inline sources when it fills the shared transfer budget", async () => {
+  const browser = new SourceBrowser();
+  await fullPageSources(browser, "review", enabled);
+  const { expression } = browser.calls.find(
+    (call) => call.method === "Runtime.evaluate",
+  )!.params as CdpParams<"Runtime.evaluate">;
+  const source = "/*😀*/".repeat(40_000);
+  let reads = 0;
+  const scripts = Array.from({ length: 100 }, () => ({
+    localName: "script",
+    get textContent() {
+      reads++;
+      return source;
+    },
+  }));
+  const snapshot = runInNewContext(expression, {
+    document: {
+      documentElement: { outerHTML: "<html></html>" },
+      querySelectorAll: () => scripts,
+    },
+    TextEncoder,
+  });
+  expect(snapshot.partial).toBe(true);
+  expect(reads).toBe(4);
+  expect(
+    snapshot.inline.every((part: { truncated: boolean }) => part.truncated),
+  ).toBe(true);
+  expect(
+    Buffer.byteLength(
+      snapshot.inline.map((part: { source: string }) => part.source).join(""),
+    ),
+  ).toBe(1024 * 1024);
+});
 
 test("disabled, private and point source context never reads browser content", async () => {
   for (const policy of [

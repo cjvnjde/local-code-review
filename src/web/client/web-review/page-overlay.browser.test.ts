@@ -70,12 +70,19 @@ browserTest(
             }
           }
           const reply=()=>window.overlay.resolve(message.seq,{ok:true,value});
-          if(message.action==='capture' && window.holdCapture)window.releaseCapture=reply;
+          if(message.action==='page-status' && !window.releaseStatus)window.releaseStatus=reply;
+          else if(message.action==='capture' && window.holdCapture)window.releaseCapture=reply;
           else queueMicrotask(reply);
         };
         // Exercise the same self-contained function boundary used by CDP injection.
         const injected=(0,eval)('('+installPageReview.toString()+')');
+        const schedule=window.setInterval;
+        window.setInterval=(callback,...args)=>{
+          window.pollReview=callback;
+          return schedule.call(window,callback,...args);
+        };
         injected({key:'overlay',binding:'bridge',origin:location.origin,reviewUrl:location.origin});
+        window.setInterval=schedule;
       </script>`,
           { headers: { "content-type": "text/html" } },
         );
@@ -202,6 +209,20 @@ browserTest(
       expect(await pressed("[data-browse]")).toBe("true");
       expect(await pressed("[data-annotate]")).toBe("false");
       expect(await js(`${root}.querySelector('.bar').hidden`)).toBe(true);
+      await js("window.pollReview();window.pollReview()");
+      expect(
+        await js("requests.filter(r=>r.action==='page-status').length"),
+      ).toBe(1);
+      expect(await js("requests.filter(r=>r.action==='notes').length")).toBe(0);
+      await control("[data-launcher]");
+      expect(
+        await js(`${root}.querySelector('[data-notes]').textContent`),
+      ).toBe("Notes ↗");
+      await js("window.releaseStatus()");
+      await until(
+        `${root}.querySelector('[data-notes]').textContent==='Notes · 0 ↗'`,
+      );
+      expect(await js("requests.filter(r=>r.action==='notes').length")).toBe(1);
       await click(await pinCenter("[data-annotate]"));
       expect(await pressed("[data-annotate]")).toBe("true");
       await control("[data-launcher]");
@@ -897,6 +918,40 @@ browserTest(
           "JSON.parse(sessionStorage.getItem('lcr:launcher:'+location.origin))",
         ),
       ).toEqual(draggedPosition);
+
+      // An existing positional capture still locates its row. A stable identity
+      // deep in a wide list must also retain its target layout evidence.
+      const wideList = await js(`(async () => {
+        const list = document.createElement('ul');
+        list.id = 'wide-list';
+        list.innerHTML = '<li>Record</li>'.repeat(5000);
+        document.body.append(list);
+        window.contextSettings = {aiContext:true, contextHtml:false, contextFullPage:false, contextDiagnostics:false};
+        const prepareRow = (position) => window.overlay.prepare({
+          url:location.href, mode:'element', selector:'#wide-list > li:nth-of-type('+position+')',
+          element:{tag:'li', text:'Record', attributes:{}}
+        });
+        const last = await prepareRow(5000);
+        const matches = document.querySelectorAll(last.selector);
+        const middle = list.children[2500];
+        const anonymous = await prepareRow(2501);
+        const middleMatches = document.querySelectorAll(anonymous.selector);
+        middle.dataset.testid = 'middle-record';
+        const named = await prepareRow(2501);
+        const nodes = JSON.parse(named.contextLayout.data).nodes;
+        return {
+          lastMatched:matches.length === 1 && matches[0] === list.lastElementChild,
+          middleMatched:middleMatches.length === 1 && middleMatches[0] === middle,
+          namedMatched:document.querySelector(named.selector) === middle,
+          hasTarget:nodes.some(node=>node.relation==='target' && node.selector === named.selector)
+        };
+      })()`);
+      expect(wideList).toEqual({
+        lastMatched: true,
+        middleMatched: true,
+        namedMatched: true,
+        hasTarget: true,
+      });
     } finally {
       await chrome?.close();
       server.stop(true);

@@ -34,7 +34,8 @@ import {
   webAnnotationImagesMatch,
   type WebAnnotation,
 } from "../shared/web-annotation.ts";
-import { browserEvidence, cssEvidence } from "./evidence.ts";
+import { boundedRequest, browserEvidence, cssEvidence } from "./evidence.ts";
+import { waitForPageOverlay } from "./overlay-readiness.ts";
 import { repositoryEvidence } from "./repository-evidence.ts";
 import { DiagnosticsEvidence } from "./diagnostics-evidence.ts";
 import { fullPageSources } from "./full-page-sources.ts";
@@ -44,7 +45,7 @@ import {
   REDACTION_OMISSION,
 } from "../shared/redaction.ts";
 import { cropScreenshot, redactScreenshot } from "./redaction.ts";
-import type { CdpCommand, CdpParams } from "../browser/cdp.ts";
+import type { Cdp, CdpCommand, CdpParams } from "../browser/cdp.ts";
 import {
   accessibilityComment,
   accessibilityExpression,
@@ -68,6 +69,18 @@ export interface WebReviewOptions {
   browserArgs?: string[];
   /** Separate ownership for the source-only playground's example overlay. */
   overlayOwnerKey?: string;
+}
+/** Enabling Page makes DevTools responsible for dialogs that the browser cannot present. */
+export function dismissUnpresentableDialog(
+  cdp: Pick<Cdp, "send">,
+  attachedSession: string,
+  eventSession: string | undefined,
+  hasBrowserHandler: boolean | undefined,
+) {
+  if (eventSession === attachedSession && hasBrowserHandler === false)
+    return cdp
+      .send("Page.handleJavaScriptDialog", { accept: false }, attachedSession)
+      .catch(() => {}); // The dialog may have closed or the tab detached.
 }
 export function createWebReview(options: WebReviewOptions) {
   const url = localWebUrl(options.url),
@@ -169,34 +182,33 @@ export function createWebReview(options: WebReviewOptions) {
     contextId = 0;
     scriptId = "";
     if (!current || !sid || !current.cdp.connected) return;
-    if (script)
-      await current.cdp
-        .send(
-          "Page.removeScriptToEvaluateOnNewDocument",
-          { identifier: script },
-          sid,
-        )
-        .catch(() => {});
-    await current.cdp
-      .send(
+    // Submit each cleanup command before waiting. A stalled renderer can otherwise
+    // prevent even the request to remove the overlay from ever reaching the tab.
+    await Promise.allSettled([
+      script
+        ? current.cdp.send(
+            "Page.removeScriptToEvaluateOnNewDocument",
+            { identifier: script },
+            sid,
+          )
+        : undefined,
+      current.cdp.send(
         "Runtime.evaluate",
-        {
-          expression: `globalThis[${JSON.stringify(key)}]?.dispose()`,
-        },
+        { expression: `globalThis[${JSON.stringify(key)}]?.dispose()` },
         sid,
-      )
-      .catch(() => {});
-    await current.cdp
-      .send("Runtime.removeBinding", { name: binding }, sid)
-      .catch(() => {});
+      ),
+      current.cdp.send("Runtime.removeBinding", { name: binding }, sid),
+    ]);
     await current.cdp
       .send("Target.detachFromTarget", { sessionId: sid })
       .catch(() => {});
   }
-  async function releaseBrowser() {
+  async function releaseBrowser(failedToOpen = false) {
     offDisconnect();
     offDisconnect = () => {};
-    await detachPage();
+    const detach = detachPage();
+    if (failedToOpen) await boundedRequest(detach, 1_000).catch(() => {});
+    else await detach;
     const current = browser;
     browser = null;
     reviewTargetId = "";
@@ -567,85 +579,70 @@ export function createWebReview(options: WebReviewOptions) {
               ...(await evidenceParts(input, settings)),
             ],
       );
+    let page: { data: string };
+    let fullPage: ContextPartInput | undefined;
     try {
       await api("visible", false);
-      const page = await send("Page.captureScreenshot", {
+      page = await send("Page.captureScreenshot", {
         format: "png",
         fromSurface: true,
         captureBeyondViewport: false,
       });
-      const pageBytes = regions.length
-        ? redactScreenshot(
-            Buffer.from(page.data, "base64"),
-            clean.viewport,
-            regions,
-          )
-        : Buffer.from(page.data, "base64");
-      // Crop the same captured frame. A second clipped CDP screenshot can temporarily
-      // resize the viewport and move responsive content or floating controls.
-      const areaBytes = cropScreenshot(pageBytes, clean.viewport, clean.rect);
-      const extras: ContextPartInput[] = settings.aiContext
-        ? regions.length
-          ? privacyParts
-          : [
-              ...(await fullPageSources(browser?.cdp ?? null, sessionId, {
-                enabled: settings.contextFullPage,
-                private: false,
-                point: false,
-              })),
-              htmlPart(input, settings),
-              ...(await evidenceParts(input, settings)),
-              settings.contextFullPage
-                ? await fullPagePart(clean)
-                : {
-                    name: "full-page",
-                    label: "Full document screenshot",
-                    type: "image/png",
-                    status: "excluded",
-                    detail:
-                      "Full-page screenshot was disabled at capture time.",
-                  },
-            ]
-        : [];
-      const after = await evaluate(
-        "({url:location.href,width:innerWidth,height:innerHeight,dpr:devicePixelRatio,x:scrollX,y:scrollY})",
-      );
-      if (JSON.stringify(actual) !== JSON.stringify(after))
-        throw new Error(
-          "The page moved while capturing. Select the area again.",
-        );
-      const [pageName, areaName] = await Promise.all([
-        saveAttachment(
-          options.repoRoot,
-          options.outDir,
-          pageBytes,
-          "image/png",
-        ),
-        saveAttachment(
-          options.repoRoot,
-          options.outDir,
-          areaBytes,
-          "image/png",
-        ),
-      ]);
-      if (!pageName || !areaName)
-        throw new Error("Could not save screenshots.");
-      const capture: WebCapture = {
-        ...privateCapture(clean, regions),
-        page: attachRef(pageName),
-        area: attachRef(areaName),
-      };
-      return settings.aiContext
-        ? await saveWebContext(
-            options.repoRoot,
-            options.outDir,
-            capture,
-            extras,
-          )
-        : capture;
+      if (settings.aiContext && settings.contextFullPage && !regions.length)
+        fullPage = await fullPagePart(clean);
     } finally {
+      // Only the screenshots need a hidden toolbar. Optional evidence and disk
+      // writes can take seconds, especially in a large repository.
       await api("visible", true).catch(() => {});
     }
+    const pageBytes = regions.length
+      ? redactScreenshot(
+          Buffer.from(page.data, "base64"),
+          clean.viewport,
+          regions,
+        )
+      : Buffer.from(page.data, "base64");
+    // Crop the same captured frame. A second clipped CDP screenshot can temporarily
+    // resize the viewport and move responsive content or floating controls.
+    const areaBytes = cropScreenshot(pageBytes, clean.viewport, clean.rect);
+    const extras: ContextPartInput[] = settings.aiContext
+      ? regions.length
+        ? privacyParts
+        : [
+            ...(await fullPageSources(browser?.cdp ?? null, sessionId, {
+              enabled: settings.contextFullPage,
+              private: false,
+              point: false,
+            })),
+            htmlPart(input, settings),
+            ...(await evidenceParts(input, settings)),
+            fullPage ?? {
+              name: "full-page",
+              label: "Full document screenshot",
+              type: "image/png",
+              status: "excluded",
+              detail: "Full-page screenshot was disabled at capture time.",
+            },
+          ]
+      : [];
+    const after = await evaluate(
+      "({url:location.href,width:innerWidth,height:innerHeight,dpr:devicePixelRatio,x:scrollX,y:scrollY})",
+    );
+    if (JSON.stringify(actual) !== JSON.stringify(after))
+      throw new Error("The page moved while capturing. Select the area again.");
+    const [pageName, areaName] = await Promise.all([
+      saveAttachment(options.repoRoot, options.outDir, pageBytes, "image/png"),
+      saveAttachment(options.repoRoot, options.outDir, areaBytes, "image/png"),
+    ]);
+    if (!pageName || !areaName) throw new Error("Could not save screenshots.");
+    const capture: WebCapture = {
+      ...privateCapture(clean, regions),
+      page: attachRef(pageName),
+      area: attachRef(areaName),
+    };
+    return settings.aiContext
+      ? saveWebContext(options.repoRoot, options.outDir, capture, extras)
+      : capture;
   }
   async function captureAfterNote(id: string) {
     const note = (await options.session.read()).notes.find(
@@ -667,6 +664,7 @@ export function createWebReview(options: WebReviewOptions) {
   }
   async function action(name: string, payload: any) {
     if (name === "context-settings") return { ...contextSettings };
+    if (name === "page-status") return { theme };
     if (name === "notes")
       return {
         notes: (await options.session.read()).notes.filter((n) => n.web),
@@ -996,6 +994,14 @@ export function createWebReview(options: WebReviewOptions) {
         const attachedSession = sessionId;
         const frame = (await send("Page.getFrameTree")).frameTree.frame.id;
         listeners.push(
+          cdp.on("Page.javascriptDialogOpening", (event, sid) => {
+            void dismissUnpresentableDialog(
+              cdp,
+              attachedSession,
+              sid,
+              event.hasBrowserHandler,
+            );
+          }),
           cdp.on("Runtime.executionContextsCleared", (_, sid) => {
             if (sid === attachedSession) {
               contextId = 0;
@@ -1064,9 +1070,13 @@ export function createWebReview(options: WebReviewOptions) {
                 context,
               ).catch(() => {});
             };
-            // prepare() runs inside the action queue and asks for current settings.
-            // This read-only RPC must not wait behind the action awaiting it.
-            if (message.action === "context-settings") void work();
+            // A capture can ask for settings from inside the queue. Idle toolbar
+            // checks also need to stay responsive while a capture is in progress.
+            if (
+              message.action === "context-settings" ||
+              message.action === "page-status"
+            )
+              void work();
             else queue = queue.then(work, work);
           }),
         );
@@ -1104,21 +1114,13 @@ export function createWebReview(options: WebReviewOptions) {
               "Could not load " + url + ": " + navigation.errorText,
             );
         }
-        let installed = false;
-        for (let i = 0; i < 100; i++) {
-          if (closing) throw new Error("The browser connection is closing.");
-          installed = await evaluate(
-            "typeof globalThis[" +
-              JSON.stringify(key) +
-              "]?.prepare==='function'",
-          ).catch(() => false);
-          if (installed) break;
-          await Bun.sleep(100);
-        }
-        if (!installed)
-          throw new Error(
-            "The annotation toolbar could not start. Check that the local app is running and its page finishes loading.",
-          );
+        await waitForPageOverlay(
+          () =>
+            evaluate(
+              `typeof globalThis[${JSON.stringify(key)}]?.prepare === "function"`,
+            ),
+          connectionAbort?.signal,
+        );
         await api("configureContext", contextSettings);
         await ensureReviewTarget();
         await cdp.send("Target.activateTarget", { targetId });
@@ -1143,7 +1145,7 @@ export function createWebReview(options: WebReviewOptions) {
       } catch (error) {
         state = "error";
         detail = error instanceof Error ? error.message : String(error);
-        await releaseBrowser();
+        await releaseBrowser(true);
         throw error;
       } finally {
         opening = null;

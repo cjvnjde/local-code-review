@@ -109,6 +109,11 @@ For another compatible installation, pass
 `--browser-data-dir "/path/to/browser/User Data"`. `--no-open` defers attachment
 until **Open page** is chosen in the review.
 
+Page alerts and confirmation prompts stay under your control when the browser
+can show them. If the browser reports that it cannot present a JavaScript dialog,
+lcr dismisses it so the tab can continue. For a prompt about leaving the page,
+this keeps you on the current page.
+
 Stopping lcr removes its overlay. Existing-browser mode leaves the browser and
 its tabs running. A tab can belong to one review at a time. A page that blocks the
 embedded editor through its content security policy can still be reviewed from

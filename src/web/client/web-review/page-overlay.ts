@@ -216,7 +216,7 @@ export function installPageReview(config: {
   <div class="selection-tools" hidden><span data-selection-count></span><button data-write>Write note</button><button data-clear>Clear</button></div>
   <div class="dock" hidden><div class="head"><b tabindex="0" title="Drag to move; arrow keys move the note window"></b><select data-triage aria-label="Note triage" hidden></select><a class="review-link" data-panel-review target="lcr-review" rel="noopener" aria-label="Open full review" title="Open full review"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 3h6v6M10 14 21 3M21 14v7H3V3h7"/></svg></a><button type="button" data-minimize aria-label="Minimize note panel" title="Minimize note panel" aria-expanded="true">−</button><button type="button" data-close aria-label="Close note panel" title="Close note panel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg></button></div><div class="content"></div><button type="button" class="resize" data-resize="se" aria-label="Resize note panel" title="Drag to resize; arrow keys resize; Shift moves farther"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 13 13 3M8 13l5-5M12 13l1-1"/></svg></button>${(["n", "e", "s", "w"] as const).map((edge, i) => `<button type="button" class="resize resize-edge" data-resize="${edge}" aria-label="Resize note panel from ${["top", "right", "bottom", "left"][i]}" title="Drag to resize; arrow keys resize; Shift moves farther"></button>`).join("")}</div>
   <div class="launcher" role="group" aria-label="Page review mode"><button data-browse title="Use page controls normally">Browse</button><button data-annotate title="Select page content to capture for a note; hold Alt to browse temporarily">Annotate</button><button data-launcher aria-label="Capture targeting: Element" aria-expanded="false" aria-controls="capture-tools" title="Choose capture target; drag to move"><span class="mode-state">Element</span><span aria-hidden="true"> ▾</span></button></div>
-  <div class="bar" id="capture-tools" role="group" aria-label="Capture targeting" hidden><button data-mode="element" aria-pressed="true" title="Hover for dimensions; Alt + wheel picks parents; Shift-click selects multiple; drag selects an area">Element <small>One element</small></button><button data-mode="block" aria-pressed="false" title="Select the containing layout section">Block <small>Containing section</small></button><button data-multiple aria-pressed="false" title="Collect elements for one note, then choose Write note">Multiple <small>Several elements, one note</small></button><button data-mode="area" aria-pressed="false" title="Drag a rectangle to capture an area">Area <small>Drag a rectangle</small></button><button data-mode="point" aria-pressed="false" title="Click a point to capture its surroundings">Point <small>Click a location</small></button><button data-notes>Notes · 0 ↗</button></div><section class="notifications" aria-label="Notifications"></section>`;
+  <div class="bar" id="capture-tools" role="group" aria-label="Capture targeting" hidden><button data-mode="element" aria-pressed="true" title="Hover for dimensions; Alt + wheel picks parents; Shift-click selects multiple; drag selects an area">Element <small>One element</small></button><button data-mode="block" aria-pressed="false" title="Select the containing layout section">Block <small>Containing section</small></button><button data-multiple aria-pressed="false" title="Collect elements for one note, then choose Write note">Multiple <small>Several elements, one note</small></button><button data-mode="area" aria-pressed="false" title="Drag a rectangle to capture an area">Area <small>Drag a rectangle</small></button><button data-mode="point" aria-pressed="false" title="Click a point to capture its surroundings">Point <small>Click a location</small></button><button data-notes>Notes ↗</button></div><section class="notifications" aria-label="Notifications"></section>`;
   // A transformed body must not become the containing block of the overlay.
   document.documentElement.append(host);
   const redactButton = document.createElement("button");
@@ -498,6 +498,7 @@ export function installPageReview(config: {
     bar.hidden = !value;
     targeting.setAttribute("aria-expanded", String(value));
     positionLauncher();
+    if (value && mode === "browse") void refresh().catch(error);
   }
   function rpc(action: string, payload: any = {}): Promise<any> {
     if (disposed)
@@ -580,6 +581,7 @@ export function installPageReview(config: {
     return true;
   }
   function setMode(value: string) {
+    const enteringAnnotate = mode === "browse" && value !== "browse";
     inspectBase = null;
     inspectDepth = 0;
     mode = value;
@@ -602,6 +604,7 @@ export function installPageReview(config: {
       );
     pins();
     renderPrivacy();
+    if (enteringAnnotate) void refresh().catch(error);
   }
   function updateLauncher() {
     const targetMode = mode === "browse" ? selectionMode : mode;
@@ -699,45 +702,105 @@ export function installPageReview(config: {
     $(".label").style.top = "";
     $(".label").style.bottom = "";
   }
+  function childPosition(el: Element) {
+    const siblings = el.parentNode?.children;
+    if (!siblings) return 0;
+    let first = 0,
+      last = siblings.length - 1;
+    while (first <= last) {
+      const index = Math.floor((first + last) / 2);
+      const candidate = siblings[index]!;
+      if (candidate === el) return index + 1;
+      if (
+        candidate.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING
+      )
+        first = index + 1;
+      else last = index - 1;
+    }
+    return 0;
+  }
   function selector(el: Element) {
-    const tree = config.ownerKey ? el.getRootNode() : document;
+    const tree = el.getRootNode();
     const scope =
-      tree instanceof ShadowRoot && tree.host.hasAttribute("data-lcr-owner")
+      config.ownerKey &&
+      tree instanceof ShadowRoot &&
+      tree.host.hasAttribute("data-lcr-owner")
         ? tree
         : document;
+    if (tree !== scope) return "";
     const prefix =
       scope instanceof ShadowRoot
         ? `[data-lcr-owner="${CSS.escape(scope.host.getAttribute("data-lcr-owner")!)}"] >>> `
         : "";
     const parts: string[] = [];
+    let checkedAnchor = false,
+      siblingSteps = 0;
     for (
       let e: Element | null = el;
       e && parts.length < 12;
       e = e.parentElement
     ) {
-      let part = e.localName;
+      const tag = CSS.escape(e.localName);
+      let part = tag;
       if (e.id) part += "#" + CSS.escape(e.id);
       else if (e.hasAttribute("data-testid"))
         part +=
           '[data-testid="' + CSS.escape(e.getAttribute("data-testid")!) + '"]';
       else if (scope instanceof ShadowRoot && e.classList.length)
         part += [...e.classList].map((name) => "." + CSS.escape(name)).join("");
-      else {
-        const siblings = e.parentElement
-          ? [...e.parentElement.children].filter(
-              (n) => n.localName === e!.localName,
+      const named = part !== tag;
+      if (!named) {
+        if (e === el) {
+          // A unique tag only needs the first two matches, regardless of document size.
+          const matches =
+            scope === document
+              ? document.getElementsByTagName(el.localName)
+              : scope.querySelectorAll(part);
+          if (matches[0] === el && !matches[1]) return prefix + part;
+        }
+        let before = e.previousElementSibling,
+          after = e.nextElementSibling;
+        if (before || after) {
+          let fromStart = 1,
+            fromEnd = 1;
+          // Prefer a type-relative position near either edge. Farther in, find
+          // the child by document order without copying or walking the full list.
+          while (before && after && siblingSteps < 64) {
+            siblingSteps++;
+            if (
+              before.localName === e.localName &&
+              before.namespaceURI === e.namespaceURI
             )
-          : [];
-        if (siblings.length > 1)
-          part += ":nth-of-type(" + (siblings.indexOf(e) + 1) + ")";
+              fromStart++;
+            if (
+              after.localName === e.localName &&
+              after.namespaceURI === e.namespaceURI
+            )
+              fromEnd++;
+            before = before.previousElementSibling;
+            after = after.nextElementSibling;
+          }
+          if (before && after) {
+            const position = childPosition(e);
+            if (!position) return "";
+            part += `:nth-child(${position})`;
+          } else
+            part += before
+              ? `:nth-last-of-type(${fromEnd})`
+              : `:nth-of-type(${fromStart})`;
+        }
       }
       parts.unshift(part);
-      const result = parts.join(" > ");
       if (
-        scope.querySelectorAll(result).length === 1 &&
-        scope.querySelector(result) === el
-      )
-        return prefix + result;
+        (named && !checkedAnchor) ||
+        !e.parentElement ||
+        parts.length === 12
+      ) {
+        checkedAnchor ||= named;
+        const result = parts.join(" > ");
+        const matches = scope.querySelectorAll(result);
+        if (matches.length === 1 && matches[0] === el) return prefix + result;
+      }
     }
     return "";
   }
@@ -999,14 +1062,12 @@ export function installPageReview(config: {
     );
   }
   function contextSelector(el: Element): string {
-    // Bound the sibling enumeration performed by the shared selector builder.
     for (
       let node: Element | null = el, depth = 0;
       node && depth < 12;
       node = node.parentElement, depth++
     ) {
       if (
-        (node.parentElement?.children.length ?? 0) > 2500 ||
         node.id.length > 256 ||
         (node.getAttribute("data-testid")?.length ?? 0) > 256 ||
         (node.getAttribute("class")?.length ?? 0) > 1024 ||
@@ -1180,7 +1241,7 @@ export function installPageReview(config: {
         truncated = true;
         return;
       }
-      const key = contextSelector(el);
+      const key = relation === "target" ? target : contextSelector(el);
       if (!key) {
         excluded++;
         truncated = true;
@@ -1215,8 +1276,11 @@ export function installPageReview(config: {
         // Only resolved numeric/color tokens, never arbitrary custom-property strings.
         if (
           value.length <= 128 &&
-          /^(?:[-+.\d%\s,/#()]|px|rem|em|vh|vw|vmin|vmax|ch|ex|deg|rad|fr|auto|none|rgb|rgba|hsl|hsla|[a-fA-F])+$/i.test(
-            value,
+          /^[-+.\d%\s,/#()a-f]+$/i.test(
+            value.replace(
+              /px|rem|em|vh|vw|vmin|vmax|ch|ex|deg|rad|fr|auto|none|rgba?|hsla?/gi,
+              "0",
+            ),
           )
         )
           styles[name] = value;
@@ -1315,7 +1379,7 @@ export function installPageReview(config: {
       }
     }
     for (const el of targets) {
-      const key = contextSelector(el);
+      const key = byElement.get(el)?.selector;
       if (!key) continue;
       let ancestor = el.parentElement;
       for (
@@ -2434,14 +2498,32 @@ export function installPageReview(config: {
     updateHeader();
     pins();
   }
-  async function refresh() {
-    const result = await rpc("notes");
-    if (disposed) return;
-    notes = result.notes;
-    applyTheme(result.theme);
-    $("[data-notes]").textContent = "Notes · " + notes.length + " ↗";
-    updateHeader();
-    pins();
+  let pendingRefresh: { notes: boolean; done: Promise<void> } | undefined;
+  function refresh(forceNotes = false): Promise<void> {
+    const needsNotes =
+      forceNotes || mode !== "browse" || expanded || frameKind === "note";
+    if (pendingRefresh) {
+      if (needsNotes && !pendingRefresh.notes)
+        return pendingRefresh.done
+          .catch(() => {})
+          .then(() => refresh(forceNotes));
+      return pendingRefresh.done;
+    }
+    const done = rpc(needsNotes ? "notes" : "page-status")
+      .then((result) => {
+        if (disposed) return;
+        applyTheme(result.theme);
+        if (!needsNotes) return;
+        notes = result.notes;
+        $("[data-notes]").textContent = "Notes · " + notes.length + " ↗";
+        updateHeader();
+        pins();
+      })
+      .finally(() => {
+        pendingRefresh = undefined;
+      });
+    pendingRefresh = { notes: needsNotes, done };
+    return done;
   }
   root.querySelectorAll("[data-mode]").forEach(
     (b) =>
@@ -2974,7 +3056,7 @@ export function installPageReview(config: {
       );
     },
     async focus(id: string) {
-      await refresh();
+      await refresh(true);
       const n = notes.find((n) => n.id === id);
       if (!n) throw new Error("That UI note no longer exists.");
       if (busy || !close()) return;
@@ -3053,6 +3135,7 @@ export function installPageReview(config: {
   positionLauncher();
   void refresh().catch(error);
   const refreshTimer = setInterval(() => {
+    if (pendingRefresh) return;
     void refresh().catch(() => {
       if (Date.now() - lastReply < 30000) return;
       if (frameDirty || frameSaving || busy) {

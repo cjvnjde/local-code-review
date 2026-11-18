@@ -16,7 +16,30 @@ import {
   type WebCapture,
   type WebAnnotationTarget,
 } from "../shared/web-review.ts";
-import { createWebReview, type WebReviewController } from "./controller.ts";
+import {
+  createWebReview,
+  dismissUnpresentableDialog,
+  type WebReviewController,
+} from "./controller.ts";
+
+test("only a dialog without a browser handler in the reviewed tab is dismissed", async () => {
+  const calls: unknown[][] = [];
+  const cdp = {
+    async send(method: string, params?: object, session?: string) {
+      calls.push([method, params, session]);
+      throw new Error("No dialog is showing"); // Another handler won the race.
+    },
+  };
+  await dismissUnpresentableDialog(cdp, "reviewed", "reviewed", true);
+  await dismissUnpresentableDialog(cdp, "reviewed", "reviewed", undefined);
+  await dismissUnpresentableDialog(cdp, "reviewed", "other", false);
+  await dismissUnpresentableDialog(cdp, "reviewed", undefined, false);
+  expect(calls).toEqual([]);
+  await dismissUnpresentableDialog(cdp, "reviewed", "reviewed", false);
+  expect(calls).toEqual([
+    ["Page.handleJavaScriptDialog", { accept: false }, "reviewed"],
+  ]);
+});
 
 function assertWebResult(value: unknown): asserts value is { web: WebReview } {
   assert(value && typeof value === "object" && "web" in value);

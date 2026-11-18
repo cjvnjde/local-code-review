@@ -6,6 +6,7 @@ import { boundedRequest, safeEvidenceUrl } from "./evidence.ts";
 const MAX_TEXT = 2 * 1024 * 1024;
 const MAX_SOURCE = 256 * 1024;
 const MAX_RESOURCES = 100;
+const MAX_SOURCE_TOTAL = 1024 * 1024;
 const definitions = [
   {
     name: "full-page-html",
@@ -43,6 +44,48 @@ function boundedText(text: string, limit: number) {
   return { source: bytes.subarray(0, end).toString("utf8"), truncated: true };
 }
 
+/** Runs in the page through Runtime.evaluate. Keep its limits explicit at the call site. */
+function documentSources(
+  maxHtml: number,
+  maxSource: number,
+  count: number,
+  budget: number,
+) {
+  const html =
+    (document.doctype
+      ? new XMLSerializer().serializeToString(document.doctype) + "\n"
+      : "") + (document.documentElement?.outerHTML || "");
+  const nodes = document.querySelectorAll("style,script:not([src])");
+  const inline = [];
+  const encoder = new TextEncoder();
+  const buffer = new Uint8Array(maxSource);
+  for (
+    let index = 0;
+    index < Math.min(nodes.length, count) && budget > 0;
+    index++
+  ) {
+    const node = nodes[index]!;
+    const text = node.textContent || "";
+    const { read, written } = encoder.encodeInto(
+      text,
+      buffer.subarray(0, budget),
+    );
+    inline.push({
+      kind: node.localName,
+      index,
+      source: text.slice(0, read),
+      truncated: read < text.length,
+    });
+    budget -= written;
+  }
+  return {
+    html: html.slice(0, maxHtml),
+    truncated: html.length > maxHtml,
+    partial: inline.length < nodes.length,
+    inline,
+  };
+}
+
 /** Capture-only text evidence. Never fetch URLs or render these sources as HTML. */
 export async function fullPageSources(
   cdp: Pick<Cdp, "send"> | null,
@@ -78,7 +121,7 @@ export async function fullPageSources(
     js: Source[] = [];
   let partial = false;
   // Leave room for JSON escaping and provenance below the 12 MiB part limit.
-  let remaining = 1024 * 1024;
+  let remaining = MAX_SOURCE_TOTAL;
   const add = (list: Source[], entry: Source, source: string) => {
     const bounded = boundedText(source, Math.min(MAX_SOURCE, remaining));
     remaining -= Buffer.byteLength(bounded.source);
@@ -89,7 +132,7 @@ export async function fullPageSources(
     // Bound values in the page before transporting them. Inline text is captured
     // alongside the HTML, including scripts that have no network resource entry.
     const result = await send("Runtime.evaluate", {
-      expression: `(()=>{const max=${MAX_TEXT},limit=${MAX_SOURCE},count=${MAX_RESOURCES};const html=(document.doctype?new XMLSerializer().serializeToString(document.doctype)+"\\n":"")+(document.documentElement?.outerHTML||"");const nodes=[...document.querySelectorAll("style,script:not([src])")];return {html:html.slice(0,max),truncated:html.length>max,partial:nodes.length>count,inline:nodes.slice(0,count).map((node,index)=>({kind:node.localName,index,source:(node.textContent||"").slice(0,limit),truncated:(node.textContent||"").length>limit}))}})()`,
+      expression: `(${documentSources.toString()})(${MAX_TEXT},${MAX_SOURCE},${MAX_RESOURCES},${MAX_SOURCE_TOTAL})`,
       returnByValue: true,
     });
     if (result.exceptionDetails || !result.result.value)
@@ -123,7 +166,7 @@ export async function fullPageSources(
           index: entry.index,
           status: "available",
           ...(entry.truncated
-            ? { detail: "Inline source exceeded the per-source limit." }
+            ? { detail: "Inline source was clipped to the capture budget." }
             : {}),
         },
         entry.source,
