@@ -3140,6 +3140,50 @@ test("compact header search and hover-only tree controls remain keyboard accessi
   await expect(results).toHaveCount(0);
 });
 
+test("Escape closes only an empty note editor", async ({ page }) => {
+  await page.request.delete(`${url}/api/review`);
+  await page.goto(url);
+  const overall = page.getByRole("button", {
+    name: "Overall note",
+    exact: true,
+  });
+  const editor = page.getByRole("region", { name: "Comment editor" });
+  const input = editor.getByRole("textbox", { name: "Note text" });
+  await overall.click();
+  await page.keyboard.press("Escape");
+  await expect(editor).toHaveCount(0);
+
+  await overall.click();
+  await input.fill("  \n ");
+  const preview = editor.getByRole("button", { name: "Preview", exact: true });
+  await preview.click();
+  await page.keyboard.press("Escape");
+  await expect(editor).toHaveCount(0);
+
+  await overall.click();
+  await input.fill("@src");
+  const suggestions = editor.getByRole("listbox", { name: "File references" });
+  await expect(suggestions).toBeVisible();
+  await input.press("Escape");
+  await expect(suggestions).toBeHidden();
+  await expect(input).toHaveValue("@src");
+  await input.fill("Keep this feedback.");
+  await input.press("Escape");
+  await expect(input).toHaveValue("Keep this feedback.");
+  await editor.getByRole("button", { name: "Save note", exact: true }).click();
+  const card = page
+    .getByRole("region", { name: "Code diff" })
+    .getByRole("article")
+    .filter({ hasText: "Keep this feedback." });
+  await card.getByRole("button", { name: "Edit note", exact: true }).click();
+  await input.press("Escape");
+  await expect(input).toHaveValue("Keep this feedback.");
+  await input.fill("");
+  await input.press("Escape");
+  await expect(editor).toHaveCount(0);
+  await expect(card).toBeVisible();
+});
+
 test("overall notes and formatting tools preserve the code reading position", async ({
   page,
 }) => {

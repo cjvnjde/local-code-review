@@ -207,6 +207,12 @@ export function Composer({
   const captureDraft =
     webDraftId || (draft.kind === "reply" ? draft.webDraftId : undefined);
   const hasContent = !!body.trim() || !!web;
+  const empty =
+    !hasContent &&
+    !(
+      draft.kind === "note" &&
+      (draft.comment.image || draft.comment.triage !== draft.originalTriage)
+    );
   function changeWeb(web: WebReview | null) {
     const current = latest.current;
     onChange(
@@ -296,6 +302,9 @@ export function Composer({
   // Upload completion reads the current draft, so text typed during an upload is kept.
   const latest = useRef(draft);
   latest.current = draft;
+  function isComposing(event: KeyboardEvent) {
+    return composing.current || event.isComposing || event.keyCode === 229;
+  }
   function updateCompletion(field: HTMLTextAreaElement) {
     if (composing.current) return;
     const { selectionStart: start, selectionEnd: end, value } = field;
@@ -712,12 +721,7 @@ export function Composer({
                 }
               }}
               onKeyDown={(event) => {
-                if (
-                  composing.current ||
-                  event.nativeEvent.isComposing ||
-                  event.nativeEvent.keyCode === 229
-                )
-                  return;
+                if (isComposing(event.nativeEvent)) return;
                 if (completion) {
                   if (event.key === "Escape") {
                     event.preventDefault();
@@ -758,10 +762,6 @@ export function Composer({
                   event.preventDefault();
                   wrap(event.code === "KeyB" ? "**" : "_");
                   return;
-                }
-                if (event.key === "Escape" && !busy && !draftChanged(draft)) {
-                  event.preventDefault();
-                  onClose();
                 }
                 if (
                   !event.nativeEvent.isComposing &&
@@ -898,6 +898,20 @@ export function Composer({
       data-editor-subject={subject}
       data-note-surface={!embedded && !integrated ? "" : undefined}
       aria-label="Comment editor"
+      onKeyDown={(event) => {
+        if (
+          event.key === "Escape" &&
+          empty &&
+          !busy &&
+          !event.defaultPrevented &&
+          !isComposing(event.nativeEvent) &&
+          event.currentTarget.contains(event.target as Node)
+        ) {
+          event.preventDefault();
+          event.stopPropagation();
+          onClose();
+        }
+      }}
       className={
         embedded
           ? "flex flex-1 flex-col [&_button]:rounded"

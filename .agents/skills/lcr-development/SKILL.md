@@ -54,7 +54,9 @@ note/editor shell. Keep manual review usable without an agent connection.
   existing Save/Save only/agent-action semantics and their labels/settings.
 - Preserve the configured Enter/Shift+Enter behavior, Ctrl/Cmd+Enter submission
   outside IME composition, and Escape handling that dismisses completions before
-  considering the editor. Escape must not silently discard a changed draft.
+  considering the editor. Escape closes an idle editor only when it contains
+  no text beyond whitespace, captures, images, or unsaved classification changes.
+  Closing a cleared edit preserves the saved note or reply.
 - Keep navigation callbacks independent of draft text. Retain `DiffView`'s
   `"use no memo"` directive: its TanStack Virtual instance is mutable. Changing
   this requires evidence that scrolling and measurements remain current.

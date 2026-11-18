@@ -23,7 +23,7 @@ const draft: Draft = {
   },
 };
 
-test("classification-only edits and clearing protect the draft from navigation and Escape", () => {
+test("classification changes and cleared text mark a draft as changed", () => {
   expect(draftChanged(draft)).toBe(false);
   expect(
     draftChanged({
