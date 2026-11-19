@@ -1644,6 +1644,9 @@ test("line, range and character gestures keep comments inline and protect draft 
   const input = editor.getByRole("textbox", { name: "Note text" });
   await expect(input).toBeFocused();
   await expect(input).toHaveValue("");
+  await expect(
+    pane.locator('[data-diff-kind="editor"] [data-inline-note-width]'),
+  ).toHaveCSS("background-color", unselectedBackground);
   await page.screenshot({ path: "/tmp/lcr-compact-inline-comment.png" });
   await page
     .getByRole("textbox", { name: "Note text" })
@@ -1688,6 +1691,11 @@ test("line, range and character gestures keep comments inline and protect draft 
   await expect(editor).toHaveCount(0);
   await page.reload();
   await expect(code).toBeVisible();
+  await expect(
+    pane
+      .locator('[data-diff-kind="note"] [data-inline-note-width]')
+      .filter({ hasText: "Character selection round trip" }),
+  ).toHaveCSS("background-color", unselectedBackground);
   // Alt-drag leaves native browser text selection and does not open an editor.
   const a = await codePoint(code, 10),
     b = await codePoint(code, 15);
@@ -3993,6 +4001,7 @@ test("live page capture grows notes without moving the page and opens drawings a
 test("new file comments stay editable while scrolling and saved comments scroll with the file", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 1920, height: 1000 });
   await page.goto(url);
   const pane = page.getByRole("region", { name: "Code diff" });
   await page
@@ -4008,7 +4017,7 @@ test("new file comments stay editable while scrolling and saved comments scroll 
   await expect
     .poll(() =>
       text.evaluate((field) => {
-        const editor = field.closest('[data-diff-kind="editor"]')!;
+        const editor = field.closest("[data-review-editor]")!;
         const bounds = editor.getBoundingClientRect();
         for (let y = bounds.top + 5; y < bounds.bottom - 5; y += 13)
           if (
@@ -4032,6 +4041,23 @@ test("new file comments stay editable while scrolling and saved comments scroll 
   expect(editorBox.y).toBeGreaterThanOrEqual(
     headerBox.y + headerBox.height - 1,
   );
+  await expect(pane.locator('[data-sticky-editor="true"]')).toHaveCSS(
+    "background-color",
+    "rgba(0, 0, 0, 0)",
+  );
+  await expect
+    .poll(() =>
+      text.evaluate((field) => {
+        const card = field
+          .closest("[data-review-editor]")!
+          .getBoundingClientRect();
+        const y = card.top + card.height / 2;
+        return [card.left - 4, card.right + 4].every((x) =>
+          document.elementFromPoint(x, y)?.closest("[data-row-key]"),
+        );
+      }),
+    )
+    .toBe(true);
   await page.screenshot({ path: "/tmp/lcr-sticky-file-draft.png" });
   await pane.getByRole("button", { name: "Save note", exact: true }).click();
   await expect(text).toHaveCount(0);

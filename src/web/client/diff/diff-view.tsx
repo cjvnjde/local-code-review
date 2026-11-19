@@ -35,6 +35,7 @@ import { gapOf, insertContext, markTails, expandRange } from "./gaps.ts";
 import { FileHeader } from "./file-header.tsx";
 import { FileMedia } from "./media.tsx";
 import { CodeRow } from "./row.tsx";
+import { cn } from "../components/ui/button.tsx";
 import {
   diffItems,
   itemKey,
@@ -677,9 +678,42 @@ export function DiffView({
   }
   // Keep wide notes aligned to code, but reclaim the gutter as the diff pane narrows.
   // Resolve ch-based widths with code metrics without changing note typography.
-  const inlineNoteClass =
-    "flex min-w-0 py-2 pr-2 before:shrink-0 before:w-[clamp(0.5rem,calc(25cqi_-_10rem),var(--code-inset,0.5rem))] before:font-mono before:text-xs before:content-['']";
-  const inlineNoteContentClass = `min-w-0 flex-1 ${settings.noteWidth === "compact" ? "max-w-4xl" : ""}`;
+  const renderInlineNote = (
+    entry: Extract<DiffItem, { kind: "note" | "editor" }>,
+  ) => (
+    <div
+      className={cn(
+        "flex min-w-0 py-2 pr-2 before:shrink-0 before:w-[clamp(0.5rem,calc(25cqi_-_10rem),var(--code-inset,0.5rem))] before:font-mono before:text-xs before:content-['']",
+        entry.anchorType === "add" && "diff-add",
+        entry.anchorType === "del" && "diff-del",
+      )}
+      style={gutterStyles.get(entry.path)}
+      data-inline-note-width={settings.noteWidth}
+    >
+      <div
+        className={cn(
+          "pointer-events-auto min-w-0 flex-1",
+          settings.noteWidth === "compact" && "max-w-4xl",
+        )}
+        data-inline-note-content
+      >
+        {entry.kind === "editor" ? (
+          editor
+        ) : (
+          <NoteCard
+            note={entry.note}
+            file={entry.file}
+            agent={agent}
+            onCompose={onCompose}
+            inline
+            editorDraft={draft ?? undefined}
+            onChangeDraft={onChangeDraft}
+            editor={editingId === entry.note.id ? editor : undefined}
+          />
+        )}
+      </div>
+    </div>
+  );
   const renderItem = (item: VirtualItem, offset = 0) => {
     const entry = items[item.index]!;
     if (entry.kind === "header") {
@@ -762,21 +796,10 @@ export function DiffView({
               data-diff-kind={entry.kind}
               data-item-key={entry.key}
               data-sticky-editor={header === activeHeader || undefined}
-              className="pointer-events-auto sticky z-[15] w-full bg-background"
+              className="sticky z-[15] w-full"
               style={{ top: headerHeight }}
             >
-              <div
-                className={inlineNoteClass}
-                style={gutterStyles.get(entry.path)}
-                data-inline-note-width={settings.noteWidth}
-              >
-                <div
-                  className={inlineNoteContentClass}
-                  data-inline-note-content
-                >
-                  {editor}
-                </div>
-              </div>
+              {renderInlineNote(entry)}
             </div>
           </div>
         );
@@ -835,42 +858,8 @@ export function DiffView({
             lines{entry.hasNotes && " · contains notes"}
           </button>
         )}
-        {entry.kind === "editor" && (
-          <div
-            className={inlineNoteClass}
-            style={gutterStyles.get(entry.path)}
-            data-inline-note-width={settings.noteWidth}
-          >
-            <div className={inlineNoteContentClass} data-inline-note-content>
-              {editor}
-            </div>
-          </div>
-        )}
-        {entry.kind === "note" && (
-          <div
-            className={inlineNoteClass}
-            style={gutterStyles.get(entry.path)}
-            data-inline-note-width={settings.noteWidth}
-          >
-            <div className={inlineNoteContentClass} data-inline-note-content>
-              <NoteCard
-                note={entry.note}
-                file={entry.file}
-                agent={agent}
-                onCompose={onCompose}
-                inline
-                editorDraft={draft ?? undefined}
-                onChangeDraft={onChangeDraft}
-                editor={
-                  (draft?.kind === "note" ? draft.comment.id : draft?.id) ===
-                  entry.note.id
-                    ? editor
-                    : undefined
-                }
-              />
-            </div>
-          </div>
-        )}
+        {(entry.kind === "editor" || entry.kind === "note") &&
+          renderInlineNote(entry)}
         {entry.kind === "row" && (
           <CodeRow
             file={entry.file}

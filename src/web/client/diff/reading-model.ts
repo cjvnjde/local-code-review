@@ -1,5 +1,6 @@
 import type {
   DiffFile,
+  DiffRowType,
   ReviewNote,
   ReviewComment,
 } from "../../../shared/review-types.ts";
@@ -16,8 +17,18 @@ export type DiffItem = { key: string; path: string } & (
       open: boolean;
       hasNotes: boolean;
     }
-  | { kind: "note"; note: ReviewNote; file?: DiffFile }
-  | { kind: "editor"; comment: ReviewComment; file?: DiffFile }
+  | {
+      kind: "note";
+      note: ReviewNote;
+      file?: DiffFile;
+      anchorType?: DiffRowType;
+    }
+  | {
+      kind: "editor";
+      comment: ReviewComment;
+      file?: DiffFile;
+      anchorType?: DiffRowType;
+    }
 );
 export const itemKey = (path: string, part: string) =>
   JSON.stringify([path, part]);
@@ -41,7 +52,7 @@ export function diffItems(
   const items: DiffItem[] = [];
   const editor = options.editor;
   const heldNotes = notes.filter((note) => note.id !== editor?.id);
-  const addEditor = (file?: DiffFile) => {
+  const addEditor = (file?: DiffFile, anchorType?: DiffRowType) => {
     if (editor)
       items.push({
         key: itemKey("", "editor"),
@@ -49,16 +60,22 @@ export function diffItems(
         kind: "editor",
         comment: editor,
         file,
+        anchorType,
       });
   };
   if (editor?.scope === "global") addEditor();
-  const addNote = (note: ReviewNote, file?: DiffFile) =>
+  const addNote = (
+    note: ReviewNote,
+    file?: DiffFile,
+    anchorType?: DiffRowType,
+  ) =>
     items.push({
       key: itemKey(note.file, `note:${note.id}`),
       path: file?.path || "",
       kind: "note",
       file,
       note,
+      anchorType,
     });
   heldNotes
     .filter((note) => note.scope === "global")
@@ -119,6 +136,22 @@ export function diffItems(
         kind: "empty",
         file,
       });
+    const addRow = (row: number) => {
+      const current = file.rows[row]!;
+      const key =
+        current.t === "hunk"
+          ? `hunk:${current.text || "tail"}`
+          : rowKey(current);
+      items.push({
+        key: itemKey(file.path, key),
+        path: file.path,
+        kind: "row",
+        file,
+        row,
+      });
+      at.get(row)?.forEach((note) => addNote(note, file, current.t));
+      if (draftPlace?.to === row) addEditor(file, current.t);
+    };
     for (let row = 0; row < file.rows.length; row++) {
       if (options.removed[file.path] && file.rows[row]!.t === "del") {
         const from = row;
@@ -144,34 +177,11 @@ export function diffItems(
         if (!open) continue;
         row = from;
         // Emit the open run here, so its following lines aren't interpreted as a new run.
-        for (; row <= to; row++) {
-          items.push({
-            key: itemKey(file.path, rowKey(file.rows[row]!)),
-            path: file.path,
-            kind: "row",
-            file,
-            row,
-          });
-          at.get(row)?.forEach((note) => addNote(note, file));
-          if (draftPlace?.to === row) addEditor(file);
-        }
+        for (; row <= to; row++) addRow(row);
         row = to;
         continue;
       }
-      const current = file.rows[row]!;
-      const key =
-        current.t === "hunk"
-          ? `hunk:${current.text || "tail"}`
-          : rowKey(current);
-      items.push({
-        key: itemKey(file.path, key),
-        path: file.path,
-        kind: "row",
-        file,
-        row,
-      });
-      at.get(row)?.forEach((note) => addNote(note, file));
-      if (draftPlace?.to === row) addEditor(file);
+      addRow(row);
     }
     if (options.horizontalScroll && file.rows.length)
       items.push({
