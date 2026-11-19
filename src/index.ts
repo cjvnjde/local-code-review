@@ -234,7 +234,7 @@ async function main() {
       range,
       reviewId: options.id,
       context: options.context,
-      uiDefaults: settings.ui,
+      uiDefaults: options.ui,
       saveUiSettings: (patch) => saveUiSettings(patch, configFile),
       getThemes: () => loadThemes(configFile),
       treeSitter,

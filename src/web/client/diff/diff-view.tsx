@@ -176,7 +176,7 @@ export function DiffView({
     scroll,
     prepared,
     onComment,
-    !!draft,
+    { editorOpen: !!draft, reviewMode: settings.reviewMode },
   );
   const anchor = useRef<ReadingAnchor | null>(null);
   const pendingJump = useRef<{

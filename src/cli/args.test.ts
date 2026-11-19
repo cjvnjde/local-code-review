@@ -2,6 +2,25 @@ import { describe, expect, test } from "bun:test";
 import { normalizeId, parseArgs } from "./args.ts";
 
 describe("parseArgs", () => {
+  test("review mode flags override saved gestures for the run and respect the Git path separator", () => {
+    const defaults = { ui: { reviewMode: false, wrapLines: false } };
+    expect(
+      parseArgs(
+        [
+          "--no-review-mode",
+          "--review-mode",
+          "--staged",
+          "--",
+          "--no-review-mode",
+        ],
+        defaults,
+      ),
+    ).toMatchObject({
+      ui: { reviewMode: true, wrapLines: false },
+      diffArgs: ["--staged", "--", "--no-review-mode"],
+    });
+    expect(defaults.ui.reviewMode).toBe(false);
+  });
   test("Tree-sitter defaults can be overridden without forwarding flags to Git", () => {
     expect(
       parseArgs(["--tree-sitter", "--staged"], { treeSitter: false }),

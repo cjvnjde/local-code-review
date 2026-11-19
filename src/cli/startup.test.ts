@@ -408,7 +408,7 @@ test("user startup defaults reach the server, explicit argv wins, and worktree r
       id: " configured` review\n",
       web: "http://localhost:3000",
       diffArgs: ["origin/main"],
-      ui: { auto: false, expand: 50, hide: "*.lock" },
+      ui: { auto: false, expand: 50, hide: "*.lock", reviewMode: true },
     };
     await writeFile(settingsFile, JSON.stringify(configured));
     const source = await readFile(settingsFile, "utf8");
@@ -439,6 +439,7 @@ test("user startup defaults reach the server, explicit argv wins, and worktree r
       "--id",
       "",
       "--no-web",
+      "--no-review-mode",
       "--staged",
     ]);
     expect(explicit.diff).toMatchObject({
@@ -451,7 +452,10 @@ test("user startup defaults reach the server, explicit argv wins, and worktree r
       explicit.diff.files.map((file: { path: string }) => file.path),
     ).toEqual(["staged.txt"]);
     expect(explicit.reviews.dir).toBe(".override");
-    expect(explicit.ui.defaults).toEqual(configured.ui);
+    expect(explicit.ui.settings).toMatchObject({
+      ...configured.ui,
+      reviewMode: false,
+    });
 
     const worktree = await run(["--worktree", "--no-web"]);
     expect(worktree.diff.range).toBe("working tree vs HEAD (incl. untracked)");
@@ -466,6 +470,7 @@ test("user startup defaults reach the server, explicit argv wins, and worktree r
     );
     const restarted = await run(["--no-web"]);
     expect(restarted.ui.defaults).toEqual({ auto: true });
+    expect(restarted.ui.settings.reviewMode).toBe(false);
     expect(restarted.ui.runId).not.toBe(bare.ui.runId);
   } finally {
     await rm(root, { recursive: true, force: true });

@@ -76,13 +76,13 @@ export function useCodeSelection(
   pane: RefObject<HTMLDivElement | null>,
   files: DiffFile[],
   submit: (comment: ReviewComment) => boolean | void,
-  editorOpen: boolean,
+  { editorOpen, reviewMode }: { editorOpen: boolean; reviewMode: boolean },
 ) {
   const [selection, setSelection] = useState<CodeSelection | null>(null);
   const [pressed, setPressed] = useState<string | null>(null);
   const press = useRef<Press | null>(null);
-  const latest = useRef({ files, submit, selection, editorOpen });
-  latest.current = { files, submit, selection, editorOpen };
+  const latest = useRef({ files, submit, selection, editorOpen, reviewMode });
+  latest.current = { files, submit, selection, editorOpen, reviewMode };
   const clearSelection = useCallback(() => setSelection(null), []);
   useEffect(() => {
     const root = pane.current;
@@ -143,7 +143,6 @@ export function useCodeSelection(
     function down(event: PointerEvent) {
       if (
         event.button !== 0 ||
-        event.altKey ||
         !(event.target instanceof Element) ||
         event.target.closest("[data-row-action]")
       )
@@ -152,13 +151,20 @@ export function useCodeSelection(
         '[data-diff-kind="row"][data-row-index]',
       );
       if (!row || !root?.contains(row)) return;
+      const cell = event.target.closest<HTMLElement>("[data-code-cell]");
+      const { reviewMode, editorOpen } = latest.current;
+      const selectingText = reviewMode ? !!cell && !event.altKey : event.altKey;
+      if (selectingText) return;
       const file = latest.current.files.find(
         (file) => file.path === row.dataset.filePath,
       );
       const index = Number(row.dataset.rowIndex);
       if (!file || file.rows[index]?.t === "hunk") return;
-      const cell = event.target.closest<HTMLElement>("[data-code-cell]");
+      // Normal mode also allows plain text drags while a draft is open.
+      const native = !!cell && editorOpen && !event.shiftKey && !reviewMode;
       if (!cell) event.preventDefault();
+      // A note gesture over previously copied text needs a fresh character range.
+      else if (!native) window.getSelection()?.removeAllRanges();
       const previous = latest.current.selection;
       const extended = !!(
         event.shiftKey &&
@@ -179,12 +185,10 @@ export function useCodeSelection(
         off: cell ? caretAt(cell, event.clientX, event.clientY) : null,
         extended,
         wandered: false,
-        native: !!cell && latest.current.editorOpen && !event.shiftKey,
+        native,
         previous,
       };
-      // With a draft open, let the browser own text dragging and auto-scroll.
-      // Gutter and Shift gestures still adjust the comment's selected range.
-      if (press.current.native) return;
+      if (native) return;
       setPressed(itemKey(file.path, String(index)));
       paint(press.current);
       frame = requestAnimationFrame(autoScroll);

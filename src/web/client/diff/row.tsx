@@ -201,7 +201,10 @@ export function CodeRow({
               aria-label={`Comment on line ${row.n ?? row.o}${row.t === "del" ? " before change" : ""}`}
               title="Comment on line (Shift to extend selection)"
               onClick={(e) => {
-                if ((!settings.lineNumbers || e.detail === 0) && !e.altKey)
+                if (
+                  (!settings.lineNumbers || e.detail === 0) &&
+                  (!e.altKey || settings.reviewMode)
+                )
                   onSelect(e.shiftKey);
               }}
             >

@@ -100,6 +100,12 @@ The browser opens at `http://localhost:7777`; if the port is taken, lcr prints t
 2. **Save note** writes that note to `.review/review-<timestamp>.md` without starting an agent. The output directory is ignored by Git.
 3. Ask your agent to address that file. Replies and status changes appear live; keep the conversation going under each note.
 
+To copy code into another AI tool, start with `lcr --review-mode`. Drag to
+select text and press Cmd+C or Ctrl+C to copy. Hold Alt (Option on Mac) and
+click or drag to add a note. Enable **Settings → Reading and editing → Review
+mode** to make this your default, or use `--no-review-mode` to start a run
+with the usual note gestures.
+
 ### Tree-sitter highlighting
 
 lcr automatically prefers an installed `tree-sitter` CLI for code diffs when its

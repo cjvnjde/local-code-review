@@ -88,6 +88,27 @@ export function Settings({
       <TreeSitterSettings {...treeSitter} />
       <section className="space-y-3">
         <h3 className="text-sm font-semibold">Reading and editing</h3>
+        <div className="space-y-1">
+          <label className="flex items-center gap-3 text-sm">
+            <input
+              type="checkbox"
+              checked={ui.settings.reviewMode}
+              aria-describedby="review-mode-gestures"
+              onChange={(event) =>
+                ui.update({ reviewMode: event.target.checked })
+              }
+            />
+            Review mode
+          </label>
+          <p
+            id="review-mode-gestures"
+            className="text-xs text-muted-foreground"
+          >
+            {ui.settings.reviewMode
+              ? "Drag to select code for copying. Hold Alt (Option on Mac) and click or drag to add a note."
+              : "Click or drag code to add a note. Hold Alt (Option on Mac) and drag to select text for copying."}
+          </p>
+        </div>
         {(
           [
             ["auto", "Mark files viewed as I read"],
@@ -159,7 +180,7 @@ export function Settings({
         </label>
         <p className="text-xs text-muted-foreground">
           ⌘/Ctrl K: search · Alt J/K: notes · Alt ↑/↓: bookmarks · Alt C: all
-          notes · Alt-drag: select text for copying.
+          notes
         </p>
       </section>
       <section className="space-y-3">

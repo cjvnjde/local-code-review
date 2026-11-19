@@ -1,4 +1,5 @@
 import type { ImageRegion } from "./image-region.ts";
+import type { UiSettings } from "./settings.ts";
 import type { SyntaxToken } from "./syntax.ts";
 
 export type FileStatus = "modified" | "added" | "deleted" | "renamed";
@@ -99,6 +100,8 @@ export interface CliOptions {
   browserDataDir?: string;
   /** Prefer the installed Tree-sitter CLI; false keeps bundled highlight.js only. */
   treeSitter?: boolean;
+  /** UI defaults for this run, including explicit command-line overrides. */
+  ui?: Partial<UiSettings>;
   diffArgs: string[];
 }
 

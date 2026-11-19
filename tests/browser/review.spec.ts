@@ -232,6 +232,20 @@ async function codePoint(cell: Locator, offset: number) {
   }, offset);
 }
 
+async function dragCode(
+  page: Page,
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  alt = false,
+) {
+  if (alt) await page.keyboard.down("Alt");
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(to.x, to.y, { steps: 8 });
+  await page.mouse.up();
+  if (alt) await page.keyboard.up("Alt");
+}
+
 test("Tree-sitter settings detect missing tools and preserve a retryable background installation", async ({
   page,
 }) => {
@@ -1430,6 +1444,82 @@ test("adding an offscreen editor and saving a note never navigates away from the
   ).toMatchObject({ file: "untracked.ts" });
 });
 
+test("review mode copies code by default and uses Alt to target notes", async ({
+  page,
+}) => {
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto(url);
+  const settingsButton = page.getByRole("button", {
+    name: "Settings",
+    exact: true,
+  });
+  const settings = page.getByRole("dialog", { name: "Settings" });
+  const mode = settings.getByRole("checkbox", {
+    name: "Review mode",
+    exact: true,
+  });
+  await settingsButton.click();
+  await expect(mode).not.toBeChecked();
+  await mode.press("Space");
+  await expect(mode).toBeChecked();
+  await settings.getByRole("button", { name: "Close dialog" }).click();
+  await page.reload();
+  await settingsButton.click();
+  await expect(mode).toBeChecked();
+  await settings.getByRole("button", { name: "Close dialog" }).click();
+
+  await page
+    .getByRole("navigation")
+    .getByTitle("untracked.ts", { exact: true })
+    .click();
+  const rows = page
+    .getByRole("region", { name: "Code diff" })
+    .locator('[data-file-path="untracked.ts"]');
+  const cell = (line: number) =>
+    rows.locator(`[data-row-key="n${line}"] [data-code-cell]`);
+  const editor = page.locator("[data-review-editor]");
+  const input = editor.getByRole("textbox", { name: "Note text", exact: true });
+  await expect(cell(4)).toBeInViewport();
+  await cell(3).click();
+  await expect(editor).toHaveCount(0);
+  await dragCode(
+    page,
+    await codePoint(cell(4), 18),
+    await codePoint(cell(2), 13),
+  );
+  await page.keyboard.press("ControlOrMeta+c");
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toBe("item1 = 1;\nexport const item2 = 2;\nexport const item3");
+  await expect(editor).toHaveCount(0);
+
+  // Start a character note inside the text that was just copied.
+  await dragCode(
+    page,
+    await codePoint(cell(3), 13),
+    await codePoint(cell(3), 18),
+    true,
+  );
+  await expect(editor.getByText("· 3:14-18", { exact: true })).toBeVisible();
+  await input.fill("Keep this draft");
+  await cell(2).click();
+  await expect(input).toHaveValue("Keep this draft");
+  await expect(input).not.toBeFocused();
+  await dragCode(
+    page,
+    await codePoint(cell(3), 18),
+    await codePoint(cell(2), 13),
+    true,
+  );
+  await expect(editor.getByText("· 2-3", { exact: true })).toBeVisible();
+  await expect(input).toHaveValue("Keep this draft");
+  await editor.getByRole("button", { name: "Cancel", exact: true }).click();
+  await rows
+    .getByRole("button", { name: "Comment on line 2", exact: true })
+    .press("Enter");
+  await expect(input).toBeFocused();
+});
+
 test("code selections copy to the clipboard while an open note keeps its text and target", async ({
   page,
 }) => {
@@ -1447,10 +1537,7 @@ test("code selections copy to the clipboard while an open note keeps its text an
     expected: string,
   ) => {
     await page.evaluate(() => navigator.clipboard.writeText("Before copying"));
-    await page.mouse.move(from.x, from.y);
-    await page.mouse.down();
-    await page.mouse.move(to.x, to.y, { steps: 8 });
-    await page.mouse.up();
+    await dragCode(page, from, to);
     await expect
       .poll(() => page.evaluate(() => window.getSelection()?.toString()))
       .not.toBe("");
@@ -1581,10 +1668,7 @@ test("line, range and character gestures keep comments inline and protect draft 
   // A real native drag through syntax-highlighted text, then save/reload its columns.
   const from = await codePoint(code, 10),
     to = await codePoint(code, 15);
-  await page.mouse.move(from.x, from.y);
-  await page.mouse.down();
-  await page.mouse.move(to.x, to.y, { steps: 8 });
-  await page.mouse.up();
+  await dragCode(page, from, to);
 
   await page
     .getByRole("textbox", { name: "Note text" })
@@ -1607,16 +1691,14 @@ test("line, range and character gestures keep comments inline and protect draft 
   // Alt-drag leaves native browser text selection and does not open an editor.
   const a = await codePoint(code, 10),
     b = await codePoint(code, 15);
-  await page.keyboard.down("Alt");
-  await page.mouse.move(a.x, a.y);
-  await page.mouse.down();
-  await page.mouse.move(b.x, b.y, { steps: 8 });
-  await page.mouse.up();
-  await page.keyboard.up("Alt");
+  await dragCode(page, a, b, true);
   await expect(editor).toHaveCount(0);
   expect(await page.evaluate(() => window.getSelection()?.toString())).toBe(
     "hello",
   );
+  await dragCode(page, await codePoint(code, 11), await codePoint(code, 14));
+  await expect(editor.getByText("· 2:12-14", { exact: true })).toBeVisible();
+  await editor.getByRole("button", { name: "Cancel", exact: true }).click();
   // Reverse multiline drag on adjacent rows in the continuous diff.
   await page
     .getByRole("navigation")
