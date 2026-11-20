@@ -1021,20 +1021,19 @@ function Workspace({
                           }
                           setFilesHidden(paths, hidden);
                         }}
-                        onViewed={(paths, viewed) =>
-                          setMarks((current) => ({
-                            ...current,
-                            ...Object.fromEntries(
-                              paths.map((path) => [
-                                path,
-                                viewed
-                                  ? files.find((file) => file.path === path)!
-                                      .hash
-                                  : "",
-                              ]),
-                            ),
-                          }))
-                        }
+                        onViewed={(targets, viewed) => {
+                          setMarks((current) => {
+                            const next: Record<string, string> = Object.assign(
+                              Object.create(null),
+                              current,
+                            );
+                            for (const { path, hash } of targets) {
+                              autoViewed.current.delete(path);
+                              next[path] = viewed ? hash : "";
+                            }
+                            return next;
+                          });
+                        }}
                       />
                       {!treeFiles.length && (
                         <p className="p-3 text-xs text-muted-foreground">

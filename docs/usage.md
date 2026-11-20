@@ -28,8 +28,9 @@ Scroll through the entire review in one pane; files follow one another in sideba
 order. The sidebar highlights the file under the top of the pane. Its links jump
 within that continuous review instead of replacing it.
 Only a small window of code and notes is mounted, even for very large diffs.
-File visibility controls appear on row hover or keyboard focus without reserving
-a separate column.
+Each file has two independent controls in the tree: the eye hides or shows its
+diff, and the check marks it viewed or unviewed. A manually hidden file stays
+in the tree, so you can change its viewed mark without showing it again.
 
 In Settings → File visibility, enter one glob per line or separate them with
 commas. For example, `*.spec.*` hides `something.spec.ts` at any depth in both
@@ -59,12 +60,14 @@ its expanded width instead of rewrapping it during the animation. Newly arriving
 notes/replies use brief, subtle animations. Dragging stays immediate; reduced-motion
 preferences disable these animations.
 
-File headers stay visible while reading their code. Their history badge opens
-earlier-review notes without adding another header row. Collapse a file with its
-chevron, or mark it **Viewed** to collapse it and record progress. A navigation jump
-reopens it while keeping its viewed mark; a changed file becomes unviewed. Gutter
-arrows reveal omitted context above or below. Middle gaps offer both directions,
-or one unfold control when the batches would meet. The batch size is configurable
+File headers stay visible while reading their code and show the repository-relative
+path. When space is tight, an ellipsis in the middle keeps both ends visible.
+The history badge opens earlier-review notes without adding another header row.
+Collapse a file with its chevron, or use **Viewed** in the header to collapse it
+and record progress. A navigation jump reopens it while keeping its viewed mark;
+a changed file becomes unviewed. Gutter arrows reveal omitted context above or
+below. Middle gaps offer both directions, or one unfold control when the batches
+would meet. The batch size is configurable
 in Settings. **File actions → Fold removed lines** replaces deletions with
 expandable markers; a run containing a note stays open.
 

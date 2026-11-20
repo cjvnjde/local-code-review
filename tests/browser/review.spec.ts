@@ -280,6 +280,52 @@ test("Markdown preview formats the visible diff and follows context expansion", 
   }
 });
 
+test("file tree toggles viewed and hidden independently without navigating", async ({
+  page,
+}) => {
+  const file = "staged.txt";
+  const tree = page.getByRole("navigation");
+  const pane = page.getByRole("region", { name: "Code diff" });
+  const heading = pane.getByRole("heading", { name: file, exact: true });
+  const viewed = tree.getByRole("button", {
+    name: `Viewed: ${file}`,
+    exact: true,
+  });
+  const show = tree.getByRole("button", {
+    name: `Show file ${file}`,
+    exact: true,
+  });
+  const current = tree.getByTitle("src/app.ts", { exact: true });
+
+  await page.goto(url);
+  await current.click();
+  await expect(heading).toBeVisible();
+  await tree.getByTitle(file, { exact: true }).hover();
+  await tree
+    .getByRole("button", { name: `Hide file ${file}`, exact: true })
+    .click();
+  await expect(heading).toHaveCount(0);
+  await expect(viewed).toHaveAttribute("aria-pressed", "false");
+  await viewed.press("Space");
+  await expect(viewed).toHaveAttribute("aria-pressed", "true");
+  await expect(heading).toHaveCount(0);
+  await expect(current).toHaveAttribute("aria-current", "true");
+
+  await page.reload();
+  await expect(viewed).toHaveAttribute("aria-pressed", "true");
+  await expect(heading).toHaveCount(0);
+  await show.press("Enter");
+  await expect(heading).toBeVisible();
+  await expect(
+    pane.getByRole("button", { name: `Mark unviewed: ${file}`, exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await viewed.click();
+  await expect(
+    pane.getByRole("button", { name: `Mark viewed: ${file}`, exact: true }),
+  ).toHaveAttribute("aria-pressed", "false");
+  await expect(heading).toBeVisible();
+});
+
 test("hide patterns exclude matching files from the tree and diff after a manual show", async ({
   page,
 }) => {
@@ -2418,9 +2464,12 @@ test("continuous scrolling follows files, reopens viewed files, and preserves th
     navigation.locator('button[title="src/app.ts"]'),
   ).toHaveAttribute("aria-current", "true");
   await navigation.locator('button[title="src/app.ts"]').click();
-  await expect(
-    pane.getByRole("heading", { name: "src/app.ts", exact: true }),
-  ).toBeInViewport();
+  const firstHeading = pane.getByRole("heading", {
+    name: "src/app.ts",
+    exact: true,
+  });
+  await expect(firstHeading).toBeInViewport();
+  await expect(firstHeading).toHaveText("src/app.ts");
   // One wheel gesture carries the review into subsequent files, without picking a file.
   await pane.hover();
   await page.mouse.wheel(0, 2000);

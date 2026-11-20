@@ -16,6 +16,8 @@ import { Tooltip } from "../components/ui/tooltip.tsx";
 import { useAction } from "../app/api.ts";
 import { RelatedReviews } from "../notes/related-reviews.tsx";
 
+const graphemes = new Intl.Segmenter();
+
 export function FileHeader({
   file,
   viewed,
@@ -43,6 +45,10 @@ export function FileHeader({
 }) {
   const action = useAction();
   const { settings } = useUi();
+  const center = graphemes
+    .segment(file.path)
+    .containing(Math.ceil(file.path.length / 2) - 1);
+  const midpoint = center ? center.index + center.segment.length : 0;
   const openInEditor = () =>
     action.mutate({
       url: "/api/open-file",
@@ -65,11 +71,18 @@ export function FileHeader({
           </Button>
         </Tooltip>
         <h2
-          className="min-w-0 flex-1 truncate font-mono text-sm"
+          className="flex min-w-0 flex-1 whitespace-nowrap font-mono text-sm [white-space-collapse:preserve-spaces]"
+          dir="ltr"
           aria-label={file.path}
           title={file.from ? `${file.from} → ${file.path}` : file.path}
         >
-          {file.path.split("/").at(-1)}
+          {/* Only the prefix paints an ellipsis; the suffix keeps its right edge. */}
+          <span className="min-w-[min(1ch,100%)] overflow-hidden text-ellipsis">
+            {file.path.slice(0, midpoint)}
+          </span>
+          <span className="flex min-w-0 justify-end overflow-hidden">
+            <span className="shrink-0">{file.path.slice(midpoint)}</span>
+          </span>
         </h2>
         <span className="shrink-0 text-xs text-diff-add-foreground">
           +{file.added}
