@@ -3315,7 +3315,7 @@ test("Base UI focus and pane resizing preserve drafts, reading position and save
   expect(errors).toEqual([]);
 });
 
-test("compact header search and hover-only tree controls remain keyboard accessible", async ({
+test("compact header search and file tree controls remain keyboard accessible", async ({
   page,
 }) => {
   await page.request.post(`${url}/api/note`, {
@@ -3407,18 +3407,15 @@ test("compact header search and hover-only tree controls remain keyboard accessi
     name: "Hide file src/app.ts",
     exact: true,
   });
-  await search.focus();
-  await page.mouse.move(searchBox.x + 8, searchBox.y + 8);
-  await expect(eye).toHaveCSS("opacity", "0");
-  const before = await filename.boundingBox();
-  await filename.hover();
-  await expect(eye).toHaveCSS("opacity", "1");
-  expect(await filename.boundingBox()).toEqual(before);
-  await page.mouse.move(searchBox.x + 8, searchBox.y + 8);
-  await eye.focus();
-  await expect(eye).toHaveCSS("opacity", "1");
-  await search.focus();
-  await expect(eye).toHaveCSS("opacity", "0");
+  await filename.focus();
+  await page.keyboard.press("Tab");
+  await expect(eye).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(
+    navigation.getByRole("button", { name: "Viewed: src/app.ts", exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("Control+k");
+  await expect(search).toBeFocused();
   await search.fill("helo world");
   const results = page.getByRole("listbox", { name: "Search suggestions" });
   const advanced = page.getByRole("region", { name: "Search this review" });
