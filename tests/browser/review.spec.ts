@@ -283,7 +283,7 @@ test("Markdown preview formats the visible diff and follows context expansion", 
 test("file tree toggles viewed and hidden independently without navigating", async ({
   page,
 }) => {
-  const file = "staged.txt";
+  const file = "src/deleted.ts";
   const tree = page.getByRole("navigation");
   const pane = page.getByRole("region", { name: "Code diff" });
   const heading = pane.getByRole("heading", { name: file, exact: true });
@@ -295,17 +295,32 @@ test("file tree toggles viewed and hidden independently without navigating", asy
     name: `Show file ${file}`,
     exact: true,
   });
+  const entry = tree.getByTitle(file, { exact: true });
+  const width = (locator: Locator) =>
+    locator.evaluate((element) => element.getBoundingClientRect().width);
   const current = tree.getByTitle("src/app.ts", { exact: true });
 
   await page.goto(url);
   await current.click();
   await expect(heading).toBeVisible();
-  await tree.getByTitle(file, { exact: true }).hover();
+  const restingWidth = await width(entry);
+  await entry.hover();
+  expect(restingWidth - (await width(entry))).toBeGreaterThanOrEqual(48);
   await tree
     .getByRole("button", { name: `Hide file ${file}`, exact: true })
     .click();
   await expect(heading).toHaveCount(0);
   await expect(viewed).toHaveAttribute("aria-pressed", "false");
+  await current.hover();
+  expect(await width(show)).toBeGreaterThan(12);
+  expect(await width(viewed)).toBeLessThanOrEqual(1);
+  const eye = (await show.boundingBox())!;
+  await page.mouse.click(eye.x + eye.width - 1, eye.y + eye.height / 2);
+  await expect(heading).toBeVisible();
+  await expect(viewed).toHaveAttribute("aria-pressed", "false");
+  await tree
+    .getByRole("button", { name: `Hide file ${file}`, exact: true })
+    .click();
   await viewed.press("Space");
   await expect(viewed).toHaveAttribute("aria-pressed", "true");
   await expect(heading).toHaveCount(0);
@@ -313,6 +328,14 @@ test("file tree toggles viewed and hidden independently without navigating", asy
 
   await page.reload();
   await expect(viewed).toHaveAttribute("aria-pressed", "true");
+  expect(await width(viewed)).toBeGreaterThan(12);
+  expect(await width(show)).toBeGreaterThan(12);
+  const folderViewed = tree.getByRole("button", {
+    name: "Mark folder viewed src",
+    exact: true,
+  });
+  await expect(folderViewed).toHaveAttribute("aria-pressed", "mixed");
+  expect(await width(folderViewed)).toBeGreaterThan(12);
   await expect(heading).toHaveCount(0);
   await show.press("Enter");
   await expect(heading).toBeVisible();

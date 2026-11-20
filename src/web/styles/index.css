@@ -131,6 +131,27 @@
     accent-color: var(--primary);
   }
 }
+@media (hover: hover) and (pointer: fine) {
+  .file-tree-row:not(:hover):not(:has(:focus-visible)) {
+    > .file-tree-action {
+      @apply w-5;
+    }
+    > .file-tree-action[data-active="false"] {
+      /* Keep both actions in Tab order, including when entering a row backwards. */
+      @apply pointer-events-none sr-only;
+    }
+    /* Keep the eye inside its hover target. The status can fill the checkbox slot when unused. */
+    > [data-active="true"] + [data-active="true"] {
+      @apply w-7;
+    }
+    &:has(> [data-active="true"] + [aria-pressed="false"]) {
+      @apply relative pr-8;
+      .file-tree-meta {
+        @apply absolute right-1 w-7 text-center;
+      }
+    }
+  }
+}
 .diff-add {
   background-color: var(--diff-add);
 }

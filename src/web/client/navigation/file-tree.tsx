@@ -41,7 +41,8 @@ function TreeActions({
       <Button
         size="icon"
         variant="ghost"
-        className="size-7 text-muted-foreground pointer-coarse:size-10"
+        className="file-tree-action size-7 text-muted-foreground hover:bg-card pointer-coarse:size-10"
+        data-active={hidden}
         aria-label={
           kind === "folder"
             ? `Toggle folder visibility ${path}`
@@ -55,7 +56,8 @@ function TreeActions({
       <Button
         size="icon"
         variant="ghost"
-        className="size-7 text-muted-foreground aria-pressed:text-success pointer-coarse:size-10"
+        className="file-tree-action size-7 text-muted-foreground hover:bg-card aria-pressed:text-success pointer-coarse:size-10"
+        data-active={viewed !== false}
         aria-label={
           kind === "file" ? `Viewed: ${path}` : `Mark folder viewed ${path}`
         }
@@ -142,9 +144,9 @@ export function FileTree({
           const allViewed = viewedCount === descendants.length;
           return (
             <div key={directory.path}>
-              <div className="flex items-center rounded hover:bg-accent">
+              <div className="file-tree-row flex items-center rounded pr-1 hover:bg-accent">
                 <button
-                  className="flex min-w-0 flex-1 items-center gap-2 px-2 py-2 text-left text-xs text-muted-foreground"
+                  className="flex min-w-0 flex-1 items-center gap-2 rounded py-2 pr-1 pl-2 text-left text-xs text-muted-foreground"
                   aria-expanded={!closed}
                   aria-label={`Folder ${directory.path}`}
                   onClick={() =>
@@ -164,7 +166,7 @@ export function FileTree({
                   <span className="min-w-0 flex-1 truncate">
                     {directory.name}
                   </span>
-                  <span className="shrink-0 text-[10px]">
+                  <span className="file-tree-meta shrink-0 text-[10px]">
                     {descendants.length}
                   </span>
                 </button>
@@ -192,13 +194,18 @@ export function FileTree({
           const isHidden = hidden(file);
           const viewed = marks[file.path] === file.hash;
           return (
-            <div key={file.path} className="mb-1 flex items-center">
+            <div
+              key={file.path}
+              className={cn(
+                "file-tree-row mb-1 flex items-center rounded-md pr-1 hover:bg-accent",
+                selected === file.path && "bg-primary/10 text-primary",
+              )}
+            >
               <button
                 title={file.path}
                 aria-current={selected === file.path ? "true" : undefined}
                 className={cn(
-                  "flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-2 text-left text-xs hover:bg-accent",
-                  selected === file.path && "bg-primary/10 text-primary",
+                  "flex min-w-0 flex-1 items-center gap-2 rounded-md py-2 pr-1 pl-2 text-left text-xs",
                   isHidden && "opacity-50",
                 )}
                 onClick={() => onJump(file.path)}
@@ -208,7 +215,7 @@ export function FileTree({
                 </span>
                 <span
                   className={cn(
-                    "shrink-0 font-mono text-[10px]",
+                    "file-tree-meta shrink-0 font-mono text-[10px]",
                     file.status === "added"
                       ? "text-diff-add-foreground"
                       : file.status === "deleted"

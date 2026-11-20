@@ -28,9 +28,12 @@ Scroll through the entire review in one pane; files follow one another in sideba
 order. The sidebar highlights the file under the top of the pane. Its links jump
 within that continuous review instead of replacing it.
 Only a small window of code and notes is mounted, even for very large diffs.
-Each file has two independent controls in the tree: the eye hides or shows its
-diff, and the check marks it viewed or unviewed. A manually hidden file stays
-in the tree, so you can change its viewed mark without showing it again.
+Hover over a file or folder in the tree, or tab to it, to reveal its controls.
+The eye hides or shows the diff, and the checkbox marks it viewed or unviewed.
+A crossed-out eye and a checked box stay visible when those states are active.
+A dash marks a partially viewed folder. On touchscreens, both controls stay
+visible. A manually hidden file stays in the tree, so you can change its viewed
+mark without showing it again.
 
 In Settings → File visibility, enter one glob per line or separate them with
 commas. For example, `*.spec.*` hides `something.spec.ts` at any depth in both
