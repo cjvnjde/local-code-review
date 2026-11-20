@@ -18,6 +18,9 @@ export function Notifications() {
       containerAriaLabel="Notifications"
       style={
         {
+          "--toast-close-button-start": "auto",
+          "--toast-close-button-end": "0",
+          "--toast-close-button-transform": "translate(35%, -35%)",
           // Follow the app's class-based theme, not the OS color scheme.
           "--normal-bg": "var(--popover)",
           "--normal-text": "var(--foreground)",
@@ -25,6 +28,10 @@ export function Notifications() {
         } as CSSProperties
       }
       toastOptions={{
+        classNames: {
+          closeButton:
+            "hover:bg-accent! hover:text-accent-foreground! hover:border-border!",
+        },
         descriptionClassName: "!text-muted-foreground",
         actionButtonStyle: {
           background: "var(--primary)",
