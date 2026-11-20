@@ -10,6 +10,7 @@ import { filePathIn, refIn } from "../notes/note-ref.ts";
 import { attachmentSrc, attachmentDownloadSrc } from "./attachments.ts";
 import { AttachmentImage } from "./images.tsx";
 import { memo } from "react";
+import type { Element, Root, Text } from "hast";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
@@ -129,6 +130,41 @@ export const Markdown = memo(function Markdown({
         {body}
       </ReactMarkdown>
       <ColorTools body={body} />
+    </div>
+  );
+});
+
+/** The diff already parsed this block in its hunk, including its reference definitions. */
+function rehypeBlock(block: Element | Text) {
+  return (): Root => ({ type: "root", children: [block] });
+}
+
+export const RepositoryMarkdown = memo(function RepositoryMarkdown({
+  block,
+}: {
+  block: Element | Text;
+}) {
+  return (
+    <div className="markdown min-w-0 flex-1">
+      <ReactMarkdown
+        rehypePlugins={[[rehypeBlock, block]]}
+        components={{
+          // Repository-relative links have no destination on the review server.
+          a: ({ href, children }) =>
+            href && /^(?:https?:\/\/|mailto:)/i.test(href) ? (
+              <a href={href} target="_blank" rel="noopener noreferrer">
+                {children}
+              </a>
+            ) : (
+              <span>{children}</span>
+            ),
+          img: ({ alt }) => (
+            <span className="text-muted-foreground">
+              [Image: {alt || "image"}]
+            </span>
+          ),
+        }}
+      />
     </div>
   );
 });

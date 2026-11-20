@@ -17,3 +17,8 @@ declare module "*License" {
   const text: string;
   export default text;
 }
+
+declare module "*/license" {
+  const text: string;
+  export default text;
+}

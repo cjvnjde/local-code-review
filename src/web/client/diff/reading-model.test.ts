@@ -147,6 +147,52 @@ describe("continuous review reading", () => {
     expect(after[place.index]!.key).toBe(current.key);
     expect(place.offset).toBe(62);
   });
+  test("Markdown reading anchors survive switching between a fenced block and its source", () => {
+    const md = file("guide.md");
+    md.rows = [
+      { t: "ctx", n: 6, o: 6, text: "```md" },
+      { t: "del", o: 7, text: "# Before" },
+      { t: "add", n: 7, text: "# After" },
+      { t: "ctx", n: 8, o: 8, text: "```" },
+    ];
+    const source = diffItems([md], [], options);
+    const preview = diffItems([md], [], {
+      ...options,
+      previews: new Set([md.path]),
+    });
+    for (const row of [1, 2]) {
+      const original = source.find(
+        (item) => item.kind === "row" && item.row === row,
+      )!;
+      const position = readingIndex(preview, readingAnchor(original, 58))!;
+      const rendered = preview[position.index]!;
+      expect(rendered).toMatchObject({
+        kind: "markdown",
+        block: { row, node: { tagName: "pre" } },
+      });
+      expect(
+        source[readingIndex(source, readingAnchor(rendered, 58))!.index],
+      ).toBe(original);
+    }
+  });
+  test("a standalone link definition change stays visible in Markdown preview", () => {
+    const md = file("guide.md");
+    md.rows = [
+      { t: "del", o: 10, text: "[docs]: https://example.com/old" },
+      { t: "add", n: 10, text: "[docs]: https://example.com/new" },
+    ];
+    const items = diffItems([md], [], {
+      ...options,
+      previews: new Set([md.path]),
+    });
+    expect(
+      items
+        .filter((item) => item.kind === "markdown")
+        .map((item) => item.block.node),
+    ).toMatchObject(
+      md.rows.map((row) => ({ children: [{ value: row.text }] })),
+    );
+  });
   test("a moved row follows unique code and ambiguous or missing code falls back to its file header", () => {
     const a = file("a.ts");
     const current = diffItems([a], [], options).find(

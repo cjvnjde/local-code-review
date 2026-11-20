@@ -5,10 +5,16 @@ import type {
   ReviewComment,
 } from "../../../shared/review-types.ts";
 import { placeNote, rowKey } from "./model.ts";
+import {
+  canPreviewMarkdown,
+  markdownBlocks,
+  type MarkdownBlock,
+} from "./markdown-preview.ts";
 
 export type DiffItem = { key: string; path: string } & (
   | { kind: "header" | "media" | "empty" | "scrollbar"; file: DiffFile }
   | { kind: "row"; file: DiffFile; row: number }
+  | { kind: "markdown"; file: DiffFile; block: MarkdownBlock }
   | {
       kind: "removed";
       file: DiffFile;
@@ -45,6 +51,7 @@ export function diffItems(
     folded: (file: DiffFile) => boolean;
     removed: Readonly<Record<string, boolean>>;
     openRuns: ReadonlySet<string>;
+    previews?: ReadonlySet<string>;
     editor?: ReviewComment;
     horizontalScroll?: boolean;
   },
@@ -136,6 +143,8 @@ export function diffItems(
         kind: "empty",
         file,
       });
+    const preview =
+      options.previews?.has(file.path) && canPreviewMarkdown(file);
     const addRow = (row: number) => {
       const current = file.rows[row]!;
       const key =
@@ -183,7 +192,7 @@ export function diffItems(
       }
       addRow(row);
     }
-    if (options.horizontalScroll && file.rows.length)
+    if (options.horizontalScroll && !preview && file.rows.length)
       items.push({
         key: itemKey(file.path, "scrollbar"),
         path: file.path,
@@ -197,7 +206,59 @@ export function diffItems(
     .forEach((note) => addNote(note));
   if (editor && editor.scope !== "global" && !paths.has(editor.file))
     addEditor();
-  return items;
+  return options.previews?.size ? previewItems(items, options.previews) : items;
+}
+
+/** Replace only visible source rows. Gap controls, folded removals and conversations keep their places. */
+function previewItems(items: DiffItem[], previews: ReadonlySet<string>) {
+  const output: DiffItem[] = [];
+  for (let index = 0; index < items.length;) {
+    const first = items[index]!;
+    if (
+      first.kind !== "row" ||
+      first.file.rows[first.row]!.t === "hunk" ||
+      !previews.has(first.path) ||
+      !canPreviewMarkdown(first.file)
+    ) {
+      output.push(first);
+      index++;
+      continue;
+    }
+    const start = index;
+    const rows: number[] = [];
+    // A fold control or a note can fall inside a Markdown block. Only hunk boundaries end the document.
+    for (; index < items.length; index++) {
+      const item = items[index]!;
+      if (item.path !== first.path || item.kind === "header") break;
+      if (item.kind === "row") {
+        if (item.file.rows[item.row]!.t === "hunk") break;
+        rows.push(item.row);
+      }
+    }
+    const blocks = markdownBlocks(first.file.rows, rows);
+    let next = 0;
+    for (let i = start; i < index; i++) {
+      const item = items[i]!;
+      if (item.kind !== "row") {
+        output.push(item);
+        continue;
+      }
+      while (blocks[next]?.row === item.row) {
+        const block = blocks[next++]!;
+        output.push({
+          kind: "markdown",
+          file: first.file,
+          path: first.path,
+          block,
+          key: itemKey(
+            first.path,
+            `markdown:${rowKey(first.file.rows[item.row]!)}:${block.node.type === "element" ? block.node.tagName : "text"}`,
+          ),
+        });
+      }
+    }
+  }
+  return output;
 }
 
 export interface ReadingAnchor {
@@ -209,9 +270,14 @@ export interface ReadingAnchor {
   side?: "n" | "o";
 }
 export function readingAnchor(item: DiffItem, offset: number): ReadingAnchor {
-  const row = item.kind === "row" ? item.file.rows[item.row] : undefined;
+  const row =
+    item.kind === "row"
+      ? item.file.rows[item.row]
+      : item.kind === "markdown"
+        ? item.file.rows[item.block.row]
+        : undefined;
   return {
-    key: item.key,
+    key: item.kind === "markdown" ? itemKey(item.path, rowKey(row!)) : item.key,
     path: item.path,
     offset,
     ...(item.kind === "editor" ? { editorId: item.comment.id } : {}),
@@ -242,6 +308,22 @@ export function readingIndex(items: DiffItem[], anchor: ReadingAnchor) {
     if (index >= 0) return { index, offset: anchor.offset };
   }
   if (anchor.code?.trim()) {
+    // A source row can be inside a rendered paragraph, table, or list.
+    const preview = items.findIndex((item) => {
+      if (item.kind !== "markdown" || item.path !== anchor.path) return false;
+      const { from, to, change } = item.block;
+      for (let i = from; i <= to; i++) {
+        const row = item.file.rows[i]!;
+        if (
+          (change === "del" ? row.t !== "add" : row.t !== "del") &&
+          itemKey(item.path, rowKey(row)) === anchor.key &&
+          row.text === anchor.code
+        )
+          return true;
+      }
+      return false;
+    });
+    if (preview >= 0) return { index: preview, offset: anchor.offset };
     const matches = items.flatMap((item, index) =>
       item.kind === "row" &&
       item.path === anchor.path &&

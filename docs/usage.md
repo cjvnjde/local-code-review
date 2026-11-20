@@ -68,6 +68,11 @@ or one unfold control when the batches would meet. The batch size is configurabl
 in Settings. **File actions → Fold removed lines** replaces deletions with
 expandable markers; a run containing a note stays open.
 
+In a Markdown file header, toggle **Preview** to read the formatted diff. A changed
+table, list, or paragraph shows its removed and added versions. The preview uses
+the same hunks and context controls as the source diff. Added and deleted files
+show their full contents. Toggle **Preview** again to comment on a source line.
+
 Notes appear inline beside their subject; the conversation pane defaults to a
 compact index rather than duplicating every thread. **In diff** jumps to the
 note, reopening its file. The pane preserves your reading position when notes or

@@ -4,6 +4,7 @@ import {
   ChevronDown,
   ChevronRight,
   ExternalLink,
+  Eye,
   MessageSquarePlus,
   ListMinus,
   MoreHorizontal,
@@ -25,6 +26,8 @@ export function FileHeader({
   removed,
   onRemoved,
   blocked,
+  preview,
+  onPreview,
 }: {
   file: DiffFile;
   viewed: boolean;
@@ -35,6 +38,8 @@ export function FileHeader({
   removed: boolean;
   onRemoved: () => void;
   blocked: boolean;
+  preview: boolean;
+  onPreview?: () => void;
 }) {
   const action = useAction();
   const { settings } = useUi();
@@ -72,6 +77,25 @@ export function FileHeader({
         <span className="shrink-0 text-xs text-diff-del-foreground">
           −{file.removed}
         </span>
+        {onPreview && (
+          <Tooltip
+            label={
+              preview ? "Show Markdown source" : "Preview formatted Markdown"
+            }
+          >
+            <Button
+              size="sm"
+              variant="ghost"
+              className="gap-1.5 aria-pressed:bg-accent aria-pressed:text-accent-foreground"
+              aria-label={`Preview Markdown for ${file.path}`}
+              aria-pressed={preview}
+              onClick={onPreview}
+            >
+              <Eye />
+              <span className="hidden @[30rem]:inline">Preview</span>
+            </Button>
+          </Tooltip>
+        )}
         <Button
           size="sm"
           variant="ghost"

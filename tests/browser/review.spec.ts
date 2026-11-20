@@ -29,6 +29,19 @@ let root: string,
   url: string;
 const git = (...args: string[]) =>
   execFileSync("git", args, { cwd: directory, encoding: "utf8" });
+const guideSource = [
+  "# Earlier section",
+  ...Array.from({ length: 12 }, (_, i) => `Paragraph ${i}.\n`),
+  "## Packages",
+  "",
+  "| Name | State |",
+  "| --- | --- |",
+  "| Core | **Draft** |",
+  "",
+  ...Array.from({ length: 12 }, (_, i) => `Later paragraph ${i}.\n`),
+  "# Last section",
+  "",
+].join("\n");
 async function launch(extra: string[] = []) {
   child = spawn(binary, ["--port", "0", "--no-open", "--no-agent", ...extra], {
     cwd: directory,
@@ -89,7 +102,12 @@ test.beforeAll(async () => {
   );
   await writeFile(path.join(directory, "src/deleted.ts"), "old content\n");
   await writeFile(path.join(directory, "staged.txt"), "old\n");
-  git("add", "src", "staged.txt");
+  await writeFile(path.join(directory, "guide.md"), guideSource);
+  await writeFile(
+    path.join(directory, "retired.MARKDOWN"),
+    "# Retired guide\n\n- Final instruction\n",
+  );
+  git("add", "src", "staged.txt", "guide.md", "retired.MARKDOWN");
   git("commit", "--quiet", "-m", "initial");
   await writeFile(
     path.join(directory, "src/app.ts"),
@@ -149,6 +167,118 @@ async function showFullConversations(page: Page) {
     .getByRole("menuitem", { name: "Full conversations", exact: true })
     .click();
 }
+
+test("Markdown preview formats the visible diff and follows context expansion", async ({
+  page,
+}) => {
+  const guide = path.join(directory, "guide.md");
+  const added = path.join(directory, "new.md");
+  const deleted = path.join(directory, "retired.MARKDOWN");
+  const pane = page.getByRole("region", { name: "Code diff" });
+  const preview = (file: string) =>
+    pane.getByRole("button", {
+      name: `Preview Markdown for ${file}`,
+      exact: true,
+    });
+  const navigate = (file: string) =>
+    page.getByRole("navigation").getByTitle(file, { exact: true }).click();
+  try {
+    await writeFile(guide, guideSource.replace("**Draft**", "**Ready**"));
+    await rm(deleted);
+    await writeFile(
+      added,
+      "# New guide\n\n1. First instruction\n\n```md\n**Literal**\n```\n\n![Logo](https://example.invalid/logo.png)\n",
+    );
+    await page.goto(url);
+    await navigate("guide.md");
+    const toggle = preview("guide.md");
+    await expect(toggle).toHaveAttribute("aria-pressed", "false");
+    await toggle.focus();
+    await page.keyboard.press("Enter");
+    await expect(toggle).toHaveAttribute("aria-pressed", "true");
+    await expect(
+      pane.getByRole("heading", { name: "Packages", exact: true }),
+    ).toHaveCount(1);
+    for (const value of ["Draft", "Ready"]) {
+      await expect(
+        pane.getByRole("cell", { name: value }).locator("strong"),
+      ).toBeVisible();
+    }
+    await pane
+      .getByRole("button", { name: "File actions for guide.md" })
+      .click();
+    await page.getByRole("menuitem", { name: "Fold removed lines" }).click();
+    await expect(pane.getByRole("cell", { name: "Draft" })).toHaveCount(0);
+    await pane.getByRole("button", { name: /Show 1 removed line/ }).click();
+    await expect(pane.getByRole("cell", { name: "Draft" })).toBeVisible();
+    await expect(
+      pane.getByRole("heading", { name: "Earlier section" }),
+    ).toHaveCount(0);
+    await expect(
+      pane.getByRole("heading", { name: "Last section" }),
+    ).toHaveCount(0);
+    const guideRows = pane.locator('[data-file-path="guide.md"]');
+    await guideRows
+      .getByRole("button", { name: /Expand .* lines above/ })
+      .click();
+    await expect(pane.getByText("Paragraph 5.", { exact: true })).toBeVisible();
+    await toggle.click();
+    await expect(
+      guideRows
+        .locator("[data-code-cell]")
+        .filter({ hasText: "| Core | **Ready** |" }),
+    ).toBeVisible();
+    await expect(guideRows.getByRole("table")).toHaveCount(0);
+    const changedRow = guideRows.filter({
+      has: page
+        .locator("[data-code-cell]")
+        .filter({ hasText: "| Core | **Ready** |" }),
+    });
+    await changedRow.getByRole("button", { name: /Comment on line/ }).click();
+    const draft = pane.getByRole("textbox", { name: "Note text" });
+    await draft.fill("Confirm the new state.");
+    await toggle.click();
+    await expect(draft).toHaveValue("Confirm the new state.");
+    await toggle.click();
+    await expect(draft).toHaveValue("Confirm the new state.");
+    await pane.getByRole("button", { name: "Cancel", exact: true }).click();
+    for (const [file, heading, item] of [
+      ["new.md", "New guide", "First instruction"],
+      ["retired.MARKDOWN", "Retired guide", "Final instruction"],
+    ] as const) {
+      await navigate(file);
+      await preview(file).click();
+      await expect(
+        pane.getByRole("heading", { name: heading, exact: true }),
+      ).toBeVisible();
+      await expect(
+        pane.getByRole("listitem").filter({ hasText: item }),
+      ).toBeVisible();
+    }
+    await navigate("new.md");
+    await expect(preview("new.md")).toHaveAttribute("aria-pressed", "true");
+    await expect(
+      pane.locator("pre code").filter({ hasText: "**Literal**" }),
+    ).toBeVisible();
+    await expect(
+      pane.getByText("[Image: Logo]", { exact: true }),
+    ).toBeVisible();
+    await expect(pane.locator('img[src*="example.invalid"]')).toHaveCount(0);
+    await navigate("src/app.ts");
+    await expect(preview("src/app.ts")).toHaveCount(0);
+    await navigate("new.md");
+    await page
+      .getByRole("button", { name: "Hide notes panel", exact: true })
+      .click();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(preview("new.md")).toBeInViewport({ ratio: 1 });
+    await preview("new.md").click();
+    await expect(preview("new.md")).toHaveAttribute("aria-pressed", "false");
+  } finally {
+    git("restore", "--", "guide.md", "retired.MARKDOWN");
+    await rm(added, { force: true });
+  }
+});
 
 test("hide patterns exclude matching files from the tree and diff after a manual show", async ({
   page,

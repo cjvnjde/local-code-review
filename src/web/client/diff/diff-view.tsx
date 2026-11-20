@@ -35,6 +35,8 @@ import { gapOf, insertContext, markTails, expandRange } from "./gaps.ts";
 import { FileHeader } from "./file-header.tsx";
 import { FileMedia } from "./media.tsx";
 import { CodeRow } from "./row.tsx";
+import { canPreviewMarkdown } from "./markdown-preview.ts";
+import { MarkdownPreviewBlock } from "./markdown-block.tsx";
 import { cn } from "../components/ui/button.tsx";
 import {
   diffItems,
@@ -169,6 +171,7 @@ export function DiffView({
   >({});
   const [removed, setRemoved] = useState<Record<string, boolean>>({});
   const [openRuns, setOpenRuns] = useState<Set<string>>(new Set());
+  const [previews, setPreviews] = useState<ReadonlySet<string>>(new Set());
   const [expanding, setExpanding] = useState("");
   const [error, setError] = useState("");
   const scroll = useRef<HTMLDivElement>(null);
@@ -231,6 +234,7 @@ export function DiffView({
           ]),
         ),
         openRuns,
+        previews,
         editor: editorSubject,
         horizontalScroll: !settings.wrapLines,
       }),
@@ -240,6 +244,7 @@ export function DiffView({
       folded,
       removed,
       openRuns,
+      previews,
       editorSubject,
       settings.foldDel,
       settings.wrapLines,
@@ -330,7 +335,10 @@ export function DiffView({
     getScrollElement: () => scroll.current,
     getItemKey: useCallback((index: number) => items[index]!.key, [items]),
     estimateSize: (index) => {
-      switch (items[index]!.kind) {
+      const entry = items[index]!;
+      switch (entry.kind) {
+        case "markdown":
+          return 24 * (entry.block.to - entry.block.from + 1);
         case "header":
           return 58;
         case "scrollbar":
@@ -494,6 +502,7 @@ export function DiffView({
         [path]: { hash: file.hash, folded: false },
       }));
     if (file && row) {
+      if (previews.has(path)) setPreview(path, false);
       const at = file.rows.findIndex((entry) => rowKey(entry) === row);
       if (at >= 0 && file.rows[at]!.t === "del") {
         let from = at;
@@ -603,6 +612,14 @@ export function DiffView({
       [file.path]: { hash: file.hash, folded: !folded(file) },
     }));
   }
+  function setPreview(path: string, enabled: boolean) {
+    setPreviews((current) => {
+      const next = new Set(current);
+      if (enabled) next.add(path);
+      else next.delete(path);
+      return next;
+    });
+  }
   function mark(file: DiffFile) {
     const value = marks[file.path] !== file.hash;
     setFolds((current) => ({
@@ -668,10 +685,11 @@ export function DiffView({
     if (
       entry.kind === "header" &&
       entry.file.rows.length &&
+      !previews.has(entry.path) &&
       !folded(entry.file)
     )
       codeFiles.set(entry.path, []);
-    if (entry.kind === "row" || entry.kind === "scrollbar") {
+    if (isCodeItem(entry) || entry.kind === "scrollbar") {
       if (!codeFiles.has(entry.path)) codeFiles.set(entry.path, []);
       if (isCodeItem(entry)) codeFiles.get(entry.path)!.push(item);
     }
@@ -743,6 +761,15 @@ export function DiffView({
               file={entry.file}
               folded={folded(entry.file)}
               viewed={marks[entry.path] === entry.file.hash}
+              preview={previews.has(entry.path)}
+              onPreview={
+                canPreviewMarkdown(entry.file)
+                  ? () => {
+                      if (folded(entry.file)) toggleFile(entry.file);
+                      setPreview(entry.path, !previews.has(entry.path));
+                    }
+                  : undefined
+              }
               removed={removed[entry.path] ?? settings.foldDel}
               onRemoved={() => {
                 setRemoved((current) => ({
@@ -822,6 +849,9 @@ export function DiffView({
             : {}),
         }}
       >
+        {entry.kind === "markdown" && (
+          <MarkdownPreviewBlock block={entry.block} />
+        )}
         {entry.kind === "media" && (
           <FileMedia
             file={entry.file}

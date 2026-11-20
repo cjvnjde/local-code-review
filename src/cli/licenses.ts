@@ -16,7 +16,10 @@ import pixelmatch from "../../node_modules/pixelmatch/LICENSE" with { type: "tex
 import pngjs from "../../node_modules/pngjs/LICENSE" with { type: "text" };
 import properLockfile from "../../node_modules/proper-lockfile/LICENSE" with { type: "text" };
 import retry from "../../node_modules/retry/License" with { type: "text" };
+import remarkParse from "../../node_modules/remark-parse/license" with { type: "text" };
+import remarkRehype from "../../node_modules/remark-rehype/license" with { type: "text" };
 import signalExit from "../../node_modules/signal-exit/LICENSE.txt" with { type: "text" };
+import unified from "../../node_modules/unified/license" with { type: "text" };
 import zod from "../../node_modules/zod/LICENSE" with { type: "text" };
 
 /** Bun embeds these build-time text imports in the standalone executable. */
@@ -43,8 +46,11 @@ export function libraryNotices(): string {
       ["pixelmatch", pixelmatch],
       ["pngjs", pngjs],
       ["proper-lockfile", properLockfile],
+      ["remark-parse", remarkParse],
+      ["remark-rehype", remarkRehype],
       ["retry", retry],
       ["signal-exit", signalExit],
+      ["unified", unified],
       ["zod", zod],
     ].map(([name, text]) => `\n=== ${name} ===\n\n${text}`),
   ].join("\n");
