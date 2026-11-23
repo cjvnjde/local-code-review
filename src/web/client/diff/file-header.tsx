@@ -3,12 +3,14 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  Copy,
   ExternalLink,
   Eye,
   MessageSquarePlus,
   ListMinus,
   MoreHorizontal,
 } from "lucide-react";
+import { toast } from "sonner";
 import type { DiffFile } from "../../../shared/review-types.ts";
 import { Button } from "../components/ui/button.tsx";
 import { ActionMenu, ActionMenuItem } from "../components/ui/action-menu.tsx";
@@ -70,20 +72,40 @@ export function FileHeader({
             {folded ? <ChevronRight /> : <ChevronDown />}
           </Button>
         </Tooltip>
-        <h2
-          className="flex min-w-0 flex-1 whitespace-nowrap font-mono text-sm [white-space-collapse:preserve-spaces]"
-          dir="ltr"
-          aria-label={file.path}
-          title={file.from ? `${file.from} → ${file.path}` : file.path}
-        >
-          {/* Only the prefix paints an ellipsis; the suffix keeps its right edge. */}
-          <span className="min-w-[min(1ch,100%)] overflow-hidden text-ellipsis">
-            {file.path.slice(0, midpoint)}
-          </span>
-          <span className="flex min-w-0 justify-end overflow-hidden">
-            <span className="shrink-0">{file.path.slice(midpoint)}</span>
-          </span>
-        </h2>
+        <div className="flex min-w-0 flex-1 items-center gap-1">
+          <h2
+            className="flex min-w-0 whitespace-nowrap font-mono text-sm [white-space-collapse:preserve-spaces]"
+            dir="ltr"
+            aria-label={file.path}
+            title={file.from ? `${file.from} → ${file.path}` : file.path}
+          >
+            {/* Only the prefix paints an ellipsis; the suffix keeps its right edge. */}
+            <span className="min-w-[min(1ch,100%)] overflow-hidden text-ellipsis">
+              {file.path.slice(0, midpoint)}
+            </span>
+            <span className="flex min-w-0 justify-end overflow-hidden">
+              <span className="shrink-0">{file.path.slice(midpoint)}</span>
+            </span>
+          </h2>
+          <Tooltip label="Copy file path">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7 text-muted-foreground [&_svg]:size-3.5"
+              aria-label={`Copy file path: ${file.path}`}
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(file.path);
+                  toast.success("File path copied");
+                } catch {
+                  toast.error("Could not copy the file path");
+                }
+              }}
+            >
+              <Copy aria-hidden="true" />
+            </Button>
+          </Tooltip>
+        </div>
         <span className="shrink-0 text-xs text-diff-add-foreground">
           +{file.added}
         </span>

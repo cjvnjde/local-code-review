@@ -3670,6 +3670,55 @@ test("overall notes and formatting tools preserve the code reading position", as
   await editor.getByRole("button", { name: "Cancel", exact: true }).click();
 });
 
+test("the copy button preserves the full path of a truncated file header", async ({
+  page,
+}) => {
+  const folder = "copy path fixture";
+  const filePath = `${folder}/${"long-file-name-".repeat(10)}component.ts`;
+  const fixture = path.join(directory, folder);
+  await mkdir(fixture);
+  try {
+    await writeFile(path.join(directory, filePath), "export const copy = 1;\n");
+    await page
+      .context()
+      .grantPermissions(["clipboard-read", "clipboard-write"]);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(url);
+    await page.getByRole("button", { name: "Show file sidebar" }).click();
+    await page
+      .getByRole("navigation")
+      .locator(`button[title="${filePath}"]`)
+      .click();
+
+    const pane = page.getByRole("region", { name: "Code diff", exact: true });
+    const heading = pane.getByRole("heading", { name: filePath, exact: true });
+    await expect(heading).toBeVisible();
+    expect(
+      await heading.evaluate((element) => {
+        const text = document.createRange();
+        text.selectNodeContents(element);
+        return text.getBoundingClientRect().width > element.clientWidth;
+      }),
+    ).toBe(true);
+    const copy = pane.getByRole("button", {
+      name: `Copy file path: ${filePath}`,
+      exact: true,
+    });
+    await pane
+      .getByRole("button", { name: `Collapse ${filePath}`, exact: true })
+      .focus();
+    await page.keyboard.press("Tab");
+    await expect(copy).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect
+      .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+      .toBe(filePath);
+    await expect(copy).toBeFocused();
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
 test("long lines wrap by default and nowrap scrolling stays inside each file", async ({
   page,
 }) => {
