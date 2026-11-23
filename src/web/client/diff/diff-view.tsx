@@ -971,7 +971,7 @@ export function DiffView({
         ref={scroll}
         // Notes outside a file align with the first file in the diff.
         style={gutterStyles.values().next().value}
-        className="@container relative min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto [overflow-anchor:none]"
+        className="@container relative min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain [overflow-anchor:none]"
         tabIndex={0}
         role="region"
         aria-label="Code diff"

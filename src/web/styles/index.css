@@ -99,6 +99,11 @@
   --color-diff-del-foreground: var(--diff-del-foreground);
 }
 @layer base {
+  /* Review panes scroll independently of the document. */
+  html:has([data-review-workspace]) {
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
   * {
     @apply border-border;
     scrollbar-width: thin;

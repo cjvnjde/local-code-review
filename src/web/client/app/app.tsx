@@ -714,7 +714,10 @@ function Workspace({
               setNotesOpen(true);
             }}
           >
-            <div className="flex h-dvh min-w-0 flex-col bg-background text-foreground">
+            <div
+              data-review-workspace
+              className="flex h-dvh min-w-0 flex-col bg-background text-foreground"
+            >
               <header className="relative z-30 flex h-12 shrink-0 items-center gap-1 border-b bg-card px-2 sm:gap-2 sm:px-3">
                 <HeaderButton
                   label={

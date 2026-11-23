@@ -272,6 +272,7 @@ export function CodeRow({
               value={row.text}
               tokens={row.syntax}
               language={languageFor(file.path)}
+              previewHexColors
               className={
                 settings.wrapLines
                   ? "whitespace-break-spaces [overflow-wrap:anywhere]"

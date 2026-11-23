@@ -1719,6 +1719,52 @@ test("review mode copies code by default and uses Alt to target notes", async ({
   await expect(input).toBeFocused();
 });
 
+test("diffs preview hex colors and copy the original code", async ({
+  page,
+}) => {
+  const filename = "swatches.tsx";
+  const file = path.join(directory, filename);
+  const source = 'const classes = "bg-[#4E80EE] border-[#abc8] #12345";';
+  await writeFile(file, source + "\n");
+  try {
+    await page
+      .context()
+      .grantPermissions(["clipboard-read", "clipboard-write"]);
+    await page.goto(url);
+    await page
+      .getByRole("navigation")
+      .locator(`button[title="${filename}"]`)
+      .click();
+    const code = page.locator(
+      `[data-file-path="${filename}"] [data-code-cell] code`,
+    );
+    const swatches = code.locator('[aria-hidden="true"]');
+    await expect(swatches).toHaveCount(2);
+    await expect(swatches.nth(0)).toHaveCSS(
+      "background-color",
+      "rgb(78, 128, 238)",
+    );
+    await expect(swatches.nth(1)).toHaveCSS(
+      "background-color",
+      "rgba(170, 187, 204, 0.533)",
+    );
+    await expect(code).toHaveText(source);
+    await code.evaluate((element) => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const selection = window.getSelection()!;
+      selection.removeAllRanges();
+      selection.addRange(range);
+    });
+    await page.keyboard.press("ControlOrMeta+c");
+    await expect
+      .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+      .toBe(source);
+  } finally {
+    await rm(file, { force: true });
+  }
+});
+
 test("code selections copy to the clipboard while an open note keeps its text and target", async ({
   page,
 }) => {
@@ -4256,6 +4302,7 @@ test("new file comments stay editable while scrolling and saved comments scroll 
     .getByRole("navigation")
     .locator('button[title="untracked.ts"]')
     .click();
+  await pane.evaluate((element) => (element.scrollTop += 26 * 100));
   await pane
     .getByRole("button", { name: "Comment on file untracked.ts", exact: true })
     .click();
@@ -4307,6 +4354,14 @@ test("new file comments stay editable while scrolling and saved comments scroll 
     )
     .toBe(true);
   await page.screenshot({ path: "/tmp/lcr-sticky-file-draft.png" });
+  await page.setViewportSize({ width: 1512, height: 700 });
+  expect(
+    await page.evaluate(() => {
+      window.scrollTo(0, document.documentElement.scrollHeight);
+      return window.scrollY;
+    }),
+  ).toBe(0);
+  await expect(page.getByRole("contentinfo")).toBeInViewport();
   await pane.getByRole("button", { name: "Save note", exact: true }).click();
   await expect(text).toHaveCount(0);
   await pane.evaluate((element) => (element.scrollTop += 26 * 200));

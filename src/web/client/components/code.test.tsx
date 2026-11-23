@@ -21,3 +21,20 @@ test("absent tokens use highlight.js while a successful blank line stays blank",
     "<code></code>",
   );
 });
+
+test("a hex literal across syntax tokens keeps its text and receives one swatch", () => {
+  const html = renderToStaticMarkup(
+    <Code
+      value="color: #AABBCCDD"
+      tokens={[
+        { kind: "plain", text: "color: " },
+        { kind: "meta", text: "#" },
+        { kind: "number", text: "AABBCCDD" },
+      ]}
+      previewHexColors
+    />,
+  );
+  expect(html.match(/background-color:#AABBCCDD/g)).toHaveLength(1);
+  expect(html).toContain('class="hljs-number">AABBCCDD');
+  expect(html.replace(/<[^>]*>/g, "")).toBe("color: #AABBCCDD");
+});
