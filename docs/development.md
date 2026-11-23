@@ -278,10 +278,10 @@ bun run build -- --target bun-linux-x64 --outfile /tmp/lcr-linux
 ```
 
 Both quality and release workflows use the Bun version pinned by `packageManager`
-in `package.json` and install dependencies with the lockfile. Release builds run
-the same source checks before building each platform. Only the executable goes
-into release archives. Users of
-the binary need Git, with no Bun, Node.js, package install, or adjacent assets.
+in `package.json` and install dependencies with the lockfile. The release workflow
+cross-compiles all targets on a single Ubuntu runner and publishes the archives
+and their checksums. Each archive contains only the executable. Users of the
+binary need Git, with no Bun, Node.js, package install, or adjacent assets.
 Optional ACP adapters and web capture keep their own requirements.
 License text for the integrated libraries is embedded at build time; `lcr licenses`
 includes the complete axe-core MPL-2.0 license, its third-party notices, and the

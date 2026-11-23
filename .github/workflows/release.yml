@@ -9,128 +9,51 @@ permissions:
   contents: read
 
 jobs:
-  check:
-    name: Test source
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Check out tag
-        uses: actions/checkout@v7.0.1
-
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2.2.0
-        with:
-          bun-version-file: package.json
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Test and bundle
-        run: bun run check
-
-  build:
-    name: Build ${{ matrix.platform }}
-    needs: check
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: Linux x64
-            runner: ubuntu-latest
-            target: bun-linux-x64
-            executable: lcr
-            package: lcr-linux-x64.tar.gz
-          - platform: Linux ARM64
-            runner: ubuntu-latest
-            target: bun-linux-arm64
-            executable: lcr
-            package: lcr-linux-arm64.tar.gz
-          - platform: macOS x64
-            runner: macos-15-intel
-            target: bun-darwin-x64
-            executable: lcr
-            package: lcr-macos-x64.tar.gz
-          - platform: macOS ARM64
-            runner: macos-15
-            target: bun-darwin-arm64
-            executable: lcr
-            package: lcr-macos-arm64.tar.gz
-          - platform: Windows x64
-            runner: ubuntu-latest
-            target: bun-windows-x64
-            executable: lcr.exe
-            package: lcr-windows-x64.zip
-
-    steps:
-      - name: Check out tag
-        uses: actions/checkout@v7.0.1
-
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2.2.0
-        with:
-          bun-version-file: package.json
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Build standalone executable
-        env:
-          TARGET: ${{ matrix.target }}
-          EXECUTABLE: ${{ matrix.executable }}
-        run: |
-          mkdir -p build
-          bun run scripts/build.ts \
-            --target="$TARGET" \
-            --outfile "build/$EXECUTABLE"
-          test -s "build/$EXECUTABLE"
-          file "build/$EXECUTABLE"
-
-      - name: Package executable
-        env:
-          EXECUTABLE: ${{ matrix.executable }}
-          PACKAGE: ${{ matrix.package }}
-        run: |
-          mkdir -p dist
-          if [[ "$PACKAGE" == *.zip ]]; then
-            (cd build && zip "../dist/$PACKAGE" "$EXECUTABLE")
-          else
-            chmod +x "build/$EXECUTABLE"
-            tar -C build -czf "dist/$PACKAGE" "$EXECUTABLE"
-          fi
-
-      - name: Write package checksum
-        env:
-          PACKAGE: ${{ matrix.package }}
-        run: |
-          (cd dist && shasum -a 256 "$PACKAGE" > "$PACKAGE.sha256")
-
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v7.0.1
-        with:
-          name: ${{ matrix.package }}
-          path: |
-            dist/${{ matrix.package }}
-            dist/${{ matrix.package }}.sha256
-          if-no-files-found: error
-          retention-days: 1
-
   release:
-    name: Create release
-    needs: build
+    name: Build and publish
     runs-on: ubuntu-latest
-
     permissions:
       contents: write
 
     steps:
-      - name: Download build artifacts
-        uses: actions/download-artifact@v8.0.1
-        with:
-          path: dist
-          merge-multiple: true
+      - name: Check out tag
+        uses: actions/checkout@v7.0.1
 
-      - name: Upload all packages before publishing the release
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version-file: package.json
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build release archives
+        run: |
+          mkdir -p build dist
+
+          package_target() {
+            local target="$1" executable="$2" archive="$3"
+            bun run build -- --target="$target" --outfile "build/$executable"
+            if [[ "$archive" == *.zip ]]; then
+              (cd build && zip "../dist/$archive" "$executable")
+            else
+              chmod +x "build/$executable"
+              tar -C build -czf "dist/$archive" "$executable"
+            fi
+          }
+
+          package_target bun-linux-x64 lcr lcr-linux-x64.tar.gz
+          package_target bun-linux-arm64 lcr lcr-linux-arm64.tar.gz
+          package_target bun-darwin-x64 lcr lcr-macos-x64.tar.gz
+          package_target bun-darwin-arm64 lcr lcr-macos-arm64.tar.gz
+          package_target bun-windows-x64 lcr.exe lcr-windows-x64.zip
+
+          cd dist
+          for archive in *.tar.gz *.zip; do
+            sha256sum "$archive" > "$archive.sha256"
+          done
+
+      - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
