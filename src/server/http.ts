@@ -450,6 +450,8 @@ function serve(options: ServerOptions, port: number) {
           return Response.json(agentState(options));
         }
         if (url.pathname === "/api/diff") {
+          // Git and per-file syntax highlighting can outlast Bun's idle timeout.
+          server.timeout(request, 0);
           const [files, statuses, branch] = await Promise.all([
             options.getDiff(),
             options.getStatuses(),
